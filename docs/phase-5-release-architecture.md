@@ -222,12 +222,18 @@ export class DataAdapter {
 - **검증**: 원장/매니저/강사/학부모/태블릿 권한 매트릭스 도출 및 PostgreSQL RLS 구문 초안 설계 완료
 - **다음 단계**: 실제 인증 로직 연동 설계 준비 완료 (연결 코드는 StateStore 미결합 유지)
 
-### Phase 6G: Git 기준선 고정 및 릴리즈 베이스라인 정리 (완료)
+### Phase 6I: SupabaseAdapter Mock Client 주입 테스트 및 Read-Only 매핑 준비 (완료)
  
-- **목표**: 상용 SDK 연동 및 배포 진행 전, 현재까지의 구조적 변경사항을 검증 및 릴리즈 베이스라인으로 고정
-- **산출물**: `docs/baseline-phase-6g.md` 및 `.gitignore` 환경변수 배제 설정 보완 완료
-- **검증**: `node --check` ESM 구문 오류 및 `smoke_test.mjs` 검사 100% 통과, 기밀 정보 스캔 완료
-- **결과**: LocalStorageAdapter 기반의 데모 MVP가 안정 구동함을 재입증하고 커밋 준비 상태 수립 완료
+- **목표**: 실제 서버 연결 없이 Mock Client를 활용한 SupabaseAdapter 읽기 전용 매핑 구조 검증
+- **산출물**: `scratch/supabase_adapter_mock_test.mjs` 생성 및 `supabaseAdapter.js` 내 read-only 쿼리 함수 구현 완료
+- **검증**: organizations/students/teachers/payments 등의 snake_case -> camelCase 맵핑 및 `academyId`/`organizationId` 별칭 바인딩 검증용 모킹 테스트 통과 완료
+- **결과**: 기존 LocalStorageAdapter를 기본으로 하는 동기 MVP 작동 방식 유지 및 에러 복구/비활성 fallback 확인 완료
+
+### Phase 6I.5: SupabaseAdapter Read-Only 구현 정합성 정리 (완료)
+ 
+- **목표**: 쓰기 기능 추가 전 어댑터 읽기 모듈 정리 및 오류 복구 정책 고도화
+- **산출물**: `src/js/state/adapters/supabaseAdapter.js` 중복 코드 리팩토링 및 테스트 로깅 출력 정돈 완료
+- **검증**: `resolveOrganizationId` 예외 처리 차단, Mock 테스트 보안 위반 로그 가림 처리 및 smoke test 최종 구동 확인
 
 ## 10. Phase 5 결론
 

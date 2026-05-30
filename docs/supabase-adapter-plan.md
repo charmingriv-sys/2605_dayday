@@ -81,11 +81,8 @@ SaaS 애플리케이션 프론트엔드 환경에서 사용될 수 있는 Supaba
 ## 4. 구현 및 보안 적용 순서 원칙
 
 1. **원격 연결 비활성 원칙**: Row Level Security (RLS) 정책이 DB에 물리적으로 세팅되어 작동하지 않는 최초 개발 기간 동안은, 어댑터의 원격 연결 활성화를 명시적으로 금지합니다. (즉, RLS 검증 전까진 LocalStorage 모드로만 구동)
-2. **구현 우선순위**:
-   1) `initialize()`: 세션 상태 확인 및 테넌트 식별자 격리.
-   2) `fetchAllDomainData()`: 단일 쿼리 묶음을 활용하여 메모리 캐시 벌크 로드.
-   3) `persistDomain()`: 특정 테이블 영역 단위 데이터 싱크.
-3. **Phase 6E 연동 범위**:
-   - Supabase Auth 회원가입/로그인 흐름 통합.
-   - 테넌트 구분 키(`organizationId`)를 기반으로 한 RLS 행 레벨 격리 정책 연동.
-   - 사용자 역할(원장, 강사, 학부모) 별 조회 테이블 마스킹 연계 설계.
+2. **구현 완료 상태 (Phase 6I)**:
+   - `fetchAcademy()`, `fetchStudents()`, `fetchTeachers()`, `fetchPayments()` 및 `fetchAllDomainData()`의 읽기 전용 질의 로직 및 스냅샷 병합 처리가 완료되었습니다.
+   - `mapSnakeToCamel()`, `mapCamelToSnake()`, `mapOrganizationToAcademy()` 헬퍼가 구현되어 snake_case <-> camelCase 변환 및 `academyId`/`organizationId` 별칭 바인딩이 완벽하게 가동됩니다.
+3. **향후 진행 범위 (Phase 6J)**:
+   - `persistDomain()` 및 `writeAuditLog()` 증분 쓰기 갱신 구현 예정.

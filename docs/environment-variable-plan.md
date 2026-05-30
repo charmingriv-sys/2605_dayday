@@ -71,5 +71,21 @@ SaaS 환경에서 변수들은 **클라이언트 측 노출 가능 변수**와 *
   *.pem
   *.key
   ```
-- **조치 방안**:
-  - 향후 실제 연동을 위한 `.env` 템플릿용 파일로 빈 구조인 `.env.example` 만을 버전 관리에 포함시킵니다.
+---
+
+## 5. 정적 ESM 프로젝트에서의 환경변수 처리 방식 (Phase 6H 추가)
+
+### 5.1 번들러 없는 정적 ESM의 한계
+- 본 프로젝트는 Webpack/Vite 등의 번들러 및 빌드 도구를 쓰지 않는 순수 정적 브라우저 ESM 구조입니다.
+- 브라우저는 Node.js의 `process.env`를 해석할 수 없으므로, 빌드 타임의 환경변수를 실시간으로 주입하거나 인라인화할 수 없습니다.
+
+### 5.2 런타임 설정 방식 (Runtime Config)
+- **`config.js` 또는 `config.json`을 통한 비동기 페치**:
+  - `SUPABASE_URL`, `SUPABASE_ANON_KEY` 같은 **공개 비민감 변수**들을 로컬 JSON 파일(`/config.json` 등) 또는 런타임 글로벌 자바스크립트 객체(`window.APP_CONFIG` 등)에 실어 초기화 시점에 비동기로 수집합니다.
+  - 빌드/배포 서버(Netlify/Vercel)에서는 이 `config.json` 파일을 빌드 후 스크립트를 통해 환경변수로부터 동적 생성(Build-time File Generation)하여 public 디렉토리에 위치시킵니다.
+- **안전한 기본 거부 가드 (Disabled State)**:
+  - 이 `config.json`을 읽지 못하거나, 변수가 비어있는 경우에는 `SupabaseClientFactory`가 `null`을 반환하여 Supabase 기능을 비활성화(`disabled`)하고, 앱 전체가 정지하지 않고 `LocalStorageAdapter` 기반으로 부드럽게 fallback 하도록 설계합니다.
+
+### 5.3 서비스 롤 키 감지 및 초기화 차단
+- 브라우저에 배포된 스크립트나 환경 설정(JSON)에 실수로 `service_role` 등의 민감 단어가 매칭되면 `SupabaseClientFactory`가 런타임 레벨에서 강제로 초기화를 중단하고 오류를 발생시켜 기밀 유출을 원천적으로 막습니다.
+
