@@ -669,7 +669,7 @@ class StateStore {
                 const student = this.getStudent(studentId);
                 const statusKo = status === 'present' ? '등원' : (status === 'late' ? '지각' : '결석');
                 alertTriggered = true;
-                alertMessage = `[튜링 알림톡]\n안녕하세요. 학부모님.\n${student.name} 학생이 금일(${date} ${time})에 ${statusKo}하였습니다.`;
+                alertMessage = `[튜링 알림톡]\n안녕하세요. 학부모님.\n${student.name} 원생이 금일(${date} ${time})에 ${statusKo}하였습니다.`;
             }
         }
 

@@ -326,7 +326,7 @@ export function renderDashboard(container) {
                         <div style="overflow-y: auto; flex-grow: 1; max-height: 160px;">
                             ${
                                 todayAlerts.length === 0
-                                    ? `<div style="text-align: center; color: var(--text-muted); padding: 1.5rem 0; font-size: 0.9rem;">오늘의 지각/결석 학생이 없습니다.</div>`
+                                    ? `<div style="text-align: center; color: var(--text-muted); padding: 1.5rem 0; font-size: 0.9rem;">오늘의 지각/결석 원생이 없습니다.</div>`
                                     : todayAlerts.map(a => {
                                         const badgeClass = a.status === 'late' ? 'badge-warning' : 'badge-danger';
                                         const statusLabel = a.status === 'late' ? '지각' : '결석';
@@ -521,7 +521,7 @@ const printStudentRegister = () => {
         <!DOCTYPE html>
         <html>
         <head>
-            <title>수강생 대장 [별지 제25호서식]</title>
+            <title>원생 대장 [별지 제25호서식]</title>
             <style>
                 @page {
                     size: A4 landscape;
@@ -794,7 +794,7 @@ const printReceiptRegister = (selectedMonth) => {
                                 <th style="width: 12%;">교습과목</th>
                                 <th style="width: 12%;">영수액</th>
                                 <th style="width: 10%;">구분</th>
-                                <th style="width: 10%;">결제방법</th>
+                                <th style="width: 10%;">수납방법</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -884,7 +884,7 @@ const printCashBook = (selectedMonth) => {
         }).join('');
 
         if (monthPaidPayments.length === 0) {
-            rowsHtml = `<tr><td colspan="5" style="text-align:center; padding: 20px;">해당 월의 현금 및 결제 출납 내역이 없습니다.</td></tr>`;
+            rowsHtml = `<tr><td colspan="5" style="text-align:center; padding: 20px;">해당 월의 수납 출납 내역이 없습니다.</td></tr>`;
         }
 
         const htmlContent = `
@@ -1412,7 +1412,7 @@ const openNtsCertificatePrintModal = (studentId) => {
                     <input type="text" id="nts-parent-resident-id" class="form-control" required placeholder="예: 800101-1234567" maxlength="14" style="background: rgba(255,255,255,0.05); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; font-size: 0.9rem;">
                 </div>
                 <div class="form-group">
-                    <label for="nts-relationship">대상자(학생)와의 관계</label>
+                    <label for="nts-relationship">대상자(원생)와의 관계</label>
                     <input type="text" id="nts-relationship" class="form-control" value="자" required placeholder="예: 자, 녀, 부, 모" style="background: rgba(255,255,255,0.05); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; font-size: 0.9rem;">
                 </div>
                 <div class="form-group">
@@ -1888,7 +1888,7 @@ const openStudentModal = (studentId = null) => {
                     
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="modal-student-name">학생 이름 <span style="color: var(--danger);">*</span></label>
+                            <label for="modal-student-name">원생 이름 <span style="color: var(--danger);">*</span></label>
                             <input type="text" id="modal-student-name" class="form-control" value="${student ? student.name : ''}" required placeholder="예: 홍길동">
                         </div>
                         <div class="form-group">
@@ -3709,11 +3709,11 @@ export function renderPayments(container) {
         if (!payment) return;
 
         const student = stateStore.getStudent(payment.studentId);
-        const studentName = student ? student.name : '퇴원 학생';
+        const studentName = student ? student.name : '퇴원 원생';
 
         const statusOptions = [
-            { value: 'unpaid', label: '미수납' },
-            { value: 'paid', label: '수납완료' },
+            { value: 'unpaid', label: '미납' },
+            { value: 'paid', label: '수납 완료' },
             { value: 'partial', label: '부분수납' },
             { value: 'refunded', label: '환불' },
             { value: 'cancelled', label: '취소' }
@@ -3802,7 +3802,7 @@ export function renderPayments(container) {
                 <button class="modal-close" data-close-modal>&times;</button>
             </div>
             <div style="text-align: center; margin: 1.5rem 0; font-size: 1.05rem;">
-                <p style="margin-bottom: 0; font-weight: 500;">해당 수납 건을 미수납 상태로 변경하시겠습니까?</p>
+                <p style="margin-bottom: 0; font-weight: 500;">해당 수납 건을 미납 상태로 변경하시겠습니까?</p>
             </div>
             <div style="display: flex; gap: 12px;">
                 <button class="btn btn-secondary" data-close-modal style="flex: 1; display: flex; justify-content: center; align-items: center;">아니오</button>
@@ -3818,7 +3818,7 @@ export function renderPayments(container) {
                     paidDate: null
                 });
                 closeModal();
-                showKakaoTalkToast("미수납 상태로 변경되었습니다.");
+                showKakaoTalkToast("미납 상태로 변경되었습니다.");
             });
         };
 
@@ -3870,7 +3870,7 @@ export function renderPayments(container) {
 
         tbody.innerHTML = monthPayments.map(p => {
             const student = students.find(s => s.id === p.studentId);
-            const studentName = student ? student.name : '<span style="color:var(--text-muted)">퇴원 학생</span>';
+            const studentName = student ? student.name : '<span style="color:var(--text-muted)">퇴원 원생</span>';
             const dueDay = student ? student.dueDay : '-';
             const parentPhone = student ? student.parentPhone : '';
 
@@ -3896,7 +3896,7 @@ export function renderPayments(container) {
 
             if (p.status === 'paid') {
                 statusBadge = `<span class="badge badge-success" style="font-size:0.8rem;"><i class="fa-solid fa-circle-check"></i> 완납</span>`;
-                paymentDetail = `<span style="color: var(--text-muted); font-size: 0.85rem;">결제완료 (${methodLabel})</span>`;
+                paymentDetail = `<span style="color: var(--text-muted); font-size: 0.85rem;">수납 완료 (${methodLabel})</span>`;
 
                 actionHtml = `
                     <div style="display: inline-flex; gap: 8px; align-items: center;">
@@ -3904,7 +3904,7 @@ export function renderPayments(container) {
                             <i class="fa-solid fa-pen"></i> 수정
                         </button>
                         <button class="btn btn-secondary btn-revert-payment" data-id="${p.id}" style="padding: 5px 10px; font-size: 0.8rem; border-radius: var(--radius-sm);">
-                            <i class="fa-solid fa-arrow-rotate-left"></i> 미수납 변경
+                            <i class="fa-solid fa-arrow-rotate-left"></i> 미납 상태로 변경
                         </button>
                     </div>
                 `;
@@ -3924,7 +3924,7 @@ export function renderPayments(container) {
                             <i class="fa-solid fa-pen"></i> 수정
                         </button>
                         <button class="btn btn-secondary btn-revert-payment" data-id="${p.id}" style="padding: 5px 10px; font-size: 0.8rem; border-radius: var(--radius-sm);">
-                            <i class="fa-solid fa-arrow-rotate-left"></i> 미수납 변경
+                            <i class="fa-solid fa-arrow-rotate-left"></i> 미납 상태로 변경
                         </button>
                     </div>
                 `;
@@ -3940,7 +3940,7 @@ export function renderPayments(container) {
                             <i class="fa-solid fa-pen"></i> 수정
                         </button>
                         <button class="btn btn-secondary btn-revert-payment" data-id="${p.id}" style="padding: 5px 10px; font-size: 0.8rem; border-radius: var(--radius-sm);">
-                            <i class="fa-solid fa-arrow-rotate-left"></i> 미수납 변경
+                            <i class="fa-solid fa-arrow-rotate-left"></i> 미납 상태로 변경
                         </button>
                     </div>
                 `;
@@ -3953,7 +3953,7 @@ export function renderPayments(container) {
                             <i class="fa-solid fa-pen"></i> 수정
                         </button>
                         <button class="btn btn-secondary btn-revert-payment" data-id="${p.id}" style="padding: 5px 10px; font-size: 0.8rem; border-radius: var(--radius-sm);">
-                            <i class="fa-solid fa-arrow-rotate-left"></i> 미수납 변경
+                            <i class="fa-solid fa-arrow-rotate-left"></i> 미납 상태로 변경
                         </button>
                     </div>
                 `;
@@ -3966,7 +3966,7 @@ export function renderPayments(container) {
                             <i class="fa-solid fa-pen"></i> 수정
                         </button>
                         <button class="btn btn-secondary btn-revert-payment" data-id="${p.id}" style="padding: 5px 10px; font-size: 0.8rem; border-radius: var(--radius-sm);">
-                            <i class="fa-solid fa-arrow-rotate-left"></i> 미수납 변경
+                            <i class="fa-solid fa-arrow-rotate-left"></i> 미납 상태로 변경
                         </button>
                     </div>
                 `;

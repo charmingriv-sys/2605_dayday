@@ -183,7 +183,7 @@ export function renderCalendar(container) {
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 12px;">
                     <h3 style="font-weight: 700; font-size: 1.25rem; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
                         <i class="fa-solid fa-calendar-days" style="color: var(--primary);"></i>
-                        2026년 5월 출결 및 레슨 캘린더
+                        2026년 5월 출결 및 수업일지 캘린더
                     </h3>
                     <div style="display: flex; gap: 12px; font-size: 0.8rem;">
                         <span style="display: flex; align-items: center; gap: 6px; color: var(--text-muted);">
@@ -204,7 +204,7 @@ export function renderCalendar(container) {
                 </div>
                 
                 <p style="margin-top: 1rem; font-size: 0.85rem; color: var(--text-muted); text-align: center;">
-                    <i class="fa-solid fa-circle-info"></i> 출석 표시가 있는 날짜를 클릭하면 해당일 레슨 피드백 내용을 확인할 수 있습니다.
+                    <i class="fa-solid fa-circle-info"></i> 출석 표시가 있는 날짜를 클릭하면 해당일 수업일지 내용을 확인할 수 있습니다.
                 </p>
             </div>
         `;
@@ -238,7 +238,7 @@ function showAttendanceModal(record) {
     const statusInfo = STATUS_MAP[record.status] || { text: record.status, badge: 'badge-info' };
     const htmlContent = `
         <div class="modal-header">
-            <h3 class="modal-title">출결 및 레슨 상세 피드백</h3>
+            <h3 class="modal-title">출결 및 수업일지 상세 정보</h3>
             <button class="modal-close" data-close-modal>&times;</button>
         </div>
         <div class="modal-body" style="padding-top: 10px;">
@@ -257,9 +257,9 @@ function showAttendanceModal(record) {
                 </div>
                 <div style="border-top: 1px solid var(--border-color); padding-top: 0.8rem; font-size: 0.95rem; line-height: 1.6; color: var(--text-main);">
                     <strong style="color: var(--secondary); display: block; margin-bottom: 6px;">
-                        <i class="fa-solid fa-feather-pointed"></i> 선생님 레슨 피드백
+                        <i class="fa-solid fa-feather-pointed"></i> 선생님 수업일지
                     </strong>
-                    <div style="white-space: pre-wrap;">${record.note || '선생님이 작성한 레슨 코멘트가 없습니다.'}</div>
+                    <div style="white-space: pre-wrap;">${record.note || '선생님이 작성한 수업일지 코멘트가 없습니다.'}</div>
                 </div>
             </div>
         </div>
@@ -553,8 +553,8 @@ export function renderJournal(container) {
             timelineHtml = `
                 <div class="glass-card" style="text-align: center; padding: 4rem 2rem; color: var(--text-muted); margin-top: 1.5rem;">
                     <i class="fa-solid fa-feather-pointed" style="font-size: 3rem; margin-bottom: 1.2rem; display: block; color: var(--text-muted);"></i>
-                    <h3>기록된 레슨 피드백 일지가 없습니다.</h3>
-                    <p style="font-size: 0.9rem; margin-top: 0.5rem;">선생님이 레슨 일지 및 코멘트를 등록하면 여기에 표시됩니다.</p>
+                    <h3>기록된 수업일지가 없습니다.</h3>
+                    <p style="font-size: 0.9rem; margin-top: 0.5rem;">선생님이 수업일지 및 코멘트를 등록하면 여기에 표시됩니다.</p>
                 </div>
             `;
         } else {
@@ -573,9 +573,9 @@ export function renderJournal(container) {
                         </div>
                         <div style="background: rgba(9, 132, 227, 0.02); border: 1px solid var(--border-color); padding: 1.2rem; border-radius: var(--radius-md);">
                             <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px; font-weight: 600;">
-                                <i class="fa-solid fa-clipboard-user" style="color: var(--accent); margin-right: 6px;"></i>레슨 피드백 및 코멘트
+                                <i class="fa-solid fa-clipboard-user" style="color: var(--accent); margin-right: 6px;"></i>수업일지 및 코멘트
                             </div>
-                            <div style="font-size: 0.95rem; line-height: 1.6; color: var(--text-main); white-space: pre-wrap;">${record.note || '이날은 별도의 레슨 피드백 코멘트가 등록되지 않았습니다.'}</div>
+                            <div style="font-size: 0.95rem; line-height: 1.6; color: var(--text-main); white-space: pre-wrap;">${record.note || '이날은 별도의 수업일지 코멘트가 등록되지 않았습니다.'}</div>
                         </div>
                     </div>
                 `;
@@ -593,7 +593,7 @@ export function renderJournal(container) {
                         ${teacher ? `${teacher.name} 선생님 피드백 센터` : '담당 강사 정보 없음'}
                     </h3>
                     <p style="font-size: 0.85rem; color: var(--text-muted);">
-                        수강 학생: <strong>${student ? student.name : '최다은'}</strong> | 수강 과목: <strong>${student ? student.instrument : '피아노'}</strong> ${teacher ? `| 선생님 연락처: ${teacher.phone}` : ''}
+                        수강 원생: <strong>${student ? student.name : '최다은'}</strong> | 수강 과목: <strong>${student ? student.instrument : '피아노'}</strong> ${teacher ? `| 선생님 연락처: ${teacher.phone}` : ''}
                     </p>
                 </div>
             </div>
@@ -650,11 +650,11 @@ export function renderStudentCommunication(container) {
                         <i class="fa-solid fa-bullhorn" style="margin-right: 4px;"></i> 공지사항
                     </button>
                     <button class="btn ${activeSubTab === 'messages' ? 'btn-primary' : 'btn-secondary'}" id="tab-stu-msg" style="border-radius: 20px; font-weight: 700; padding: 8px 16px; position: relative;">
-                        <i class="fa-solid fa-envelope" style="margin-right: 4px;"></i> 개별 안내장
+                        <i class="fa-solid fa-envelope" style="margin-right: 4px;"></i> 개별 안내
                         ${unreadMsgCount > 0 ? `<span style="position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.65rem; display: flex; align-items: center; justify-content: center; font-weight: bold;">${unreadMsgCount}</span>` : ''}
                     </button>
                     <button class="btn ${activeSubTab === 'surveys' ? 'btn-primary' : 'btn-secondary'}" id="tab-stu-surv" style="border-radius: 20px; font-weight: 700; padding: 8px 16px; position: relative;">
-                        <i class="fa-solid fa-square-poll-vertical" style="margin-right: 4px;"></i> 설문조사
+                        <i class="fa-solid fa-square-poll-vertical" style="margin-right: 4px;"></i> 설문
                         ${unansweredSurveyCount > 0 ? `<span style="position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.65rem; display: flex; align-items: center; justify-content: center; font-weight: bold;">${unansweredSurveyCount}</span>` : ''}
                     </button>
                 </div>
@@ -744,7 +744,7 @@ export function renderStudentCommunication(container) {
 
         if (activeSubTab === 'messages') {
             if (messages.length === 0) {
-                return `<div style="text-align: center; color: var(--text-muted); padding: 4rem 2rem;">수신된 개별 안내장이 없습니다.</div>`;
+                return `<div style="text-align: center; color: var(--text-muted); padding: 4rem 2rem;">수신된 개별 안내가 없습니다.</div>`;
             }
             return `
                 <div style="display: flex; flex-direction: column; gap: 15px;">
@@ -777,7 +777,7 @@ export function renderStudentCommunication(container) {
 
         if (activeSubTab === 'surveys') {
             if (surveys.length === 0) {
-                return `<div style="text-align: center; color: var(--text-muted); padding: 4rem 2rem;">등록된 설문조사가 없습니다.</div>`;
+                return `<div style="text-align: center; color: var(--text-muted); padding: 4rem 2rem;">등록된 설문이 없습니다.</div>`;
             }
             return `
                 <div style="display: flex; flex-direction: column; gap: 15px;">
@@ -838,7 +838,7 @@ export function renderStudentCommunication(container) {
     const openMessageDetailModal = (msg) => {
         const modalHtml = `
             <div class="modal-header">
-                <h3 class="modal-title">학부모 개별 안내장</h3>
+                <h3 class="modal-title">학부모 개별 안내</h3>
                 <button class="modal-close" data-close-modal>&times;</button>
             </div>
             <div class="modal-body" style="padding-top: 10px;">
@@ -934,7 +934,7 @@ export function renderStudentCommunication(container) {
 
             const modalHtml = `
                 <div class="modal-header">
-                    <h3 class="modal-title">설문조사 참여 📊</h3>
+                    <h3 class="modal-title">설문 참여 📊</h3>
                     <button class="modal-close" data-close-modal>&times;</button>
                 </div>
                 <div class="modal-body" style="padding-top: 10px; max-height: 60vh; overflow-y: auto;">

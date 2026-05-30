@@ -179,7 +179,7 @@ export function renderAttendance(container) {
                                 <!-- Notes Input -->
                                 <div class="form-group" style="margin-top: 14px; margin-bottom: 0;">
                                     <label style="font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; gap: 4px; margin-bottom: 6px;">
-                                        <i class="fa-regular fa-comment-dots"></i> 레슨 피드백 / 특이사항
+                                        <i class="fa-regular fa-comment-dots"></i> 수업일지 / 특이사항
                                     </label>
                                     <textarea class="form-control note-input" rows="2" placeholder="오늘 수업 피드백을 적어주세요." style="padding: 8px 12px; font-size: 0.9rem; resize: none; font-family: inherit;">${currentNote}</textarea>
                                 </div>
@@ -352,7 +352,7 @@ export function renderLessons(container) {
             <!-- Left Column: Writing Form -->
             <div class="glass-card">
                 <h3 style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 8px;">
-                    <i class="fa-solid fa-pen-to-square" style="color: var(--primary);"></i> 레슨 일지 작성
+                    <i class="fa-solid fa-pen-to-square" style="color: var(--primary);"></i> 수업일지 작성
                 </h3>
                 <form id="lesson-form">
                     <div class="form-group">
@@ -363,11 +363,11 @@ export function renderLessons(container) {
                     </div>
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="lesson-date">레슨 일자</label>
+                            <label for="lesson-date">수업 일자</label>
                             <input type="date" id="lesson-date" class="form-control" value="${new Date().toISOString().slice(0, 10)}">
                         </div>
                         <div class="form-group">
-                            <label for="lesson-time">레슨 시간</label>
+                            <label for="lesson-time">수업 시간</label>
                             <input type="text" id="lesson-time" class="form-control" placeholder="15:00" value="${getCurrentTimeStr()}">
                         </div>
                     </div>
@@ -387,7 +387,7 @@ export function renderLessons(container) {
                                 <option value="">동영상 첨부 안 함</option>
                                 <option value="/refer_0525.mp4">🎹 바이엘 1권 완곡 연주.mp4</option>
                                 <option value="/refer_0525.mp4">🎹 소나티네 3악장 연습 과정.mp4</option>
-                                <option value="/refer_0525.mp4">🎻 바이올린 기초 레슨.mp4</option>
+                                <option value="/refer_0525.mp4">🎻 바이올린 기초 수업.mp4</option>
                             </select>
                         </div>
                         <div class="form-group" style="margin-bottom: 0;">
@@ -402,8 +402,8 @@ export function renderLessons(container) {
                         </div>
                     </div>
                     <div class="form-group">
-                        <label for="lesson-note">피드백 및 레슨 내용</label>
-                        <textarea id="lesson-note" class="form-control" rows="5" placeholder="레슨 진행 사항, 연습 과제, 태도 등을 자세히 기록해주세요." style="resize: none;"></textarea>
+                        <label for="lesson-note">피드백 및 수업 내용</label>
+                        <textarea id="lesson-note" class="form-control" rows="5" placeholder="수업 진행 사항, 연습 과제, 태도 등을 자세히 기록해주세요." style="resize: none;"></textarea>
                     </div>
                     <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;">
                         <i class="fa-solid fa-floppy-disk"></i> 일지 저장하기
@@ -415,7 +415,7 @@ export function renderLessons(container) {
             <div class="glass-card">
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 12px;">
                     <h3 style="display: flex; align-items: center; gap: 8px; margin: 0;">
-                        <i class="fa-solid fa-clock-rotate-left" style="color: var(--accent);"></i> 레슨 히스토리
+                        <i class="fa-solid fa-clock-rotate-left" style="color: var(--accent);"></i> 수업일지 히스토리
                     </h3>
                     <input type="text" id="history-search" class="form-control" placeholder="내용 검색..." style="width: 160px; padding: 6px 12px; font-size: 0.85rem;">
                 </div>
@@ -467,7 +467,7 @@ export function renderLessons(container) {
             historyTimeline.innerHTML = `
                 <div style="text-align: center; color: var(--text-muted); padding: 3rem;">
                     <i class="fa-regular fa-folder-open" style="font-size: 2rem; margin-bottom: 0.5rem; display: block; color: var(--text-muted);"></i>
-                    작성된 레슨 일지가 없습니다.
+                    작성된 수업일지가 없습니다.
                 </div>
             `;
             return;
@@ -666,7 +666,7 @@ export function renderSchedule(container) {
                     <h3 style="display: flex; align-items: center; gap: 8px; margin: 0;">
                         <i class="fa-solid fa-calendar-days" style="color: var(--primary);"></i> 주간 수업 시간표
                     </h3>
-                    <span class="badge badge-info" style="font-size: 0.8rem;"><i class="fa-solid fa-circle-info"></i> 수업 카드를 클릭하면 학생 상세 정보를 조회합니다.</span>
+                    <span class="badge badge-info" style="font-size: 0.8rem;"><i class="fa-solid fa-circle-info"></i> 수업 카드를 클릭하면 원생 상세 정보를 조회합니다.</span>
                 </div>
                 <div class="table-wrapper">
                     <table class="custom-table schedule-table" style="table-layout: fixed; width: 100%;">
@@ -736,13 +736,13 @@ export function renderSchedule(container) {
 function showStudentDetailsModal(student) {
     const htmlContent = `
         <div class="modal-header">
-            <h3 class="modal-title">${student.name} 학생 상세 정보</h3>
+            <h3 class="modal-title">${student.name} 원생 상세 정보</h3>
             <button class="modal-close" data-close-modal>&times;</button>
         </div>
         <div class="modal-body" style="color: var(--text-main); padding-top: 10px;">
             <div style="display: flex; flex-direction: column; gap: 12px;">
                 <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
-                    <span style="color: var(--text-muted); font-size: 0.9rem;">학생 이름</span>
+                    <span style="color: var(--text-muted); font-size: 0.9rem;">원생 이름</span>
                     <strong style="font-size: 0.95rem;">${student.name}</strong>
                 </div>
                 <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
@@ -750,7 +750,7 @@ function showStudentDetailsModal(student) {
                     <strong style="font-size: 0.95rem; color: var(--accent);">${student.instrument}</strong>
                 </div>
                 <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
-                    <span style="color: var(--text-muted); font-size: 0.9rem;">학생 연락처</span>
+                    <span style="color: var(--text-muted); font-size: 0.9rem;">원생 연락처</span>
                     <strong style="font-size: 0.95rem;">${student.phone || '등록 없음'}</strong>
                 </div>
                 <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">

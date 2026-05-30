@@ -48,13 +48,13 @@ const VIEW_TITLES = {
     'dir-academy-info': '학원정보 관리',
     // Teacher views
     'tea-attendance': '담당 원생 출결 입력',
-    'tea-lessons': '오늘의 레슨 일지',
+    'tea-lessons': '오늘의 수업일지',
     'tea-schedule': '주간 수업 시간표',
     // Student views
-    'stu-calendar': '출석 및 레슨 기록',
+    'stu-calendar': '출석 및 수업 기록',
     'stu-billing': '수강료 청구 및 결제',
     'stu-journal': '선생님 피드백 코멘트',
-    'stu-communication': '학부모 알림 및 설문 조사'
+    'stu-communication': '학부모 알림 및 설문'
 };
 
 // Map of view names to module renderer functions
@@ -295,7 +295,7 @@ function renderDefaultLoginCard() {
                 <button class="role-btn student" data-role="student">
                     <i class="fa-solid fa-graduation-cap"></i>
                     <div>
-                        <strong>학생 / 학부모 로그인</strong>
+                        <strong>원생 / 학부모 로그인</strong>
                         <span class="role-btn-desc">출결 현황 캘린더, 수강료 청구 및 모의 결제</span>
                     </div>
                 </button>

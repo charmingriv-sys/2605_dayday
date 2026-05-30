@@ -92,7 +92,7 @@ export function renderParentPortal(container, initialStudentId) {
                 <!-- Tab Menu Links -->
                 <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; background: #ffffff; border-bottom: 1px solid rgba(0,0,0,0.06); text-align: center; flex-shrink: 0;">
                     <button class="parent-tab-link ${activeTab === 'journal' ? 'active' : ''}" data-tab="journal" style="background: none; border: none; padding: 12px 4px; font-size: 0.78rem; font-weight: 600; color: ${activeTab === 'journal' ? 'var(--primary)' : '#64748b'}; border-bottom: 2px solid ${activeTab === 'journal' ? 'var(--primary)' : 'transparent'}; cursor: pointer;">
-                        <i class="fa-solid fa-journal-whills" style="margin-right: 2px;"></i>레슨 피드
+                        <i class="fa-solid fa-journal-whills" style="margin-right: 2px;"></i>수업일지
                     </button>
                     <button class="parent-tab-link ${activeTab === 'attendance' ? 'active' : ''}" data-tab="attendance" style="background: none; border: none; padding: 12px 4px; font-size: 0.78rem; font-weight: 600; color: ${activeTab === 'attendance' ? 'var(--primary)' : '#64748b'}; border-bottom: 2px solid ${activeTab === 'attendance' ? 'var(--primary)' : 'transparent'}; cursor: pointer;">
                         <i class="fa-solid fa-calendar-check" style="margin-right: 2px;"></i>출결조회
@@ -199,7 +199,7 @@ export function renderParentPortal(container, initialStudentId) {
                 return `
                     <div style="text-align: center; padding: 40px 10px; color: var(--text-muted);">
                         <i class="fa-solid fa-comment-slash" style="font-size: 2.2rem; display: block; margin-bottom: 12px; color: rgba(0,0,0,0.08);"></i>
-                        등록된 레슨 알림장이 없습니다.
+                        등록된 수업일지가 없습니다.
                     </div>
                 `;
             }
@@ -232,7 +232,7 @@ export function renderParentPortal(container, initialStudentId) {
                     videoHtml = `
                         <div style="margin-top: 12px;">
                             <div style="font-size: 0.72rem; color: var(--primary); font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
-                                <i class="fa-solid fa-circle-play"></i> 📹 레슨 연주 동영상 재생
+                                <i class="fa-solid fa-circle-play"></i> 📹 연주 동영상 재생
                             </div>
                             <div style="position: relative; border-radius: 10px; overflow: hidden; border: 1px solid rgba(0,0,0,0.08); background: #000; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
                                 <video src="${item.videoUrl}" controls style="width: 100%; display: block; max-height: 180px; object-fit: contain;"></video>
@@ -355,7 +355,7 @@ export function renderParentPortal(container, initialStudentId) {
                 }
             } else if (communicationSubTab === 'messages') {
                 if (messages.length === 0) {
-                    listContentHtml = `<div style="text-align: center; padding: 30px 10px; color: var(--text-muted); font-size: 0.85rem;">수신된 개별 안내장이 없습니다.</div>`;
+                    listContentHtml = `<div style="text-align: center; padding: 30px 10px; color: var(--text-muted); font-size: 0.85rem;">수신된 개별 안내가 없습니다.</div>`;
                 } else {
                     listContentHtml = messages.map(msg => `
                         <div class="mobile-msg-item" data-id="${msg.id}" style="background: ${msg.isRead ? '#ffffff' : 'rgba(9, 132, 227, 0.02)'}; border: 1px solid ${msg.isRead ? 'rgba(0,0,0,0.05)' : 'rgba(9, 132, 227, 0.2)'}; border-radius: 10px; padding: 12px; margin-bottom: 10px; cursor: pointer; position: relative; box-shadow: 0 2px 6px rgba(0,0,0,0.01);">
@@ -376,7 +376,7 @@ export function renderParentPortal(container, initialStudentId) {
                 }
             } else if (communicationSubTab === 'surveys') {
                 if (surveys.length === 0) {
-                    listContentHtml = `<div style="text-align: center; padding: 30px 10px; color: var(--text-muted); font-size: 0.85rem;">등록된 설문조사가 없습니다.</div>`;
+                    listContentHtml = `<div style="text-align: center; padding: 30px 10px; color: var(--text-muted); font-size: 0.85rem;">등록된 설문이 없습니다.</div>`;
                 } else {
                     listContentHtml = surveys.map(surv => {
                         const hasAnswered = stateStore.hasStudentAnsweredSurvey(surv.id, studentId);
@@ -411,10 +411,10 @@ export function renderParentPortal(container, initialStudentId) {
                             공지사항
                         </button>
                         <button class="mobile-comm-subtab-btn" data-subtab="messages" style="flex:1; border: none; font-size: 0.75rem; font-weight: 700; padding: 6px 4px; border-radius: 15px; cursor: pointer; transition: all 0.2s; ${subMsgActive}">
-                            안내장
+                            개별 안내
                         </button>
                         <button class="mobile-comm-subtab-btn" data-subtab="surveys" style="flex:1; border: none; font-size: 0.75rem; font-weight: 700; padding: 6px 4px; border-radius: 15px; cursor: pointer; transition: all 0.2s; ${subSurvActive}">
-                            설문조사
+                            설문
                         </button>
                     </div>
 
@@ -438,7 +438,7 @@ export function renderParentPortal(container, initialStudentId) {
         const onClickPay = (method) => {
             stateStore.payInvoice(payment.id, method);
             showMockPaymentModal = false;
-            alert(`[결제 완료]\n${payment.amount.toLocaleString()}원이 모바일 ${method === 'toss' ? '토스페이' : '카카오페이'}로 안전하게 납부되었습니다.`);
+            alert(`[납부 완료]\n${payment.amount.toLocaleString()}원이 모바일 ${method === 'toss' ? '토스페이' : '카카오페이'}로 안전하게 납부되었습니다.`);
             render();
         };
 
@@ -516,7 +516,7 @@ export function renderParentPortal(container, initialStudentId) {
         return `
             <div style="position: absolute; top:0; left:0; width:100%; height:100%; background: #ffffff; z-index: 100; display: flex; flex-direction: column; animation: slideUpMobile 0.25s ease-out;">
                 <div style="background: linear-gradient(135deg, #0984e3, #74b9ff); padding: 14px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
-                    <span style="color: white; font-weight: bold; font-size: 0.9rem;">개별 안내장</span>
+                    <span style="color: white; font-weight: bold; font-size: 0.9rem;">개별 안내</span>
                     <button onclick="closeMsgOverlay()" style="background: none; border: none; color: white; font-size: 1.4rem; cursor: pointer; line-height: 1;">&times;</button>
                 </div>
                 <div style="flex: 1; overflow-y: auto; padding: 16px;">
@@ -568,7 +568,7 @@ export function renderParentPortal(container, initialStudentId) {
             }
 
             stateStore.submitSurveyResponse(surv.id, studentId, answers);
-            alert('설문조사 답변이 성공적으로 제출되었습니다.');
+            alert('설문 답변이 성공적으로 제출되었습니다.');
             answeringSurveyId = null;
             render();
         };
@@ -643,7 +643,7 @@ export function renderParentPortal(container, initialStudentId) {
             return `
                 <div style="position: absolute; top:0; left:0; width:100%; height:100%; background: #ffffff; z-index: 100; display: flex; flex-direction: column; animation: slideUpMobile 0.25s ease-out;">
                     <div style="background: linear-gradient(135deg, #0984e3, #74b9ff); padding: 14px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
-                        <span style="color: white; font-weight: bold; font-size: 0.9rem;">설문조사 참여</span>
+                        <span style="color: white; font-weight: bold; font-size: 0.9rem;">설문 참여</span>
                         <button onclick="closeSurvOverlay()" style="background: none; border: none; color: white; font-size: 1.4rem; cursor: pointer; line-height: 1;">&times;</button>
                     </div>
                     <div style="flex: 1; overflow-y: auto; padding: 16px;">
