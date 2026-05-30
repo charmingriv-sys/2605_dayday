@@ -130,3 +130,17 @@ View -> StateStore Public API -> Memory Cache -> LocalStorageAdapter -> localSto
 *   **보안 메모**: 초기 론칭 및 로컬 깃 연동 설정 시 리모트(remote) 저장소 주소에 깃허브 토큰(GitHub Personal Access Token) 정보가 포함되어 관리되고 있을 가능성이 존재합니다.
 *   **조치 권고**: 프로젝트를 클라우드 환경에 배포하거나 타인과 공유하기 전, 반드시 `.git/config` 파일 또는 `git remote -v` 출력을 확인하여 토큰이 노출되어 있다면 이를 폐기하고, 토큰리스 HTTPS 주소나 SSH Key 인증 기반으로 리모트 구성을 리셋하시기 바랍니다.
 
+---
+
+## 6. Public API 자동 검증 및 테스트 정합성 (Phase 6K 추가)
+
+`StateStore` 의 안전한 리팩토링 및 릴리즈 신뢰성을 유지하기 위해, 아래와 같은 자동 테스트 스위트가 매핑되어 가동 중입니다:
+
+1.  **StateStore 스모크 테스트 (`tests/unit/state_smoke_test.mjs`)**:
+    *   `stateStore`에 정의된 핵심 12개 캡슐화 API의 정상 바인딩 상태를 런타임에 자동 점검합니다.
+2.  **SupabaseAdapter mock 검증 (`tests/unit/supabase_adapter_mock_test.mjs`)**:
+    *   실제 Supabase DB 없이 Mock 클라이언트를 활용해 쿼리 모델링 변환, 멀티 테넌트(`organizationId`) 무결성 가드, `authUserId` 감사 로그 기록의 작동 여부를 검증합니다.
+3.  **정기 테스트 강제화 규칙**:
+    *   새로운 도메인 확장이나 필드 추가 시, 반드시 `npm run test:all`을 통과해야 배포 준비 상태로 간주합니다.
+
+

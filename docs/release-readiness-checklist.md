@@ -13,19 +13,16 @@
 - [ ] `git status --short` 실행 결과 작업 외 다른 백업 파일(`.backup`, `.bak`, `.old`)이 검출되지 않는지 확인.
 - [ ] `git remote -v` 실행 결과 저장소 주소에 개인 토큰(`ghp_...`) 정보가 포함되지 않았는지 점검.
 
-### 1.2 민감정보 노출 스캔 실행
-터미널에서 아래 PowerShell 스크립트를 최종 실행하여 검출물이 없는지 확증합니다.
-- [ ] 스캔 실행:
-  ```powershell
-  Get-ChildItem -Recurse -File |
-    Where-Object {
-      $_.FullName -notmatch "\\.git\\" -and
-      $_.FullName -notmatch "\\node_modules\\" -and
-      $_.FullName -notmatch "\\dist\\" -and
-      $_.FullName -notmatch "\\build\\"
-    } |
-    Select-String -Pattern "ghp_[A-Za-z0-9_]{10,}|github_pat_[A-Za-z0-9_]+|BEGIN .*PRIVATE KEY|SUPABASE_SERVICE_ROLE_KEY"
+### 1.2 자동화 테스트 및 민감정보 노출 스캔 실행
+배포 파이프라인 작동 전에 터미널에서 전체 자동 점검 명령을 최종 실행하여 모든 테스트를 성공해야 합니다.
+- [ ] **테스트 실행**:
+  ```bash
+  npm run test:all
   ```
+  *(또는 `node tests/unit/state_smoke_test.mjs`, `node tests/unit/supabase_adapter_mock_test.mjs`, `node tests/security/security_scan_test.mjs` 직접 실행)*
+- [ ] **보안 점검 확인**:
+  - `test:security` 실행 결과 `CRITICAL` 비밀번호나 토큰 유출 경고가 단 1건도 없어야 합니다.
+  - 임시 및 백업 파일(`.backup`, `.bak`, `.old`)이 원본 소스 디렉터리에 노출되어 있는지 확인하고 정리합니다.
 
 ---
 

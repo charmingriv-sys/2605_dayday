@@ -245,6 +245,18 @@ export class DataAdapter {
   - `organizationId`/`academyId`, `authUserId`, `role` 필수 값에 대한 `_validateWriteContext` 검증 가드 구현 및 Mock 테스트를 통한 오작동/유실 차단 성공
   - 기존 `LocalStorageAdapter` 기반 MVP의 동기 런타임에 아무런 영향을 주지 않는 격리 설계 유지
 
+### Phase 6K: 전체 기능 자동 점검기 구축 (완료)
+
+- **목표**: 개발 단계에서 핵심 기능이나 아키텍처가 손상되었는지 검증하기 위한 통합 자동 점검 체계를 마련
+- **산출물**:
+  - `tests/` 디렉터리 구성 및 스모크 테스트(`tests/unit/state_smoke_test.mjs`), 어댑터 Mock 계약 검증(`tests/unit/supabase_adapter_mock_test.mjs`), 보안 검사기(`tests/security/security_scan_test.mjs`) 이동 및 배치
+  - 통합 실행 스크립트(`npm run test:all`) 및 `package.json` 신규 초기화
+- **검증**:
+  - `test:state`를 통한 StateStore의 핵심 12개 Public API 바인딩 테스트 성공
+  - `test:supabase-adapter`를 통한 DB 모델 데이터 매핑 및 멀티 테넌트 격리/보안 검사 통과
+  - `test:security`를 이용해 실제 API 토큰 및 시크릿 키 유출 여부를 정적 스캔 완료
+  - 로컬 테스트 실행 리포트(`tests/reports/latest-test-report.md`) 자동 생성
+
 ## 10. Phase 5 결론
 
 Phase 5의 추천 방향은 다음과 같다.
@@ -256,6 +268,7 @@ Authorization: PostgreSQL RLS + application role mapping
 Hosting: Netlify 또는 Vercel
 Serverless: Supabase Edge Functions 또는 Netlify Functions
 StateStore 전환: DataAdapter + Memory Cache + 점진적 SupabaseAdapter
+자동 검증: tests/ 스위트를 통한 배포 전 무결성 체크리스트 실행
 ```
 
-Phase 6에서는 바로 대규모 DB 연동을 시작하지 말고, 먼저 스키마 DDL 초안과 DataAdapter 인터페이스를 만든다. 이 순서가 현재 localStorage 기반 MVP를 안정적으로 출시형 구조로 전환하는 가장 안전한 경로다.
+Phase 6에서는 바로 대규모 DB 연동을 시작하지 말고, 스키마 DDL 초안, DataAdapter 인터페이스와 자동화 테스트 스크립트를 먼저 확립한다. 이 순서가 현재 localStorage 기반 MVP를 안정적으로 출시형 구조로 전환하는 가장 안전한 경로다.
