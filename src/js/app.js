@@ -160,7 +160,7 @@ function handleSocialLogin(provider) {
             snsId = `mock_sns_${provider}_` + Math.floor(Math.random() * 100000);
         }
 
-        const existingUser = stateStore.db.users.find(u => u.provider === provider && u.snsId === snsId);
+        const existingUser = stateStore.getUserBySnsId(provider, snsId);
         
         if (existingUser) {
             localStorage.setItem(`turing_mock_sns_id_${provider}`, snsId);

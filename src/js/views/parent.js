@@ -38,7 +38,7 @@ export function renderParentPortal(container, initialStudentId) {
         const surveys = stateStore.getSurveys().sort((a, b) => b.date.localeCompare(a.date));
 
         // Find siblings if linked
-        const linksForStudent = stateStore.db.parentStudentLinks ? stateStore.db.parentStudentLinks.filter(link => link.studentId === studentId) : [];
+        const linksForStudent = stateStore.getParentLinksForStudent(studentId);
         const parentUserId = linksForStudent.length > 0 ? linksForStudent[0].parentUserId : null;
         const siblings = parentUserId ? stateStore.getStudentsForParent(parentUserId) : [];
 

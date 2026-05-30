@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DayDay 음악학원 기능 확장 기획</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --paper: #ffffff;
+      --ink: #172033;
+      --muted: #667085;
+      --line: #d9dee8;
+      --accent: #1f6feb;
+      --accent-soft: #e8f1ff;
+      --warn: #b54708;
+      --warn-soft: #fff4e5;
+      --good: #047857;
+      --good-soft: #e8f7ef;
+      --danger: #b42318;
+      --danger-soft: #fff0ed;
+      --shadow: 0 18px 45px rgba(17, 24, 39, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.68;
+    }
+
+    .shell {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 48px 24px 80px;
+    }
+
+    header {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 34px;
+      margin-bottom: 22px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--accent);
+      background: var(--accent-soft);
+      border: 1px solid #c8ddff;
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 18px;
+    }
+
+    h1, h2, h3 {
+      line-height: 1.25;
+      letter-spacing: 0;
+      margin: 0;
+    }
+
+    h1 {
+      font-size: clamp(30px, 4vw, 48px);
+      margin-bottom: 14px;
+    }
+
+    h2 {
+      font-size: 25px;
+      margin-bottom: 18px;
+    }
+
+    h3 {
+      font-size: 18px;
+      margin: 22px 0 10px;
+    }
+
+    p { margin: 0 0 14px; }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    a:hover { text-decoration: underline; }
+
+    section {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 28px;
+      margin: 18px 0;
+      box-shadow: 0 10px 28px rgba(17, 24, 39, 0.04);
+    }
+
+    .lead {
+      font-size: 18px;
+      color: #344054;
+      max-width: 900px;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 14px;
+      margin-top: 16px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      background: #fff;
+    }
+
+    .card h3 { margin-top: 0; }
+
+    .tag {
+      display: inline-block;
+      padding: 4px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #1d2939;
+      background: #eef2f6;
+      margin: 0 6px 6px 0;
+    }
+
+    .tag.good { color: var(--good); background: var(--good-soft); }
+    .tag.warn { color: var(--warn); background: var(--warn-soft); }
+    .tag.danger { color: var(--danger); background: var(--danger-soft); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0 8px;
+      font-size: 14px;
+    }
+
+    th, td {
+      border: 1px solid var(--line);
+      padding: 12px;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f8fafc;
+      text-align: left;
+      font-weight: 800;
+    }
+
+    ul, ol {
+      padding-left: 22px;
+      margin: 10px 0 0;
+    }
+
+    li { margin-bottom: 7px; }
+
+    .callout {
+      border: 1px solid #c8ddff;
+      background: var(--accent-soft);
+      border-radius: 8px;
+      padding: 18px;
+      margin: 16px 0;
+    }
+
+    .callout.warn {
+      border-color: #ffd59a;
+      background: var(--warn-soft);
+    }
+
+    .callout.danger {
+      border-color: #ffd0c9;
+      background: var(--danger-soft);
+    }
+
+    code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      background: #f2f4f7;
+      padding: 2px 5px;
+      border-radius: 4px;
+      font-size: 0.93em;
+    }
+
+    pre {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #101828;
+      color: #f8fafc;
+      padding: 18px;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .phase {
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      gap: 18px;
+      border-top: 1px solid var(--line);
+      padding: 18px 0;
+    }
+
+    .phase:first-of-type { border-top: 0; }
+
+    .phase-num {
+      font-weight: 900;
+      color: var(--accent);
+    }
+
+    .footer {
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+      margin-top: 28px;
+    }
+
+    @media (max-width: 860px) {
+      .grid, .grid.two { grid-template-columns: 1fr; }
+      .phase { grid-template-columns: 1fr; }
+      header, section { padding: 22px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div class="eyebrow">DayDay Product Strategy · Music Academy Deep Dive</div>
+      <h1>음악학원 기준 추가 기능 기획</h1>
+      <p class="lead">
+        현재 DayDay는 음악학원 운영 MVP로 충분한 표면적을 갖추기 시작했다. 다음 단계의 핵심은 단순히 메뉴를 더 붙이는 것이 아니라,
+        음악학원에서 실제로 돈과 시간을 잡아먹는 <strong>수강권, 회차, 보강, 강사 정산, 진도, 행사</strong>의 예외를 제품 구조 안으로 끌어오는 것이다.
+      </p>
+      <p class="meta">
+        작성일: 2026-05-30 · 기준 프로젝트: Phase 4B 이후 director view 모듈 분리 완료 상태
+      </p>
+    </header>
+
+    <section>
+      <h2>1. 핵심 판단</h2>
+      <div class="callout">
+        <p>
+          음악학원 운영의 본질은 “학생이 주 몇 회 수업을 듣는다”가 아니라
+          <strong>학생이 어떤 레슨 권리를 구매했고, 언제 어떻게 소비하며, 예외 상황을 어떻게 처리하는가</strong>에 가깝다.
+        </p>
+      </div>
+      <p>
+        따라서 다음 제품 기획의 중심은 시간표가 아니라 <strong>수강권/회차권/보강 엔진</strong>이어야 한다.
+        이 엔진이 있어야 주 몇 회, 월 몇 회, 타임제, 회차권, 입시 특강, 연습실 이용권, 그룹 레슨까지 하나의 구조로 처리할 수 있다.
+      </p>
+    </section>
+
+    <section>
+      <h2>2. 음악학원에서 실제로 존재하는 수강 형태</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>수강 형태</th>
+            <th>예시</th>
+            <th>필요한 제품 기능</th>
+            <th>주의할 운영 예외</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>고정 요일제</td>
+            <td>매주 화/목 17:00 피아노</td>
+            <td>반복 시간표, 고정 강사, 고정 방 배정</td>
+            <td>공휴일, 학원 휴강, 선생님 사정 취소</td>
+          </tr>
+          <tr>
+            <td>월 회차제</td>
+            <td>월 4회, 월 8회, 월 12회</td>
+            <td>월별 회차 생성, 잔여 회차, 이월 여부</td>
+            <td>중도 등록, 결석 차감 여부, 보강권 만료</td>
+          </tr>
+          <tr>
+            <td>타임제</td>
+            <td>월 240분, 600분 패키지</td>
+            <td>분 단위 차감, 회당 수업시간 기록</td>
+            <td>30분/40분/50분 혼합 수업, 분 단위 잔여 처리</td>
+          </tr>
+          <tr>
+            <td>자유 예약제</td>
+            <td>가능한 시간 중 예약</td>
+            <td>예약 슬롯, 취소 정책, 대기자</td>
+            <td>당일 취소, 노쇼, 선생님별 예약 가능 시간</td>
+          </tr>
+          <tr>
+            <td>입시/콩쿠르 특강</td>
+            <td>시험 전 10회 집중 레슨</td>
+            <td>단기 패키지, 추가 청구, 집중 일정</td>
+            <td>정규 수업과 특강 수업의 회차/정산 분리</td>
+          </tr>
+          <tr>
+            <td>그룹/앙상블</td>
+            <td>바이올린 앙상블, 합창</td>
+            <td>다인 수업, 개별 출결, 수업별 명단</td>
+            <td>한 명 결석 시 전체 수업 유지, 개별 보강 여부</td>
+          </tr>
+          <tr>
+            <td>연습실 이용권</td>
+            <td>월 연습실 10시간</td>
+            <td>공간 예약, 이용 시간 차감</td>
+            <td>레슨실과 연습실 충돌, 악기/장비 상태</td>
+          </tr>
+          <tr>
+            <td>가족/형제 묶음</td>
+            <td>형제 2명 할인</td>
+            <td>가족 청구, 할인 규칙, 보호자 기준 통합 고지</td>
+            <td>한 명만 퇴원, 한 명만 미납, 자녀별 과목 분리</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>3. 최우선으로 설계해야 할 5개 도메인</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>1. Plan</h3>
+          <p>판매 가능한 수강 상품이다. 월 4회, 240분권, 입시 특강 10회, 연습실 10시간 같은 정의를 담는다.</p>
+          <span class="tag good">공통 코어</span>
+        </div>
+        <div class="card">
+          <h3>2. Enrollment</h3>
+          <p>학생이 특정 Plan에 등록한 기록이다. 시작일, 종료일, 담당 강사, 과목, 할인, 청구 방식을 연결한다.</p>
+          <span class="tag good">공통 코어</span>
+        </div>
+        <div class="card">
+          <h3>3. Session</h3>
+          <p>실제로 예정되었거나 진행된 수업 단위다. 고정 수업, 예약 수업, 보강, 특강을 모두 포함한다.</p>
+          <span class="tag good">공통 코어</span>
+        </div>
+        <div class="card">
+          <h3>4. Usage Ledger</h3>
+          <p>회차 또는 시간이 어떻게 차감되었는지 기록하는 장부다. 환불, 이월, 정산의 근거가 된다.</p>
+          <span class="tag warn">핵심 신규 엔진</span>
+        </div>
+        <div class="card">
+          <h3>5. Makeup Credit</h3>
+          <p>결석, 휴강, 선생님 사정으로 발생한 보강권이다. 만료일, 사용 여부, 생성 사유를 기록한다.</p>
+          <span class="tag warn">음악학원 핵심</span>
+        </div>
+        <div class="card">
+          <h3>운영 질문</h3>
+          <p>학생은 “수업을 듣는 사람”이 아니라 “어떤 권리를 구매했고, 어떤 방식으로 소비하는 사람”으로 모델링해야 한다.</p>
+          <span class="tag">제품 관점</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>4. 보강/결석 정책 엔진</h2>
+      <p>
+        음악학원에서 가장 큰 운영 피로는 보강이다. 출석, 지각, 결석만으로는 부족하고, 결석 사유별 정책이 달라야 한다.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>상황</th>
+            <th>권장 기본 처리</th>
+            <th>제품 기능</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>학생 사전 취소</td>
+            <td>정책에 따라 보강권 생성 또는 회차 미차감</td>
+            <td>취소 마감 시간, 보강권 자동 생성</td>
+          </tr>
+          <tr>
+            <td>당일 취소</td>
+            <td>기본 회차 차감, 원장 재량으로 보강 가능</td>
+            <td>당일 취소 표시, 예외 승인</td>
+          </tr>
+          <tr>
+            <td>무단 결석</td>
+            <td>회차 차감</td>
+            <td>노쇼 기록, 학부모 자동 알림</td>
+          </tr>
+          <tr>
+            <td>선생님 사정 취소</td>
+            <td>보강권 자동 생성 또는 회차 미차감</td>
+            <td>강사 사유 기록, 대체 강사 배정</td>
+          </tr>
+          <tr>
+            <td>학원 휴강/공휴일</td>
+            <td>전체 회차 미차감 또는 일괄 보강</td>
+            <td>휴강일 캘린더, 일괄 정책 적용</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout warn">
+        <p>
+          환불/반환은 실제 운영과 법적 고지에 연결된다. 학원 교습비와 반환 관련 사항은 국가법령정보센터와 생활법령정보의 최신 내용을 확인해
+          배포 전 별도 검토 항목으로 관리해야 한다.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <h2>5. 강사 정산 기능</h2>
+      <p>
+        음악학원은 강사 정산 방식이 단순하지 않다. 고정급, 회당 정산, 매출 비율, 특강 별도 정산이 섞일 수 있다.
+        DayDay가 원장의 ERP가 되려면 출석 기록이 자연스럽게 강사 정산 근거로 이어져야 한다.
+      </p>
+      <div class="grid two">
+        <div class="card">
+          <h3>정산 방식</h3>
+          <ul>
+            <li>고정 월급</li>
+            <li>수업 회당 정산</li>
+            <li>학생 수 기준 정산</li>
+            <li>매출 비율 정산</li>
+            <li>입시/특강 별도 정산</li>
+            <li>그룹수업 분배 정산</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>대시보드 지표</h3>
+          <ul>
+            <li>강사별 실제 수업 횟수</li>
+            <li>강사별 매출 기여</li>
+            <li>보강으로 추가 발생한 수업</li>
+            <li>결석인데 정산해야 하는 수업</li>
+            <li>미납 학생의 강사 정산 포함 여부</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>6. 음악학원다운 차별 기능</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>진도/곡/교재</h3>
+          <p>학생별 현재 교재, 연습곡, 완료 곡, 다음 과제, 선생님 코멘트, 영상 링크를 기록한다.</p>
+        </div>
+        <div class="card">
+          <h3>발표회/콩쿠르</h3>
+          <p>참가자, 곡명, 작곡가, 반주자, 참가비, 리허설, 순서표, 학부모 공지를 관리한다.</p>
+        </div>
+        <div class="card">
+          <h3>연습실/방/악기</h3>
+          <p>피아노실, 드럼실, 보컬룸, 앙상블실, 대여 악기, 조율/수리 일정을 관리한다.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>7. 상담/전환/이탈 관리</h2>
+      <p>
+        원장 입장에서 매출을 지키는 기능은 “출석 기록”만이 아니다. 신규 문의, 체험수업, 퇴원 위험, 미납과 결석이 같이 발생하는 학생을
+        빨리 잡아내는 기능이 필요하다.
+      </p>
+      <div class="grid two">
+        <div class="card">
+          <h3>필요 기능</h3>
+          <ul>
+            <li>신규 상담 문의 기록</li>
+            <li>체험수업 예약</li>
+            <li>체험 후 등록 전환율</li>
+            <li>미등록 사유</li>
+            <li>학부모 불만/요청 히스토리</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>위험 신호</h3>
+          <ul>
+            <li>최근 2회 연속 결석</li>
+            <li>미납과 결석 동시 발생</li>
+            <li>보강권 장기 미사용</li>
+            <li>수강권 만료 임박</li>
+            <li>상담 후 미등록 장기 방치</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>8. 우선순위 로드맵</h2>
+      <div class="phase">
+        <div class="phase-num">Phase P1</div>
+        <div>
+          <h3>수강권/회차권/보강 엔진 설계</h3>
+          <p>Plan, Enrollment, Session, Usage Ledger, Makeup Credit의 데이터 모델과 정책 테이블을 설계한다.</p>
+        </div>
+      </div>
+      <div class="phase">
+        <div class="phase-num">Phase P2</div>
+        <div>
+          <h3>현재 주 몇 회 구조와의 호환 레이어</h3>
+          <p>기존 학생/수업 데이터를 새 수강권 구조로 해석할 수 있는 migration-safe mapping을 만든다.</p>
+        </div>
+      </div>
+      <div class="phase">
+        <div class="phase-num">Phase P3</div>
+        <div>
+          <h3>운영 화면 설계</h3>
+          <p>원장 화면에는 잔여 회차, 만료 예정, 보강 대기, 미차감 수업을 보여주고, 강사 화면에는 오늘 수업과 과제를 중심으로 단순화한다.</p>
+        </div>
+      </div>
+      <div class="phase">
+        <div class="phase-num">Phase P4</div>
+        <div>
+          <h3>수납/정산 연결</h3>
+          <p>수강권 판매, 청구, 결제, 회차 차감, 강사 정산이 하나의 흐름으로 이어지게 만든다.</p>
+        </div>
+      </div>
+      <div class="phase">
+        <div class="phase-num">Phase P5</div>
+        <div>
+          <h3>음악학원 특화 확장</h3>
+          <p>진도/곡/교재, 발표회/콩쿠르, 연습실/악기 자원 관리, 상담/이탈 관리를 순차 추가한다.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>9. 다음 Phase용 실행 프롬프트</h2>
+      <p>아래 프롬프트는 다음 LLM에게 그대로 전달할 수 있도록 작성했다.</p>
+      <pre><code># Phase P1 프롬프트: 음악학원 수강권/회차권/보강 엔진 설계
+
+너는 DayDay 음악학원 MVP의 다음 제품 기획 및 데이터 설계 작업을 수행한다.
+
+현재 DayDay는 원장/강사/학부모 화면, 출결, 수납, 교재, 공지, 설정 등을 갖춘 음악학원 관리 시스템이다.
+하지만 현재 구조는 주 몇 회 수업 중심에 가깝고, 실제 음악학원에서 사용하는 월 몇 회, 회차권, 타임제, 보강권, 특강, 연습실 이용권을 충분히 표현하지 못한다.
+
+이번 Phase P1의 목표는 기능 구현이 아니라, 다음 제품 구조를 설계하는 것이다.
+
+핵심 질문:
+학생은 단순히 수업을 듣는 사람이 아니라, 어떤 수강 권리를 구매했고 언제 어떻게 소비하는가?
+
+반드시 설계할 도메인:
+1. Plan: 판매 가능한 수강 상품
+2. Enrollment: 학생의 수강 등록
+3. Session: 실제 예정/진행 수업
+4. Usage Ledger: 회차/시간 차감 기록
+5. Makeup Credit: 보강권
+
+설계 대상 수강 형태:
+- 주 몇 회 고정 요일제
+- 월 4회/8회 같은 월 회차제
+- 240분/600분 같은 타임제
+- 자유 예약제
+- 입시/콩쿠르 특강
+- 그룹/앙상블 수업
+- 연습실 이용권
+- 가족/형제 할인
+
+반드시 포함할 내용:
+- 데이터 모델 초안
+- 기존 StateStore 구조와 연결 방식
+- localStorage 단계에서의 최소 구현 방식
+- 추후 Supabase/PostgreSQL 전환을 고려한 테이블 후보
+- 보강/결석 정책 테이블
+- 수납/청구와 연결되는 방식
+- 강사 정산과 연결되는 방식
+- 기존 학생/수업 데이터와의 마이그레이션 전략
+- UI 화면 초안: 원장, 강사, 학부모 각각
+- MVP에서 먼저 만들 기능과 나중에 미룰 기능
+
+주의:
+- 지금 바로 대규모 구현하지 말고 설계 문서부터 작성한다.
+- 기존 주 몇 회 구조를 깨지 않는 호환 전략을 포함한다.
+- 업종 공통으로 재사용 가능한 내용은 `pj_daday_skill.md`에 반영할 후보로 정리한다.
+- 환불/교습비 반환은 배포 전 법규 확인 항목으로 분리하고, 최신 법령은 별도 검토가 필요하다고 명시한다.
+
+결과물:
+- `docs/music-academy-lesson-credit-engine.md` 신규 작성
+- 필요 시 `docs/state-store-map.md`에 향후 데이터 도메인 후보 추가
+- 작업 완료 후 Phase P2 진행 가능 여부 판단</code></pre>
+    </section>
+
+    <section>
+      <h2>10. 참고 및 배포 전 확인</h2>
+      <ul>
+        <li>
+          학원 교습비와 반환 관련 사항은 국가법령정보센터의
+          <a href="https://law.go.kr/LSW/lsInfoP.do?lsiSeq=249991" target="_blank" rel="noreferrer">학원의 설립ㆍ운영 및 과외교습에 관한 법률</a>
+          및 시행령/시행규칙을 배포 전 다시 확인해야 한다.
+        </li>
+        <li>
+          생활법령정보의
+          <a href="https://www.easylaw.go.kr/CSP/CnpClsMain.laf?ccfNo=2&cciNo=3&cnpClsNo=2&csmSeq=1140&popMenu=ov" target="_blank" rel="noreferrer">교습비 등 징수 안내</a>와
+          <a href="https://www.easylaw.go.kr/CSP/CnpClsMain.laf?ccfNo=3&cciNo=1&cnpClsNo=3&csmSeq=631&popMenu=ov" target="_blank" rel="noreferrer">교습비 등의 산정 및 반환 안내</a>를 운영 정책 검토 자료로 활용한다.
+        </li>
+        <li>
+          이 문서는 제품 기획 자료이며 법률 자문 문서가 아니다. 실제 배포 전에는 지역 교육청 기준, 표시/고지 의무, 환불 정책을 별도로 확인한다.
+        </li>
+      </ul>
+    </section>
+
+    <p class="footer">DayDay Planning Artifact · docs/music-academy-feature-strategy.html</p>
+  </main>
+</body>
+</html>
