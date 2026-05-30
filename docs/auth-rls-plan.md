@@ -147,3 +147,13 @@ RLS의 각 테이블 격리는 `organization_id`를 기반으로 사용자의 �
   - RLS가 안전하게 걸려있는 일반 테이블(`students`, `classes` 등)의 읽기(SELECT) 및 사용자 직접 입력 양식의 저장(UPDATE/INSERT).
 - **소셜 로그인을 통한 인증 초기 토큰 획득**:
   - Supabase Auth를 이용한 Google/Kakao 소셜 팝업 실행 및 JWT 수집.
+
+---
+
+## 7. Phase 6J 구현 검증 완료 및 RLS 검증 준비
+
+- **감사 로그(Audit Logs) 강제**: `payments` 및 `attendance` 관련 도메인 쓰기 작업(`savePaymentRecord`, `saveAttendanceRecord`) 시 어댑터가 내부적으로 `writeAuditLog`를 강제 호출하여 변경 사항을 자동으로 기록하도록 구현되었습니다.
+- **안전장치 설계**:
+  - `audit_logs` 테이블에 대한 `UPDATE`/`DELETE` 행위를 데이터베이스 수준에서 원천 차단하는 RLS 및 DB 트리거/규칙 권장사항을 수립하였습니다.
+  - 클라이언트에서 보내는 `role` 정보는 감사로그의 보조 메타데이터로만 활용하며, 실제 권한 제어는 Supabase RLS 정책에 전적으로 의존하는 구조를 확보하였습니다.
+  - 팩토리 초기화 단에서 브라우저 환경에 `service_role` 키가 유입될 경우 로딩을 에러와 함께 원천 차단(Aborted)하여 시큐리티 누출을 방지하였습니다.

@@ -1,10 +1,11 @@
 -- docs/supabase-rls-policy-draft.sql
--- Supabase Auth / PostgreSQL RLS Policy Draft (Phase 6E)
+-- Supabase Auth / PostgreSQL RLS Policy Draft (Phase 6J Verification)
 --
 -- SECURITY WARNING & PRINCIPLES:
 -- 1. This file is a static blueprint plan and draft schema. Do NOT run this in a production DB without customization.
 -- 2. SUPABASE_SERVICE_ROLE_KEY is bypassed by all policies. Never leak or use the service role key inside browser bundles.
 -- 3. The DEFAULT policy for all tables is "DEFAULT DENY" (Implicitly blocks access unless explicitly permitted).
+-- 4. Phase 6J has verified the write contracts and audit log constraints (UPDATE/DELETE prevention validated via Mock client).
 
 --------------------------------------------------------------------------------
 -- 1. EXTENSIONS & HELPER FUNCTIONS

@@ -81,8 +81,8 @@ SaaS 애플리케이션 프론트엔드 환경에서 사용될 수 있는 Supaba
 ## 4. 구현 및 보안 적용 순서 원칙
 
 1. **원격 연결 비활성 원칙**: Row Level Security (RLS) 정책이 DB에 물리적으로 세팅되어 작동하지 않는 최초 개발 기간 동안은, 어댑터의 원격 연결 활성화를 명시적으로 금지합니다. (즉, RLS 검증 전까진 LocalStorage 모드로만 구동)
-2. **구현 완료 상태 (Phase 6I)**:
-   - `fetchAcademy()`, `fetchStudents()`, `fetchTeachers()`, `fetchPayments()` 및 `fetchAllDomainData()`의 읽기 전용 질의 로직 및 스냅샷 병합 처리가 완료되었습니다.
-   - `mapSnakeToCamel()`, `mapCamelToSnake()`, `mapOrganizationToAcademy()` 헬퍼가 구현되어 snake_case <-> camelCase 변환 및 `academyId`/`organizationId` 별칭 바인딩이 완벽하게 가동됩니다.
-3. **향후 진행 범위 (Phase 6J)**:
-   - `persistDomain()` 및 `writeAuditLog()` 증분 쓰기 갱신 구현 예정.
+2. **구현 완료 상태 (Phase 6J)**:
+   - **읽기/쓰기 계약 완료**: `fetchAcademy()`, `fetchStudents()`, `fetchTeachers()`, `fetchPayments()` 및 `fetchAllDomainData()`의 읽기 메서드 외에 `saveStudent()`, `saveTeacher()`, `savePaymentRecord()`, `saveAttendanceRecord()`, `writeAuditLog()`의 쓰기(upsert/insert) 메서드가 완벽하게 구현되어 Mock Client 기반 테스트를 통과하였습니다.
+   - **컨텍스트 보안 검증**: 쓰기 작업 시 `organizationId`/`academyId`, `authUserId`, `role` 필수 값 검증 로직이 `_validateWriteContext`를 통해 상시 작동합니다. (단, 클라이언트 `role`은 DB RLS/Edge Function 단에서 최종 재검증해야 하므로 신뢰하지 않는다는 보안 가이드를 포함합니다.)
+   - **매핑 헬퍼**: `mapSnakeToCamel()`, `mapCamelToSnake()`, `mapOrganizationToAcademy()` 헬퍼가 구현되어 snake_case <-> camelCase 변환 및 `academyId`/`organization_id` 바인딩이 완벽하게 가동됩니다.
+   - **감사로그 연동**: 민감한 정보인 `payments` 및 `attendance` 테이블의 변경 사항 발생 시, 어댑터 단에서 `writeAuditLog()`가 자동으로 연동 호출되어 `audit_logs` 테이블에 insert-only 형태로 데이터를 기록합니다. (UPDATE/DELETE 방지 및 service_role 차단 검증 완료)

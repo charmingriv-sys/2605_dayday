@@ -50,11 +50,154 @@ export class SupabaseAdapter extends DataAdapter {
     }
 
     async persistDomain(domainName, domainData, context = {}) {
-        throw new Error('SupabaseAdapter.persistDomain() is not implemented yet.');
+        // Enforce basic query resolution context mapping
+        const orgId = this.resolveOrganizationId(context);
+        if (!context.authUserId) {
+            throw new Error('SupabaseAdapter Error: authUserId is required for database write transactions.');
+        }
+
+        // Delegate specific domain queries to respective upsert operations
+        switch (domainName) {
+            case 'students':
+                for (const student of domainData) {
+                    await this.saveStudent(student, context);
+                }
+                break;
+            case 'teachers':
+                for (const teacher of domainData) {
+                    await this.saveTeacher(teacher, context);
+                }
+                break;
+            case 'payments':
+                for (const payment of domainData) {
+                    await this.savePaymentRecord(payment, context);
+                }
+                break;
+            default:
+                throw new Error(`SupabaseAdapter Error: persistDomain is not implemented for domain ${domainName}`);
+        }
+    }
+
+    async saveStudent(student, context = {}) {
+        const client = this.requireClient();
+        const orgId = this.resolveOrganizationId(context);
+        this._validateWriteContext(context);
+
+        const dbRow = this.mapCamelToSnake(student);
+        dbRow.organization_id = orgId;
+        dbRow.updated_at = new Date().toISOString();
+
+        const { error } = await client
+            .from('students')
+            .upsert(dbRow);
+
+        if (error) throw error;
+    }
+
+    async saveTeacher(teacher, context = {}) {
+        const client = this.requireClient();
+        const orgId = this.resolveOrganizationId(context);
+        this._validateWriteContext(context);
+
+        const dbRow = this.mapCamelToSnake(teacher);
+        dbRow.organization_id = orgId;
+        dbRow.updated_at = new Date().toISOString();
+
+        const { error } = await client
+            .from('teachers')
+            .upsert(dbRow);
+
+        if (error) throw error;
+    }
+
+    async savePaymentRecord(payment, context = {}) {
+        const client = this.requireClient();
+        const orgId = this.resolveOrganizationId(context);
+        this._validateWriteContext(context);
+
+        const dbRow = this.mapCamelToSnake(payment);
+        dbRow.organization_id = orgId;
+        dbRow.updated_at = new Date().toISOString();
+
+        const { error } = await client
+            .from('payments')
+            .upsert(dbRow);
+
+        if (error) throw error;
+
+        // Security / Audit directive logic mapping
+        await this.writeAuditLog(context, {
+            action: 'payment_record_upsert',
+            entity_id: payment.id || dbRow.id,
+            details: { amount: payment.amount, status: payment.status }
+        });
+    }
+
+    async saveAttendanceRecord(attendance, context = {}) {
+        const client = this.requireClient();
+        const orgId = this.resolveOrganizationId(context);
+        this._validateWriteContext(context);
+
+        const dbRow = this.mapCamelToSnake(attendance);
+        dbRow.organization_id = orgId;
+        dbRow.updated_at = new Date().toISOString();
+
+        // Note: Attendance uses upsert logic, but insert/update split could be mapped dynamically.
+        const { error } = await client
+            .from('attendance_records')
+            .upsert(dbRow);
+
+        if (error) throw error;
+
+        await this.writeAuditLog(context, {
+            action: 'attendance_record_upsert',
+            entity_id: attendance.id || dbRow.id,
+            details: { status: attendance.status }
+        });
     }
 
     async writeAuditLog(context = {}, logData = {}) {
-        throw new Error('SupabaseAdapter.writeAuditLog() is not implemented yet.');
+        const client = this.requireClient();
+        const orgId = this.resolveOrganizationId(context);
+        if (!context.authUserId) {
+            throw new Error('SupabaseAdapter Error: authUserId is required for audit logs creation.');
+        }
+
+        const auditRow = {
+            id: 'AUD_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+            organization_id: orgId,
+            actor_user_id: context.authUserId,
+            // SECURITY WARNING: Client-side role parameter must NOT be trusted blindly.
+            // RLS/Edge Function policies on the database level will validate the actual session context.
+            actor_role: context.role || 'unknown',
+            action: logData.action || 'unknown',
+            entity_id: logData.entity_id || null,
+            details: logData.details || {},
+            created_at: new Date().toISOString()
+        };
+
+        const { error } = await client
+            .from('audit_logs')
+            .insert(auditRow);
+
+        if (error) throw error;
+    }
+
+    /**
+     * Validate common security credentials on client context.
+     * WARNING: Client context role is not trusted. It serves as a query parameter hint only.
+     */
+    _validateWriteContext(context) {
+        const orgId = context.organizationId || context.academyId;
+        if (!orgId) {
+            throw new Error('SupabaseAdapter Security Error: organizationId or academyId validation failed on write query transaction.');
+        }
+        if (!context.authUserId) {
+            throw new Error('SupabaseAdapter Security Error: authUserId validation failed on write query transaction.');
+        }
+        if (!context.role) {
+            throw new Error('SupabaseAdapter Security Error: role validation failed on write query transaction.');
+        }
     }
 
     // --- Read-Only Domain Query Implementations ---

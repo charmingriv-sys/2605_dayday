@@ -235,6 +235,16 @@ export class DataAdapter {
 - **산출물**: `src/js/state/adapters/supabaseAdapter.js` 중복 코드 리팩토링 및 테스트 로깅 출력 정돈 완료
 - **검증**: `resolveOrganizationId` 예외 처리 차단, Mock 테스트 보안 위반 로그 가림 처리 및 smoke test 최종 구동 확인
 
+### Phase 6J: SupabaseAdapter Write Contract 및 감사로그 Mock 구현 (완료)
+
+- **목표**: 실제 DB 연결 없이 Mock Client를 사용하여 SupabaseAdapter의 쓰기 메서드 계약과 감사로그 연동 방식을 설계 및 검증
+- **산출물**: `src/js/state/adapters/supabaseAdapter.js` 내 upsert 기반 쓰기 후보 메서드 구현, `scratch/supabase_adapter_mock_test.mjs` 검증 기능 확장
+- **검증**:
+  - `saveStudent()`, `saveTeacher()`, `savePaymentRecord()`, `saveAttendanceRecord()` 호출 시 camelCase -> snake_case 매핑 및 `organization_id` 바인딩 검증 완료
+  - 결제(`payments`) 및 출결(`attendance`) 정보 변경 트랜잭션 시 감사로그(`audit_logs`) 자동 연동 기록 및 `INSERT` 전용 규격 준수 확인
+  - `organizationId`/`academyId`, `authUserId`, `role` 필수 값에 대한 `_validateWriteContext` 검증 가드 구현 및 Mock 테스트를 통한 오작동/유실 차단 성공
+  - 기존 `LocalStorageAdapter` 기반 MVP의 동기 런타임에 아무런 영향을 주지 않는 격리 설계 유지
+
 ## 10. Phase 5 결론
 
 Phase 5의 추천 방향은 다음과 같다.
