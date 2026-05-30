@@ -1,0 +1,14 @@
+# Dependency directories
+node_modules/
+
+# Local/temp files
+scratch/
+.gemini/
+
+# Large media files
+*.mp4
+*.avi
+*.mov
+
+# Backups
+*.backup

@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>튜링 음악학원 관리 시스템 (Turing Academy)</title>
+    <!-- FontAwesome for Premium Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- SheetJS for Excel and CSV bulk imports -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Custom Glassmorphic Stylesheet -->
+    <link rel="stylesheet" href="./src/css/style.css">
+    <!-- Kakao Postcode Service API -->
+    <script src="https://t1.kakaocdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
+</head>
+<body>
+
+    <!-- KakaoTalk Toast Notification Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- 1. ROLE SELECTION / LOGIN OVERLAY -->
+    <div id="login-overlay" class="login-overlay">
+        <div class="glass-card login-card">
+            <div class="login-logo">
+                <i class="fa-solid fa-music"></i>
+            </div>
+            <h1 class="login-title">튜링 음악학원</h1>
+            <p class="login-subtitle">통합 관리 시스템에 오신 것을 환영합니다.</p>
+            
+            <div class="role-grid">
+                <button class="role-btn director" data-role="director">
+                    <i class="fa-solid fa-user-tie"></i>
+                    <div>
+                        <strong>원장님 로그인</strong>
+                        <span class="role-btn-desc">원생 관리, 강사 관리, 수납 분석 및 설정</span>
+                    </div>
+                </button>
+                <button class="role-btn teacher" data-role="teacher">
+                    <i class="fa-solid fa-chalkboard-user"></i>
+                    <div>
+                        <strong>강사 로그인</strong>
+                        <span class="role-btn-desc">출결 관리, 주간 학습 진도 및 피드백 작성</span>
+                    </div>
+                </button>
+                <button class="role-btn student" data-role="student">
+                    <i class="fa-solid fa-graduation-cap"></i>
+                    <div>
+                        <strong>학생 / 학부모 로그인</strong>
+                        <span class="role-btn-desc">출결 현황 캘린더, 수강료 청구 및 모의 결제</span>
+                    </div>
+                </button>
+            </div>
+
+            <div class="login-divider">
+                <span>또는 간편 소셜 로그인/회원가입</span>
+            </div>
+
+            <div class="social-login-grid">
+                <button class="social-btn kakao" data-provider="kakao">
+                    <i class="fa-solid fa-comment"></i> 카카오 로그인
+                </button>
+                <button class="social-btn naver" data-provider="naver">
+                    <span class="naver-n">N</span> 네이버 로그인
+                </button>
+                <button class="social-btn google" data-provider="google">
+                    <i class="fa-brands fa-google"></i> 구글 로그인
+                </button>
+            </div>
+            
+            <div class="login-footer" style="margin-top: 2.2rem; font-size: 0.75rem; color: var(--text-muted);">
+                © 비아렙스 (ViaLabs). All rights reserved.
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. MAIN DASHBOARD FRAMEWORK (Hidden until role selected) -->
+    <div id="app-root" style="display: none;">
+        
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div>
+                <div class="logo-container">
+                    <i class="fa-solid fa-music logo-icon"></i>
+                    <span class="logo-text">Turing</span>
+                </div>
+                
+                <!-- Dynamic Navigation Tabs -->
+                <nav class="menu-section">
+                    <!-- Director Menu (Default hidden) -->
+                    <ul class="menu-list" id="menu-director" style="display: none;">
+                        <li class="menu-item active" data-view="dir-dashboard">
+                            <i class="fa-solid fa-chart-pie"></i> 대시보드
+                        </li>
+                        <li class="menu-item" data-view="dir-students">
+                            <i class="fa-solid fa-user-group"></i> 원생 관리
+                        </li>
+                        <li class="menu-item" data-view="dir-payments">
+                            <i class="fa-solid fa-credit-card"></i> 수납 현황
+                        </li>
+                        <li class="menu-item" data-view="dir-teachers">
+                            <i class="fa-solid fa-user-tie"></i> 강사 관리
+                        </li>
+                        <li class="menu-item" data-view="dir-schedules">
+                            <i class="fa-solid fa-calendar-days"></i> 강사 시간표 관리
+                        </li>
+                        <li class="menu-item" data-view="dir-attendance">
+                            <i class="fa-solid fa-calendar-check"></i> 출결 관리
+                        </li>
+                        <li class="menu-item" data-view="dir-books-elapsed">
+                            <i class="fa-solid fa-clock-rotate-left"></i> 교재 등록 경과일
+                        </li>
+                        <li class="menu-item" data-view="dir-communication">
+                            <i class="fa-solid fa-comments"></i> 학부모 소통 관리
+                        </li>
+                        <div style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); margin: 1rem 0 0.2rem 8px; text-transform: uppercase; letter-spacing: 0.5px;">학원 관리</div>
+                        <li class="menu-item" data-view="dir-books">
+                            <i class="fa-solid fa-book"></i> 학원 교재 마스터 관리
+                        </li>
+                        <li class="menu-item" data-view="dir-subjects">
+                            <i class="fa-solid fa-graduation-cap"></i> 수강과목 관리
+                        </li>
+                        <li class="menu-item" data-view="dir-approvals">
+                            <i class="fa-solid fa-user-check"></i> 가입/권한 승인
+                        </li>
+                        <li class="menu-item" data-view="dir-academy-info">
+                            <i class="fa-solid fa-school"></i> 학원정보 관리
+                        </li>
+                        <li class="menu-item" data-view="dir-kiosk-attendance">
+                            <i class="fa-solid fa-tablet-screen-button"></i> 태블릿 출결 입력
+                        </li>
+                    </ul>
+
+                    <!-- Teacher Menu (Default hidden) -->
+                    <ul class="menu-list" id="menu-teacher" style="display: none;">
+                        <li class="menu-item active" data-view="tea-attendance">
+                            <i class="fa-solid fa-calendar-check"></i> 출결 입력
+                        </li>
+                        <li class="menu-item" data-view="tea-lessons">
+                            <i class="fa-solid fa-book-open"></i> 레슨 일지
+                        </li>
+                        <li class="menu-item" data-view="tea-schedule">
+                            <i class="fa-solid fa-calendar-days"></i> 강의 일정
+                        </li>
+                    </ul>
+
+                    <!-- Student Menu (Default hidden) -->
+                    <ul class="menu-list" id="menu-student" style="display: none;">
+                        <li class="menu-item active" data-view="stu-calendar">
+                            <i class="fa-solid fa-calendar"></i> 나의 출결 현황
+                        </li>
+                        <li class="menu-item" data-view="stu-billing">
+                            <i class="fa-solid fa-receipt"></i> 수강료 납부
+                        </li>
+                        <li class="menu-item" data-view="stu-journal">
+                            <i class="fa-solid fa-feather-pointed"></i> 선생님 코멘트
+                        </li>
+                        <li class="menu-item" data-view="stu-communication">
+                            <i class="fa-solid fa-envelope-open-text"></i> 알림 및 설문
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+
+            <!-- Profile Info & Logout -->
+            <div class="user-profile-box" style="margin-bottom: 8px;">
+                <div class="profile-avatar" id="user-avatar">?</div>
+                <div class="profile-info">
+                    <span class="profile-name" id="user-name">사용자</span>
+                    <span class="profile-role" id="user-role-label">역할</span>
+                </div>
+                <button class="btn-edit-profile" id="btn-edit-profile" title="내 정보 수정" style="background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; font-size: 0.95rem; margin-right: 8px; transition: var(--transition);">
+                    <i class="fa-solid fa-gear"></i>
+                </button>
+                <button class="btn-logout" id="btn-logout" title="로그아웃">
+                    <i class="fa-solid fa-right-from-bracket"></i>
+                </button>
+            </div>
+            <div class="sidebar-footer" style="font-size: 0.68rem; color: var(--text-muted); text-align: center; opacity: 0.8; padding: 4px 0;">
+                © 비아렙스 (ViaLabs)
+            </div>
+        </aside>
+
+        <!-- Main Workspace -->
+        <div class="main-wrapper">
+            <!-- Top Bar Header -->
+            <header class="top-header">
+                <h2 class="header-title" id="page-title">대시보드</h2>
+                <div class="header-actions">
+                    <!-- Quick Toggle for KakaoTalk Simulation (Only visible for Directors/Teachers) -->
+                    <div id="settings-quick-bar" style="display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--text-muted);">
+                        <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="kakaotalk-alert-toggle" checked style="accent-color: var(--primary);">
+                            <span>출결 처리 시 학부모 알림톡(모의) 전송</span>
+                        </label>
+                    </div>
+                    <div id="current-date" style="font-size: 0.9rem; font-weight: 500; color: var(--text-muted);">
+                        2026-05-22
+                    </div>
+                </div>
+            </header>
+
+            <!-- Dynamic View Injected Here -->
+            <main class="content-container" id="dashboard-content">
+                <!-- Content gets loaded here -->
+            </main>
+        </div>
+    </div>
+
+    <!-- 3. COMMON MODAL DIALOG WRAPPER -->
+    <div id="common-modal" class="modal-overlay">
+        <div class="modal-content" id="modal-content-area">
+            <!-- Inner content replaced dynamically -->
+        </div>
+    </div>
+
+    <!-- Main Entry Module -->
+    <script type="module" src="./src/js/app.js"></script>
+</body>
+</html>
