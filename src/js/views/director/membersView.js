@@ -1356,7 +1356,7 @@ const openStudentModal = (studentId = null) => {
 
             <div class="modal-footer" style="padding: 1rem 2rem 1.5rem 2rem; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 8px; background: rgba(0, 0, 0, 0.01);">
                 <button type="button" class="btn btn-secondary" data-close-modal>취소</button>
-                <button type="submit" class="btn btn-primary">${isEdit ? '수정 저장' : '신규 등록'}</button>
+                <button type="submit" id="btn-student-submit" class="btn btn-primary">${isEdit ? '수정 저장' : '신규 등록'}</button>
             </div>
         </form>
     `;
@@ -1714,7 +1714,8 @@ const openStudentModal = (studentId = null) => {
             }
 
             // Address Validation
-            if (!addressBinder.isValid()) {
+            const addressValid = addressBinder.isValid();
+            if (!addressValid) {
                 alert('주소 검색을 통해 기본 주소와 상세주소를 모두 입력해 주세요.');
                 validationPassed = false;
             }

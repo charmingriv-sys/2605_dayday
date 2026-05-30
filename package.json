@@ -7,8 +7,11 @@
     "test:state": "node tests/unit/state_smoke_test.mjs",
     "test:supabase-adapter": "node tests/unit/supabase_adapter_mock_test.mjs",
     "test:security": "node tests/security/security_scan_test.mjs",
-    "test:all": "npm run test:state && npm run test:supabase-adapter && npm run test:security"
+    "test:all": "npm run test:state && npm run test:supabase-adapter && npm run test:security",
+    "test:e2e": "playwright test",
+    "test:full": "npm run test:all && npm run test:e2e"
   },
-  "dependencies": {},
-  "devDependencies": {}
+  "devDependencies": {
+    "@playwright/test": "^1.60.0"
+  }
 }

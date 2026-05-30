@@ -257,6 +257,17 @@ export class DataAdapter {
   - `test:security`를 이용해 실제 API 토큰 및 시크릿 키 유출 여부를 정적 스캔 완료
   - 로컬 테스트 실행 리포트(`tests/reports/latest-test-report.md`) 자동 생성
 
+### Phase 6L: 브라우저 화면 자동 테스트 구축 (완료)
+
+- **목표**: 원장/강사/학부모/키오스크 핵심 화면이 브라우저에서 깨지지 않는지 자동으로 확인하는 E2E 테스트 기반을 구축
+- **산출물**:
+  - Playwright 프레임워크 도입 및 `devDependencies` 패키지 추가
+  - `playwright.config.js` 작성 및 로컬 개발용 `server.js` 서버 생명주기 자동화 결합
+  - `tests/e2e/app-load.spec.js` (기본 로드 및 콘솔 에러 모니터링), `tests/e2e/role-entry.spec.js` (역할군별 사이드바 활성화 여부), `tests/e2e/director-flow.spec.js` (대시보드 렌더링 및 모달 열림 검사) 테스트 스펙 추가
+- **검증**:
+  - `test:e2e` 실행을 통해 로컬 서버 기반 Chromium E2E 시나리오 6개 검사 100% 통과 완료
+  - 통합 실행 스크립트 `test:full` 추가 (`npm run test:all && npm run test:e2e`)
+
 ## 10. Phase 5 결론
 
 Phase 5의 추천 방향은 다음과 같다.
@@ -268,7 +279,7 @@ Authorization: PostgreSQL RLS + application role mapping
 Hosting: Netlify 또는 Vercel
 Serverless: Supabase Edge Functions 또는 Netlify Functions
 StateStore 전환: DataAdapter + Memory Cache + 점진적 SupabaseAdapter
-자동 검증: tests/ 스위트를 통한 배포 전 무결성 체크리스트 실행
+자동 검증: tests/ 스위트를 통한 배포 전 무결성 및 E2E 브라우저 체크리스트 실행
 ```
 
-Phase 6에서는 바로 대규모 DB 연동을 시작하지 말고, 스키마 DDL 초안, DataAdapter 인터페이스와 자동화 테스트 스크립트를 먼저 확립한다. 이 순서가 현재 localStorage 기반 MVP를 안정적으로 출시형 구조로 전환하는 가장 안전한 경로다.
+Phase 6에서는 바로 대규모 DB 연동을 시작하지 말고, 스키마 DDL 초안, DataAdapter 인터페이스와 자동화 E2E 테스트 스크립트를 먼저 확립한다. 이 순서가 현재 localStorage 기반 MVP를 안정적으로 출시형 구조로 전환하는 가장 안전한 경로다.

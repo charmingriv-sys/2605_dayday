@@ -14,14 +14,15 @@
 - [ ] `git remote -v` 실행 결과 저장소 주소에 개인 토큰(`ghp_...`) 정보가 포함되지 않았는지 점검.
 
 ### 1.2 자동화 테스트 및 민감정보 노출 스캔 실행
-배포 파이프라인 작동 전에 터미널에서 전체 자동 점검 명령을 최종 실행하여 모든 테스트를 성공해야 합니다.
+배포 파이프라인 작동 전에 터미널에서 전체 자동 점검 명령을 최종 실행하여 모든 유닛/보안 및 E2E 브라우저 테스트를 통과해야 합니다.
 - [ ] **테스트 실행**:
   ```bash
-  npm run test:all
+  npm run test:full
   ```
-  *(또는 `node tests/unit/state_smoke_test.mjs`, `node tests/unit/supabase_adapter_mock_test.mjs`, `node tests/security/security_scan_test.mjs` 직접 실행)*
-- [ ] **보안 점검 확인**:
+  *(또는 `npm run test:all`로 정적 분석 수행 후, `npm run test:e2e`로 브라우저 E2E 검증)*
+- [ ] **보안 및 브라우저 에러 점검 확인**:
   - `test:security` 실행 결과 `CRITICAL` 비밀번호나 토큰 유출 경고가 단 1건도 없어야 합니다.
+  - `test:e2e` 실행 결과 브라우저 `console.error`가 없고 전체 시나리오가 성공해야 합니다.
   - 임시 및 백업 파일(`.backup`, `.bak`, `.old`)이 원본 소스 디렉터리에 노출되어 있는지 확인하고 정리합니다.
 
 ---

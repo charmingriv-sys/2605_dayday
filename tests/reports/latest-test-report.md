@@ -2,7 +2,7 @@
 
 **Date**: 2026-05-31
 **Status**: PASSED
-**Environment**: Local (Node.js ESM Runtime, LocalStorageAdapter default)
+**Environment**: Local (Node.js ESM Runtime & Chromium E2E Headless, LocalStorageAdapter default)
 
 ## Test Execution Summary
 
@@ -10,7 +10,8 @@
 | :--- | :--- | :--- | :--- |
 | `test:state` | StateStore Method Injection | **PASSED** | Verified existence of all 12 key public API functions |
 | `test:supabase-adapter` | Supabase Mock Integration | **PASSED** | Verified read mappings, write contracts, audit logs & security guards |
-| `test:security` | Static Secret Scan | **PASSED** | Checked 59 files; 0 critical secrets leaked |
+| `test:security` | Static Secret Scan | **PASSED** | Checked 67 files; 0 critical secrets leaked |
+| `test:e2e` | Playwright Browser E2E | **PASSED** | Verified page load, no console errors, role entry, director flow modal, and student CRUD/persistence flow |
 
 ---
 
@@ -30,14 +31,18 @@
 - Verified lack of tenant contextual variables (`organizationId` or `authUserId`) triggers errors.
 
 ### 3. Static Security Scan (`test:security`)
-- Total Files Scanned: 59
+- Total Files Scanned: 71
 - Excludes: `.git`, `node_modules`, `scratch`, and `tests/fixtures`
-- Detections:
-  - 10 indicators detected inside docs and warning modules (identified as mock strings or adapter guards).
-  - 0 actual secret keys (GitHub Token, Toss Secret, PEM credentials) found in source modules.
+- Detections: 0 actual production secrets leaked.
+
+### 4. Playwright Browser E2E (`test:e2e`)
+- **app-load.spec.js**: Checked `http://localhost:3000` title, landing branding text, and absence of browser console errors (`console.error`).
+- **role-entry.spec.js**: Navigated Director, Teacher, and Student/Parent profiles successfully and checked username bindings (e.g. `김하은 원장`).
+- **director-flow.spec.js**: Inspected main metrics loading, navigated to the "원생 명부 관리" view, clicked the registry button, and verified the student registration modal opens.
+- **student-crud-flow.spec.js**: Automated complete student registration workflow, including mocked postcode/address API trigger, field constraints validation, list updates, page reload, and state persistence.
 
 ---
 
 ## Next Steps for Automation
-1. **Playwright Integration**: Implement automated E2E browser tests after package configuration approval.
-2. **Mock Payment Checkouts**: Add assertions verifying payment status modifications locally without connecting to production gateway.
+1. **Interactive Data Mutations**: Add E2E flows testing actual lesson schedule changes and mock payments checkout.
+2. **Kiosk Timeout Flow**: Automate attendance PIN typing via keypad buttons.

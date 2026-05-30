@@ -24,3 +24,6 @@ scratch/
 *.pem
 *.key
 
+# Playwright artifacts
+test-results/
+playwright-report/
