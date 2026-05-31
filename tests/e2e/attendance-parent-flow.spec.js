@@ -70,7 +70,14 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
     await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
 
     // 2. Navigate to Tablet Kiosk View
-    await page.locator('.menu-item[data-view="dir-kiosk-attendance"]').click({ force: true });
+    const kioskMenu = page.locator('.menu-item[data-view="dir-kiosk-attendance"]');
+    await expect(kioskMenu).toBeVisible();
+    await kioskMenu.scrollIntoViewIfNeeded();
+    await kioskMenu.click();
+
+    // Verify kiosk mode is active on body element
+    await expect(page.locator('body')).toHaveClass(/kiosk-mode/);
+    
     // Verify successful kiosk screen navigation by checking if the kiosk keypad is visible
     await expect(page.locator('.kiosk-key[data-key="1"]')).toBeVisible({ timeout: 5000 });
 
@@ -113,8 +120,11 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
     await expect(page.locator('.sidebar')).toBeVisible({ timeout: 5000 });
 
     // 8. Go to "원생 출결 종합 관리" View and Verify check-in row status
-    await page.locator('.menu-item[data-view="dir-attendance"]').click({ force: true });
-    await expect(page.locator('.menu-item[data-view="dir-attendance"]')).toHaveClass(/active/);
+    const dirAttendanceMenu = page.locator('.menu-item[data-view="dir-attendance"]');
+    await expect(dirAttendanceMenu).toBeVisible();
+    await dirAttendanceMenu.scrollIntoViewIfNeeded();
+    await dirAttendanceMenu.click();
+    await expect(dirAttendanceMenu).toHaveClass(/active/);
 
     // Get today's ISO date string
     const todayStr = new Date().toISOString().slice(0, 10);
