@@ -1258,7 +1258,10 @@ export function renderSchedules(container) {
             };
 
             cell.addEventListener('drop', dropHandler);
-            cell.__triggerDrop = dropHandler;
+            const isE2E = typeof window !== 'undefined' && window.__DAYDAY_E2E__ === true;
+            if (isE2E) {
+                cell.__triggerDrop = dropHandler;
+            }
         });
 
         // Student Pill Click Details Modal

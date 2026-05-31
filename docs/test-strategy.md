@@ -4,12 +4,12 @@ This document outlines the testing architecture and Playwright E2E verification 
 
 ## Automated Test Suites
 
-Currently, Phase 7D-1.5 has established five automated validation checks:
+Currently, Phase 7D-2.5 has established five automated validation checks:
 1. **State Injection Smoke Test** (`npm run test:state`): Verifies all crucial stateStore API endpoints exist and are functions.
 2. **Supabase Client & Query Adapter Mock Test** (`npm run test:supabase-adapter`): Verifies database query mappings, error fallbacks, tenant safety guards, and write audit logging.
 3. **Schedule Override/Snapshot Unit Test** (`npm run test:schedule-override`): Verifies date rules, snapshot isolation, override logs, and cross-date isolation for schedules.
 4. **Static Security Credential Scan** (`npm run test:security`): Recursively inspects codebases for exposed API tokens, Private Keys, or `.env` files.
-5. **Playwright E2E Browser Test Suite** (`npm run test:e2e`): Fully automates browser instance checks (loading index, catching console errors, traversing roles, and checking director modals).
+5. **Playwright E2E Browser Test Suite** (`npm run test:e2e`): Fully automates browser instance checks (including daily shifts, drag-and-drop schedule overrides with E2E-only test bridge safety, and role permission navigation).
 
 ---
 
@@ -129,11 +129,12 @@ Configured to spawn `node server.js` dynamically on port `3000` to serve the sta
 
 #### Scenario I-2: Drag-and-Drop Schedule Interaction (`tests/e2e/teacher-student-schedule-flow.spec.js`)
 - **Actions**:
-  1. Switch to Daily Match View, fill date input to '2026-05-18'.
-  2. Locate student card for "최다은" and drag to Teacher T1 (문승현), Time 15:00 slot.
-  3. Verify drag-and-drop success message banner.
-  4. Reload the page, log back in, and verify the student remains in the new slot (Persistence).
-  5. Select next week '2026-05-25' and verify the student returns to their default slot (Isolation).
+  1. Initialize page with `window.__DAYDAY_E2E__ = true` E2E-only test bridge flag.
+  2. Switch to Daily Match View, fill date input to '2026-05-18'.
+  3. Locate student card for "최다은" and dispatch drop simulation to Teacher T8 (정은비), Time 15:00 slot using the test-only drop trigger.
+  4. Verify drag-and-drop success message banner.
+  5. Reload the page, log back in (using the session preservation auto-login guard), and verify the student remains in the new slot (Persistence).
+  6. Select next week '2026-05-25' and verify the student returns to their default slot (Isolation).
 - **Assertions**:
   - Verify success feedback message: "일정이 성공적으로 이동되었습니다."
   - Verify card renders in the target td grid block.

@@ -28,6 +28,9 @@ async function navigateDirectorView(page, viewName) {
 
 test.describe('Director Teacher-Student Schedule Flow Checks', () => {
   test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__DAYDAY_E2E__ = true;
+    });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await loginAsDirector(page);
   });
@@ -182,6 +185,7 @@ test.describe('Director Teacher-Student Schedule Flow Checks', () => {
         dropEffect: 'none'
       };
 
+      // Use test-only drop trigger (E2E bridge) to dispatch mock drop event safely in headless environment
       if (typeof slotEl.__triggerDrop === 'function') {
         slotEl.__triggerDrop({
           preventDefault: () => {},

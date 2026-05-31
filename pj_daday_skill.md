@@ -141,6 +141,7 @@
     - **Phase 7C 범위 (완료)**: 일간/주간 시간표의 읽기, 표시, 날짜 및 강사 필터, 특이사항 패널 및 토글 상태를 구현하고, 날짜별 Override 스케줄 조회(getTeacherStudentScheduleForDate)를 매핑 완료하였습니다.
     - **Phase 7D-1.5 범위 (완료)**: 날짜별 시간표/운영표의 과거/오늘/미래 데이터 처리 규칙의 정합성을 검증하고, unit 테스트(schedule_override_test.mjs)와 package.json 파이프라인 연계 및 Public API/normalization 예방 로직을 보강하였습니다.
     - **Phase 7D-2 범위 (완료)**: 사용자가 시간표 슬롯 내에서 원생 수업 카드를 드래그하여 이동하거나, 날짜별로 변경 사항(Override)을 데이터베이스에 저장(moveStudentScheduleForDate)하고 로깅하는 영속화 기능 및 UI를 연동하고, Playwright E2E 테스트로 검증을 완료하였습니다.
+    - **Phase 7D-2.5 범위 (완료)**: E2E 전용 드롭 트리거(__triggerDrop)를 E2E 플래그(window.__DAYDAY_E2E__) 조건부 하에 안전 격리하고 Phase 명칭 및 문서 정합성을 일괄 정돈 완료하였습니다.
     - **Phase 7D-3 범위**: 날짜별 일정 이동 이력에 대한 감사 로그 조회 및 시간표 변경 이력 확인용 관리 UI(또는 툴팁 등)를 보강합니다.
     - **Phase 7E 범위**: 프린트 및 이미지 복사 기능은 UI 구성 및 기본 상태 구조 매핑을 완료하고, 실제 PDF/이미지 추출 렌더링 연동을 본격적으로 진행합니다.
 

@@ -324,7 +324,7 @@ Phase 6에서는 바로 대규모 DB 연동을 시작하지 말고, 스키마 DD
   - `npm run test:full` 실행을 통해 신규 `test:schedule-override`를 포함하여 총 14개의 테스트(유닛 테스트 3개, E2E 테스트 11개) 100% 통과 확인.
   - `node --check`를 통한 문법적 유효성 자체 검사 패스.
 
-### Phase 7D-2: 강사-원생 일간 운영표 드래그앤드롭 UI 구현 및 영속화 (완료)
+### Phase 7D-2: 강사-원생 일간 운영표 드래그 이동 UI 구현 및 영속화 (완료)
 - **목표**: 일간 보기에서 수업 카드를 다른 강사/시간 슬롯으로 드래그 이동하여 해당 날짜의 스케줄 오버라이드를 영속 저장하고, 새로고침 시에도 유지되게 구현하며, 다른 날짜에 영향이 없도록 격리성을 검증.
 - **산출물**:
   - `sessionsView.js` 내에 HTML5 Drag & Drop 이벤트 핸들러 고도화.
@@ -332,3 +332,12 @@ Phase 6에서는 바로 대규모 DB 연동을 시작하지 말고, 스키마 DD
   - `tests/e2e/teacher-student-schedule-flow.spec.js`에 드래그앤드롭, 새로고침 영속성, 날짜별 독립 격리 검증 시나리오 추가.
 - **검증**:
   - `npm run test:full`을 구동하여 14개 E2E 및 유닛 통합 테스트 통과 완료.
+
+### Phase 7D-2.5: E2E 전용 드롭 트리거 안전화 및 Phase 정합성 정리 (완료)
+- **목표**: 테스트용 드롭 트리거(`__triggerDrop`)가 일반 배포 환경에서 노출되지 않도록 `window.__DAYDAY_E2E__` 플래그로 보호하고 기획/아키텍처 문서 상의 Phase 명칭 및 테스트 용어 정합성을 일괄 정비.
+- **산출물**:
+  - `sessionsView.js` 내에 E2E 실행 조건절 가드문 추가.
+  - `teacher-student-schedule-flow.spec.js` 내에 E2E 플래그 자동 주입용 `page.addInitScript()` 구문 추가 및 테스트 브리지 주석 정돈.
+  - 아키텍처 및 전략 문서 일괄 갱신.
+- **검증**:
+  - `node --check` 문법 검사 통과 및 `npm run test:full` 14개 통합/E2E 테스트 100% 통과 확인.

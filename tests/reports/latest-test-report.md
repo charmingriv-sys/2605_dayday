@@ -11,7 +11,8 @@
 | `test:state` | StateStore Method Injection | **PASSED** | Verified existence of all 12 key public API functions |
 | `test:supabase-adapter` | Supabase Mock Integration | **PASSED** | Verified read mappings, write contracts, audit logs & security guards |
 | `test:security` | Static Secret Scan | **PASSED** | Checked 67 files; 0 critical secrets leaked |
-| `test:e2e` | Playwright Browser E2E | **PASSED** | Verified page load, no console errors, role entry, director flow modal, student registration, tuition billing, and teacher weekly/daily shifts E2E flows |
+| `test:e2e` | Playwright Browser E2E | **PASSED** | Verified page load, roles, student CRUD, billing, weekly shifts, and teacher-student drag-and-drop override flows with E2E-only test bridge safety |
+
 
 ---
 
@@ -42,6 +43,7 @@
 - **director-flow.spec.js**: Inspected main metrics loading, navigated to the "원생 명부 관리" view, clicked the registry button, and verified the student registration modal opens.
 - **student-crud-flow.spec.js**: Automated complete student registration workflow, including mocked postcode/address API trigger, field constraints validation, list updates, page reload, and state persistence.
 - **teacher-shift-flow.spec.js**: Verified navigation to schedule view, weekly view rendering, teacher changing, notes toggle panel control, daily view switching, date picking, filter application, and HSL colors integration.
+- **teacher-student-schedule-flow.spec.js**: Verified teacher-student daily/weekly schedule operations view navigation, instrument/search filtering, notes visibility toggles, and drag-and-drop schedule card moving. Verified persistence upon reload (re-login bypass check) and target date isolation using the E2E-only test bridge.
 
 ---
 
