@@ -305,3 +305,12 @@ Phase 6에서는 바로 대규모 DB 연동을 시작하지 말고, 스키마 DD
 - **검증**:
   - 네비게이션 안정화 규칙을 적용하여 Chromium E2E 시나리오 12개에 대한 안정적인 테스트 성공.
   - 시간표 렌더링 시 timelineStart, timelineEnd, totalHours를 동적 파싱하여 topPercent 및 heightPercent를 HSL 테마에 따라 absolute layout으로 정확히 계산하여 겹침을 방지함.
+
+### Phase 7C: 강사-원생 시간표 일간/주간 UI 개발 (완료)
+- **목표**: 강사-원생 일간/주간 운영표의 기본 UI 및 필터링, 특이사항 패널 구현.
+- **산출물**:
+  - `src/js/views/director/sessionsView.js` 내의 `renderMatchView` 함수 대폭 고도화 및 주간/일간 전환, 필터, 검색 기능 추가.
+  - `tests/e2e/teacher-student-schedule-flow.spec.js` Playwright E2E 테스트 신규 추가.
+- **검증**:
+  - Playwright E2E 13개 시나리오 전체 100% 통과 검증 완료.
+  - `node --check`를 통한 문법적 유효성 자체 검사 패스.

@@ -559,10 +559,10 @@
           <li><strong>시간표 테이블 설정 <span class="label good">완료 (Phase 7A)</span></strong><br/>운영 요일, 시작/종료 시간, 칸 간격, 인쇄 기본값을 학원 설정에 추가합니다.</li>
           <li><strong>강사/원생 특이사항 필드 추가 <span class="label good">완료 (Phase 7A)</span></strong><br/>강사 관리에는 강사 특이사항, 원생 관리에는 시간표 등 일정 특이사항을 추가합니다.</li>
           <li><strong>강사 출근표 일간/주간 보기 <span class="label good">완료 (Phase 7B)</span></strong><br/>강사의 실제 출근 변동 이력을 확인하고, 선택한 날짜/강사/주간 조건 그대로 출력할 수 있게 만듭니다.</li>
-          <li><strong>강사-원생 일간/주간 시간표</strong><br/>강사별 교육 원생표를 구현하고, 오늘/과거의 드래그 이동은 해당 날짜 이력으로 고정합니다.</li>
+          <li><strong>강사-원생 일간/주간 시간표 <span class="label good">완료 (Phase 7C)</span></strong><br/>강사별 교육 원생표를 구현하고, 필터/날짜 선택/특이사항 토글 기반을 다집니다.</li>
           <li><strong>주간 보기 개선</strong><br/>강사 1명의 주간 출근표와 기존 강사-원생 주간표를 정리합니다.</li>
           <li><strong>프린트/이미지 내보내기</strong><br/>사용자가 필터링한 일간/주간/강사 조건과 특이사항 포함 토글을 반영해 한 페이지 1/2/3개 배치, PNG 다운로드, 클립보드 복사를 순서대로 붙입니다.</li>
-          <li><strong>E2E 테스트 확장 <span class="label good">완료 (Phase 7B)</span></strong><br/>표 설정 저장, 일간 보기 날짜 선택, 수납/출결처럼 새 기능별 자동 테스트를 추가합니다.</li>
+          <li><strong>E2E 테스트 확장 <span class="label good">완료 (Phase 7C)</span></strong><br/>표 설정 저장, 일간 보기 날짜 선택, 수납/출결처럼 새 기능별 자동 테스트를 추가합니다.</li>
         </ol>
       </div>
     </section>
@@ -596,9 +596,21 @@
       <div class="content">
         <h3>추천 다음 Phase</h3>
         <div class="note good">
-          <strong>Phase 7C: 강사-원생 시간표 일간/주간 UI 개발</strong>
-          <p>시간표 설정 및 강사 주간/일간 출근표 UI가 7B에서 완료되었으므로, 이제 강사별 교육 원생의 요일/시간 배정을 보여주는 '강사-원생 시간표'의 일간/주간 매핑 렌더러를 고도화하고, 드래그 앤 드롭 이동 시 임시 이력 저장 기능을 추가합니다.</p>
+          <strong>Phase 7D: 날짜별 이동 override/history 저장</strong>
+          <p>강사-원생 일간/주간 운영표의 기본 UI 및 필터링, 특이사항 패널이 7C에서 구축되었으므로, 이제 오늘 또는 과거 날짜의 드래그 이동 시 해당 날짜의 이력을 고정(영속화)하는 날짜별 override/history 저장 기능과 어댑터를 구현합니다.</p>
         </div>
+        <div class="note good">
+          <strong>Phase 7E: 프린트/이미지 복사 기능</strong>
+          <p>선택된 일간/주간, 날짜, 강사 필터, 특이사항 가시성 여부를 그대로 반영하여 한 페이지에 1/2/3개 배치 인쇄 및 PNG 이미지 내보내기/클립보드 복사를 완료합니다.</p>
+        </div>
+        <h3>이전 Phase 7C 완료 내역</h3>
+        <ul>
+          <li>강사-원생 시간표 내 주간 보기 모드 설정 연동 완료</li>
+          <li>강사-원생 시간표 내 일간 보기 모드 개발 (선택 날짜 수업 강사별 컬럼 구성) 완료</li>
+          <li>과목/악기별 필터, 당일 수업 강사 필터, 강사명 실시간 검색 기능 구현 완료</li>
+          <li>원생의 일정 특이사항 (scheduleNotes) 패널 연동 및 가시성 토글 기능 완료</li>
+          <li>E2E 공통 네비게이션 안정화 헬퍼 적용 및 신규 E2E 테스트(teacher-student-schedule-flow.spec.js) 구축 완료</li>
+        </ul>
         <h3>이전 Phase 7B 완료 내역</h3>
         <ul>
           <li>강사 출근표 내 주간 보기 모드 개발 (선택 강사 1명 월~일 출근 타임라인) 완료</li>

@@ -112,6 +112,20 @@ Configured to spawn `node server.js` dynamically on port `3000` to serve the sta
   - Verify notes toggling works successfully.
   - Verify date changes and filters correctly affect row listings.
 
+#### Scenario I: Teacher-Student Daily & Weekly Schedules Flow (`tests/e2e/teacher-student-schedule-flow.spec.js`)
+- **Actions**:
+  1. Log in as Director, navigate to "강사 출근 및 시간표 관리".
+  2. Click "강사-원생 시간표 관리" Subtab button.
+  3. Verify Weekly match view elements exist, then toggle notes panel visibility.
+  4. Switch view mode to Daily Match View, fill date input.
+  5. Apply instrument filters, active only filter, and search by teacher name.
+- **Assertions**:
+  - Verify weekly view button is active by default.
+  - Verify student notes toggle panel successfully hides and shows.
+  - Verify daily view elements (date input, active only filter, instrument select, search query) are visible.
+  - Verify student names mapping matches mock datasets.
+  - Verify active filter and instrument/search filters apply correctly to grid table rows.
+
 ---
 
 ## Future E2E Automation Goals (Next Phases)

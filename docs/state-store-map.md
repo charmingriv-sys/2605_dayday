@@ -67,6 +67,11 @@
   - 선택 일자 (`selectedDateStr`)
   - 특이사항 패널 토글 상태 (`showNotes`)
   - 필터링 조건 (`filterType = 'all' | 'active' | '피아노' | ...`, `filterSearchQuery`)
+- **UI 상태 관리 (Phase 7C)**:
+  - 주간/일간 보기 전환 (`matchViewMode = 'week' | 'day'`)
+  - 선택 일자 (`matchSelectedDateStr`)
+  - 특이사항 패널 토글 상태 (`matchShowNotes`)
+  - 필터링 조건 (`matchFilterActiveOnly = true | false`, `matchInstrumentFilter = 'all' | '피아노' | ...`, `matchSearchQuery`)
 
 ### 3.6 강사 관리 (Staff)
 - **설명**: 강사 목록 및 프로필 관리, 강사별 일자별 시프트 근무 스케줄 설정 모달

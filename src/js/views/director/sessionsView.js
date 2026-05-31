@@ -15,6 +15,14 @@ export function renderSchedules(container) {
     let filterType = 'all'; // For daily view filter
     let filterSearchQuery = ''; // For daily view search
     
+    // For Match View (Phase 7C)
+    let matchViewMode = 'week'; // 'week' or 'day'
+    let matchSelectedDateStr = '2026-05-18'; // Default date for daily match view
+    let matchShowNotes = true; // Toggle for student scheduleNotes panel
+    let matchFilterActiveOnly = false; // "당일 수업 있는 강사만" 필터
+    let matchInstrumentFilter = 'all'; // 과목/악기 필터
+    let matchSearchQuery = ''; // 강사명 검색
+    
     // For weekly calendar reference
     let referenceDate = new Date('2026-05-18'); // Mon of the seed week
     
@@ -38,7 +46,7 @@ export function renderSchedules(container) {
                                 <i class="fa-solid fa-network-wired"></i> 강사-원생 시간표 관리
                             </button>
                         </div>
-                        <div id="schedule-date-controls" style="display: ${(activeSubTab === 'shift_view' || activeSubTab === 'shift_edit') ? 'flex' : 'none'}; align-items: center; gap: 12px;">
+                        <div id="schedule-date-controls" style="display: ${(activeSubTab === 'shift_view' || activeSubTab === 'shift_edit' || (activeSubTab === 'match' && matchViewMode === 'week')) ? 'flex' : 'none'}; align-items: center; gap: 12px;">
                             <button class="btn btn-secondary btn-icon-only" id="btn-prev-week"><i class="fa-solid fa-chevron-left"></i></button>
                             <span style="font-weight: 600; font-size: 0.95rem;" id="week-range-label">5월 18일 ~ 5월 24일</span>
                             <button class="btn btn-secondary btn-icon-only" id="btn-next-week"><i class="fa-solid fa-chevron-right"></i></button>
@@ -65,7 +73,7 @@ export function renderSchedules(container) {
             render();
         });
 
-        if (activeSubTab === 'shift_view' || activeSubTab === 'shift_edit') {
+        if (activeSubTab === 'shift_view' || activeSubTab === 'shift_edit' || (activeSubTab === 'match' && matchViewMode === 'week')) {
             const prevBtn = container.querySelector('#btn-prev-week');
             const nextBtn = container.querySelector('#btn-next-week');
             prevBtn.addEventListener('click', () => {
@@ -656,9 +664,25 @@ export function renderSchedules(container) {
 
     // TAB 3: Match View (Image 2 style)
     const renderMatchView = (ws) => {
+        /*
+         * [날짜별 기록 규칙 - Phase 7C 설계]
+         * - 과거 날짜와 오늘 날짜는 당시 기록된 운영표 이력을 기준으로 본다.
+         * - 오늘 또는 과거 날짜에서 누군가 원생 시간을 이동했다면, 그 날짜의 운영표는 이동된 상태로 고정(영속화)되어야 한다.
+         * - 단, 미래 날짜 또는 다음 주차의 시간표는 원생 기본 시간표 값을 기준으로 다시 생성된다.
+         * - 기본값 자체를 바꾸려면 원생 정보의 기본 시간표를 수정해야 한다.
+         * - 이번 Phase 7C에서는 읽기/표시/필터/특이사항 기반을 우선 구현하며,
+         *   드래그 이동 및 날짜별 override 저장은 다음 Phase(7D)로 위임하여 구현한다.
+         */
+
         const teachers = stateStore.getTeachers();
         const students = stateStore.getStudents();
         const rawClasses = stateStore.getClasses();
+        const settings = stateStore.getSettings() || {};
+        
+        const scheduleDays = settings.scheduleDays || ["mon", "tue", "wed", "thu", "fri", "sat"];
+        const scheduleStartTime = settings.scheduleStartTime || "14:00";
+        const scheduleEndTime = settings.scheduleEndTime || "21:00";
+        const scheduleSlotMinutes = settings.scheduleSlotMinutes || 30;
 
         // Apply visual drag-and-drop overrides
         const classes = rawClasses.map(c => {
@@ -667,319 +691,582 @@ export function renderSchedules(container) {
             }
             return c;
         });
-        
-        // Define day columns
-        const days = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
-        const daysKo = ['월', '화', '수', '목', '금', '토', '일'];
-        
-        // Map dayKo to date label for 5/18 ~ 5/24 week representation dynamically
-        const dateLabels = {};
-        for (let i = 0; i < 7; i++) {
-            const d = new Date('2026-05-18');
-            d.setDate(d.getDate() + i);
-            dateLabels[daysKo[i]] = `${d.getMonth() + 1}/${d.getDate()}`;
-        }
 
-        // Time slots rows (08:00 to 24:00 in 30-min intervals)
-        const timeSlots = [];
-        for (let h = 8; h <= 24; h++) {
-            timeSlots.push(`${String(h).padStart(2, '0')}:00`);
-            if (h !== 24) {
-                timeSlots.push(`${String(h).padStart(2, '0')}:30`);
+        // Time slots rows (settings 기반으로 동적 생성)
+        const getSlotsList = () => {
+            const slots = [];
+            const [startH, startM] = scheduleStartTime.split(':').map(Number);
+            const [endH, endM] = scheduleEndTime.split(':').map(Number);
+            let curr = startH * 60 + startM;
+            const end = endH * 60 + endM;
+            while (curr <= end) {
+                const h = Math.floor(curr / 60);
+                const m = curr % 60;
+                slots.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+                curr += scheduleSlotMinutes;
             }
+            return slots;
+        };
+
+        const timeSlots = getSlotsList();
+
+        // Days mapping
+        const days = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
+        const daysOfWeekKo = ['월', '화', '수', '목', '금', '토', '일'];
+        const dayKoToEn = { '월': 'mon', '화': 'tue', '수': 'wed', '목': 'thu', '금': 'fri', '토': 'sat', '일': 'sun' };
+        
+        // Calculate week range dates dynamically
+        const weekDates = [];
+        const labelStart = `${referenceDate.getMonth() + 1}월 ${referenceDate.getDate()}일`;
+        const sunday = new Date(referenceDate);
+        sunday.setDate(sunday.getDate() + 6);
+        const labelEnd = `${sunday.getMonth() + 1}월 ${sunday.getDate()}일`;
+        
+        const rangeLabel = container.querySelector('#week-range-label');
+        if (rangeLabel) {
+            rangeLabel.textContent = `${labelStart} ~ ${labelEnd}`;
         }
 
-        // Render Top color buttons list of teachers
-        const teacherBadgesHtml = teachers.map(t => `
-            <button class="btn btn-filter-teacher" 
-                data-id="${t.id}" 
-                style="
-                    background-color: ${t.color || 'var(--primary)'}; 
-                    color: #111; 
-                    font-weight: 700; 
-                    border-radius: 20px; 
-                    padding: 6px 14px; 
-                    border: 2px solid transparent;
-                    transition: var(--transition);
-                    font-size: 0.8rem;
-                ">
-                ${t.name}
-            </button>
-        `).join('');
+        for (let i = 0; i < 7; i++) {
+            const d = new Date(referenceDate);
+            d.setDate(d.getDate() + i);
+            weekDates.push({
+                dateStr: d.toISOString().slice(0, 10),
+                dayKo: daysOfWeekKo[i],
+                dayEn: dayKoToEn[daysOfWeekKo[i]],
+                dayNum: d.getDate()
+            });
+        }
 
-        ws.innerHTML = `
-            <div class="glass-card" style="padding: 1.5rem;">
-                
-                <!-- Top Teacher filter capsules (Image 2 Top) -->
-                <div style="display: flex; gap: 8px; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: center;" id="teacher-filter-row">
-                    ${teacherBadgesHtml}
-                    <button class="btn btn-secondary" id="btn-clear-match-filter" style="border-radius: 20px; font-weight: 600; padding: 5px 12px; font-size: 0.8rem;">필터 초기화</button>
-                    <button class="btn btn-primary" id="btn-print-match" style="border-radius: 20px; font-weight: 600; padding: 5px 12px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 4px; margin-left: 8px;">
-                        <i class="fa-solid fa-print"></i> 출력하기
-                    </button>
+        const activeWeekDates = weekDates.filter(wd => scheduleDays.includes(wd.dayEn));
+
+        // Mode Toggles HTML (data-testid 보강)
+        let controlsHtml = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 16px;">
+                <div style="display: flex; gap: 8px; align-items: center;" data-testid="teacher-student-schedule-view-mode">
+                    <button class="btn ${matchViewMode === 'week' ? 'btn-primary' : 'btn-secondary'}" id="btn-match-mode-week" data-testid="teacher-student-week-view">주간 보기</button>
+                    <button class="btn ${matchViewMode === 'day' ? 'btn-primary' : 'btn-secondary'}" id="btn-match-mode-day" data-testid="teacher-student-day-view">일간 보기</button>
                 </div>
-
-                <!-- Match timetable (Image 2 Matrix) -->
-                <div class="table-wrapper">
-                    <table class="custom-table" style="table-layout: fixed; width: 100%; border: 1px solid var(--border-color); border-collapse: collapse;">
-                        <thead>
-                            <tr style="border-bottom: 2px solid var(--border-color); background: var(--primary-light);">
-                                <th style="width: 70px; text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 12px 4px; font-weight: bold;"><i class="fa-regular fa-clock"></i></th>
-                                ${days.map((day, idx) => `
-                                    <th style="text-align: center; font-size: 0.85rem; padding: 12px 6px;">
-                                        ${day}
-                                        <span style="display: block; font-size: 0.75rem; color: var(--text-muted); font-weight: normal; margin-top: 4px;">${dateLabels[daysKo[idx]]}</span>
-                                    </th>
-                                `).join('')}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${timeSlots.map(time => {
-                                return `
-                                    <tr style="border-bottom: 1px solid var(--border-color);">
-                                        <!-- Time header -->
-                                        <td style="text-align: center; font-weight: bold; color: var(--text-muted); font-size: 0.8rem; padding: 10px 4px; border-right: 1px solid var(--border-color); background: var(--primary-light);">${time}</td>
-                                        
-                                        <!-- Days -->
-                                        ${daysKo.map(dayKo => {
-                                            // Find all classes at this day and time
-                                            const hourClasses = classes.filter(c => c.dayOfWeek === dayKo && c.time === time);
-                                            
-                                            let pillsHtml = '';
-                                            hourClasses.forEach(c => {
-                                                const student = students.find(s => s.id === c.studentId);
-                                                if (student) {
-                                                    const teacher = teachers.find(t => t.id === student.teacherId);
-                                                    const bgColor = teacher ? teacher.color : '#e2e8f0';
-                                                    pillsHtml += `
-                                                        <span class="student-match-pill" 
-                                                            data-teacher-id="${student.teacherId}" 
-                                                            data-student-id="${student.id}"
-                                                            data-class-id="${c.id}"
-                                                            draggable="true"
-                                                            style="
-                                                                background-color: ${bgColor}; 
-                                                                color: #111; 
-                                                                padding: 4px 10px; 
-                                                                border-radius: 20px; 
-                                                                font-size: 0.75rem; 
-                                                                font-weight: 800; 
-                                                                display: inline-flex; 
-                                                                align-items: center;
-                                                                gap: 4px;
-                                                                cursor: pointer;
-                                                                box-shadow: 0 1px 3px rgba(9, 132, 227, 0.08);
-                                                                transition: all 0.25s;
-                                                                margin: 3px;
-                                                            ">
-                                                            ${student.name}
-                                                        </span>
-                                                    `;
-                                                }
-                                            });
-
-                                            return `
-                                                <td class="match-cell-drop" data-day="${dayKo}" data-time="${time}" style="padding: 6px; text-align: center; border-right: 1px solid var(--border-color); vertical-align: middle; min-height: 48px;">
-                                                    <div style="display: flex; flex-wrap: wrap; justify-content: center; align-items: center; min-height: 32px;">
-                                                        ${pillsHtml || '<span style="color: var(--text-muted); opacity: 0.2; font-size: 0.7rem;">-</span>'}
-                                                    </div>
-                                                </td>
-                                            `;
-                                        }).join('')}
-                                    </tr>
-                                `;
-                            }).join('')}
-                        </tbody>
-                    </table>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                    <button class="btn btn-secondary" id="btn-match-notes-toggle" data-testid="teacher-student-notes-toggle">
+                        <i class="fa-solid fa-eye${matchShowNotes ? '-slash' : ''}"></i> 특이사항 ${matchShowNotes ? '숨기기' : '보이기'}
+                    </button>
                 </div>
             </div>
         `;
 
-    // Highlight filters logic
-    const buttons = ws.querySelectorAll('.btn-filter-teacher');
-    const pills = ws.querySelectorAll('.student-match-pill');
-    const clearFilterBtn = ws.querySelector('#btn-clear-match-filter');
+        if (matchViewMode === 'week') {
+            // 주간 보기
+            const teacherBadgesHtml = teachers.map(t => `
+                <button class="btn btn-filter-teacher" 
+                    data-id="${t.id}" 
+                    style="
+                        background-color: ${t.color || 'var(--primary)'}; 
+                        color: #111; 
+                        font-weight: 700; 
+                        border-radius: 20px; 
+                        padding: 6px 14px; 
+                        border: 2px solid transparent;
+                        transition: var(--transition);
+                        font-size: 0.8rem;
+                    ">
+                    ${t.name}
+                </button>
+            `).join('');
 
-    const applyFilter = (teacherId) => {
-        currentFilterTeacherId = teacherId;
+            // Filtered student notes for panel
+            const activeStudents = currentFilterTeacherId 
+                ? students.filter(s => s.teacherId === currentFilterTeacherId && s.scheduleNotes) 
+                : students.filter(s => s.scheduleNotes);
 
-        // Highlight chosen button
-        buttons.forEach(btn => {
-            if (btn.dataset.id === teacherId) {
-                btn.style.borderColor = 'white';
-                btn.style.boxShadow = '0 0 10px rgba(255,255,255,0.3)';
-                btn.style.transform = 'scale(1.08)';
-            } else {
-                btn.style.borderColor = 'transparent';
-                btn.style.boxShadow = 'none';
-                btn.style.transform = 'scale(1)';
-            }
-        });
+            ws.innerHTML = `
+                <div class="glass-card" style="padding: 1.5rem;">
+                    ${controlsHtml}
 
-        // Dim or light pills
-        pills.forEach(pill => {
-            if (pill.dataset.teacherId === teacherId) {
-                pill.style.opacity = '1';
-                pill.style.transform = 'scale(1.05)';
-                pill.style.boxShadow = '0 3px 8px rgba(9, 132, 227, 0.15)';
-            } else {
-                pill.style.opacity = '0.12';
-                pill.style.transform = 'scale(0.9)';
-                pill.style.boxShadow = 'none';
-            }
-        });
-    };
+                    <div style="display: flex; gap: 8px; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: center;" id="teacher-filter-row" data-testid="teacher-student-teacher-filter">
+                        ${teacherBadgesHtml}
+                        <button class="btn btn-secondary" id="btn-clear-match-filter" style="border-radius: 20px; font-weight: 600; padding: 5px 12px; font-size: 0.8rem;">필터 초기화</button>
+                        <button class="btn btn-primary" id="btn-print-match" style="border-radius: 20px; font-weight: 600; padding: 5px 12px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 4px; margin-left: 8px;">
+                            <i class="fa-solid fa-print"></i> 출력하기
+                        </button>
+                    </div>
 
-    const clearFilter = () => {
-        currentFilterTeacherId = '';
-        tempClassOverrides = {}; // Reset temporary simulation drag-and-drops
-        buttons.forEach(btn => {
-            btn.style.borderColor = 'transparent';
-            btn.style.boxShadow = 'none';
-            btn.style.transform = 'scale(1)';
-        });
-        pills.forEach(pill => {
-            pill.style.opacity = '1';
-            pill.style.transform = 'scale(1)';
-            pill.style.boxShadow = '0 1px 3px rgba(9, 132, 227, 0.08)';
-        });
-        renderWorkspace(); // Full redraw to restore original positions
-    };
+                    <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: stretch; width: 100%;">
+                        <!-- Timetable wrapper -->
+                        <div class="table-wrapper" style="flex-grow: 3; min-width: 600px;" data-testid="teacher-student-schedule-table">
+                            <table class="custom-table" style="table-layout: fixed; width: 100%; border: 1px solid var(--border-color); border-collapse: collapse;">
+                                <thead>
+                                    <tr style="border-bottom: 2px solid var(--border-color); background: var(--primary-light);">
+                                        <th style="width: 70px; text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 12px 4px; font-weight: bold;"><i class="fa-regular fa-clock"></i></th>
+                                        ${activeWeekDates.map(wd => `
+                                            <th style="text-align: center; font-size: 0.85rem; padding: 12px 6px;">
+                                                ${wd.dayKo}요일
+                                                <span style="display: block; font-size: 0.75rem; color: var(--text-muted); font-weight: normal; margin-top: 4px;">${wd.dateStr.slice(5).replace('-', '/')}</span>
+                                            </th>
+                                        `).join('')}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${timeSlots.map(time => {
+                                        return `
+                                            <tr style="border-bottom: 1px solid var(--border-color);">
+                                                <td style="text-align: center; font-weight: bold; color: var(--text-muted); font-size: 0.8rem; padding: 10px 4px; border-right: 1px solid var(--border-color); background: var(--primary-light);">${time}</td>
+                                                ${activeWeekDates.map(wd => {
+                                                    const hourClasses = classes.filter(c => c.dayOfWeek === wd.dayKo && c.time === time);
+                                                    let pillsHtml = '';
+                                                    hourClasses.forEach(c => {
+                                                        const student = students.find(s => s.id === c.studentId);
+                                                        if (student) {
+                                                            const teacher = teachers.find(t => t.id === student.teacherId);
+                                                            const bgColor = teacher ? teacher.color : '#e2e8f0';
+                                                            pillsHtml += `
+                                                                <span class="student-match-pill" 
+                                                                    data-teacher-id="${student.teacherId}" 
+                                                                    data-student-id="${student.id}"
+                                                                    data-class-id="${c.id}"
+                                                                    draggable="true"
+                                                                    style="
+                                                                        background-color: ${bgColor}; 
+                                                                        color: #111; 
+                                                                        padding: 4px 10px; 
+                                                                        border-radius: 20px; 
+                                                                        font-size: 0.75rem; 
+                                                                        font-weight: 800; 
+                                                                        display: inline-flex; 
+                                                                        align-items: center;
+                                                                        gap: 4px;
+                                                                        cursor: pointer;
+                                                                        box-shadow: 0 1px 3px rgba(9, 132, 227, 0.08);
+                                                                        transition: all 0.25s;
+                                                                        margin: 3px;
+                                                                    ">
+                                                                    ${student.name}
+                                                                </span>
+                                                            `;
+                                                        }
+                                                    });
 
-    // Attach filter click handlers
-    buttons.forEach(btn => {
-        btn.addEventListener('click', () => {
-            const id = btn.dataset.id;
-            if (currentFilterTeacherId === id) {
-                clearFilter();
-            } else {
-                applyFilter(id);
-            }
-        });
-    });
+                                                    return `
+                                                        <td class="match-cell-drop" data-day="${wd.dayKo}" data-time="${time}" style="padding: 6px; text-align: center; border-right: 1px solid var(--border-color); vertical-align: middle; min-height: 48px;">
+                                                            <div style="display: flex; flex-wrap: wrap; justify-content: center; align-items: center; min-height: 32px;">
+                                                                ${pillsHtml || '<span style="color: var(--text-muted); opacity: 0.2; font-size: 0.7rem;">-</span>'}
+                                                            </div>
+                                                        </td>
+                                                    `;
+                                                }).join('')}
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
 
-    clearFilterBtn.addEventListener('click', clearFilter);
+                        <!-- Notes Panel -->
+                        <div id="student-match-notes-panel" data-testid="teacher-student-notes-panel" style="flex-grow: 1; width: 250px; display: ${matchShowNotes ? 'block' : 'none'}; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.2rem; background: var(--bg-card); max-height: 600px; overflow-y: auto;">
+                            <h4 style="font-weight: 700; font-size: 1rem; margin-top: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                                <i class="fa-solid fa-clipboard-question" style="color: var(--primary);"></i> 원생 수업 특이사항
+                            </h4>
+                            <div style="display: flex; flex-direction: column; gap: 12px;">
+                                ${activeStudents.length > 0 ? activeStudents.map(s => {
+                                    const teacher = teachers.find(t => t.id === s.teacherId);
+                                    return `
+                                        <div style="border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
+                                            <strong>${s.name} (${s.instrument})</strong>
+                                            <span style="font-size:0.75rem; color:var(--text-muted); display:block; margin-top:2px;">담당: ${teacher ? teacher.name : '미지정'}</span>
+                                            <div style="font-size:0.85rem; color:var(--text-main); margin-top:4px; font-style:italic;">
+                                                ${s.scheduleNotes.replace(/\n/g, '<br>')}
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('') : '<div style="font-size: 0.85rem; color: var(--text-muted); font-style: italic;">등록된 특이사항이 없습니다.</div>'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else {
+            // 일간 보기
+            const filterRowHtml = `
+                <div style="display: flex; gap: 12px; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: center; background: var(--primary-light); padding: 12px; border-radius: var(--radius-sm);">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <label for="match-date-input" style="font-weight: 700; font-size: 0.85rem; white-space: nowrap; margin-bottom:0;">날짜 선택:</label>
+                        <input type="date" id="match-date-input" class="form-control" style="margin-bottom:0; font-size: 0.85rem; padding: 4px 8px; width: 150px;" value="${matchSelectedDateStr}" data-testid="teacher-student-date-input">
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <label for="match-instrument-select" style="font-weight: 700; font-size: 0.85rem; white-space: nowrap; margin-bottom:0;">과목 필터:</label>
+                        <select id="match-instrument-select" class="form-control" style="margin-bottom:0; font-size: 0.85rem; padding: 4px 8px; width: 140px;" data-testid="teacher-student-teacher-filter">
+                            <option value="all" ${matchInstrumentFilter === 'all' ? 'selected' : ''}>전체 과목</option>
+                            <option value="피아노" ${matchInstrumentFilter === '피아노' ? 'selected' : ''}>피아노</option>
+                            <option value="바이올린" ${matchInstrumentFilter === '바이올린' ? 'selected' : ''}>바이올린</option>
+                            <option value="플루트" ${matchInstrumentFilter === '플루트' ? 'selected' : ''}>플루트</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-grow: 1; max-width: 250px;">
+                        <input type="text" id="match-search-input" class="form-control" style="margin-bottom:0; font-size: 0.85rem; padding: 4px 8px;" placeholder="강사명 검색" value="${matchSearchQuery}" data-testid="teacher-student-search-input">
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <button class="btn ${matchFilterActiveOnly ? 'btn-primary' : 'btn-secondary'}" id="btn-match-active-only" data-testid="teacher-student-active-filter" style="font-size: 0.85rem; padding: 5px 12px;">
+                            당일 수업 강사만
+                        </button>
+                    </div>
+                </div>
+            `;
 
-    // Attach print handler
-    const printBtn = ws.querySelector('#btn-print-match');
-    if (printBtn) {
-        printBtn.addEventListener('click', () => {
-            window.print();
-        });
-    }
+            const targetDateObj = new Date(matchSelectedDateStr);
+            const targetDayIdx = targetDateObj.getDay(); // 0 is Sunday, 1 is Monday
+            const targetDayKo = daysOfWeekKo[targetDayIdx === 0 ? 6 : targetDayIdx - 1]; // 월~일
 
-    // Restore active filter on redrawing
-    if (currentFilterTeacherId) {
-        applyFilter(currentFilterTeacherId);
-    }
-
-    // HTML5 Drag and Drop Handlers
-    pills.forEach(pill => {
-        pill.addEventListener('dragstart', (e) => {
-            e.dataTransfer.setData('text/class-id', pill.dataset.classId);
-            e.dataTransfer.effectAllowed = 'move';
-            pill.style.opacity = '0.5';
-        });
-        pill.addEventListener('dragend', () => {
-            pill.style.opacity = '1';
-        });
-    });
-
-    ws.querySelectorAll('.match-cell-drop').forEach(cell => {
-        cell.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-            cell.style.background = 'rgba(9, 132, 227, 0.15)';
-        });
-        cell.addEventListener('dragleave', () => {
-            cell.style.background = 'transparent';
-        });
-        cell.addEventListener('drop', (e) => {
-            e.preventDefault();
-            cell.style.background = 'transparent';
-            const classId = e.dataTransfer.getData('text/class-id');
-            const targetDay = cell.dataset.day;
-            const targetTime = cell.dataset.time;
-            
-            if (classId && targetDay && targetTime) {
-                tempClassOverrides[classId] = { dayOfWeek: targetDay, time: targetTime };
-                renderWorkspace(); // Reactive visual shift
-            }
-        });
-    });
-
-    // Student Pill Click Details Modal
-    ws.querySelectorAll('.student-match-pill').forEach(pill => {
-        pill.addEventListener('click', (e) => {
-            e.stopPropagation(); // Avoid double cell trigger
-            const studentId = pill.dataset.studentId;
-            const student = students.find(s => s.id === studentId);
-            const teacher = teachers.find(t => t.id === student.teacherId);
-            
-            if (student) {
-                const classSchedules = stateStore.getClassesForStudent(studentId);
-                const scheduleText = classSchedules.map(c => `${c.dayOfWeek} ${c.time}`).join(', ');
-
-                const isIncomplete = isIncompleteStudent(student);
-                const teacherMissing = !student.teacherId;
-
-                let warningBannerHtml = '';
-                if (isIncomplete) {
-                    let warningText = '필수 운영 정보가 입력되지 않은 원생입니다. 담당 강사, 정기 청구일, 수강료 정보를 입력하면 모든 기능을 사용할 수 있습니다.';
-                    if (teacherMissing) {
-                        warningText += '<br><strong>담당 강사가 배정되지 않은 원생입니다. 수업 관리 기능을 사용하려면 담당 강사를 지정해 주세요.</strong>';
+            let filteredTeachers = teachers;
+            if (matchFilterActiveOnly) {
+                const dayClasses = classes.filter(c => c.dayOfWeek === targetDayKo);
+                const activeTeacherIds = new Set();
+                dayClasses.forEach(c => {
+                    const student = students.find(s => s.id === c.studentId);
+                    if (student && student.teacherId) {
+                        activeTeacherIds.add(student.teacherId);
                     }
-                    warningBannerHtml = `
-                        <div style="background: var(--warning-light); border: 1px solid var(--warning); border-radius: var(--radius-sm); padding: 10px; margin-bottom: 12px; color: #a04000; font-size: 0.8rem; line-height: 1.45; display: flex; align-items: flex-start; gap: 8px;">
-                            <i class="fa-solid fa-circle-exclamation" style="margin-top: 2px; font-size: 1rem; color: var(--warning); flex-shrink: 0;"></i>
-                            <div>${warningText}</div>
+                });
+                filteredTeachers = teachers.filter(t => activeTeacherIds.has(t.id));
+            }
+
+            if (matchInstrumentFilter !== 'all') {
+                filteredTeachers = filteredTeachers.filter(t => t.instrument.includes(matchInstrumentFilter));
+            }
+
+            if (matchSearchQuery.trim() !== '') {
+                filteredTeachers = filteredTeachers.filter(t => t.name.includes(matchSearchQuery.trim()));
+            }
+
+            const activeDayClasses = classes.filter(c => c.dayOfWeek === targetDayKo);
+            const dayStudentIds = new Set();
+            activeDayClasses.forEach(c => {
+                const student = students.find(s => s.id === c.studentId);
+                if (student) {
+                    if (filteredTeachers.some(t => t.id === student.teacherId)) {
+                        dayStudentIds.add(student.id);
+                    }
+                }
+            });
+            const activeStudents = students.filter(s => dayStudentIds.has(s.id) && s.scheduleNotes);
+
+            ws.innerHTML = `
+                <div class="glass-card" style="padding: 1.5rem;">
+                    ${controlsHtml}
+                    ${filterRowHtml}
+
+                    <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: stretch; width: 100%;">
+                        <!-- Daily Matrix Table -->
+                        <div class="table-wrapper" style="flex-grow: 3; min-width: 600px;" data-testid="teacher-student-schedule-table">
+                            <table class="custom-table" style="table-layout: fixed; width: 100%; border: 1px solid var(--border-color); border-collapse: collapse;">
+                                <thead>
+                                    <tr style="border-bottom: 2px solid var(--border-color); background: var(--primary-light);">
+                                        <th style="width: 70px; text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 12px 4px; font-weight: bold;"><i class="fa-regular fa-clock"></i></th>
+                                        ${filteredTeachers.length > 0 ? filteredTeachers.map(t => `
+                                            <th style="text-align: center; font-size: 0.85rem; padding: 12px 6px;">
+                                                ${t.name}
+                                                <span style="display: block; font-size: 0.72rem; color: var(--text-muted); font-weight: normal; margin-top: 4px;">${t.instrument}</span>
+                                            </th>
+                                        `).join('') : '<th style="text-align: center; color: var(--text-muted); font-size: 0.85rem;">해당 조건 강사 없음</th>'}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${timeSlots.map(time => {
+                                        return `
+                                            <tr style="border-bottom: 1px solid var(--border-color);">
+                                                <td style="text-align: center; font-weight: bold; color: var(--text-muted); font-size: 0.8rem; padding: 10px 4px; border-right: 1px solid var(--border-color); background: var(--primary-light);">${time}</td>
+                                                ${filteredTeachers.length > 0 ? filteredTeachers.map(t => {
+                                                    const cellClasses = classes.filter(c => c.dayOfWeek === targetDayKo && c.time === time);
+                                                    let pillsHtml = '';
+                                                    cellClasses.forEach(c => {
+                                                        const student = students.find(s => s.id === c.studentId && s.teacherId === t.id);
+                                                        if (student) {
+                                                            pillsHtml += `
+                                                                <span class="student-match-pill" 
+                                                                    data-teacher-id="${student.teacherId}" 
+                                                                    data-student-id="${student.id}"
+                                                                    data-class-id="${c.id}"
+                                                                    draggable="true"
+                                                                    style="
+                                                                        background-color: ${t.color || 'var(--primary-light)'}; 
+                                                                        color: #111; 
+                                                                        padding: 4px 10px; 
+                                                                        border-radius: 20px; 
+                                                                        font-size: 0.75rem; 
+                                                                        font-weight: 800; 
+                                                                        display: inline-flex; 
+                                                                        align-items: center;
+                                                                        gap: 4px;
+                                                                        cursor: pointer;
+                                                                        box-shadow: 0 1px 3px rgba(9, 132, 227, 0.08);
+                                                                        transition: all 0.25s;
+                                                                        margin: 3px;
+                                                                    ">
+                                                                    ${student.name}
+                                                                </span>
+                                                            `;
+                                                        }
+                                                    });
+
+                                                    return `
+                                                        <td class="match-cell-drop" data-day="${targetDayKo}" data-time="${time}" data-teacher-id="${t.id}" style="padding: 6px; text-align: center; border-right: 1px solid var(--border-color); vertical-align: middle; min-height: 48px;">
+                                                            <div style="display: flex; flex-wrap: wrap; justify-content: center; align-items: center; min-height: 32px;">
+                                                                ${pillsHtml || '<span style="color: var(--text-muted); opacity: 0.2; font-size: 0.7rem;">-</span>'}
+                                                            </div>
+                                                        </td>
+                                                    `;
+                                                }).join('') : '<td style="text-align: center; color: var(--text-muted); font-size: 0.8rem;">-</td>'}
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Notes Panel -->
+                        <div id="student-match-notes-panel" data-testid="teacher-student-notes-panel" style="flex-grow: 1; width: 250px; display: ${matchShowNotes ? 'block' : 'none'}; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.2rem; background: var(--bg-card); max-height: 600px; overflow-y: auto;">
+                            <h4 style="font-weight: 700; font-size: 1rem; margin-top: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                                <i class="fa-solid fa-clipboard-question" style="color: var(--primary);"></i> 원생 수업 특이사항
+                            </h4>
+                            <div style="display: flex; flex-direction: column; gap: 12px;">
+                                ${activeStudents.length > 0 ? activeStudents.map(s => {
+                                    const teacher = teachers.find(t => t.id === s.teacherId);
+                                    return `
+                                        <div style="border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
+                                            <strong>${s.name} (${s.instrument})</strong>
+                                            <span style="font-size:0.75rem; color:var(--text-muted); display:block; margin-top:2px;">담당: ${teacher ? teacher.name : '미지정'}</span>
+                                            <div style="font-size:0.85rem; color:var(--text-main); margin-top:4px; font-style:italic;">
+                                                ${s.scheduleNotes.replace(/\n/g, '<br>')}
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('') : '<div style="font-size: 0.85rem; color: var(--text-muted); font-style: italic;">등록된 특이사항이 없습니다.</div>'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Common event handlers
+        ws.querySelector('#btn-match-mode-week').addEventListener('click', () => {
+            matchViewMode = 'week';
+            render();
+        });
+        ws.querySelector('#btn-match-mode-day').addEventListener('click', () => {
+            matchViewMode = 'day';
+            render();
+        });
+        ws.querySelector('#btn-match-notes-toggle').addEventListener('click', () => {
+            matchShowNotes = !matchShowNotes;
+            render();
+        });
+
+        // Mode specific event handlers
+        if (matchViewMode === 'week') {
+            const buttons = ws.querySelectorAll('.btn-filter-teacher');
+            const pills = ws.querySelectorAll('.student-match-pill');
+
+            const applyFilter = (teacherId) => {
+                currentFilterTeacherId = teacherId;
+                buttons.forEach(btn => {
+                    if (btn.dataset.id === teacherId) {
+                        btn.style.borderColor = 'white';
+                        btn.style.boxShadow = '0 0 10px rgba(255,255,255,0.3)';
+                        btn.style.transform = 'scale(1.08)';
+                    } else {
+                        btn.style.borderColor = 'transparent';
+                        btn.style.boxShadow = 'none';
+                        btn.style.transform = 'scale(1)';
+                    }
+                });
+
+                pills.forEach(pill => {
+                    if (pill.dataset.teacherId === teacherId) {
+                        pill.style.opacity = '1';
+                        pill.style.transform = 'scale(1.05)';
+                        pill.style.boxShadow = '0 3px 8px rgba(9, 132, 227, 0.15)';
+                    } else {
+                        pill.style.opacity = '0.12';
+                        pill.style.transform = 'scale(0.9)';
+                        pill.style.boxShadow = 'none';
+                    }
+                });
+            };
+
+            const clearFilter = () => {
+                currentFilterTeacherId = '';
+                tempClassOverrides = {}; // Reset temporary simulation drag-and-drops
+                buttons.forEach(btn => {
+                    btn.style.borderColor = 'transparent';
+                    btn.style.boxShadow = 'none';
+                    btn.style.transform = 'scale(1)';
+                });
+                pills.forEach(pill => {
+                    pill.style.opacity = '1';
+                    pill.style.transform = 'scale(1)';
+                    pill.style.boxShadow = '0 1px 3px rgba(9, 132, 227, 0.08)';
+                });
+                renderWorkspace();
+            };
+
+            buttons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = btn.dataset.id;
+                    if (currentFilterTeacherId === id) {
+                        clearFilter();
+                    } else {
+                        applyFilter(id);
+                    }
+                });
+            });
+
+            ws.querySelector('#btn-clear-match-filter').addEventListener('click', clearFilter);
+
+            const printBtn = ws.querySelector('#btn-print-match');
+            if (printBtn) {
+                printBtn.addEventListener('click', () => {
+                    window.print();
+                });
+            }
+
+            if (currentFilterTeacherId) {
+                applyFilter(currentFilterTeacherId);
+            }
+        } else {
+            // Day mode handlers
+            ws.querySelector('#match-date-input').addEventListener('change', (e) => {
+                matchSelectedDateStr = e.target.value;
+                const d = new Date(matchSelectedDateStr);
+                const day = d.getDay();
+                const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+                referenceDate = new Date(d.setDate(diff));
+                render();
+            });
+
+            ws.querySelector('#match-instrument-select').addEventListener('change', (e) => {
+                matchInstrumentFilter = e.target.value;
+                render();
+            });
+
+            const searchInput = ws.querySelector('#match-search-input');
+            searchInput.addEventListener('input', (e) => {
+                matchSearchQuery = e.target.value;
+                renderWorkspace();
+            });
+
+            ws.querySelector('#btn-match-active-only').addEventListener('click', () => {
+                matchFilterActiveOnly = !matchFilterActiveOnly;
+                render();
+            });
+        }
+
+        // HTML5 Drag and Drop Handlers
+        const pills = ws.querySelectorAll('.student-match-pill');
+        pills.forEach(pill => {
+            pill.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('text/class-id', pill.dataset.classId);
+                e.dataTransfer.effectAllowed = 'move';
+                pill.style.opacity = '0.5';
+            });
+            pill.addEventListener('dragend', () => {
+                pill.style.opacity = '1';
+            });
+        });
+
+        ws.querySelectorAll('.match-cell-drop').forEach(cell => {
+            cell.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                cell.style.background = 'rgba(9, 132, 227, 0.15)';
+            });
+            cell.addEventListener('dragleave', () => {
+                cell.style.background = 'transparent';
+            });
+            cell.addEventListener('drop', (e) => {
+                e.preventDefault();
+                cell.style.background = 'transparent';
+                const classId = e.dataTransfer.getData('text/class-id');
+                const targetDay = cell.dataset.day;
+                const targetTime = cell.dataset.time;
+                
+                if (classId && targetDay && targetTime) {
+                    tempClassOverrides[classId] = { dayOfWeek: targetDay, time: targetTime };
+                    renderWorkspace(); // Reactive visual shift
+                }
+            });
+        });
+
+        // Student Pill Click Details Modal
+        ws.querySelectorAll('.student-match-pill').forEach(pill => {
+            pill.addEventListener('click', (e) => {
+                e.stopPropagation(); // Avoid double cell trigger
+                const studentId = pill.dataset.studentId;
+                const student = students.find(s => s.id === studentId);
+                const teacher = teachers.find(t => t.id === student.teacherId);
+                
+                if (student) {
+                    const classSchedules = stateStore.getClassesForStudent(studentId);
+                    const scheduleText = classSchedules.map(c => `${c.dayOfWeek} ${c.time}`).join(', ');
+                    const isIncomplete = isIncompleteStudent(student);
+                    const teacherMissing = !student.teacherId;
+
+                    let warningBannerHtml = '';
+                    if (isIncomplete) {
+                        let warningText = '필수 운영 정보가 입력되지 않은 원생입니다. 담당 강사, 정기 청구일, 수강료 정보를 입력하면 모든 기능을 사용할 수 있습니다.';
+                        if (teacherMissing) {
+                            warningText += '<br><strong>담당 강사가 배정되지 않은 원생입니다. 수업 관리 기능을 사용하려면 담당 강사를 지정해 주세요.</strong>';
+                        }
+                        warningBannerHtml = `
+                            <div style="background: var(--warning-light); border: 1px solid var(--warning); border-radius: var(--radius-sm); padding: 10px; margin-bottom: 12px; color: #a04000; font-size: 0.8rem; line-height: 1.45; display: flex; align-items: flex-start; gap: 8px;">
+                                <i class="fa-solid fa-circle-exclamation" style="margin-top: 2px; font-size: 1rem; color: var(--warning); flex-shrink: 0;"></i>
+                                <div>${warningText}</div>
+                            </div>
+                        `;
+                    }
+
+                    const html = `
+                        <div class="modal-header">
+                            <h3 class="modal-title">${student.name} 원생 시간표 상세</h3>
+                            <button class="modal-close" data-close-modal>&times;</button>
+                        </div>
+                        <div class="modal-body" style="padding-top: 10px;">
+                            ${warningBannerHtml}
+                            <div style="display: flex; flex-direction: column; gap: 12px; font-size: 0.95rem;">
+                                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 6px;">
+                                    <span style="color: var(--text-muted);">원생 이름</span>
+                                    <strong>${student.name}</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 6px;">
+                                    <span style="color: var(--text-muted);">나이 / 학교</span>
+                                    <strong>${[student.age ? `${student.age}세` : '', student.school].filter(Boolean).join(' | ') || '정보 없음'}</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 6px;">
+                                    <span style="color: var(--text-muted);">수강 과목</span>
+                                    <strong style="color: var(--accent);">${student.instrument}</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 6px;">
+                                    <span style="color: var(--text-muted);">담당 강사</span>
+                                    <strong>${teacher ? teacher.name : '없음'}</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 6px;">
+                                    <span style="color: var(--text-muted);">학부모 연락처</span>
+                                    <strong>${student.parentPhone || '-'}</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 6px;">
+                                    <span style="color: var(--text-muted);">수강료 / 납부 정기일</span>
+                                    <strong>${student.fee.toLocaleString()}원 (매월 ${student.dueDay}일)</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 6px;">
+                                    <span style="color: var(--text-muted);">주간 수업 시간표</span>
+                                    <strong>${scheduleText}</strong>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer" style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 8px;">
+                            <button class="btn btn-primary" id="btn-edit-student-from-detail" style="width: 100%; justify-content: center;">정보 수정하기</button>
+                            <button class="btn btn-secondary" data-close-modal style="width: 100%; justify-content: center;">닫기</button>
                         </div>
                     `;
-                }
-
-                const html = `
-                    <div class="modal-header">
-                        <h3 class="modal-title">${student.name} 원생 시간표 상세</h3>
-                        <button class="modal-close" data-close-modal>&times;</button>
-                    </div>
-                    <div class="modal-body" style="padding-top: 10px;">
-                        ${warningBannerHtml}
-                        <div style="display: flex; flex-direction: column; gap: 12px; font-size: 0.95rem;">
-                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 6px;">
-                                <span style="color: var(--text-muted);">원생 이름</span>
-                                <strong>${student.name}</strong>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 6px;">
-                                <span style="color: var(--text-muted);">나이 / 학교</span>
-                                <strong>${[student.age ? `${student.age}세` : '', student.school].filter(Boolean).join(' | ') || '정보 없음'}</strong>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 6px;">
-                                <span style="color: var(--text-muted);">수강 과목</span>
-                                <strong style="color: var(--accent);">${student.instrument}</strong>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 6px;">
-                                <span style="color: var(--text-muted);">담당 강사</span>
-                                <strong>${teacher ? teacher.name : '없음'}</strong>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 6px;">
-                                <span style="color: var(--text-muted);">학부모 연락처</span>
-                                <strong>${student.parentPhone || '-'}</strong>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 6px;">
-                                <span style="color: var(--text-muted);">수강료 / 납부 정기일</span>
-                                <strong>${student.fee.toLocaleString()}원 (매월 ${student.dueDay}일)</strong>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 6px;">
-                                <span style="color: var(--text-muted);">주간 수업 시간표</span>
-                                <strong>${scheduleText}</strong>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="modal-footer" style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 8px;">
-                        <button class="btn btn-primary" id="btn-edit-student-from-detail" style="width: 100%; justify-content: center;">정보 수정하기</button>
-                        <button class="btn btn-secondary" data-close-modal style="width: 100%; justify-content: center;">닫기</button>
-                    </div>
-                `;
                 
                 const onInitDetailModal = (contentArea) => {
                     const editBtn = contentArea.querySelector('#btn-edit-student-from-detail');
