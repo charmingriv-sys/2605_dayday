@@ -887,7 +887,7 @@ export function renderPayments(container) {
             }
 
             return `
-                <tr>
+                <tr data-testid="payment-row-${p.id}">
                     <td style="font-weight: 600;">
                         <span class="student-name-link" data-id="${p.studentId}" style="font-size: 0.95rem; color: var(--secondary); cursor: pointer; text-decoration: underline; font-weight: 700;">${studentName}</span>
                         ${student ? `<div style="font-size: 0.75rem; color: var(--text-muted); font-weight: normal; margin-top: 2px;">학부모: ${parentPhone}</div>` : ''}
@@ -898,8 +898,8 @@ export function renderPayments(container) {
                         <div style="font-size: 0.85rem;">청구: ${p.invoiceDate}</div>
                         ${p.type === 'education' ? `<div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">매월 ${dueDay}일 납부 약정</div>` : `<div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">교재 배부 등록일 기준</div>`}
                     </td>
-                    <td>${statusBadge}</td>
-                    <td>${paymentDetail}</td>
+                    <td data-testid="payment-status-${p.id}" data-status="${p.status}">${statusBadge}</td>
+                    <td data-testid="payment-detail-${p.id}">${paymentDetail}</td>
                     <td style="text-align: right;">${actionHtml}</td>
                 </tr>
             `;

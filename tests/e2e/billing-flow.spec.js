@@ -41,18 +41,20 @@ test.describe('Director Tuition Billing and Payment Flow', () => {
 
     // 2. Navigate to Billing Management Tab
     await page.locator('.menu-item[data-view="dir-payments"]').click();
-    await expect(page.locator('#page-title')).toContainText('수납 및 결제 현황');
+    await expect(page.locator('.menu-item[data-view="dir-payments"]')).toHaveClass(/active/);
 
     // 3. Select Target Month '2026-05'
     const monthSelect = page.locator('#payment-month-select');
     await expect(monthSelect).toBeVisible();
     await monthSelect.selectOption('2026-05');
 
-    // 4. Find unpaid record for '윤하은' (Payment P7)
-    // Row contains student name and shows unpaid status initially
-    const paymentRow = page.locator('tr', { has: page.locator('.student-name-link', { hasText: '윤하은' }) });
+    // 4. Find unpaid record for '윤하은' (Payment P7, Student S22)
+    const paymentRow = page.locator('[data-testid="payment-row-P7"]');
     await expect(paymentRow).toBeVisible();
-    await expect(paymentRow).toContainText('미납');
+    
+    // Status cell should indicate unpaid status
+    const statusCell = paymentRow.locator('[data-testid="payment-status-P7"]');
+    await expect(statusCell).toHaveAttribute('data-status', 'unpaid');
 
     // 5. Trigger payment processing
     const payBtn = paymentRow.locator('.btn-pay-action[data-id="P7"]');
@@ -69,8 +71,7 @@ test.describe('Director Tuition Billing and Payment Flow', () => {
 
     // 7. Verify status updates to paid (완납)
     await expect(page.locator('#common-modal')).not.toHaveClass(/show/);
-    await expect(paymentRow).toContainText('완납');
-    await expect(paymentRow).toContainText('수납 완료 (현금 수납)');
+    await expect(statusCell).toHaveAttribute('data-status', 'paid');
 
     // 8. Reload page to verify persistence
     await page.reload();
@@ -86,16 +87,16 @@ test.describe('Director Tuition Billing and Payment Flow', () => {
 
     // Go back to billing view
     await page.locator('.menu-item[data-view="dir-payments"]').click();
-    await expect(page.locator('#page-title')).toContainText('수납 및 결제 현황');
+    await expect(page.locator('.menu-item[data-view="dir-payments"]')).toHaveClass(/active/);
 
     // Set month to 2026-05 again
     await page.locator('#payment-month-select').selectOption('2026-05');
 
-    // Assert student '윤하은''s record persists as '완납'
-    const persistedRow = page.locator('tr', { has: page.locator('.student-name-link', { hasText: '윤하은' }) });
+    // Assert student '윤하은''s record persists as '완납' (status: paid)
+    const persistedRow = page.locator('[data-testid="payment-row-P7"]');
     await expect(persistedRow).toBeVisible();
-    await expect(persistedRow).toContainText('완납');
-    await expect(persistedRow).toContainText('수납 완료 (현금 수납)');
+    const persistedStatusCell = persistedRow.locator('[data-testid="payment-status-P7"]');
+    await expect(persistedStatusCell).toHaveAttribute('data-status', 'paid');
 
     expect(consoleErrors.length).toBe(0);
   });

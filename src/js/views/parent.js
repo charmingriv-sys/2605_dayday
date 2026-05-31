@@ -268,7 +268,7 @@ export function renderParentPortal(container, initialStudentId) {
                         const isKicked = item.leavingTime;
 
                         return `
-                            <div style="background: #ffffff; border: 1px solid rgba(0,0,0,0.05); border-radius: 10px; padding: 12px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 8px rgba(9, 132, 227, 0.02);">
+                            <div data-testid="parent-attendance-row" data-date="${item.date}" data-status="${item.status}" style="background: #ffffff; border: 1px solid rgba(0,0,0,0.05); border-radius: 10px; padding: 12px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 8px rgba(9, 132, 227, 0.02);">
                                 <div style="display: flex; flex-direction: column; gap: 4px;">
                                     <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-main);">${item.date}</div>
                                     <div style="font-size: 0.72rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">

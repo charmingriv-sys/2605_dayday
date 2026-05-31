@@ -192,11 +192,11 @@ export function renderDirectorAttendance(container) {
                                                 }
                                             }
                                             return `
-                                                <tr>
+                                                <tr data-testid="attendance-row-${c.student.id}">
                                                     <td style="font-weight: 600; color: var(--accent);">${c.time}</td>
                                                     <td style="font-weight: 600;">${c.student.name} <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: normal;">(${c.student.instrument})</span></td>
                                                     <td>${c.teacher ? c.teacher.name : '미지정'}</td>
-                                                    <td>${statusBadge}</td>
+                                                    <td data-testid="attendance-status-badge-${c.student.id}" data-status="${c.attendance ? c.attendance.status : 'pending'}">${statusBadge}</td>
                                                     <td style="font-weight: 500;">${timeText}</td>
                                                     <td style="font-size: 0.8rem; color: var(--text-muted); font-style: italic;">${noteText}</td>
                                                 </tr>
@@ -738,7 +738,7 @@ export function renderKioskAttendance(container) {
                 <!-- Student selection grid -->
                 <div class="kiosk-student-grid">
                     ${matchedStudents.map(student => `
-                        <div class="kiosk-student-card" data-student-id="${student.id}">
+                        <div class="kiosk-student-card" data-student-id="${student.id}" data-testid="kiosk-student-card-${student.id}">
                             <div class="kiosk-student-name">${student.name}</div>
                             <div class="kiosk-student-desc">${student.instrument} / ${student.school || '학원생'}</div>
                         </div>
@@ -763,12 +763,12 @@ export function renderKioskAttendance(container) {
 
                 <!-- Status Select Buttons -->
                 <div class="kiosk-status-container">
-                    <div class="kiosk-status-card status-in" id="kiosk-action-checkin">
+                    <div class="kiosk-status-card status-in" id="kiosk-action-checkin" data-testid="kiosk-checkin-btn">
                         <i class="fa-solid fa-door-open"></i>
                         <span class="kiosk-status-title">등원 (출석)</span>
                         <span class="kiosk-status-desc">학원에 도착했습니다.</span>
                     </div>
-                    <div class="kiosk-status-card status-out" id="kiosk-action-checkout">
+                    <div class="kiosk-status-card status-out" id="kiosk-action-checkout" data-testid="kiosk-checkout-btn">
                         <i class="fa-solid fa-door-closed"></i>
                         <span class="kiosk-status-title">하원</span>
                         <span class="kiosk-status-desc">수업 후 귀가합니다.</span>
