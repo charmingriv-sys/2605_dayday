@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DayDay 강사 시간표 운영 기능 기획서</title>
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --paper: #ffffff;
+      --ink: #18202f;
+      --muted: #667085;
+      --line: #d9dee8;
+      --soft: #eef2f7;
+      --primary: #275efe;
+      --primary-soft: #e8efff;
+      --accent: #0f9f8f;
+      --warn: #b65c00;
+      --danger: #b42318;
+      --good: #087443;
+      --shadow: 0 18px 50px rgba(22, 34, 51, 0.08);
+      --radius: 10px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", Arial, sans-serif;
+      line-height: 1.62;
+    }
+    .hero {
+      background: linear-gradient(180deg, #111827 0%, #1f2937 100%);
+      color: white;
+      padding: 44px 24px 38px;
+    }
+    .hero-inner, main {
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+    .eyebrow {
+      font-size: 13px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #b9c4d8;
+      margin-bottom: 12px;
+    }
+    h1 {
+      margin: 0 0 14px;
+      font-size: 34px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+    .hero p {
+      margin: 0;
+      max-width: 860px;
+      color: #d7deea;
+      font-size: 16px;
+    }
+    main { padding: 26px 18px 70px; }
+    section {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      margin: 18px 0;
+      overflow: hidden;
+    }
+    .section-head {
+      padding: 22px 24px 12px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcff;
+    }
+    h2 {
+      margin: 0 0 8px;
+      font-size: 22px;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+    h3 {
+      margin: 22px 0 10px;
+      font-size: 17px;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+    .summary {
+      color: var(--muted);
+      margin: 0;
+      font-size: 14px;
+    }
+    .content { padding: 20px 24px 26px; }
+    .grid {
+      display: grid;
+      gap: 14px;
+    }
+    .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .note, .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      padding: 15px 16px;
+    }
+    .note.warn { border-color: #f2c48c; background: #fff8ef; }
+    .note.good { border-color: #a8dabc; background: #f0fbf5; }
+    .note.danger { border-color: #f0b4ad; background: #fff4f2; }
+    .label {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 2px 9px;
+      border-radius: 999px;
+      background: var(--soft);
+      color: #344054;
+      font-size: 12px;
+      font-weight: 700;
+      margin: 3px 4px 3px 0;
+      white-space: nowrap;
+    }
+    .label.primary { background: var(--primary-soft); color: var(--primary); }
+    .label.good { background: #e9f8ef; color: var(--good); }
+    .label.warn { background: #fff1dc; color: var(--warn); }
+    ul, ol { padding-left: 21px; margin: 10px 0; }
+    li { margin: 6px 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 18px;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 10px 11px;
+      vertical-align: top;
+      text-align: left;
+    }
+    th { background: #f1f4f9; font-weight: 800; }
+    code {
+      font-family: Consolas, Menlo, Monaco, monospace;
+      background: #f1f4f9;
+      padding: 2px 5px;
+      border-radius: 4px;
+      font-size: 0.92em;
+    }
+    .mock-wrap {
+      border: 1px solid var(--line);
+      background: #f8fafc;
+      border-radius: 8px;
+      padding: 14px;
+      overflow-x: auto;
+    }
+    .print-sample {
+      min-width: 960px;
+      background: white;
+      border: 1px solid #d7dbe5;
+      border-radius: 7px;
+      padding: 10px;
+    }
+    .schedule-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr) 1.35fr;
+      gap: 0;
+      border: 1px solid #cfd6e2;
+      font-size: 12px;
+    }
+    .teacher-col, .remarks-col { border-right: 1px solid #cfd6e2; min-height: 280px; }
+    .remarks-col { border-right: 0; }
+    .col-head {
+      background: #e8edf5;
+      padding: 8px 6px;
+      text-align: center;
+      font-weight: 800;
+      border-bottom: 1px solid #cfd6e2;
+    }
+    .col-head.blue { background: #314d7d; color: white; }
+    .time-row {
+      display: grid;
+      grid-template-columns: 45px 1fr;
+      min-height: 34px;
+      border-bottom: 1px solid #e3e7ee;
+    }
+    .time-row:last-child { border-bottom: 0; }
+    .time { background: #f5f7fb; color: #667085; padding: 7px 5px; font-weight: 700; border-right: 1px solid #e3e7ee; }
+    .slot { padding: 7px 7px; font-weight: 700; }
+    .remarks { padding: 9px 12px; color: #8a4a2a; font-weight: 700; line-height: 1.8; }
+    .remarks div { margin-bottom: 5px; }
+    .phase-list { counter-reset: phase; list-style: none; padding-left: 0; }
+    .phase-list li {
+      counter-increment: phase;
+      border-left: 4px solid var(--primary);
+      background: #fbfcff;
+      border-radius: 7px;
+      border: 1px solid var(--line);
+      padding: 14px 15px 14px 46px;
+      position: relative;
+      margin: 10px 0;
+    }
+    .phase-list li:before {
+      content: counter(phase);
+      position: absolute;
+      left: 14px;
+      top: 14px;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: white;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .small { color: var(--muted); font-size: 13px; }
+    @media (max-width: 860px) {
+      h1 { font-size: 27px; }
+      .grid.two, .grid.three { grid-template-columns: 1fr; }
+      .content, .section-head { padding-left: 16px; padding-right: 16px; }
+    }
+    @media print {
+      body { background: white; }
+      .hero { background: white; color: black; padding: 0 0 16px; }
+      .hero p, .eyebrow { color: #333; }
+      main { padding: 0; }
+      section { box-shadow: none; break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-inner">
+      <div class="eyebrow">DayDay Planning Document</div>
+      <h1>강사 시간표 운영 고도화 기획서</h1>
+      <p>원장 권한의 강사 시간표 관리, 강사 출근표, 강사-원생 일간/주간 시간표, 특이사항, 출력/이미지 복사 기능을 실제 음악학원 운영 방식에 맞춰 정리한 개발 전 검토 문서입니다.</p>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <div class="section-head">
+        <h2>요약 판단</h2>
+        <p class="summary">요구사항은 타당합니다. 다만 단일 기능이 아니라 “시간표 설정 + 출근표 + 수업표 + 특이사항 + 인쇄/공유”가 묶인 운영 보드입니다.</p>
+      </div>
+      <div class="content">
+        <div class="grid three">
+          <div class="note good">
+            <strong>우선순위 높음</strong>
+            <p>학원별 운영 시간/요일 설정과 일간 시간표는 실제 현장에서 바로 체감되는 기능입니다. 지금 붙이면 사용성이 크게 올라갑니다.</p>
+          </div>
+          <div class="note warn">
+            <strong>설계 주의</strong>
+            <p>강사 출근표와 강사-원생 시간표는 비슷해 보이지만 데이터 목적이 다릅니다. 하나로 섞으면 이후 수정이 어려워집니다.</p>
+          </div>
+          <div class="note">
+            <strong>개발 전략</strong>
+            <p>먼저 “표 설정”과 “일간 보기”를 만들고, 그 다음 인쇄/이미지 복사와 특이사항 포함 옵션을 붙이는 순서가 안전합니다.</p>
+          </div>
+        </div>
+        <h3>이번 요구사항의 핵심</h3>
+        <span class="label primary">학원 운영시간 설정</span>
+        <span class="label primary">강사 출근표 일간/주간</span>
+        <span class="label primary">강사-원생 시간표 일간/주간</span>
+        <span class="label good">특이사항 노출</span>
+        <span class="label good">프린트</span>
+        <span class="label good">이미지 복사</span>
+        <span class="label warn">테스트 자동화 필요</span>
+        <h3>사용자 확정 운영 규칙</h3>
+        <div class="grid two">
+          <div class="note good">
+            <strong>강사 출근표의 목적</strong>
+            <p>강사들은 주간/월간 기본 시간이 있더라도 파트타임 특성상 실제 시간이 자주 바뀝니다. 이 화면은 원장이 실제 출근 상황을 확인하고, 필요하면 강사에게 출근표를 출력해 전달하기 위한 운영 기능입니다.</p>
+          </div>
+          <div class="note good">
+            <strong>강사-원생 시간표의 목적</strong>
+            <p>강사별로 어느 시간에 어떤 원생을 교육해야 하는지 확실히 잡아주는 기능입니다. 상황에 따라 강사에게 주간 교육 원생표 또는 일간 교육 원생표를 출력해 전달할 수 있어야 합니다.</p>
+          </div>
+          <div class="note warn">
+            <strong>과거/오늘/미래 시간표 규칙</strong>
+            <p>과거 날짜와 오늘 운영표는 당시 기록된 이력을 기준으로 봅니다. 누군가 원생 시간을 옮겼다면 그 날짜의 운영표에는 옮긴 채로 고정됩니다. 단, 내일이 된 오늘이나 다음주차가 된 다음주의 시간표는 원생 기본값을 다시 반영합니다.</p>
+          </div>
+          <div class="note">
+            <strong>프린트 범위</strong>
+            <p>프린트는 단순 예시 화면 하나를 출력하는 기능이 아니라, 사용자가 필터링한 일간/주간, 강사, 날짜, 특이사항 포함 여부를 그대로 반영해야 합니다.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>이상하거나 확인이 필요한 지점</h2>
+        <p class="summary">요구 자체는 자연스럽지만 개발 전에 용어와 저장 범위를 확정해야 합니다.</p>
+      </div>
+      <div class="content">
+        <table>
+          <thead>
+            <tr><th>항목</th><th>노티스</th><th>권장 결정</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>강사 출근표 vs 강사-원생 시간표</td>
+              <td>둘 다 “강사별 시간표”처럼 보이지만 출근표는 강사의 근무 가능/출근 시간, 강사-원생 시간표는 실제 수업 배정입니다.</td>
+              <td>화면 탭은 분리하되 공통 표 엔진을 공유합니다.</td>
+            </tr>
+            <tr>
+              <td>일간 시간표의 날짜 선택</td>
+              <td>과거 날짜 확인은 당시 기록된 이력 기준입니다. 오늘 운영표도 현재 기록된 이력 기준입니다. 원생 시간이 이동되면 해당 날짜 운영표는 이동된 상태로 고정됩니다.</td>
+              <td>미래 날짜는 원생 기본 시간표를 기준으로 생성합니다. 기본값 자체를 바꾸고 싶으면 원생 정보의 기본 시간표를 수정합니다.</td>
+            </tr>
+            <tr>
+              <td>드래그로 일시 변동</td>
+              <td>드래그로 옮긴 변경은 해당 날짜의 운영 이력으로 저장되어야 합니다. 과거/오늘 화면에서는 옮긴 상태가 고정되어 다시 보여야 합니다.</td>
+              <td>다만 미래의 반복 시간표는 원생 기본 시간표에서 다시 생성됩니다. 반복 기본값 변경은 반드시 원생 기본 시간표 수정에서 처리합니다.</td>
+            </tr>
+            <tr>
+              <td>특이사항 출력 포함</td>
+              <td>특이사항에는 개인정보/민감정보가 들어갈 수 있습니다. 출력/이미지 복사 시 포함 여부가 꼭 필요합니다.</td>
+              <td>기본값은 미포함, 원장이 토글로 포함합니다. 포함 시 화면에 표시가 필요합니다.</td>
+            </tr>
+            <tr>
+              <td>이미지화하여 복사</td>
+              <td>브라우저에서 DOM을 이미지로 복사하려면 html2canvas류 라이브러리 또는 별도 Canvas/SVG 렌더러가 필요할 수 있습니다.</td>
+              <td>1차는 인쇄 CSS와 PNG 다운로드, 2차로 클립보드 복사를 붙입니다.</td>
+            </tr>
+            <tr>
+              <td>프린트 1/2/3개 배치</td>
+              <td>가능합니다. 다만 A4 가로/세로, 여백, 글자 크기, remarks 포함 여부에 따라 가독성이 크게 달라집니다.</td>
+              <td>A4 가로 기준 1개/2개/3개 레이아웃 프리셋을 제공합니다.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>1. 학원별 테이블 설정</h2>
+        <p class="summary">월~금, 15:00~20:00처럼 학원 운영 방식에 맞게 시간표 테이블 자체를 줄이는 기능입니다.</p>
+      </div>
+      <div class="content">
+        <h3>필요 설정값</h3>
+        <div class="grid two">
+          <div class="card">
+            <strong>기본 운영 시간</strong>
+            <ul>
+              <li>운영 요일: 월, 화, 수, 목, 금, 토, 일 중 선택</li>
+              <li>시작 시간: 예 14:00 또는 15:00</li>
+              <li>종료 시간: 예 20:00 또는 21:30</li>
+              <li>시간 간격: 10분, 15분, 30분, 60분</li>
+              <li>점심/휴게/비노출 구간: 선택 기능 후보</li>
+            </ul>
+          </div>
+          <div class="card">
+            <strong>표 표시 옵션</strong>
+            <ul>
+              <li>빈 시간대 숨김 여부</li>
+              <li>강사별 컬럼 폭 자동/고정</li>
+              <li>모바일에서는 가로 스크롤 또는 강사별 접기</li>
+              <li>인쇄용 글자 크기 프리셋</li>
+              <li>remarks 영역 우측/하단 위치 선택</li>
+            </ul>
+          </div>
+        </div>
+        <h3>데이터 후보</h3>
+        <table>
+          <thead><tr><th>필드</th><th>설명</th><th>예시</th></tr></thead>
+          <tbody>
+            <tr><td><code>scheduleDays</code></td><td>시간표에 노출할 요일</td><td><code>["mon", "tue", "wed", "thu", "fri"]</code></td></tr>
+            <tr><td><code>scheduleStartTime</code></td><td>첫 노출 시간</td><td><code>15:00</code></td></tr>
+            <tr><td><code>scheduleEndTime</code></td><td>마지막 노출 시간</td><td><code>20:00</code></td></tr>
+            <tr><td><code>scheduleSlotMinutes</code></td><td>칸 간격</td><td><code>30</code></td></tr>
+            <tr><td><code>printLayoutDefault</code></td><td>기본 출력 배치</td><td><code>one-per-page</code>, <code>two-per-page</code>, <code>three-per-page</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>2. 강사 출근표 관리</h2>
+        <p class="summary">파트타임 강사의 실제 출근 변동을 원장이 확인하고, 필요 시 강사에게 출력해 전달하기 위한 운영표입니다.</p>
+      </div>
+      <div class="content">
+        <div class="grid two">
+          <div class="card">
+            <h3>주간 보기</h3>
+            <ul>
+              <li>강사 1명을 선택하면 해당 강사의 월~일 출근 타임테이블 표시</li>
+              <li>출력/이미지 복사 가능</li>
+              <li>강사에게 본인 주간 스케줄을 보내기 좋게 구성</li>
+              <li>강사 특이사항 포함 여부 토글</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>일간 보기</h3>
+            <ul>
+              <li>날짜 단일 선택</li>
+              <li>선택 날짜에 출근하는 강사만 컬럼으로 노출</li>
+              <li>필터: 강사명, 담당 과목, 출근 여부, 상태</li>
+              <li>우측 또는 하단에 선택 강사 특이사항 표시</li>
+            </ul>
+          </div>
+        </div>
+        <h3>강사 특이사항</h3>
+        <p>강사 등록/수정 화면에 <code>staffNotes</code> 또는 <code>scheduleNotes</code> 필드를 추가합니다. 모바일에서는 테이블 칸에 직접 다 넣기보다 “특이사항” 버튼을 눌러 모달로 보는 방식이 더 안정적입니다.</p>
+        <div class="note warn">
+          <strong>개인정보 주의</strong>
+          <p>강사 특이사항에는 급여, 개인 사정, 근태 민감 정보가 들어갈 수 있습니다. 출력/복사 시 포함 토글은 반드시 필요합니다.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>3. 강사-원생 시간표 관리</h2>
+        <p class="summary">강사별로 어떤 시간에 어떤 원생을 교육해야 하는지 확정해 보여주는 수업 운영표입니다. 과거/오늘은 기록된 이력, 미래는 원생 기본값을 기준으로 합니다.</p>
+      </div>
+      <div class="content">
+        <table>
+          <thead><tr><th>보기</th><th>동작</th><th>주의점</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>주간 보기</td>
+              <td>현재와 같이 원생별 기본 시간표를 요일/시간 기준으로 노출합니다.</td>
+              <td>기존 기능을 최대한 유지합니다.</td>
+            </tr>
+            <tr>
+              <td>일간 보기</td>
+              <td>선택 날짜의 출근 강사를 열 제목으로 두고, 각 시간대에 담당 원생을 배치합니다.</td>
+              <td>오늘 출근하는 강사의 수업 현황을 한눈에 보는 운영판입니다.</td>
+            </tr>
+            <tr>
+              <td>드래그 임시 변동</td>
+              <td>원생을 다른 시간/강사 칸으로 드래그하면 해당 날짜의 운영 이력에 저장됩니다.</td>
+              <td>그 날짜를 다시 열면 이동된 상태로 보여야 합니다. 하지만 다음날/다음주 기본 생성에는 원생 기본 시간표가 다시 적용됩니다.</td>
+            </tr>
+            <tr>
+              <td>원생 특이사항</td>
+              <td>원생 등록/수정 테이블에 “시간표 등 일정 특이사항” 입력란을 추가하고, 시간표 우측/하단에 노출합니다.</td>
+              <td>출력/이미지 복사에 포함 여부 토글을 둡니다.</td>
+            </tr>
+          </tbody>
+        </table>
+        <h3>원생 정보 추가 필드</h3>
+        <div class="note">
+          <strong>6. 시간표 등 일정 특이사항</strong>
+          <p>예: “수요일은 4:40 이후 가능”, “동생 픽업 때문에 5:30 이전 하원”, “콩쿨 전 2주간 보강 우선”, “화요일은 엄마 동행”.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>4. 인쇄 및 이미지 복사 기능</h2>
+        <p class="summary">첨부 이미지처럼 하루 운영표를 종이 또는 이미지로 공유하는 기능입니다.</p>
+      </div>
+      <div class="content">
+        <h3>가능 여부</h3>
+        <div class="grid three">
+          <div class="note good"><strong>프린트</strong><p>가능합니다. CSS <code>@media print</code>와 레이아웃 프리셋으로 구현합니다.</p></div>
+          <div class="note good"><strong>PNG 다운로드</strong><p>가능합니다. DOM 캡처 라이브러리나 Canvas 렌더러가 필요할 수 있습니다.</p></div>
+          <div class="note warn"><strong>이미지 복사</strong><p>가능하지만 브라우저 권한/호환성 이슈가 있어 다운로드를 1차, 클립보드 복사를 2차로 권장합니다.</p></div>
+        </div>
+        <h3>프린트 옵션</h3>
+        <ul>
+          <li>현재 필터링된 일간/주간, 날짜, 강사 조건을 그대로 반영</li>
+          <li>한 페이지에 표 1개, 2개, 3개 배치 선택</li>
+          <li>A4 가로 기본, A4 세로 후보</li>
+          <li>강사 특이사항 포함/미포함</li>
+          <li>원생 특이사항 포함/미포함</li>
+          <li>빈 시간대 숨김/표시</li>
+          <li>폰트 크기: 작게, 보통, 크게</li>
+        </ul>
+
+        <h3>첨부 이미지 기반 출력 예시</h3>
+        <div class="mock-wrap">
+          <div class="print-sample">
+            <div class="schedule-grid">
+              <div class="teacher-col">
+                <div class="col-head">정은비</div>
+                <div class="time-row"><div class="time">14:00</div><div class="slot"></div></div>
+                <div class="time-row"><div class="time">14:30</div><div class="slot">신서하, 신유환</div></div>
+                <div class="time-row"><div class="time">15:00</div><div class="slot">송주완, 이예나, 최도원</div></div>
+                <div class="time-row"><div class="time">15:30</div><div class="slot">윤시하, 한서아</div></div>
+                <div class="time-row"><div class="time">16:00</div><div class="slot">김가인, 김한울, 배가은</div></div>
+                <div class="time-row"><div class="time">16:30</div><div class="slot">안성현, 안우현, 오시은</div></div>
+                <div class="time-row"><div class="time">17:00</div><div class="slot">고하은, 정고은, 조예은</div></div>
+                <div class="time-row"><div class="time">17:30</div><div class="slot">김리온, 조이현</div></div>
+              </div>
+              <div class="teacher-col">
+                <div class="col-head">문승현</div>
+                <div class="time-row"><div class="time">14:00</div><div class="slot">곽도현</div></div>
+                <div class="time-row"><div class="time">14:30</div><div class="slot"></div></div>
+                <div class="time-row"><div class="time">15:00</div><div class="slot">최이솔</div></div>
+                <div class="time-row"><div class="time">15:30</div><div class="slot">박소율B</div></div>
+                <div class="time-row"><div class="time">16:00</div><div class="slot">박서연, 박시연</div></div>
+                <div class="time-row"><div class="time">16:30</div><div class="slot">박송아, 김라온</div></div>
+                <div class="time-row"><div class="time">17:00</div><div class="slot">정이준, 박서우B</div></div>
+                <div class="time-row"><div class="time">17:30</div><div class="slot"></div></div>
+              </div>
+              <div class="teacher-col">
+                <div class="col-head">양지숙</div>
+                <div class="time-row"><div class="time">14:00</div><div class="slot"></div></div>
+                <div class="time-row"><div class="time">14:30</div><div class="slot"></div></div>
+                <div class="time-row"><div class="time">15:00</div><div class="slot"></div></div>
+                <div class="time-row"><div class="time">15:30</div><div class="slot"></div></div>
+                <div class="time-row"><div class="time">16:00</div><div class="slot">곽민주, 김지후</div></div>
+                <div class="time-row"><div class="time">16:30</div><div class="slot">김지권</div></div>
+                <div class="time-row"><div class="time">17:00</div><div class="slot">정유나, 송유림</div></div>
+                <div class="time-row"><div class="time">17:30</div><div class="slot">김이안, 강서하</div></div>
+              </div>
+              <div class="teacher-col">
+                <div class="col-head">조아라</div>
+                <div class="time-row"><div class="time">14:00</div><div class="slot"></div></div>
+                <div class="time-row"><div class="time">14:30</div><div class="slot"></div></div>
+                <div class="time-row"><div class="time">15:00</div><div class="slot"></div></div>
+                <div class="time-row"><div class="time">15:30</div><div class="slot"></div></div>
+                <div class="time-row"><div class="time">16:00</div><div class="slot"></div></div>
+                <div class="time-row"><div class="time">16:30</div><div class="slot">4:35 라온 시은 픽업</div></div>
+                <div class="time-row"><div class="time">17:00</div><div class="slot">강수호, 양지우</div></div>
+                <div class="time-row"><div class="time">17:30</div><div class="slot"></div></div>
+              </div>
+              <div class="teacher-col">
+                <div class="col-head blue">성여진</div>
+                <div class="time-row"><div class="time">14:00</div><div class="slot"></div></div>
+                <div class="time-row"><div class="time">14:30</div><div class="slot"></div></div>
+                <div class="time-row"><div class="time">15:00</div><div class="slot">채은유</div></div>
+                <div class="time-row"><div class="time">15:30</div><div class="slot">박소율B</div></div>
+                <div class="time-row"><div class="time">16:00</div><div class="slot">강지석<br/>강호석</div></div>
+                <div class="time-row"><div class="time">16:30</div><div class="slot">이승준</div></div>
+                <div class="time-row"><div class="time">17:00</div><div class="slot">박예준</div></div>
+                <div class="time-row"><div class="time">17:30</div><div class="slot"></div></div>
+              </div>
+              <div class="remarks-col">
+                <div class="col-head">REMARKS</div>
+                <div class="remarks">
+                  <div>- 태권도 수요일반: 최도원</div>
+                  <div>- 화 3, 금 4:40 이마트 경비조</div>
+                  <div>- 4:25 동양문화 미술</div>
+                  <div>- 4:40 픽업장소 잠원유치원</div>
+                  <div>- 5:30 해랑어린이집 픽업</div>
+                  <div>- 태권도 하원: 신가빈</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="small">위 예시는 첨부 이미지의 운영 목적을 반영한 와이어프레임입니다. 실제 데이터와 색상은 DayDay 디자인 시스템에 맞춰 조정합니다.</p>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>5. 구현 우선순위</h2>
+        <p class="summary">한 번에 다 만들면 위험합니다. 표 설정부터 시작해 일간 운영표와 출력 기능을 단계적으로 붙이는 편이 안전합니다.</p>
+      </div>
+      <div class="content">
+        <ol class="phase-list">
+          <li><strong>시간표 테이블 설정</strong><br/>운영 요일, 시작/종료 시간, 칸 간격, 인쇄 기본값을 학원 설정에 추가합니다.</li>
+          <li><strong>강사/원생 특이사항 필드 추가</strong><br/>강사 관리에는 강사 특이사항, 원생 관리에는 시간표 등 일정 특이사항을 추가합니다.</li>
+          <li><strong>강사 출근표 일간/주간 보기</strong><br/>강사의 실제 출근 변동 이력을 확인하고, 선택한 날짜/강사/주간 조건 그대로 출력할 수 있게 만듭니다.</li>
+          <li><strong>강사-원생 일간/주간 시간표</strong><br/>강사별 교육 원생표를 구현하고, 오늘/과거의 드래그 이동은 해당 날짜 이력으로 고정합니다.</li>
+          <li><strong>주간 보기 개선</strong><br/>강사 1명의 주간 출근표와 기존 강사-원생 주간표를 정리합니다.</li>
+          <li><strong>프린트/이미지 내보내기</strong><br/>사용자가 필터링한 일간/주간/강사 조건과 특이사항 포함 토글을 반영해 한 페이지 1/2/3개 배치, PNG 다운로드, 클립보드 복사를 순서대로 붙입니다.</li>
+          <li><strong>E2E 테스트 확장</strong><br/>표 설정 저장, 일간 보기 날짜 선택, 수납/출결처럼 새 기능별 자동 테스트를 추가합니다.</li>
+        </ol>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>6. 테스트 계획</h2>
+        <p class="summary">현재 프로젝트는 테스트 기반이 생겼으므로, 기능 구현과 동시에 E2E를 붙여야 합니다.</p>
+      </div>
+      <div class="content">
+        <table>
+          <thead><tr><th>기능</th><th>자동 테스트 기준</th><th>우선순위</th></tr></thead>
+          <tbody>
+            <tr><td>표 설정 저장</td><td>운영 시간 15:00~20:00 설정 후 시간표 행이 해당 범위만 렌더링되는지 확인</td><td>상</td></tr>
+            <tr><td>강사 특이사항</td><td>강사 등록/수정 후 일간 출근표의 특이사항 패널에 노출되는지 확인</td><td>상</td></tr>
+            <tr><td>원생 특이사항</td><td>원생 등록/수정 후 강사-원생 일간표 remarks에 노출되는지 확인</td><td>상</td></tr>
+            <tr><td>일간 날짜 선택</td><td>날짜 선택 시 해당 요일/날짜 기준 표가 바뀌는지 확인</td><td>상</td></tr>
+            <tr><td>날짜별 이동 이력</td><td>오늘/과거 날짜에서 원생을 다른 시간대로 이동하면 해당 날짜에는 이동 상태가 유지되고, 미래 기본 시간표는 원생 기본값을 따르는지 확인</td><td>상</td></tr>
+            <tr><td>프린트 옵션</td><td>선택한 일간/주간, 날짜, 강사 필터, 특이사항 포함/미포함, 1/2/3개 배치 옵션이 print preview DOM에 반영되는지 확인</td><td>중</td></tr>
+            <tr><td>이미지 복사</td><td>PNG 생성 또는 Clipboard API 성공/실패 메시지 확인</td><td>중</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>7. 개발 프롬프트 후보</h2>
+        <p class="summary">다음 개발 단계에서 그대로 사용할 수 있는 실행 단위입니다.</p>
+      </div>
+      <div class="content">
+        <h3>추천 다음 Phase</h3>
+        <div class="note good">
+          <strong>Phase 7A: 시간표 테이블 설정 + 특이사항 필드 기반 구축</strong>
+          <p>운영 시간/요일 설정, 강사 특이사항, 원생 일정 특이사항을 먼저 추가합니다. 이 3개가 있어야 이후 일간/주간 시간표가 안정적으로 만들어집니다.</p>
+        </div>
+        <h3>개발 지시 요약</h3>
+        <ul>
+          <li>학원 설정에 시간표 노출 요일, 시작/종료 시간, 슬롯 간격 추가</li>
+          <li>강사 등록/수정 폼에 강사 시간표 특이사항 추가</li>
+          <li>원생 등록/수정 폼에 “시간표 등 일정 특이사항” 추가</li>
+          <li>LocalStorageAdapter 기반 저장 유지</li>
+          <li>기존 E2E test:full 통과 유지</li>
+          <li>추가 기능별 E2E 테스트 작성</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
