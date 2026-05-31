@@ -297,5 +297,11 @@ Phase 6에서는 바로 대규모 DB 연동을 시작하지 말고, 스키마 DD
   - `tests/unit/state_smoke_test.mjs`에 신규 필드 존재 및 유효성 단언(Assertion) 추가.
   - `tests/e2e/schedule-setup-flow.spec.js` Playwright E2E 테스트 케이스 신규 구현을 통한 상태 수정 후 새로고침 및 영속성 보장 검증 100% 통과.
 
-### Phase 7B: 강사 출근표 일간/주간 보기 UI 개발 (대기)
+### Phase 7B: 강사 출근표 일간/주간 보기 UI 개발 (완료)
 - **목표**: 강사의 주간/일간 근무 가능 타임라인 UI 및 특이사항 필터링을 화면상에 구현.
+- **산출물**:
+  - `src/js/views/director/sessionsView.js` 내에 주간/일간 보기 모드 전환, 특이사항 표시 토글 및 필터링 기능 구현.
+  - `tests/e2e/teacher-shift-flow.spec.js` Playwright E2E 테스트 추가 (원장 로그인, 강사 출근표 주간/일간 보기 확인, 필터링 및 특이사항 패널 제어 검증).
+- **검증**:
+  - 네비게이션 안정화 규칙을 적용하여 Chromium E2E 시나리오 12개에 대한 안정적인 테스트 성공.
+  - 시간표 렌더링 시 timelineStart, timelineEnd, totalHours를 동적 파싱하여 topPercent 및 heightPercent를 HSL 테마에 따라 absolute layout으로 정확히 계산하여 겹침을 방지함.

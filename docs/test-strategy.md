@@ -99,6 +99,19 @@ Configured to spawn `node server.js` dynamically on port `3000` to serve the sta
   - Verify settings state modifications persist on reload.
   - Verify staff and student scheduleNotes field values are successfully persisted and rendered.
 
+#### Scenario H: Weekly & Daily Teacher Shifts Flow (`tests/e2e/teacher-shift-flow.spec.js`)
+- **Actions**:
+  1. Log in as Director, navigate to "강사 출근 및 시간표 관리".
+  2. Verify that the Weekly shifts view renders by default for the default teacher.
+  3. Toggle the notes visibility panel and assert visibility changes.
+  4. Select a different teacher from the dropdown, verify that the weekly shifts label changes.
+  5. Switch view mode to Daily shifts, fill date input, and verify shifts block rendering.
+  6. Apply "Active teachers only" filter to verify rows filtering.
+- **Assertions**:
+  - Verify stable selectors (`data-testid`) are used for weekly/daily toggles, selects, grid tables, and notes.
+  - Verify notes toggling works successfully.
+  - Verify date changes and filters correctly affect row listings.
+
 ---
 
 ## Future E2E Automation Goals (Next Phases)

@@ -59,9 +59,14 @@
 - **구독 이벤트**: `ATTENDANCE_CHANGED`
 
 ### 3.5 수업/시간표 관리 (Sessions)
-- **설명**: 요일별/강사별 수업 캘린더 시간표 매트릭스 렌더링
-- **의존 API**: `getClasses()`, `getTeachers()`, `getStudents()`
-- **구독 이벤트**: `CLASSES_CHANGED`, `STUDENTS_CHANGED`
+- **설명**: 요일별/강사별 수업 캘린더 시간표 매트릭스 및 강사 출근표(일간/주간 보기) 렌더링
+- **의존 API**: `getClasses()`, `getTeachers()`, `getStudents()`, `getTeacherShifts()`, `getSettings()`
+- **구독 이벤트**: `CLASSES_CHANGED`, `STUDENTS_CHANGED`, `SHIFTS_CHANGED`, `SETTINGS_CHANGED`
+- **UI 상태 관리 (Phase 7B)**:
+  - 주간/일간 보기 전환 (`shiftViewMode = 'week' | 'day'`)
+  - 선택 일자 (`selectedDateStr`)
+  - 특이사항 패널 토글 상태 (`showNotes`)
+  - 필터링 조건 (`filterType = 'all' | 'active' | '피아노' | ...`, `filterSearchQuery`)
 
 ### 3.6 강사 관리 (Staff)
 - **설명**: 강사 목록 및 프로필 관리, 강사별 일자별 시프트 근무 스케줄 설정 모달

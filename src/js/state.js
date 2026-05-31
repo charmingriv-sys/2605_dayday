@@ -156,7 +156,11 @@ const DEFAULT_DB = {
         { id: 'P8', studentId: 'S23', amount: 180000, month: '2026-05', type: 'education', status: 'unpaid', invoiceDate: '2026-05-15', paidDate: null, method: null },
         { id: 'P9', studentId: 'S25', amount: 200000, month: '2026-05', type: 'education', status: 'unpaid', invoiceDate: '2026-05-25', paidDate: null, method: null }
     ],
-    teacherShifts: [],
+    teacherShifts: [
+        { id: 'TS1', teacherId: 'T8', date: '2026-05-18', slots: ['14:00', '14:30', '15:00', '15:30', '16:00'] },
+        { id: 'TS2', teacherId: 'T1', date: '2026-05-18', slots: ['14:00', '14:30', '15:00'] },
+        { id: 'TS3', teacherId: 'T8', date: '2026-05-20', slots: ['14:00', '14:30', '15:00'] }
+    ],
     books: [
         { id: 'B1', name: '세모둥이네꼬마바이엘 1', price: 5000, category: '바이엘/체르니', status: 'active', recommendedDays: 30 },
         { id: 'B2', name: '세모둥이네꼬마바이엘 2', price: 5000, category: '바이엘/체르니', status: 'active', recommendedDays: 30 },
