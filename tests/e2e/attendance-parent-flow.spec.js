@@ -146,10 +146,13 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
     await expect(parentBtn).toBeVisible();
     await parentBtn.click({ force: true });
 
+    // Wait for Parent Portal view wrapper to load
+    await expect(page.locator('.parent-portal-mobile-wrapper')).toBeVisible({ timeout: 5000 });
+
     // 10. Switch to Attendance Tab on Parent Portal
     // Active student is 최다은 by default (S1)
     const parentAttendanceTab = page.locator('.parent-tab-link[data-tab="attendance"]');
-    await expect(parentAttendanceTab).toBeVisible();
+    await expect(parentAttendanceTab).toBeVisible({ timeout: 5000 });
     await parentAttendanceTab.click({ force: true });
 
     // Verify today's check-in records are displayed in the Parent Portal attendance history
