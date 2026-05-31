@@ -155,23 +155,23 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
     await page.waitForTimeout(500);
     await parentBtn.evaluate(el => el.click());
 
-    // 10. Switch to Attendance Tab on Parent Portal
-    // Active student is 최다은 by default (S1)
-    const parentAttendanceTab = page.locator('.parent-tab-link[data-tab="attendance"]');
+    // 10. Switch to Attendance/Calendar View on Student/Parent Sidebar Menu
+    const parentAttendanceTab = page.locator('.menu-item[data-view="stu-calendar"]');
     await expect(parentAttendanceTab).toBeVisible({ timeout: 10000 });
-    await parentAttendanceTab.click({ force: true });
+    await parentAttendanceTab.click();
 
-    // Verify today's check-in records are displayed in the Parent Portal attendance history
-    const parentRow = page.locator(`[data-testid="parent-attendance-row"][data-date="${todayStr}"]`);
-    await expect(parentRow).toBeVisible();
-    await expect(parentRow).toHaveAttribute('data-status', 'present');
+    // Verify today's check-in cell on the Calendar is marked with 'present' (등원) status dot
+    const calendarCell = page.locator(`.calendar-day-cell[data-date="${todayStr}"]`);
+    await expect(calendarCell).toBeVisible();
+    const statusDot = calendarCell.locator('.calendar-day-status');
+    await expect(statusDot).toHaveClass(/present/);
 
     // 11. Reload page to verify persistence
     await page.reload();
     await page.waitForLoadState('domcontentloaded');
 
     // Re-login as parent if needed (usually restored automatically)
-    const isAppVisible = await page.locator('.parent-tab-link[data-tab="attendance"]').isVisible();
+    const isAppVisible = await page.locator('.menu-item[data-view="stu-calendar"]').isVisible();
     if (!isAppVisible) {
       const reloadParentBtn = page.locator('.role-btn.student');
       await expect(reloadParentBtn).toBeVisible({ timeout: 5000 });
@@ -179,14 +179,15 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
     }
 
     // Navigate back to parent attendance tab
-    const reloadAttendanceTab = page.locator('.parent-tab-link[data-tab="attendance"]');
+    const reloadAttendanceTab = page.locator('.menu-item[data-view="stu-calendar"]');
     await expect(reloadAttendanceTab).toBeVisible();
-    await reloadAttendanceTab.click({ force: true });
+    await reloadAttendanceTab.click();
 
-    // Assert today's check-in status still persists as present
-    const persistedParentRow = page.locator(`[data-testid="parent-attendance-row"][data-date="${todayStr}"]`);
-    await expect(persistedParentRow).toBeVisible();
-    await expect(persistedParentRow).toHaveAttribute('data-status', 'present');
+    // Assert today's check-in status still persists as present (등원)
+    const persistedCalendarCell = page.locator(`.calendar-day-cell[data-date="${todayStr}"]`);
+    await expect(persistedCalendarCell).toBeVisible();
+    const persistedStatusDot = persistedCalendarCell.locator('.calendar-day-status');
+    await expect(persistedStatusDot).toHaveClass(/present/);
 
     expect(consoleErrors.length).toBe(0);
   });
