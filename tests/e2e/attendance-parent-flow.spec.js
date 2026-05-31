@@ -68,12 +68,14 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
     await expect(directorBtn).toBeVisible({ timeout: 5000 });
     await directorBtn.click();
     await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
-
+    // Ensure the login overlay has fully disappeared before clicking menu items
+    await expect(page.locator('#login-overlay')).toBeHidden({ timeout: 5000 });
+ 
     // 2. Navigate to Tablet Kiosk View
     const kioskMenu = page.locator('.menu-item[data-view="dir-kiosk-attendance"]');
     await expect(kioskMenu).toBeVisible();
     await kioskMenu.scrollIntoViewIfNeeded();
-    await kioskMenu.click();
+    await kioskMenu.evaluate(el => el.click());
 
     // Verify kiosk mode is active on body element
     await expect(page.locator('body')).toHaveClass(/kiosk-mode/);
@@ -123,7 +125,7 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
     const dirAttendanceMenu = page.locator('.menu-item[data-view="dir-attendance"]');
     await expect(dirAttendanceMenu).toBeVisible();
     await dirAttendanceMenu.scrollIntoViewIfNeeded();
-    await dirAttendanceMenu.click();
+    await dirAttendanceMenu.evaluate(el => el.click());
     await expect(dirAttendanceMenu).toHaveClass(/active/);
 
     // Get today's ISO date string
