@@ -127,6 +127,19 @@ Configured to spawn `node server.js` dynamically on port `3000` to serve the sta
   - Verify student names mapping matches mock datasets.
   - Verify active filter and instrument/search filters apply correctly to grid table rows.
 
+#### Scenario I-2: Drag-and-Drop Schedule Interaction (`tests/e2e/teacher-student-schedule-flow.spec.js`)
+- **Actions**:
+  1. Switch to Daily Match View, fill date input to '2026-05-18'.
+  2. Locate student card for "최다은" and drag to Teacher T1 (문승현), Time 15:00 slot.
+  3. Verify drag-and-drop success message banner.
+  4. Reload the page, log back in, and verify the student remains in the new slot (Persistence).
+  5. Select next week '2026-05-25' and verify the student returns to their default slot (Isolation).
+- **Assertions**:
+  - Verify success feedback message: "일정이 성공적으로 이동되었습니다."
+  - Verify card renders in the target td grid block.
+  - Verify that reload does not wipe local state overrides.
+  - Verify that other dates remain unaffected by the override.
+
 #### Scenario J: Schedule Override/Snapshot Unit Testing (`tests/unit/schedule_override_test.mjs`)
 - **Actions**:
   1. Verify future date defaults to database classes dynamic loading without snapshot generation.
@@ -138,7 +151,7 @@ Configured to spawn `node server.js` dynamically on port `3000` to serve the sta
 ---
 
 ## Future E2E Automation Goals (Next Phases)
-1. **Drag and Drop Schedule Interaction**: Simulate drag-and-drop actions of students within the schedule table grid cells.
-2. **Print Layout Preview**: Open schedule print preview and check formatting styles for one-per-page vs multi-per-page layouts.
+1. **Print Layout Preview**: Open schedule print preview and check formatting styles for one-per-page vs multi-per-page layouts.
+2. **Mobile Overlay Alternative Testing**: Simulate click-based modal interactions for shift moves when mobile screen boundaries prevent drag-and-drop actions.
 
 

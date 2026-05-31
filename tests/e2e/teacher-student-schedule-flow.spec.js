@@ -115,4 +115,133 @@ test.describe('Director Teacher-Student Schedule Flow Checks', () => {
     // Active filter button should become active (primary color or state)
     await expect(activeFilterBtn).toHaveClass(/btn-primary/);
   });
+
+  test('should drag and drop student card to another slot, verify state updates, persist on reload, and keep other dates isolated', async ({ page }) => {
+    page.on('console', msg => console.log(`BROWSER_LOG: ${msg.text()}`));
+    // 1. Navigate to Schedules subtab and turn on daily view
+    await navigateDirectorView(page, 'dir-schedules');
+    const subTabBtn = page.locator('#btn-subtab-match');
+    await expect(subTabBtn).toBeVisible({ timeout: 5000 });
+    await subTabBtn.click();
+
+    const dayViewBtn = page.locator('[data-testid="teacher-student-day-view"]');
+    await expect(dayViewBtn).toBeVisible({ timeout: 5000 });
+    await dayViewBtn.click();
+
+    // 2. Select Date: 2026-05-18 (Monday)
+    const dateInput = page.locator('[data-testid="teacher-student-date-input"]');
+    await expect(dateInput).toBeVisible({ timeout: 5000 });
+    await dateInput.fill('2026-05-18');
+    await dateInput.press('Enter');
+    
+    // 3. Find the card for student "최다은" and target drop cell
+    const studentCard = page.locator('[data-testid="teacher-student-schedule-card"]:has-text("최다은")').first();
+    await expect(studentCard).toBeVisible({ timeout: 5000 });
+
+    // Target Slot: Teacher T8 (정은비), Time: 15:00
+    const targetSlot = page.locator('[data-testid="teacher-student-drop-slot"][data-time="15:00"][data-teacher-id="T8"]').first();
+    await expect(targetSlot).toBeVisible({ timeout: 5000 });
+
+    // 4. HTML5 Drag and Drop simulation via page.evaluate (robust for headless tests)
+    await page.evaluate(({ cardSelector, slotSelector }) => {
+      const cards = Array.from(document.querySelectorAll(cardSelector));
+      const cardEl = cards.find(el => el.textContent.includes('최다은'));
+      const slotEl = document.querySelector(slotSelector);
+      if (!cardEl) {
+        throw new Error(`cardEl not found for selector ${cardSelector}. Text content of found cards: ${cards.map(c => c.textContent).join(', ')}`);
+      }
+      if (!slotEl) {
+        throw new Error(`slotEl not found for selector ${slotSelector}`);
+      }
+      console.log('EVALUATE SLOT DIAGNOSTIC:', {
+        slotSelector,
+        hasTriggerDrop: typeof slotEl.__triggerDrop,
+        slotOuterHTML: slotEl.outerHTML,
+        cardText: cardEl.textContent
+      });
+      const parentCell = cardEl.closest('.match-cell-drop');
+      const fromTime = parentCell ? parentCell.dataset.time : '';
+
+      window.__mockDragData = {
+        classId: cardEl.dataset.classId || '',
+        studentId: cardEl.dataset.studentId || '',
+        fromTeacherId: cardEl.dataset.teacherId || '',
+        fromStartTime: fromTime || ''
+      };
+
+      const mockDataTransfer = {
+        getData: (key) => {
+          if (key === 'text/class-id') return cardEl.dataset.classId || '';
+          if (key === 'text/student-id') return cardEl.dataset.studentId || '';
+          if (key === 'text/from-teacher-id') return cardEl.dataset.teacherId || '';
+          if (key === 'text/from-time') return fromTime || '';
+          return '';
+        },
+        setData: () => {},
+        effectAllowed: 'move',
+        dropEffect: 'none'
+      };
+
+      if (typeof slotEl.__triggerDrop === 'function') {
+        slotEl.__triggerDrop({
+          preventDefault: () => {},
+          dataTransfer: mockDataTransfer
+        });
+      } else {
+        const createDragEvent = (type) => {
+          const evt = new Event(type, { bubbles: true, cancelable: true });
+          Object.defineProperty(evt, 'dataTransfer', { value: mockDataTransfer });
+          return evt;
+        };
+        cardEl.dispatchEvent(createDragEvent('dragstart'));
+        slotEl.dispatchEvent(createDragEvent('dragover'));
+        slotEl.dispatchEvent(createDragEvent('drop'));
+        cardEl.dispatchEvent(createDragEvent('dragend'));
+      }
+    }, {
+      cardSelector: '[data-testid="teacher-student-schedule-card"]',
+      slotSelector: '[data-testid="teacher-student-drop-slot"][data-time="15:00"][data-teacher-id="T8"]'
+    });
+
+    // 5. Verify success alert banner
+    const statusEl = page.locator('[data-testid="teacher-student-move-status"]');
+    await expect(statusEl).toBeVisible({ timeout: 5000 });
+    await expect(statusEl).toHaveText(/성공적으로 이동/);
+
+    // 6. Verify student card was repositioned
+    const targetSlotCard = targetSlot.locator('text=최다은');
+    await expect(targetSlotCard).toBeVisible({ timeout: 5000 });
+
+    // 7. Verify persistence across page reload
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    const roleGrid = page.locator('.role-grid');
+    if (await roleGrid.isVisible()) {
+      await loginAsDirector(page);
+    } else {
+      await waitForAppReady(page);
+    }
+    await navigateDirectorView(page, 'dir-schedules');
+    await page.locator('#btn-subtab-match').click();
+    await page.locator('[data-testid="teacher-student-day-view"]').click();
+    
+    const dateInput2 = page.locator('[data-testid="teacher-student-date-input"]');
+    await dateInput2.fill('2026-05-18');
+    await dateInput2.press('Enter');
+
+    const targetSlotAfterReload = page.locator('[data-testid="teacher-student-drop-slot"][data-time="15:00"][data-teacher-id="T8"]').first();
+    await expect(targetSlotAfterReload.locator('text=최다은')).toBeVisible({ timeout: 5000 });
+
+    // 8. Verify date isolation: Next Monday (2026-05-25) should not be overridden and show default classes
+    const dateInput3 = page.locator('[data-testid="teacher-student-date-input"]');
+    await dateInput3.fill('2026-05-25');
+    await dateInput3.press('Enter');
+
+    // Default slot for 최다은 is T8 (정은비) at 14:00
+    const originalSlotNextWeek = page.locator('[data-testid="teacher-student-drop-slot"][data-time="14:00"][data-teacher-id="T8"]').first();
+    await expect(originalSlotNextWeek.locator('text=최다은')).toBeVisible({ timeout: 5000 });
+
+    // The destination slot T8 at 15:00 should not contain 최다은
+    const targetSlotNextWeek = page.locator('[data-testid="teacher-student-drop-slot"][data-time="15:00"][data-teacher-id="T8"]').first();
+    await expect(targetSlotNextWeek.locator('text=최다은')).toBeHidden({ timeout: 5000 });
+  });
 });

@@ -561,6 +561,8 @@
           <li><strong>강사 출근표 일간/주간 보기 <span class="label good">완료 (Phase 7B)</span></strong><br/>강사의 실제 출근 변동 이력을 확인하고, 선택한 날짜/강사/주간 조건 그대로 출력할 수 있게 만듭니다.</li>
           <li><strong>강사-원생 일간/주간 시간표 <span class="label good">완료 (Phase 7C)</span></strong><br/>강사별 교육 원생표를 구현하고, 필터/날짜 선택/특이사항 토글 기반을 다집니다.</li>
           <li><strong>날짜별 운영표 Override/Snapshot 정합성 및 보강 <span class="label good">완료 (Phase 7D-1.5)</span></strong><br/>미래/오늘/과거 날짜 시간표 생성 및 변경 규칙을 확립하고, 단위 테스트를 추가합니다.</li>
+          <li><strong>강사-원생 일간 운영표 드래그 이동 UI 구현 <span class="label good">완료 (Phase 7D-2)</span></strong><br/>일간 보기에서 수업 카드를 다른 강사/시간 슬롯으로 드래그 이동하여 영속 저장(moveStudentScheduleForDate)하고 화면을 리액티브하게 리렌더링합니다.</li>
+          <li><strong>모바일 대체 UI 후보 기획 및 문서화 <span class="label good">완료 (Phase 7D-2)</span></strong><br/>모바일 환경의 터치 스크롤 오버랩 문제를 대비하여 클릭 식별 방식의 이동 모달 대안을 기획서에 추가 기재합니다.</li>
           <li><strong>주간 보기 개선</strong><br/>강사 1명의 주간 출근표와 기존 강사-원생 주간표를 정리합니다.</li>
           <li><strong>프린트/이미지 내보내기</strong><br/>사용자가 필터링한 일간/주간/강사 조건과 특이사항 포함 토글을 반영해 한 페이지 1/2/3개 배치, PNG 다운로드, 클립보드 복사를 순서대로 붙입니다.</li>
           <li><strong>E2E 테스트 확장 <span class="label good">완료 (Phase 7C / 7D-1.5)</span></strong><br/>표 설정 저장, 일간 보기 날짜 선택, 수납/출결처럼 새 기능별 자동 테스트 및 유닛 테스트 세트를 추가합니다.</li>
@@ -597,13 +599,20 @@
       <div class="content">
         <h3>추천 다음 Phase</h3>
         <div class="note good">
-          <strong>Phase 7D: 날짜별 이동 override/history 저장</strong>
-          <p>강사-원생 일간/주간 운영표의 기본 UI 및 필터링, 특이사항 패널이 7C에서 구축되었으므로, 이제 오늘 또는 과거 날짜의 드래그 이동 시 해당 날짜의 이력을 고정(영속화)하는 날짜별 override/history 저장 기능과 어댑터를 구현합니다.</p>
+          <strong>Phase 7D-3: 날짜별 이동 로그 감사/UI 보강</strong>
+          <p>날짜별 강사-원생 시간표 이동 시 수동 오버라이드가 데이터베이스에 안전하게 기록(moveStudentScheduleForDate)되므로, 이동된 이력에 관한 감사 로그 조회 및 시간표 변경 이력 확인용 관리 UI(또는 툴팁 등)를 다음 마일스톤에서 추가 보강합니다.</p>
         </div>
         <div class="note good">
           <strong>Phase 7E: 프린트/이미지 복사 기능</strong>
           <p>선택된 일간/주간, 날짜, 강사 필터, 특이사항 가시성 여부를 그대로 반영하여 한 페이지에 1/2/3개 배치 인쇄 및 PNG 이미지 내보내기/클립보드 복사를 완료합니다.</p>
         </div>
+        <h3>이전 Phase 7D-2 완료 내역</h3>
+        <ul>
+          <li>강사-원생 일간 운영표 수업 카드 드래그앤드롭 UI 구현 및 영속 이동 API(moveStudentScheduleForDate) 연동 완료</li>
+          <li>일간 일정 이동 성공 시 상단 컨트롤바에 피드백 알림 배너 (3초간 노출) 추가 완료</li>
+          <li>드래그 이동 후 새로고침 시 데이터 보존 및 다른 날짜 간의 스냅샷 데이터 독립 격리 보장 검증 완료</li>
+          <li>모바일 대체 터치 UI 기획 명문화 및 Playwright 통합 테스트 시나리오 보강 완료</li>
+        </ul>
         <h3>이전 Phase 7C 완료 내역</h3>
         <ul>
           <li>강사-원생 시간표 내 주간 보기 모드 설정 연동 완료</li>

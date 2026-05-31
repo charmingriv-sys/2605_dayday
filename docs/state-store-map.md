@@ -30,7 +30,7 @@
 | **`members.js`** | 원생 인적사항, 엑셀 일괄 등록, 학부모 계정과 원생 매핑 링크 | `getStudents`, `getStudent`, `addStudent`, `addStudentsBatch`, `dischargeStudent` | 원생 관리, 대시보드, 학부모 회원가입 | **공통** (고객/회원 기본 원장은 SaaS의 핵심) |
 | **`staff.js`** | 강사 프로필 목록, 강사별 일자별 시프트(shift) 근무 계획표 | `getTeachers`, `getTeacher`, `addTeacher`, `getTeacherShifts`, `saveTeacherShift` | 강사 관리, 강사 대시보드 | **공통** (직원/파트타임 근무 관리는 전 업종 재사용 가능) |
 | **`authUsers.js`** | 로그인 유저 인증 정보, 소셜 SNS 연동 데이터, 가입 신청 대기자 관리 | `getCurrentUser`, `setCurrentUser`, `registerUser`, `approveJoinRequest`, `withdrawUser` | 로그인/회원가입, 가입 승인 | **공통** (인증 및 다중 계정 권한 관리는 범용 시스템 핵심) |
-| **`sessions.js`** | 요일별/교시별 고정 시간표 목록, 날짜별 Override 및 Snapshot 관리 | `getClasses`, `getClassesForStudent`, `getTeacherStudentScheduleForDate`, `ensureScheduleSnapshotForDate`, `moveStudentScheduleForDate`, `getScheduleOverridesForDate`, `getScheduleOperationLogs` | 스케줄/시간표 설정, 대시보드, 강사-원생 시간표 | **공통 변형** (피트니스는 PT 예약 세션, 식당은 시간대 예약 테이블로 변환) |
+| **`sessions.js`** | 요일별/교시별 고정 시간표 목록, 날짜별 Override 및 Snapshot 관리 (드래그앤드롭 이동 영속화 포함) | `getClasses`, `getClassesForStudent`, `getTeacherStudentScheduleForDate`, `ensureScheduleSnapshotForDate`, `moveStudentScheduleForDate`, `getScheduleOverridesForDate`, `getScheduleOperationLogs` | 스케줄/시간표 설정, 대시보드, 강사-원생 시간표 | **공통 변형** (피트니스는 PT 예약 세션, 식당은 시간대 예약 테이블로 변환) |
 
 ---
 
@@ -67,11 +67,12 @@
   - 선택 일자 (`selectedDateStr`)
   - 특이사항 패널 토글 상태 (`showNotes`)
   - 필터링 조건 (`filterType = 'all' | 'active' | '피아노' | ...`, `filterSearchQuery`)
-- **UI 상태 관리 (Phase 7C)**:
+- **UI 상태 관리 (Phase 7C & 7D-2)**:
   - 주간/일간 보기 전환 (`matchViewMode = 'week' | 'day'`)
   - 선택 일자 (`matchSelectedDateStr`)
   - 특이사항 패널 토글 상태 (`matchShowNotes`)
   - 필터링 조건 (`matchFilterActiveOnly = true | false`, `matchInstrumentFilter = 'all' | '피아노' | ...`, `matchSearchQuery`)
+  - 일정 이동 피드백 상태 메시지 (`teacher-student-move-status` 엘리먼트 텍스트 렌더링)
 
 ### 3.6 강사 관리 (Staff)
 - **설명**: 강사 목록 및 프로필 관리, 강사별 일자별 시프트 근무 스케줄 설정 모달
@@ -153,7 +154,9 @@ View -> StateStore Public API -> Memory Cache -> LocalStorageAdapter -> localSto
     *   `stateStore`에 정의된 핵심 12개 캡슐화 API의 정상 바인딩 상태를 런타임에 자동 점검합니다.
 2.  **SupabaseAdapter mock 검증 (`tests/unit/supabase_adapter_mock_test.mjs`)**:
     *   실제 Supabase DB 없이 Mock 클라이언트를 활용해 쿼리 모델링 변환, 멀티 테넌트(`organizationId`) 무결성 가드, `authUserId` 감사 로그 기록의 작동 여부를 검증합니다.
-3.  **정기 테스트 강제화 규칙**:
+3.  **강사-원생 드래그 이동 E2E 검증 (`tests/e2e/teacher-student-schedule-flow.spec.js`)**:
+    *   일간 보기에서 특정 원생을 드래그앤드롭하여 다른 슬롯으로 옮길 때 발생하는 영속 데이터의 갱신, 새로고침 후 복구, 타 날짜 격리 여부를 실제 Chromium 브라우저 세션 상에서 검증합니다.
+4.  **정기 테스트 강제화 규칙**:
     *   새로운 도메인 확장이나 필드 추가 시, 반드시 `npm run test:all`을 통과해야 배포 준비 상태로 간주합니다.
 
 

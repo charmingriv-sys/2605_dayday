@@ -22,6 +22,8 @@ export function renderSchedules(container) {
     let matchFilterActiveOnly = false; // "당일 수업 있는 강사만" 필터
     let matchInstrumentFilter = 'all'; // 과목/악기 필터
     let matchSearchQuery = ''; // 강사명 검색
+    let matchStatusText = ''; // 일정 이동 성공/실패 텍스트
+    let matchStatusColor = ''; // 일정 이동 성공/실패 텍스트 색상
     
     // For weekly calendar reference
     let referenceDate = new Date('2026-05-18'); // Mon of the seed week
@@ -748,6 +750,7 @@ export function renderSchedules(container) {
                 <div style="display: flex; gap: 8px; align-items: center;" data-testid="teacher-student-schedule-view-mode">
                     <button class="btn ${matchViewMode === 'week' ? 'btn-primary' : 'btn-secondary'}" id="btn-match-mode-week" data-testid="teacher-student-week-view">주간 보기</button>
                     <button class="btn ${matchViewMode === 'day' ? 'btn-primary' : 'btn-secondary'}" id="btn-match-mode-day" data-testid="teacher-student-day-view">일간 보기</button>
+                    <span id="teacher-student-move-status" data-testid="teacher-student-move-status" style="font-size: 0.85rem; font-weight: bold; margin-left: 12px; transition: all 0.3s; color: ${matchStatusColor};">${matchStatusText}</span>
                 </div>
                 <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
                     <button class="btn btn-secondary" id="btn-match-notes-toggle" data-testid="teacher-student-notes-toggle">
@@ -827,6 +830,7 @@ export function renderSchedules(container) {
                                                                     data-teacher-id="${currentTeacherId}" 
                                                                     data-student-id="${student.id}"
                                                                     data-class-id="${c.id}"
+                                                                    data-testid="teacher-student-schedule-card"
                                                                     draggable="true"
                                                                     style="
                                                                         background-color: ${bgColor}; 
@@ -850,7 +854,7 @@ export function renderSchedules(container) {
                                                     });
 
                                                     return `
-                                                        <td class="match-cell-drop" data-day="${wd.dayKo}" data-time="${time}" style="padding: 6px; text-align: center; border-right: 1px solid var(--border-color); vertical-align: middle; min-height: 48px;">
+                                                        <td class="match-cell-drop" data-day="${wd.dayKo}" data-time="${time}" data-testid="teacher-student-drop-slot" style="padding: 6px; text-align: center; border-right: 1px solid var(--border-color); vertical-align: middle; min-height: 48px;">
                                                             <div style="display: flex; flex-wrap: wrap; justify-content: center; align-items: center; min-height: 32px;">
                                                                 ${pillsHtml || '<span style="color: var(--text-muted); opacity: 0.2; font-size: 0.7rem;">-</span>'}
                                                             </div>
@@ -987,7 +991,7 @@ export function renderSchedules(container) {
                                                                     data-teacher-id="${c.teacherId}" 
                                                                     data-student-id="${student.id}"
                                                                     data-class-id="${c.id}"
-                                                                    draggable="true"
+                                                                    data-testid="teacher-student-schedule-card" draggable="true"
                                                                     style="
                                                                         background-color: ${t.color || 'var(--primary-light)'}; 
                                                                         color: #111; 
@@ -1010,7 +1014,7 @@ export function renderSchedules(container) {
                                                     });
 
                                                     return `
-                                                        <td class="match-cell-drop" data-day="${targetDayKo}" data-time="${time}" data-teacher-id="${t.id}" style="padding: 6px; text-align: center; border-right: 1px solid var(--border-color); vertical-align: middle; min-height: 48px;">
+                                                        <td class="match-cell-drop" data-day="${targetDayKo}" data-time="${time}" data-teacher-id="${t.id}" data-testid="teacher-student-drop-slot" style="padding: 6px; text-align: center; border-right: 1px solid var(--border-color); vertical-align: middle; min-height: 48px;">
                                                             <div style="display: flex; flex-wrap: wrap; justify-content: center; align-items: center; min-height: 32px;">
                                                                 ${pillsHtml || '<span style="color: var(--text-muted); opacity: 0.2; font-size: 0.7rem;">-</span>'}
                                                             </div>
@@ -1166,7 +1170,13 @@ export function renderSchedules(container) {
         const pills = ws.querySelectorAll('.student-match-pill');
         pills.forEach(pill => {
             pill.addEventListener('dragstart', (e) => {
-                e.dataTransfer.setData('text/class-id', pill.dataset.classId);
+                e.dataTransfer.setData('text/class-id', pill.dataset.classId || '');
+                e.dataTransfer.setData('text/student-id', pill.dataset.studentId || '');
+                e.dataTransfer.setData('text/from-teacher-id', pill.dataset.teacherId || '');
+                const parentCell = pill.closest('.match-cell-drop');
+                const fromTime = parentCell ? parentCell.dataset.time : '';
+                e.dataTransfer.setData('text/from-time', fromTime || '');
+
                 e.dataTransfer.effectAllowed = 'move';
                 pill.style.opacity = '0.5';
             });
@@ -1176,6 +1186,7 @@ export function renderSchedules(container) {
         });
 
         ws.querySelectorAll('.match-cell-drop').forEach(cell => {
+            console.log('BINDING DROP LISTENER ON: ', cell.dataset.teacherId, cell.dataset.time);
             cell.addEventListener('dragover', (e) => {
                 e.preventDefault();
                 e.dataTransfer.dropEffect = 'move';
@@ -1184,18 +1195,70 @@ export function renderSchedules(container) {
             cell.addEventListener('dragleave', () => {
                 cell.style.background = 'transparent';
             });
-            cell.addEventListener('drop', (e) => {
-                e.preventDefault();
+            const dropHandler = (e) => {
+                if (e && e.preventDefault) e.preventDefault();
                 cell.style.background = 'transparent';
-                const classId = e.dataTransfer.getData('text/class-id');
-                const targetDay = cell.dataset.day;
-                const targetTime = cell.dataset.time;
-                
-                if (classId && targetDay && targetTime) {
-                    tempClassOverrides[classId] = { dayOfWeek: targetDay, time: targetTime };
-                    renderWorkspace(); // Reactive visual shift
+                console.log('--- DROP EVENT EMITTED ---', { matchViewMode, targetDay: cell.dataset.day, targetTime: cell.dataset.time, targetTeacherId: cell.dataset.teacherId });
+
+                if (matchViewMode === 'day') {
+                    const classId = e.dataTransfer.getData('text/class-id') || (window.__mockDragData && window.__mockDragData.classId);
+                    const studentId = e.dataTransfer.getData('text/student-id') || (window.__mockDragData && window.__mockDragData.studentId);
+                    const fromTeacherId = e.dataTransfer.getData('text/from-teacher-id') || (window.__mockDragData && window.__mockDragData.fromTeacherId);
+                    const fromStartTime = e.dataTransfer.getData('text/from-time') || (window.__mockDragData && window.__mockDragData.fromStartTime);
+                    const toTeacherId = cell.dataset.teacherId;
+                    const toStartTime = cell.dataset.time;
+
+                    if (!studentId || !toTeacherId || !toStartTime) {
+                        return;
+                    }
+
+                    if (fromTeacherId === toTeacherId && fromStartTime === toStartTime) {
+                        return;
+                    }
+
+                    try {
+                        const movePayload = {
+                            studentId,
+                            fromTeacherId,
+                            toTeacherId,
+                            fromStartTime,
+                            toStartTime,
+                            reason: 'daily-drag-move',
+                            academyId: 'AC1',
+                            createdBy: 'USR_DIR_DEMO'
+                        };
+
+                        stateStore.moveStudentScheduleForDate(matchSelectedDateStr, movePayload);
+
+                        matchStatusText = '일정이 성공적으로 이동되었습니다.';
+                        matchStatusColor = '#2ed573';
+                        setTimeout(() => {
+                            matchStatusText = '';
+                            matchStatusColor = '';
+                            renderWorkspace();
+                        }, 3000);
+
+                        renderWorkspace();
+                    } catch (err) {
+                        console.error('Error moving student schedule:', err);
+                        matchStatusText = '일정 이동 중 에러가 발생했습니다.';
+                        matchStatusColor = '#ff4757';
+                        renderWorkspace();
+                    }
+                } else {
+                    const classId = e.dataTransfer.getData('text/class-id') || (window.__mockDragData && window.__mockDragData.classId);
+                    const targetDay = cell.dataset.day;
+                    const targetTime = cell.dataset.time;
+                    
+                    if (classId && targetDay && targetTime) {
+                        tempClassOverrides[classId] = { dayOfWeek: targetDay, time: targetTime };
+                        renderWorkspace();
+                    }
                 }
-            });
+            };
+
+            cell.addEventListener('drop', dropHandler);
+            cell.__triggerDrop = dropHandler;
         });
 
         // Student Pill Click Details Modal
