@@ -71,7 +71,8 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
 
     // 2. Navigate to Tablet Kiosk View
     await page.locator('.menu-item[data-view="dir-kiosk-attendance"]').click({ force: true });
-    await expect(page.locator('.menu-item[data-view="dir-kiosk-attendance"]')).toHaveClass(/active/);
+    // Verify successful kiosk screen navigation by checking if the kiosk keypad is visible
+    await expect(page.locator('.kiosk-key[data-key="1"]')).toBeVisible({ timeout: 5000 });
 
     // 3. Type '1111' on the keypad (matching last 4 digits of 최다은's phone: 010-9999-1111)
     const key1 = page.locator('.kiosk-key[data-key="1"]');
@@ -131,11 +132,11 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
     await expect(studentOption).toBeVisible();
     await studentOption.click();
 
-    // Verify today's date row has state present (등원)
-    // The student history table should contain a row for todayStr with state '등원' or present
-    const attendanceRow = page.locator(`tr:has-text("${todayStr}")`);
+    // Verify today's date row has state present (등원) using non-Korean attributes
+    const attendanceRow = page.locator(`[data-testid="attendance-history-row"][data-date="${todayStr}"]`);
     await expect(attendanceRow).toBeVisible();
-    await expect(attendanceRow).toContainText('등원');
+    const statusBadge = attendanceRow.locator('[data-testid="attendance-history-status"]');
+    await expect(statusBadge).toHaveAttribute('data-status', 'present');
 
     // 9. Logout and Login as Parent (USR_PAR_DEMO)
     const logoutBtn = page.locator('#btn-logout');

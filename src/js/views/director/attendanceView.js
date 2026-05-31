@@ -307,20 +307,20 @@ export function renderDirectorAttendance(container) {
                                             </thead>
                                             <tbody>
                                                 ${studentAttendanceList.map(item => {
-                                                    let badge = `<span class="badge badge-info">수업 대기</span>`;
+                                                    let badge = `<span class="badge badge-info" data-testid="attendance-history-status" data-status="pending">수업 대기</span>`;
                                                     let timeText = '-';
                                                     if (item.status === 'present') {
-                                                        badge = `<span class="badge badge-success">등원</span>`;
+                                                        badge = `<span class="badge badge-success" data-testid="attendance-history-status" data-status="present">등원</span>`;
                                                         timeText = item.checkTime;
                                                     } else if (item.status === 'late') {
-                                                        badge = `<span class="badge badge-warning">지각</span>`;
+                                                        badge = `<span class="badge badge-warning" data-testid="attendance-history-status" data-status="late">지각</span>`;
                                                         timeText = item.checkTime;
                                                     } else if (item.status === 'absent') {
-                                                        badge = `<span class="badge badge-danger">결석</span>`;
+                                                        badge = `<span class="badge badge-danger" data-testid="attendance-history-status" data-status="absent">결석</span>`;
                                                     }
                                                     
                                                     return `
-                                                        <tr>
+                                                        <tr data-testid="attendance-history-row" data-date="${item.date}">
                                                             <td style="font-weight: 600;">${item.date} <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: normal;">(${item.dayOfWeek})</span></td>
                                                             <td style="font-weight: 600; color: var(--accent);">${item.time}</td>
                                                             <td>${item.teacherName}</td>
