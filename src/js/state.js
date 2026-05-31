@@ -224,7 +224,10 @@ const DEFAULT_DB = {
         { id: 'SUB3', name: '첼로', isActive: true, regDate: '2026-05-10', updateDate: '2026-05-10' },
         { id: 'SUB4', name: '플루트', isActive: true, regDate: '2026-05-10', updateDate: '2026-05-10' },
         { id: 'SUB5', name: '기타', isActive: true, regDate: '2026-05-10', updateDate: '2026-05-10' }
-    ]
+    ],
+    scheduleSnapshots: [],
+    scheduleOverrides: [],
+    scheduleOperationLogs: []
 };
 
 const adapter = new LocalStorageAdapter({

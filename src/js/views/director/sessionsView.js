@@ -684,13 +684,15 @@ export function renderSchedules(container) {
         const scheduleEndTime = settings.scheduleEndTime || "21:00";
         const scheduleSlotMinutes = settings.scheduleSlotMinutes || 30;
 
-        // Apply visual drag-and-drop overrides
-        const classes = rawClasses.map(c => {
-            if (tempClassOverrides[c.id]) {
-                return { ...c, dayOfWeek: tempClassOverrides[c.id].dayOfWeek, time: tempClassOverrides[c.id].time };
-            }
-            return c;
-        });
+        // 7일간의 날짜에 대해 각각 스케줄을 가져와서 병합 (주간용)
+        let weekClasses = [];
+        for (let i = 0; i < 7; i++) {
+            const d = new Date(referenceDate);
+            d.setDate(d.getDate() + i);
+            const dateStr = d.toISOString().slice(0, 10);
+            const daySchedule = stateStore.getTeacherStudentScheduleForDate(dateStr);
+            weekClasses.push(...daySchedule);
+        }
 
         // Time slots rows (settings 기반으로 동적 생성)
         const getSlotsList = () => {
@@ -812,16 +814,17 @@ export function renderSchedules(container) {
                                             <tr style="border-bottom: 1px solid var(--border-color);">
                                                 <td style="text-align: center; font-weight: bold; color: var(--text-muted); font-size: 0.8rem; padding: 10px 4px; border-right: 1px solid var(--border-color); background: var(--primary-light);">${time}</td>
                                                 ${activeWeekDates.map(wd => {
-                                                    const hourClasses = classes.filter(c => c.dayOfWeek === wd.dayKo && c.time === time);
+                                                    const hourClasses = weekClasses.filter(c => c.dayOfWeek === wd.dayKo && c.time === time);
                                                     let pillsHtml = '';
                                                     hourClasses.forEach(c => {
                                                         const student = students.find(s => s.id === c.studentId);
                                                         if (student) {
-                                                            const teacher = teachers.find(t => t.id === student.teacherId);
+                                                            const currentTeacherId = c.teacherId || student.teacherId;
+                                                            const teacher = teachers.find(t => t.id === currentTeacherId);
                                                             const bgColor = teacher ? teacher.color : '#e2e8f0';
                                                             pillsHtml += `
                                                                 <span class="student-match-pill" 
-                                                                    data-teacher-id="${student.teacherId}" 
+                                                                    data-teacher-id="${currentTeacherId}" 
                                                                     data-student-id="${student.id}"
                                                                     data-class-id="${c.id}"
                                                                     draggable="true"
@@ -916,14 +919,14 @@ export function renderSchedules(container) {
             const targetDayIdx = targetDateObj.getDay(); // 0 is Sunday, 1 is Monday
             const targetDayKo = daysOfWeekKo[targetDayIdx === 0 ? 6 : targetDayIdx - 1]; // 월~일
 
+            const daySchedule = stateStore.getTeacherStudentScheduleForDate(matchSelectedDateStr);
+
             let filteredTeachers = teachers;
             if (matchFilterActiveOnly) {
-                const dayClasses = classes.filter(c => c.dayOfWeek === targetDayKo);
                 const activeTeacherIds = new Set();
-                dayClasses.forEach(c => {
-                    const student = students.find(s => s.id === c.studentId);
-                    if (student && student.teacherId) {
-                        activeTeacherIds.add(student.teacherId);
+                daySchedule.forEach(c => {
+                    if (c.teacherId) {
+                        activeTeacherIds.add(c.teacherId);
                     }
                 });
                 filteredTeachers = teachers.filter(t => activeTeacherIds.has(t.id));
@@ -937,12 +940,11 @@ export function renderSchedules(container) {
                 filteredTeachers = filteredTeachers.filter(t => t.name.includes(matchSearchQuery.trim()));
             }
 
-            const activeDayClasses = classes.filter(c => c.dayOfWeek === targetDayKo);
             const dayStudentIds = new Set();
-            activeDayClasses.forEach(c => {
+            daySchedule.forEach(c => {
                 const student = students.find(s => s.id === c.studentId);
                 if (student) {
-                    if (filteredTeachers.some(t => t.id === student.teacherId)) {
+                    if (filteredTeachers.some(t => t.id === c.teacherId)) {
                         dayStudentIds.add(student.id);
                     }
                 }
@@ -975,14 +977,14 @@ export function renderSchedules(container) {
                                             <tr style="border-bottom: 1px solid var(--border-color);">
                                                 <td style="text-align: center; font-weight: bold; color: var(--text-muted); font-size: 0.8rem; padding: 10px 4px; border-right: 1px solid var(--border-color); background: var(--primary-light);">${time}</td>
                                                 ${filteredTeachers.length > 0 ? filteredTeachers.map(t => {
-                                                    const cellClasses = classes.filter(c => c.dayOfWeek === targetDayKo && c.time === time);
+                                                    const cellClasses = daySchedule.filter(c => c.time === time);
                                                     let pillsHtml = '';
                                                     cellClasses.forEach(c => {
-                                                        const student = students.find(s => s.id === c.studentId && s.teacherId === t.id);
+                                                        const student = students.find(s => s.id === c.studentId && c.teacherId === t.id);
                                                         if (student) {
                                                             pillsHtml += `
                                                                 <span class="student-match-pill" 
-                                                                    data-teacher-id="${student.teacherId}" 
+                                                                    data-teacher-id="${c.teacherId}" 
                                                                     data-student-id="${student.id}"
                                                                     data-class-id="${c.id}"
                                                                     draggable="true"

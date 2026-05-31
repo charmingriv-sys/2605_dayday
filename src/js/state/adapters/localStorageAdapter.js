@@ -251,6 +251,20 @@ export class LocalStorageAdapter extends DataAdapter {
             });
         }
 
+        // Migrate schedule overrides, snapshots and operation logs if missing
+        if (!db.scheduleSnapshots) {
+            db.scheduleSnapshots = [];
+            migrated = true;
+        }
+        if (!db.scheduleOverrides) {
+            db.scheduleOverrides = [];
+            migrated = true;
+        }
+        if (!db.scheduleOperationLogs) {
+            db.scheduleOperationLogs = [];
+            migrated = true;
+        }
+ 
         return migrated;
     }
 }
