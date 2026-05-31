@@ -873,7 +873,10 @@ const openStudentDetailModal = (studentId) => {
             </div>
 
             <div style="font-weight: 700; font-size: 0.95rem; color: var(--primary); margin: 0 0 10px 0; border-left: 3px solid var(--primary); padding-left: 8px;">5. 레슨 상담 및 특이사항</div>
-            <div style="font-size: 0.9rem; background: rgba(0,0,0,0.01); padding: 14px; border-radius: 8px; border: 1px solid var(--border-color); min-height: 80px; white-space: pre-wrap; color: var(--text-main); line-height: 1.5;">${student.consultationNotes || '기록된 상담 및 특이사항이 없습니다.'}</div>
+            <div style="font-size: 0.9rem; background: rgba(0,0,0,0.01); padding: 14px; border-radius: 8px; border: 1px solid var(--border-color); min-height: 80px; white-space: pre-wrap; color: var(--text-main); line-height: 1.5; margin-bottom: 1.5rem;">${student.consultationNotes || '기록된 상담 및 특이사항이 없습니다.'}</div>
+
+            <div style="font-weight: 700; font-size: 0.95rem; color: var(--primary); margin: 0 0 10px 0; border-left: 3px solid var(--primary); padding-left: 8px;">6. 시간표 등 일정 특이사항</div>
+            <div style="font-size: 0.9rem; background: rgba(0,0,0,0.01); padding: 14px; border-radius: 8px; border: 1px solid var(--border-color); min-height: 60px; white-space: pre-wrap; color: var(--text-main); line-height: 1.5;">${student.scheduleNotes || '기록된 시간표 일정 특이사항이 없습니다.'}</div>
 
         </div>
         <div class="modal-footer" style="padding: 1.2rem; border-top: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 8px;">
@@ -1352,6 +1355,16 @@ const openStudentModal = (studentId = null) => {
                     </div>
                 </div>
 
+                <!-- Section 6: 시간표 등 일정 특이사항 -->
+                <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.2rem; background: rgba(0, 0, 0, 0.01);">
+                    <div style="font-weight: 700; font-size: 0.95rem; color: var(--primary); margin: 0 0 1.2rem 0; border-left: 3px solid var(--primary); padding-left: 8px;">6. 시간표 등 일정 특이사항</div>
+                    
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="modal-student-schedule-notes">시간표 등 일정 특이사항</label>
+                        <textarea id="modal-student-schedule-notes" class="form-control" rows="3" placeholder="예: 매월 둘째 주 화요일은 17시 등원 예정, 목요일은 1시간 조기 등원 등 시간표 일정에 대한 특이사항 입력">${student ? student.scheduleNotes || '' : ''}</textarea>
+                    </div>
+                </div>
+
             </div>
 
             <div class="modal-footer" style="padding: 1rem 2rem 1.5rem 2rem; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 8px; background: rgba(0, 0, 0, 0.01);">
@@ -1658,6 +1671,7 @@ const openStudentModal = (studentId = null) => {
             const feeEl = contentArea.querySelector('#modal-student-fee');
             const instrumentEl = contentArea.querySelector('#modal-student-instrument');
             const notesEl = contentArea.querySelector('#modal-student-consultation-notes');
+            const scheduleNotesEl = contentArea.querySelector('#modal-student-schedule-notes');
             const expPeriodEl = contentArea.querySelector('#modal-student-experience-period');
 
             // Reset borders before check
@@ -1747,6 +1761,7 @@ const openStudentModal = (studentId = null) => {
             const instrument = instrumentEl.value;
             const experiencePeriod = expPeriodEl.value.trim();
             const consultationNotes = notesEl.value.trim();
+            const scheduleNotes = scheduleNotesEl.value.trim();
 
             const adultSelect = contentArea.querySelector('#modal-student-adult');
             const isAdult = (adultSelect.value === 'adult') ? 'adult' : ((adultSelect.value === 'minor') ? 'minor' : null);
@@ -1793,6 +1808,7 @@ const openStudentModal = (studentId = null) => {
                     purpose,
                     lessonStyle,
                     consultationNotes,
+                    scheduleNotes,
                     paymentStatus
                 }, classSchedules);
             } else {
@@ -1821,6 +1837,7 @@ const openStudentModal = (studentId = null) => {
                     purpose,
                     lessonStyle,
                     consultationNotes,
+                    scheduleNotes,
                     paymentStatus
                 }, classSchedules);
             }

@@ -22,7 +22,7 @@
 
 | 파일명 (모듈) | 담당 데이터 및 영역 | 대표 Public API | 관련 연동 화면 | 업종 확장 시 성격 |
 | :--- | :--- | :--- | :--- | :--- |
-| **`settings.js`** | 학원 기본 정보, 초대코드, 알림톡 토글 등 매장 기본 메타 데이터 | `getSettings`, `updateSettings`, `updateAcademy`, `regenerateAcademyInviteCode` | 설정, 학원 관리, 로그인/회원가입 | **공통** (매장명, 연락처 등은 모든 소상공인 공통) |
+| **`settings.js`** | 학원 기본 정보, 초대코드, 알림톡 토글 및 시간표 운영(시작/종료 시간, 요일, 슬롯, 인쇄 레이아웃) 설정 데이터 | `getSettings`, `updateSettings`, `updateAcademy`, `regenerateAcademyInviteCode` | 설정, 학원 관리, 로그인/회원가입 | **공통** (매장 설정 및 시스템 동작 옵션 제어) |
 | **`catalog.js`** | 교습 과목 정보, 학원 보유 교재 목록, 원생별 배정 교재 매핑 | `getSubjects`, `addSubject`, `getBooks`, `assignBookToStudent`, `removeStudentBook` | 원생 상세, 교재/과목 설정 | **특화** (음악학원의 악기/교재에 해당하며 타 업종 시 PT 이용권 등으로 대체) |
 | **`communication.js`** | 학원 전체 공지사항, 학부모 개별 알림장 메시지, 학원 만족도 설문조사 및 응답 | `getAnnouncements`, `addAnnouncement`, `addMessage`, `addSurvey`, `submitSurveyResponse` | 공지사항, 메시지 전송, 설문조사 | **공통** (고객 알림 및 피드백 기능은 전 업종 동일 필요) |
 | **`billing.js`** | 수강료 청구서 발행, 교재 대금 청구서 발행, 수납(결제) 상태 처리 및 미납 제어 | `getPayments`, `payInvoice`, `createInvoice`, `requestBookPayment` | 수납 관리, 대시보드, 학부모 결제 | **공통** (매출 청구 및 수납은 ERP 필수 범용 기능) |
@@ -74,8 +74,8 @@
 - **구독 이벤트**: `ANNOUNCEMENTS_CHANGED`, `MESSAGES_CHANGED`, `SURVEYS_CHANGED`, `SURVEY_RESPONSES_CHANGED`
 
 ### 3.8 설정 및 학원 정보 관리 (Settings & Organization)
-- **설명**: 학원 기본 프로필(사업자번호, 대표자, 연락처) 편집, 서명 Canvas 이미지 리사이징 업로드, 초대코드 발행/중단 제어
-- **의존 API**: `getSettings()`, `updateAcademy()`, `getAcademyInviteCode()`, `regenerateAcademyInviteCode()`, `updateAcademyInviteCodeStatus()`, `getPendingJoinRequests()`, `approveJoinRequest()`, `rejectJoinRequest()`
+- **설명**: 학원 기본 프로필(사업자번호, 대표자, 연락처) 편집, 서명 Canvas 이미지 리사이징 업로드, 초대코드 발행/중단 제어 및 시간표 운영 설정(시작/종료 시각, 슬롯, 요일, 인쇄 레이아웃)
+- **의존 API**: `getSettings()`, `updateSettings()`, `updateAcademy()`, `getAcademyInviteCode()`, `regenerateAcademyInviteCode()`, `updateAcademyInviteCodeStatus()`, `getPendingJoinRequests()`, `approveJoinRequest()`, `rejectJoinRequest()`
 - **구독 이벤트**: `ACADEMIES_CHANGED`, `SETTINGS_CHANGED`, `ACADEMY_INVITE_CODES_CHANGED`, `ACADEMY_JOIN_REQUESTS_CHANGED`
 
 ---

@@ -283,3 +283,19 @@ StateStore 전환: DataAdapter + Memory Cache + 점진적 SupabaseAdapter
 ```
 
 Phase 6에서는 바로 대규모 DB 연동을 시작하지 말고, 스키마 DDL 초안, DataAdapter 인터페이스와 자동화 E2E 테스트 스크립트를 먼저 확립한다. 이 순서가 현재 localStorage 기반 MVP를 안정적으로 출시형 구조로 전환하는 가장 안전한 경로다.
+
+## 11. Phase 7 구현 계획
+
+### Phase 7A: 시간표 운영 설정 및 특이사항 필드 기반 구축 (완료)
+- **목표**: 강사 출근표와 강사-원생 시간표 고도화의 기반이 되는 설정/데이터 필드를 구축하고 정규화(Normalization) 처리를 수행.
+- **산출물**:
+  - `DEFAULT_DB.settings` 시간표 메타 설정 필드 확장 (`scheduleDays`, `scheduleStartTime`, `scheduleEndTime`, `scheduleSlotMinutes`, `printLayoutDefault`).
+  - `DEFAULT_DB.teachers` 및 `students` 컬렉션에 `scheduleNotes: ""` 필드 기본값 추가.
+  - `LocalStorageAdapter` 내에 기존 로컬스토리지 데이터를 보정하는 `normalizeSnapshot` 정규화 로직 적용.
+  - 원장 `settingsView`, `staffView`, `membersView` 입력 양식 textarea 및 모달 폼 UI 수정 완료.
+- **검증**:
+  - `tests/unit/state_smoke_test.mjs`에 신규 필드 존재 및 유효성 단언(Assertion) 추가.
+  - `tests/e2e/schedule-setup-flow.spec.js` Playwright E2E 테스트 케이스 신규 구현을 통한 상태 수정 후 새로고침 및 영속성 보장 검증 100% 통과.
+
+### Phase 7B: 강사 출근표 일간/주간 보기 UI 개발 (대기)
+- **목표**: 강사의 주간/일간 근무 가능 타임라인 UI 및 특이사항 필터링을 화면상에 구현.

@@ -216,6 +216,41 @@ export class LocalStorageAdapter extends DataAdapter {
             ...db.settings
         };
 
+        const defaultScheduleSettings = {
+            scheduleDays: ["mon", "tue", "wed", "thu", "fri", "sat"],
+            scheduleStartTime: "14:00",
+            scheduleEndTime: "21:00",
+            scheduleSlotMinutes: 30,
+            printLayoutDefault: "one-per-page"
+        };
+        
+        for (const [key, val] of Object.entries(defaultScheduleSettings)) {
+            if (db.settings[key] === undefined) {
+                db.settings[key] = val;
+                migrated = true;
+            }
+        }
+
+        // Migrate teachers scheduleNotes
+        if (db.teachers) {
+            db.teachers.forEach(t => {
+                if (t.scheduleNotes === undefined || t.scheduleNotes === null) {
+                    t.scheduleNotes = "";
+                    migrated = true;
+                }
+            });
+        }
+
+        // Migrate students scheduleNotes
+        if (db.students) {
+            db.students.forEach(s => {
+                if (s.scheduleNotes === undefined || s.scheduleNotes === null) {
+                    s.scheduleNotes = "";
+                    migrated = true;
+                }
+            });
+        }
+
         return migrated;
     }
 }

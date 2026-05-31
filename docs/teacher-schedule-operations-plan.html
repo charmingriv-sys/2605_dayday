@@ -556,13 +556,13 @@
       </div>
       <div class="content">
         <ol class="phase-list">
-          <li><strong>시간표 테이블 설정</strong><br/>운영 요일, 시작/종료 시간, 칸 간격, 인쇄 기본값을 학원 설정에 추가합니다.</li>
-          <li><strong>강사/원생 특이사항 필드 추가</strong><br/>강사 관리에는 강사 특이사항, 원생 관리에는 시간표 등 일정 특이사항을 추가합니다.</li>
+          <li><strong>시간표 테이블 설정 <span class="label good">완료 (Phase 7A)</span></strong><br/>운영 요일, 시작/종료 시간, 칸 간격, 인쇄 기본값을 학원 설정에 추가합니다.</li>
+          <li><strong>강사/원생 특이사항 필드 추가 <span class="label good">완료 (Phase 7A)</span></strong><br/>강사 관리에는 강사 특이사항, 원생 관리에는 시간표 등 일정 특이사항을 추가합니다.</li>
           <li><strong>강사 출근표 일간/주간 보기</strong><br/>강사의 실제 출근 변동 이력을 확인하고, 선택한 날짜/강사/주간 조건 그대로 출력할 수 있게 만듭니다.</li>
           <li><strong>강사-원생 일간/주간 시간표</strong><br/>강사별 교육 원생표를 구현하고, 오늘/과거의 드래그 이동은 해당 날짜 이력으로 고정합니다.</li>
           <li><strong>주간 보기 개선</strong><br/>강사 1명의 주간 출근표와 기존 강사-원생 주간표를 정리합니다.</li>
           <li><strong>프린트/이미지 내보내기</strong><br/>사용자가 필터링한 일간/주간/강사 조건과 특이사항 포함 토글을 반영해 한 페이지 1/2/3개 배치, PNG 다운로드, 클립보드 복사를 순서대로 붙입니다.</li>
-          <li><strong>E2E 테스트 확장</strong><br/>표 설정 저장, 일간 보기 날짜 선택, 수납/출결처럼 새 기능별 자동 테스트를 추가합니다.</li>
+          <li><strong>E2E 테스트 확장 <span class="label good">일부 완료 (Phase 7A)</span></strong><br/>표 설정 저장, 일간 보기 날짜 선택, 수납/출결처럼 새 기능별 자동 테스트를 추가합니다.</li>
         </ol>
       </div>
     </section>
@@ -596,17 +596,16 @@
       <div class="content">
         <h3>추천 다음 Phase</h3>
         <div class="note good">
-          <strong>Phase 7A: 시간표 테이블 설정 + 특이사항 필드 기반 구축</strong>
-          <p>운영 시간/요일 설정, 강사 특이사항, 원생 일정 특이사항을 먼저 추가합니다. 이 3개가 있어야 이후 일간/주간 시간표가 안정적으로 만들어집니다.</p>
+          <strong>Phase 7B: 강사 출근표 일간/주간 보기 UI 개발</strong>
+          <p>시간표 설정과 특이사항 필드가 7A에서 성공적으로 완료되었으므로, 이제 강사의 실제 출근 변동 이력을 관리하고, 선택한 날짜/강사의 주간/일간 근무 스케줄을 출력할 수 있는 전용 UI 탭과 이력 데이터 처리를 구현합니다.</p>
         </div>
-        <h3>개발 지시 요약</h3>
+        <h3>이전 Phase 7A 완료 내역</h3>
         <ul>
-          <li>학원 설정에 시간표 노출 요일, 시작/종료 시간, 슬롯 간격 추가</li>
-          <li>강사 등록/수정 폼에 강사 시간표 특이사항 추가</li>
-          <li>원생 등록/수정 폼에 “시간표 등 일정 특이사항” 추가</li>
-          <li>LocalStorageAdapter 기반 저장 유지</li>
-          <li>기존 E2E test:full 통과 유지</li>
-          <li>추가 기능별 E2E 테스트 작성</li>
+          <li>학원 설정에 시간표 노출 요일, 시작/종료 시간, 슬롯 간격 추가 완료</li>
+          <li>강사 등록/수정 폼에 강사 시간표 특이사항 (scheduleNotes) 추가 완료</li>
+          <li>원생 등록/수정 폼에 “시간표 등 일정 특이사항” (scheduleNotes) 추가 완료</li>
+          <li>LocalStorageAdapter 기반 데이터 마이그레이션 및 정규화 완료</li>
+          <li>신규 설정/특이사항 영속성 E2E 테스트(schedule-setup-flow.spec.js) 작성 완료</li>
         </ul>
       </div>
     </section>

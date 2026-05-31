@@ -38,7 +38,8 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
     // Dynamically insert class for student S1 on today's day of week to ensure attendance displays in scheduled lists
     await page.evaluate(() => {
       const daysKo = ['일', '월', '화', '수', '목', '금', '토'];
-      const todayDayKo = daysKo[new Date().getDay()];
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayDayKo = daysKo[new Date(todayStr).getDay()];
       const DB_KEY = 'turing_academy_db_v3';
       const dbStr = localStorage.getItem(DB_KEY);
       if (dbStr) {

@@ -58,6 +58,10 @@ export function renderTeachers(container) {
                             <label for="teacher-email-input">이메일 주소</label>
                             <input type="email" id="teacher-email-input" class="form-control" placeholder="example@turing.com">
                         </div>
+                        <div class="form-group">
+                            <label for="teacher-notes-input">시간표 및 출퇴근 특이사항</label>
+                            <textarea id="teacher-notes-input" class="form-control" placeholder="예: 화요일 16시 출근, 목요일 18시 조기 퇴근 등 특이사항 입력" rows="3" style="resize: vertical;"></textarea>
+                        </div>
 
                         <div style="display: flex; gap: 12px; margin-top: 1.8rem;" id="form-buttons-container">
                             <button type="submit" class="btn btn-primary" style="flex-grow: 1; justify-content: center; height: 42px;">
@@ -93,6 +97,7 @@ export function renderTeachers(container) {
             const instrument = container.querySelector('#teacher-instrument-input').value.trim();
             const phone = phoneInput.value.trim();
             const email = container.querySelector('#teacher-email-input').value.trim();
+            const scheduleNotes = container.querySelector('#teacher-notes-input').value.trim();
 
             if (!phoneBinder.isValid()) {
                 phoneInput.focus();
@@ -100,10 +105,10 @@ export function renderTeachers(container) {
             }
 
             if (editingTeacherId) {
-                stateStore.updateTeacher(editingTeacherId, { name, instrument, phone, email });
+                stateStore.updateTeacher(editingTeacherId, { name, instrument, phone, email, scheduleNotes });
                 resetForm();
             } else {
-                stateStore.addTeacher({ name, instrument, phone, email });
+                stateStore.addTeacher({ name, instrument, phone, email, scheduleNotes });
                 form.reset();
                 if (phoneBinder) phoneBinder.validate();
                 showKakaoTalkToast("등록이 완료되었습니다.");
@@ -182,6 +187,7 @@ export function renderTeachers(container) {
         container.querySelector('#teacher-instrument-input').value = teacher.instrument;
         container.querySelector('#teacher-phone-input').value = teacher.phone;
         container.querySelector('#teacher-email-input').value = teacher.email;
+        container.querySelector('#teacher-notes-input').value = teacher.scheduleNotes || '';
         if (phoneBinder) phoneBinder.validate();
 
         // Change layout elements to Edit Mode style

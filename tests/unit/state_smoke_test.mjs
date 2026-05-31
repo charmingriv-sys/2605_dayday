@@ -44,6 +44,52 @@ requiredMethods.forEach(method => {
     }
 });
 
+console.log('--- Verifying Schedule Settings Defaults ---');
+const settings = stateStore.getSettings();
+const expectedSettings = {
+    scheduleStartTime: "14:00",
+    scheduleEndTime: "21:00",
+    scheduleSlotMinutes: 30,
+    printLayoutDefault: "one-per-page"
+};
+
+for (const [key, val] of Object.entries(expectedSettings)) {
+    if (settings[key] === val) {
+        console.log(`✓ Setting [${key}] matches default value: ${val}`);
+    } else {
+        console.error(`❌ Setting [${key}] does not match default. Expected: ${val}, Got: ${settings[key]}`);
+        hasError = true;
+    }
+}
+
+if (Array.isArray(settings.scheduleDays) && settings.scheduleDays.length === 6 && settings.scheduleDays[0] === 'mon') {
+    console.log(`✓ Setting [scheduleDays] matches default value.`);
+} else {
+    console.error(`❌ Setting [scheduleDays] does not match default. Got: ${JSON.stringify(settings.scheduleDays)}`);
+    hasError = true;
+}
+
+console.log('--- Verifying Teachers and Students ScheduleNotes ---');
+const teachers = stateStore.getTeachers();
+teachers.forEach(t => {
+    if (t.scheduleNotes === "") {
+        console.log(`✓ Teacher [${t.name}] has scheduleNotes initialized to empty string.`);
+    } else {
+        console.error(`❌ Teacher [${t.name}] scheduleNotes: expected "", got "${t.scheduleNotes}"`);
+        hasError = true;
+    }
+});
+
+const students = stateStore.getStudents();
+students.forEach(s => {
+    if (s.scheduleNotes === "") {
+        console.log(`✓ Student [${s.name}] has scheduleNotes initialized to empty string.`);
+    } else {
+        console.error(`❌ Student [${s.name}] scheduleNotes: expected "", got "${s.scheduleNotes}"`);
+        hasError = true;
+    }
+});
+
 if (hasError) {
     console.error('Smoke test FAILED.');
     process.exit(1);

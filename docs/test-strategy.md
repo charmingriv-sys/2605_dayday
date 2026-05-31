@@ -79,9 +79,30 @@ Configured to spawn `node server.js` dynamically on port `3000` to serve the sta
   - Verify payment row status badge updates to "완납".
   - Verify status change persists as "완납" after page reload.
 
+#### Scenario F: Kiosk Attendance and Parent Sync Flow (`tests/e2e/attendance-parent-flow.spec.js`)
+- **Actions**:
+  1. Navigate to Kiosk view, touch keypad to input phone/pin for student "곽도현" and check in ("등원").
+  2. Log in as Director, navigate to "출결 현황 관리", and verify student is marked as "등원".
+  3. Log in as Student/Parent, navigate to Calendar, and verify attendance check-in is logged for today.
+- **Assertions**:
+  - Verify attendance toast alert shows check-in status.
+  - Verify Director attendance table and Parent calendar sync attendance record.
+
+#### Scenario G: Schedule Settings & Notes Flow (`tests/e2e/schedule-setup-flow.spec.js`)
+- **Actions**:
+  1. Log in as Director, navigate to "학원정보 관리".
+  2. Change schedule start time, end time, slot interval, print layout, and select days, then submit.
+  3. Reload the page and verify changes persist in Settings UI.
+  4. Navigate to "강사 프로필 관리", edit a teacher, input "시간표 및 출퇴근 특이사항", and save.
+  5. Navigate to "원생 명부 관리", register/edit student with "시간표 등 일정 특이사항", and verify detail pop-up shows the notes.
+- **Assertions**:
+  - Verify settings state modifications persist on reload.
+  - Verify staff and student scheduleNotes field values are successfully persisted and rendered.
+
 ---
 
 ## Future E2E Automation Goals (Next Phases)
-1. **Kiosk Attendance Verification**: Simulate keypad number touch events to test kiosk check-in/check-out timeouts.
-2. **Settings Modification Flow**: Automate academy settings edits and verify persistence.
+1. **Drag and Drop Schedule Interaction**: Simulate drag-and-drop actions of students within the schedule table grid cells.
+2. **Print Layout Preview**: Open schedule print preview and check formatting styles for one-per-page vs multi-per-page layouts.
+
 
