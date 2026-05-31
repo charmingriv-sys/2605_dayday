@@ -152,7 +152,8 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
     const parentBtn = page.locator('#login-overlay .role-btn.student');
     await parentBtn.waitFor({ state: 'attached', timeout: 5000 });
     await expect(parentBtn).toBeVisible({ timeout: 5000 });
-    await parentBtn.click();
+    await page.waitForTimeout(500);
+    await parentBtn.evaluate(el => el.click());
 
     // 10. Switch to Attendance Tab on Parent Portal
     // Active student is 최다은 by default (S1)
