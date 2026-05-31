@@ -55,7 +55,33 @@ Configured to spawn `node server.js` dynamically on port `3000` to serve the sta
 
 ---
 
+#### Scenario D: Student Registration Flow & Persistence (`tests/e2e/student-crud-flow.spec.js`)
+- **Actions**:
+  1. Log in as Director.
+  2. Navigate to "원생 명부 관리" (`.menu-item[data-view="dir-students"]`).
+  3. Click "원생 등록" (Add Student) button.
+  4. Fill out details (mocking postcode address popup logic) and submit.
+  5. Reload the page and log back in.
+- **Assertions**:
+  - Verify modal closes.
+  - Verify student name link is visible in table.
+  - Verify data persists correctly after page reload.
+
+#### Scenario E: Tuition Billing & Payment Workflow (`tests/e2e/billing-flow.spec.js`)
+- **Actions**:
+  1. Log in as Director.
+  2. Navigate to "수납 및 결제 현황" (`.menu-item[data-view="dir-payments"]`).
+  3. Change month selection to "2026-05".
+  4. Locate unpaid record for student "윤하은" (payment record `P7`).
+  5. Click "수납 처리" and choose "현금 수납".
+  6. Reload the page and log back in.
+- **Assertions**:
+  - Verify payment row status badge updates to "완납".
+  - Verify status change persists as "완납" after page reload.
+
+---
+
 ## Future E2E Automation Goals (Next Phases)
-1. **Student Registration Input Verification**: Automate filling out student registry fields and submitting to confirm local storage persistence.
-2. **Kiosk Attendance Verification**: Simulate keypad number touch events to test kiosk check-in/check-out timeouts.
-3. **Billing Mock Checkout**: Automate clicking payment lists, launching the Toss sandbox dialog, and verifying invoice status transition.
+1. **Kiosk Attendance Verification**: Simulate keypad number touch events to test kiosk check-in/check-out timeouts.
+2. **Settings Modification Flow**: Automate academy settings edits and verify persistence.
+

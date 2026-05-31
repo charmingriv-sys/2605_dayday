@@ -11,7 +11,7 @@
 | `test:state` | StateStore Method Injection | **PASSED** | Verified existence of all 12 key public API functions |
 | `test:supabase-adapter` | Supabase Mock Integration | **PASSED** | Verified read mappings, write contracts, audit logs & security guards |
 | `test:security` | Static Secret Scan | **PASSED** | Checked 67 files; 0 critical secrets leaked |
-| `test:e2e` | Playwright Browser E2E | **PASSED** | Verified page load, no console errors, role entry, director flow modal, and student CRUD/persistence flow |
+| `test:e2e` | Playwright Browser E2E | **PASSED** | Verified page load, no console errors, role entry, director flow modal, student registration, and tuition billing/payment E2E flow |
 
 ---
 
@@ -38,6 +38,7 @@
 ### 4. Playwright Browser E2E (`test:e2e`)
 - **app-load.spec.js**: Checked `http://localhost:3000` title, landing branding text, and absence of browser console errors (`console.error`).
 - **role-entry.spec.js**: Navigated Director, Teacher, and Student/Parent profiles successfully and checked username bindings (e.g. `김하은 원장`).
+- **billing-flow.spec.js**: Verified navigation to payments page, filtering for target month (2026-05), completing Cash tuition payment processing for an unpaid record (윤하은), state reflection (완납), page reload, and persistence verification.
 - **director-flow.spec.js**: Inspected main metrics loading, navigated to the "원생 명부 관리" view, clicked the registry button, and verified the student registration modal opens.
 - **student-crud-flow.spec.js**: Automated complete student registration workflow, including mocked postcode/address API trigger, field constraints validation, list updates, page reload, and state persistence.
 
