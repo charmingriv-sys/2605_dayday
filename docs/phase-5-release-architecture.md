@@ -314,3 +314,12 @@ Phase 6에서는 바로 대규모 DB 연동을 시작하지 말고, 스키마 DD
 - **검증**:
   - Playwright E2E 13개 시나리오 전체 100% 통과 검증 완료.
   - `node --check`를 통한 문법적 유효성 자체 검사 패스.
+
+### Phase 7D-1.5: 날짜별 강사-원생 운영표 Override/Snapshot 정합성 검증 및 보강 (완료)
+- **목표**: 날짜별 운영표의 과거/오늘/미래 처리 규칙 정합성을 재검증하고 부족한 Public API, 마이그레이션 예방 로직, 단위 테스트를 완비.
+- **산출물**:
+  - `tests/unit/schedule_override_test.mjs` 유닛 테스트 신규 구현 및 `package.json` 파이프라인 연동.
+  - `sessions.js` 내의 `calculateEndTime` 비정상 입력 방어 조치 및 날짜별 스케줄(Override/Snapshot) 조회 규칙 검증.
+- **검증**:
+  - `npm run test:full` 실행을 통해 신규 `test:schedule-override`를 포함하여 총 14개의 테스트(유닛 테스트 3개, E2E 테스트 11개) 100% 통과 확인.
+  - `node --check`를 통한 문법적 유효성 자체 검사 패스.

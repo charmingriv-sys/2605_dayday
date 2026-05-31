@@ -9,6 +9,9 @@ function getDayOfWeekKo(dateStr) {
 }
 
 function calculateEndTime(startTimeStr, slotMinutes) {
+    if (!startTimeStr || typeof startTimeStr !== 'string' || !startTimeStr.includes(':')) {
+        return startTimeStr || '';
+    }
     const [h, m] = startTimeStr.split(':').map(Number);
     let totalMinutes = h * 60 + m + slotMinutes;
     const endH = Math.floor(totalMinutes / 60);

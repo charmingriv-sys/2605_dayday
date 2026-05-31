@@ -4,11 +4,12 @@ This document outlines the testing architecture and Playwright E2E verification 
 
 ## Automated Test Suites
 
-Currently, Phase 6L has established four automated validation checks:
+Currently, Phase 7D-1.5 has established five automated validation checks:
 1. **State Injection Smoke Test** (`npm run test:state`): Verifies all crucial stateStore API endpoints exist and are functions.
 2. **Supabase Client & Query Adapter Mock Test** (`npm run test:supabase-adapter`): Verifies database query mappings, error fallbacks, tenant safety guards, and write audit logging.
-3. **Static Security Credential Scan** (`npm run test:security`): Recursively inspects codebases for exposed API tokens, Private Keys, or `.env` files.
-4. **Playwright E2E Browser Test Suite** (`npm run test:e2e`): Fully automates browser instance checks (loading index, catching console errors, traversing roles, and checking director modals).
+3. **Schedule Override/Snapshot Unit Test** (`npm run test:schedule-override`): Verifies date rules, snapshot isolation, override logs, and cross-date isolation for schedules.
+4. **Static Security Credential Scan** (`npm run test:security`): Recursively inspects codebases for exposed API tokens, Private Keys, or `.env` files.
+5. **Playwright E2E Browser Test Suite** (`npm run test:e2e`): Fully automates browser instance checks (loading index, catching console errors, traversing roles, and checking director modals).
 
 ---
 
@@ -125,6 +126,14 @@ Configured to spawn `node server.js` dynamically on port `3000` to serve the sta
   - Verify daily view elements (date input, active only filter, instrument select, search query) are visible.
   - Verify student names mapping matches mock datasets.
   - Verify active filter and instrument/search filters apply correctly to grid table rows.
+
+#### Scenario J: Schedule Override/Snapshot Unit Testing (`tests/unit/schedule_override_test.mjs`)
+- **Actions**:
+  1. Verify future date defaults to database classes dynamic loading without snapshot generation.
+  2. Trigger `ensureScheduleSnapshotForDate` and assert snapshot creation.
+  3. Alter default classes database and verify previous snapshots are not affected (past data protection).
+  4. Call `moveStudentScheduleForDate` and verify target date override mapping, overrides listing, and operation logs creation.
+  5. Query another date to confirm that change overrides do not leak to other dates (isolation).
 
 ---
 

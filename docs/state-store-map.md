@@ -30,7 +30,7 @@
 | **`members.js`** | 원생 인적사항, 엑셀 일괄 등록, 학부모 계정과 원생 매핑 링크 | `getStudents`, `getStudent`, `addStudent`, `addStudentsBatch`, `dischargeStudent` | 원생 관리, 대시보드, 학부모 회원가입 | **공통** (고객/회원 기본 원장은 SaaS의 핵심) |
 | **`staff.js`** | 강사 프로필 목록, 강사별 일자별 시프트(shift) 근무 계획표 | `getTeachers`, `getTeacher`, `addTeacher`, `getTeacherShifts`, `saveTeacherShift` | 강사 관리, 강사 대시보드 | **공통** (직원/파트타임 근무 관리는 전 업종 재사용 가능) |
 | **`authUsers.js`** | 로그인 유저 인증 정보, 소셜 SNS 연동 데이터, 가입 신청 대기자 관리 | `getCurrentUser`, `setCurrentUser`, `registerUser`, `approveJoinRequest`, `withdrawUser` | 로그인/회원가입, 가입 승인 | **공통** (인증 및 다중 계정 권한 관리는 범용 시스템 핵심) |
-| **`sessions.js`** | 요일별/교시별 고정 시간표 목록 및 원생별 배정 교시 정보 | `getClasses`, `getClassesForStudent` | 스케줄/시간표 설정, 대시보드 | **공통 변형** (피트니스는 PT 예약 세션, 식당은 시간대 예약 테이블로 변환) |
+| **`sessions.js`** | 요일별/교시별 고정 시간표 목록, 날짜별 Override 및 Snapshot 관리 | `getClasses`, `getClassesForStudent`, `getTeacherStudentScheduleForDate`, `ensureScheduleSnapshotForDate`, `moveStudentScheduleForDate`, `getScheduleOverridesForDate`, `getScheduleOperationLogs` | 스케줄/시간표 설정, 대시보드, 강사-원생 시간표 | **공통 변형** (피트니스는 PT 예약 세션, 식당은 시간대 예약 테이블로 변환) |
 
 ---
 
@@ -118,6 +118,9 @@
 - `attendance` -> `attendance_records` (출결 로그)
 - `classes` -> `classes` (스케줄 시간표)
 - `payments` -> `payments` (수납 청구 대장)
+- `scheduleSnapshots` -> `schedule_snapshots` (날짜별 스케줄 스냅샷)
+- `scheduleOverrides` -> `schedule_overrides` (수업 시간표 강제 변경 내역)
+- `scheduleOperationLogs` -> `schedule_operation_logs` (시간표 변경 행정 이력 로그)
 
 ### 4.4 StateStore 데이터 어댑터 아키텍처 (전환 계획)
 향후 백엔드 데이터 동기화를 위해 아래의 어댑터 레이어가 가동됩니다:
