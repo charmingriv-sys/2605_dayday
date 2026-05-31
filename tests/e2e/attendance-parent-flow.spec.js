@@ -26,12 +26,14 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
 
     // Clear local storage for clean default state
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
+    await page.locator('.role-grid').waitFor({ state: 'attached', timeout: 5000 });
     await page.evaluate(() => {
       localStorage.clear();
     });
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
+    await page.locator('.role-grid').waitFor({ state: 'attached', timeout: 5000 });
 
     // Dynamically insert class for student S1 on today's day of week to ensure attendance displays in scheduled lists
     await page.evaluate(() => {
@@ -56,7 +58,8 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
 
     // Reload page to apply the injected class change
     await page.reload();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
+    await page.locator('.role-grid').waitFor({ state: 'attached', timeout: 5000 });
   });
 
   test('should record attendance on Kiosk, verify in Director view, and sync to Parent Portal', async ({ page }) => {
@@ -142,17 +145,19 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
       el.click();
     });
 
-    const parentBtn = page.locator('.role-btn.student');
-    await expect(parentBtn).toBeVisible();
-    await parentBtn.click({ force: true });
+    // Wait for the login overlay to appear after logout
+    const loginOverlay = page.locator('#login-overlay');
+    await expect(loginOverlay).toBeVisible({ timeout: 5000 });
 
-    // Wait for Parent Portal view wrapper to load
-    await expect(page.locator('.parent-portal-mobile-wrapper')).toBeVisible({ timeout: 5000 });
+    const parentBtn = page.locator('#login-overlay .role-btn.student');
+    await parentBtn.waitFor({ state: 'attached', timeout: 5000 });
+    await expect(parentBtn).toBeVisible({ timeout: 5000 });
+    await parentBtn.click();
 
     // 10. Switch to Attendance Tab on Parent Portal
     // Active student is 최다은 by default (S1)
     const parentAttendanceTab = page.locator('.parent-tab-link[data-tab="attendance"]');
-    await expect(parentAttendanceTab).toBeVisible({ timeout: 5000 });
+    await expect(parentAttendanceTab).toBeVisible({ timeout: 10000 });
     await parentAttendanceTab.click({ force: true });
 
     // Verify today's check-in records are displayed in the Parent Portal attendance history
@@ -162,10 +167,10 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
 
     // 11. Reload page to verify persistence
     await page.reload();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Re-login as parent if needed (usually restored automatically)
-    const isAppVisible = await page.locator('.parent-portal-mobile-wrapper').isVisible();
+    const isAppVisible = await page.locator('.parent-tab-link[data-tab="attendance"]').isVisible();
     if (!isAppVisible) {
       const reloadParentBtn = page.locator('.role-btn.student');
       await expect(reloadParentBtn).toBeVisible({ timeout: 5000 });

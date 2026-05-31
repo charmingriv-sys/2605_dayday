@@ -27,10 +27,12 @@ test.describe('Student Registration and Persistence Flow', () => {
 
     // Clear localStorage to ensure a clean default state
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
+    await page.locator('.role-grid').waitFor({ state: 'attached', timeout: 5000 });
     await page.evaluate(() => localStorage.clear());
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
+    await page.locator('.role-grid').waitFor({ state: 'attached', timeout: 5000 });
   });
 
   test('should register a new student and persist data after page reload', async ({ page }) => {
@@ -104,7 +106,7 @@ test.describe('Student Registration and Persistence Flow', () => {
 
     // 8. Reload Page & verify persistence
     await page.reload();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Check if user is already logged in (auto-restored from session)
     const isAppVisible = await page.locator('#app-root').isVisible();

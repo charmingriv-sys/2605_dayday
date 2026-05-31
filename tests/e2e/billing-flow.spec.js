@@ -26,10 +26,12 @@ test.describe('Director Tuition Billing and Payment Flow', () => {
 
     // Clear local storage for clean default state
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
+    await page.locator('.role-grid').waitFor({ state: 'attached', timeout: 5000 });
     await page.evaluate(() => localStorage.clear());
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
+    await page.locator('.role-grid').waitFor({ state: 'attached', timeout: 5000 });
   });
 
   test('should process an unpaid tuition payment and persist status after reload', async ({ page }) => {
@@ -75,7 +77,7 @@ test.describe('Director Tuition Billing and Payment Flow', () => {
 
     // 8. Reload page to verify persistence
     await page.reload();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Restore session if needed
     const isAppVisible = await page.locator('#app-root').isVisible();
