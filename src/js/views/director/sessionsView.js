@@ -837,6 +837,34 @@ export function renderSchedules(container) {
             const containerEl = modal.querySelector('#print-preview-content');
             if (!containerEl) throw new Error('Capture target not found');
 
+            const targetEl = containerEl.querySelector('.print-preview-a4') || containerEl;
+
+            // Use html2canvas if available to prevent canvas tainting
+            if (window.html2canvas) {
+                try {
+                    // Small delay to ensure styles are painted
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                    const canvas = await window.html2canvas(targetEl, {
+                        useCORS: true,
+                        scale: 2, // High resolution crisp text/borders
+                        backgroundColor: '#ffffff',
+                        logging: false
+                    });
+                    return new Promise((resolve, reject) => {
+                        canvas.toBlob((blob) => {
+                            if (blob) {
+                                resolve(blob);
+                            } else {
+                                reject(new Error('html2canvas canvas toBlob failed'));
+                            }
+                        }, 'image/png');
+                    });
+                } catch (err) {
+                    console.error('html2canvas capture failed, falling back to SVG capture:', err);
+                }
+            }
+
+            // Fallback SVG foreignObject capture (might taint canvas in some browsers)
             const width = 800;
             const height = containerEl.scrollHeight || 1130;
 
