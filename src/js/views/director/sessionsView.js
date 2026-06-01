@@ -1259,9 +1259,9 @@ export function renderSchedules(container) {
                         <h4 style="font-weight: 700; margin: 0; color: var(--primary);">${selectedTeacher.name} 강사 주간 출근표</h4>
                     </div>
 
-                    <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: stretch; width: 100%;">
+                    <div class="teacher-shift-layout" style="display: flex; gap: 20px; flex-wrap: nowrap; align-items: flex-start; width: 100%;">
                         <!-- Timetable grid -->
-                        <div style="flex-grow: 3; position: relative; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: transparent; padding: 16px; min-width: 600px;" data-testid="teacher-shift-table">
+                        <div class="teacher-shift-main" style="flex: 1 1 auto; min-width: 0; position: relative; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: transparent; padding: 16px;" data-testid="teacher-shift-table">
                             <!-- Timeline container header -->
                             <div style="display: grid; grid-template-columns: 80px repeat(${activeWeekDates.length}, 1fr); border-bottom: 2px solid var(--border-color); background: var(--primary-light); padding: 12px 0; border-radius: var(--radius-md) var(--radius-md) 0 0; margin: -16px -16px 8px -16px;">
                                 <div style="font-weight: 700; text-align: center; color: var(--text-muted); font-size: 0.85rem; display: flex; align-items: center; justify-content: center;"><i class="fa-regular fa-clock"></i></div>
@@ -1338,7 +1338,7 @@ export function renderSchedules(container) {
                         </div>
 
                         <!-- Notes Panel -->
-                        <div id="teacher-shift-notes-panel" data-testid="teacher-shift-notes-panel" style="flex-grow: 1; width: 250px; display: ${showNotes ? 'block' : 'none'}; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.2rem; background: var(--bg-card);">
+                        <div id="teacher-shift-notes-panel" class="teacher-shift-side" data-testid="teacher-shift-notes-panel" style="flex: 0 0 280px; width: 280px; box-sizing: border-box; display: ${showNotes ? 'block' : 'none'}; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.2rem; background: var(--bg-card); max-height: 600px; overflow-y: auto;">
                             <h4 style="font-weight: 700; font-size: 1rem; margin-top: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
                                 <i class="fa-solid fa-clipboard-question" style="color: var(--primary);"></i> 강사 일정 특이사항
                             </h4>
@@ -1393,9 +1393,9 @@ export function renderSchedules(container) {
                         </div>
                     </div>
 
-                    <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: stretch; width: 100%;">
+                    <div class="teacher-shift-layout" style="display: flex; gap: 20px; flex-wrap: nowrap; align-items: flex-start; width: 100%;">
                         <!-- Daily grid -->
-                        <div style="flex-grow: 3; position: relative; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: transparent; padding: 16px; min-width: 600px;" data-testid="teacher-shift-table">
+                        <div class="teacher-shift-main" style="flex: 1 1 auto; min-width: 0; position: relative; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: transparent; padding: 16px;" data-testid="teacher-shift-table">
                             <!-- Headers -->
                             <div style="display: grid; grid-template-columns: 80px repeat(${Math.max(1, filteredTeachers.length)}, 1fr); border-bottom: 2px solid var(--border-color); background: var(--primary-light); padding: 12px 0; border-radius: var(--radius-md) var(--radius-md) 0 0; margin: -16px -16px 8px -16px;">
                                 <div style="font-weight: 700; text-align: center; color: var(--text-muted); font-size: 0.85rem; display: flex; align-items: center; justify-content: center;"><i class="fa-regular fa-clock"></i></div>
@@ -1469,7 +1469,7 @@ export function renderSchedules(container) {
                         </div>
 
                         <!-- Notes Panel -->
-                        <div id="teacher-shift-notes-panel" data-testid="teacher-shift-notes-panel" style="flex-grow: 1; width: 250px; display: ${showNotes ? 'block' : 'none'}; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.2rem; background: var(--bg-card); max-height: 560px; overflow-y: auto;">
+                        <div id="teacher-shift-notes-panel" class="teacher-shift-side" data-testid="teacher-shift-notes-panel" style="flex: 0 0 280px; width: 280px; box-sizing: border-box; display: ${showNotes ? 'block' : 'none'}; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.2rem; background: var(--bg-card); max-height: 600px; overflow-y: auto;">
                             <h4 style="font-weight: 700; font-size: 1rem; margin-top: 0; margin-bottom: 12px;">
                                 <i class="fa-solid fa-clipboard-question" style="color: var(--primary);"></i> 당일 강사 특이사항
                             </h4>
@@ -1820,7 +1820,7 @@ export function renderSchedules(container) {
 
                     <div class="teacher-student-layout" style="display: flex; gap: 20px; flex-wrap: nowrap; align-items: flex-start; width: 100%;">
                         <!-- Timetable wrapper -->
-                        <div class="table-wrapper teacher-student-main" style="flex: 1 1 auto; min-width: 0; overflow-x: auto;" data-testid="teacher-student-schedule-table">
+                        <div class="table-wrapper teacher-student-main" style="flex: 1 1 auto; min-width: 0; overflow-x: auto; margin-top: 0;" data-testid="teacher-student-schedule-table">
                             <table class="custom-table" style="table-layout: fixed; width: 100%; border: 1px solid var(--border-color); border-collapse: collapse;">
                                 <thead>
                                     <tr style="border-bottom: 2px solid var(--border-color); background: var(--primary-light);">
@@ -1985,7 +1985,7 @@ export function renderSchedules(container) {
 
                     <div class="teacher-student-layout" style="display: flex; gap: 20px; flex-wrap: nowrap; align-items: flex-start; width: 100%;">
                         <!-- Daily Matrix Table -->
-                        <div class="table-wrapper teacher-student-main" style="flex: 1 1 auto; min-width: 0; overflow-x: auto;" data-testid="teacher-student-schedule-table">
+                        <div class="table-wrapper teacher-student-main" style="flex: 1 1 auto; min-width: 0; overflow-x: auto; margin-top: 0;" data-testid="teacher-student-schedule-table">
                             <table class="custom-table" style="table-layout: fixed; width: 100%; border: 1px solid var(--border-color); border-collapse: collapse;">
                                 <thead>
                                     <tr style="border-bottom: 2px solid var(--border-color); background: var(--primary-light);">
