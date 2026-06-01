@@ -787,7 +787,7 @@ export function renderSchedules(container) {
                     const studentNotesList = [];
                     todayClasses.forEach(c => {
                         const s = students.find(std => std.id === c.studentId);
-                        if (s && s.scheduleNotes && !studentNotesList.some(item => item.id === s.id)) {
+                        if (s && s.scheduleNotes && s.scheduleNotes.trim() !== '' && !studentNotesList.some(item => item.id === s.id)) {
                             studentNotesList.push(s);
                         }
                     });
