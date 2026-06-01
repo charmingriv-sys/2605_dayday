@@ -240,16 +240,38 @@ export function renderSchedules(container) {
                     }
                 }
 
-                /* Layout 1: Default A4 */
+                /* Layout 1: Default A4 (Compact Style) */
                 .print-layout-1 .print-preview-a4 {
                     width: 210mm;
                     min-height: 297mm;
-                    padding: 20mm;
+                    padding: 15mm;
                     box-sizing: border-box;
                     background: white;
                     display: flex;
                     flex-direction: column;
-                    gap: 20px;
+                    gap: 12px;
+                }
+                .print-layout-1 .print-preview-a4 h1 {
+                    font-size: 1.6rem !important;
+                    margin-bottom: 4px !important;
+                }
+                .print-layout-1 .print-preview-a4 table {
+                    font-size: 0.78rem !important;
+                    margin-top: 8px !important;
+                }
+                .print-layout-1 .print-preview-a4 th, .print-layout-1 .print-preview-a4 td {
+                    padding: 2px 4px !important;
+                    line-height: 1.1 !important;
+                }
+                .print-layout-1 .print-preview-a4 td div {
+                    font-size: 0.72rem !important;
+                    padding: 1px 2px !important;
+                }
+                .print-layout-1 [data-testid="schedule-print-notes"],
+                .print-layout-1 [data-testid="schedule-print-logs"] {
+                    margin-top: 10px !important;
+                    padding: 8px 12px !important;
+                    font-size: 0.78rem !important;
                 }
 
                 /* Layout 2: 2 copies per page */
@@ -433,11 +455,12 @@ export function renderSchedules(container) {
                     </table>
                 `;
 
-                if (showNotes && selectedTeacher.scheduleNotes) {
+                if (showNotes) {
+                    const noteContent = selectedTeacher.scheduleNotes ? selectedTeacher.scheduleNotes.replace(/\n/g, '<br>') : '등록된 특이사항이 없습니다.';
                     notesHtml = `
-                        <div data-testid="schedule-print-notes" style="margin-top: 1.5rem; border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem;">
+                        <div data-testid="schedule-print-notes" style="margin-top: 1.5rem; border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem; width: 100%; box-sizing: border-box;">
                             <h4 style="margin: 0 0 6px 0; font-weight: bold;">[강사 특이사항]</h4>
-                            <div><strong>${selectedTeacher.name} T:</strong> ${selectedTeacher.scheduleNotes}</div>
+                            <div><strong>${selectedTeacher.name} T:</strong> ${noteContent}</div>
                         </div>
                     `;
                 }
@@ -445,7 +468,7 @@ export function renderSchedules(container) {
                 subtitleText = `[일간 보기] 날짜: ${selectedDateStr}`;
                 const parsedDate = new Date(selectedDateStr);
                 const dayKo = daysOfWeekKo[parsedDate.getDay() === 0 ? 6 : parsedDate.getDay() - 1];
-                filterSummaryText = `요일: ${dayKo}요일 | 필터: ${filterType} | 검색어: "${filterSearchQuery}"`;
+                filterSummaryText = `요일: ${dayKo}요일`;
 
                 const shifts = stateStore.getTeacherShifts();
                 const filteredTeachers = teachers.filter(t => {
@@ -494,14 +517,15 @@ export function renderSchedules(container) {
 
                 if (showNotes) {
                     const notesList = filteredTeachers.filter(t => t.scheduleNotes);
-                    if (notesList.length > 0) {
-                        notesHtml = `
-                            <div data-testid="schedule-print-notes" style="margin-top: 1.5rem; border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem;">
-                                <h4 style="margin: 0 0 6px 0; font-weight: bold;">[강사 특이사항 목록]</h4>
-                                ${notesList.map(t => `<div style="margin-bottom: 4px;"><strong>${t.name} T:</strong> ${t.scheduleNotes}</div>`).join('')}
-                            </div>
-                        `;
-                    }
+                    const noteContent = notesList.length > 0 
+                        ? notesList.map(t => `<div style="margin-bottom: 4px;"><strong>${t.name} T:</strong> ${t.scheduleNotes.replace(/\n/g, '<br>')}</div>`).join('')
+                        : '<div style="color: #666; font-style: italic;">등록된 특이사항이 없습니다.</div>';
+                    notesHtml = `
+                        <div data-testid="schedule-print-notes" style="margin-top: 1.5rem; border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem; width: 100%; box-sizing: border-box;">
+                            <h4 style="margin: 0 0 6px 0; font-weight: bold;">[강사 특이사항 목록]</h4>
+                            <div>${noteContent}</div>
+                        </div>
+                    `;
                 }
             }
         } else if (type === 'matches') {
@@ -509,7 +533,7 @@ export function renderSchedules(container) {
             if (matchViewMode === 'week') {
                 subtitleText = `[주간 보기] ${referenceDate.getFullYear()}년 ${referenceDate.getMonth() + 1}월 ${referenceDate.getDate()}일 주차`;
                 const filterTeacher = teachers.find(t => t.id === currentFilterTeacherId);
-                filterSummaryText = `강사 필터: ${filterTeacher ? `${filterTeacher.name} (${filterTeacher.instrument})` : '전체 강사'}`;
+                filterSummaryText = filterTeacher ? `강사: ${filterTeacher.name} (${filterTeacher.instrument})` : '전체 강사';
 
                 const weekDates = [];
                 for (let i = 0; i < 7; i++) {
@@ -537,14 +561,15 @@ export function renderSchedules(container) {
                                     <tr>
                                         <td style="border: 1px solid #111; padding: 6px; text-align: center; font-weight: bold; background-color: #fafafa;">${time}</td>
                                         ${activeWeekDates.map(wd => {
-                                            const dayClasses = stateStore.getClasses().filter(c => c.dayOfWeek === wd.dayEn && c.startTime === time);
+                                            const dayClasses = stateStore.getClasses().filter(c => c.dayOfWeek === wd.dayKo && c.time === time);
                                             const filteredClasses = currentFilterTeacherId ? dayClasses.filter(c => c.teacherId === currentFilterTeacherId) : dayClasses;
                                             
                                             const content = filteredClasses.map(c => {
                                                 const s = students.find(std => std.id === c.studentId) || { name: '알수없음' };
-                                                const t = teachers.find(tchr => tchr.id === c.teacherId) || { name: '알수없음' };
+                                                const t = teachers.find(tchr => tchr.id === c.teacherId);
+                                                const teacherNameText = (t && t.name !== '알수없음') ? ` (${t.name})` : '';
                                                 return `<div style="padding: 2px; font-weight: 500; font-size: 0.8rem; background-color: #f8fafc; border: 1px solid #e2e8f0; margin-bottom: 2px; border-radius: 2px;">
-                                                    ${s.name} (${t.name})
+                                                    ${s.name}${teacherNameText}
                                                 </div>`;
                                             }).join('');
                                             return `
@@ -568,20 +593,21 @@ export function renderSchedules(container) {
                             studentNotesList.push(s);
                         }
                     });
-                    if (studentNotesList.length > 0) {
-                        notesHtml = `
-                            <div data-testid="schedule-print-notes" style="margin-top: 1.5rem; border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem;">
-                                <h4 style="margin: 0 0 6px 0; font-weight: bold;">[원생 일정 특이사항 목록]</h4>
-                                ${studentNotesList.map(s => `<div style="margin-bottom: 4px;"><strong>${s.name}:</strong> ${s.scheduleNotes}</div>`).join('')}
-                            </div>
-                        `;
-                    }
+                    const noteContent = studentNotesList.length > 0
+                        ? studentNotesList.map(s => `<div style="margin-bottom: 4px;"><strong>${s.name}:</strong> ${s.scheduleNotes.replace(/\n/g, '<br>')}</div>`).join('')
+                        : '<div style="color: #666; font-style: italic;">등록된 특이사항이 없습니다.</div>';
+                    notesHtml = `
+                        <div data-testid="schedule-print-notes" style="margin-top: 1.5rem; border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem; width: 100%; box-sizing: border-box;">
+                            <h4 style="margin: 0 0 6px 0; font-weight: bold;">[원생 일정 특이사항 목록]</h4>
+                            <div>${noteContent}</div>
+                        </div>
+                    `;
                 }
             } else {
                 subtitleText = `[일간 보기] 날짜: ${matchSelectedDateStr}`;
                 const parsedDate = new Date(matchSelectedDateStr);
                 const dayKo = daysOfWeekKo[parsedDate.getDay() === 0 ? 6 : parsedDate.getDay() - 1];
-                filterSummaryText = `요일: ${dayKo}요일 | 당일수업강사 필터: ${matchFilterActiveOnly ? 'ON' : 'OFF'} | 악기 필터: ${matchInstrumentFilter} | 검색어: "${matchSearchQuery}"`;
+                filterSummaryText = `요일: ${dayKo}요일`;
 
                 const dayOfWeekEn = dayKoToEn[dayKo];
                 const dayShifts = stateStore.getTeacherShifts().filter(s => s.date === matchSelectedDateStr);
@@ -615,7 +641,7 @@ export function renderSchedules(container) {
                                     <tr>
                                         <td style="border: 1px solid #111; padding: 6px; text-align: center; font-weight: bold; background-color: #fafafa;">${time}</td>
                                         ${activeTeachers.map(t => {
-                                            const cellClasses = todayClasses.filter(c => c.teacherId === t.id && c.startTime === time);
+                                            const cellClasses = todayClasses.filter(c => c.teacherId === t.id && c.time === time);
                                             const cellContent = cellClasses.map(c => {
                                                 const s = students.find(std => std.id === c.studentId) || { name: '알수없음' };
                                                 return `<div style="font-weight: bold; font-size: 0.85rem; color: #1e293b;">${s.name}</div>`;
@@ -641,20 +667,21 @@ export function renderSchedules(container) {
                             studentNotesList.push(s);
                         }
                     });
-                    if (studentNotesList.length > 0) {
-                        notesHtml = `
-                            <div data-testid="schedule-print-notes" style="margin-top: 1.5rem; border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem;">
-                                <h4 style="margin: 0 0 6px 0; font-weight: bold;">[원생 일정 특이사항 목록]</h4>
-                                ${studentNotesList.map(s => `<div style="margin-bottom: 4px;"><strong>${s.name}:</strong> ${s.scheduleNotes}</div>`).join('')}
-                            </div>
-                        `;
-                    }
+                    const noteContent = studentNotesList.length > 0
+                        ? studentNotesList.map(s => `<div style="margin-bottom: 4px;"><strong>${s.name}:</strong> ${s.scheduleNotes.replace(/\n/g, '<br>')}</div>`).join('')
+                        : '<div style="color: #666; font-style: italic;">등록된 특이사항이 없습니다.</div>';
+                    notesHtml = `
+                        <div data-testid="schedule-print-notes" style="margin-top: 1.5rem; border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem; width: 100%; box-sizing: border-box;">
+                            <h4 style="margin: 0 0 6px 0; font-weight: bold;">[원생 일정 특이사항 목록]</h4>
+                            <div>${noteContent}</div>
+                        </div>
+                    `;
                 }
 
                 if (matchShowLogs) {
                     const logs = stateStore.getScheduleOperationLogs(matchSelectedDateStr) || [];
                     logsHtml = `
-                        <div data-testid="schedule-print-logs" style="margin-top: 1.5rem; border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem;">
+                        <div data-testid="schedule-print-logs" style="margin-top: 1.5rem; border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem; width: 100%; box-sizing: border-box;">
                             <h4 style="margin: 0 0 6px 0; font-weight: bold;">[시간표 변경 이력 로그]</h4>
                             ${logs.length > 0 ? logs.map(log => {
                                 const s = students.find(std => std.id === log.studentId) || { name: '알수없음' };
@@ -694,11 +721,9 @@ export function renderSchedules(container) {
                     </div>
                     <div style="display: flex; align-items: center; gap: 16px;">
                         <div style="display: flex; align-items: center; gap: 6px;">
-                            <label for="schedule-print-layout-select" style="margin: 0; font-size: 0.85rem; font-weight: 600; color: #4b5563;">출력 배치:</label>
-                            <select id="schedule-print-layout-select" data-testid="schedule-print-layout-select" class="form-control" style="margin: 0; width: 140px; font-size: 0.85rem; padding: 4px 8px; height: 32px;">
-                                <option value="1" data-testid="schedule-print-layout-option-1" ${defaultLayout === 1 ? 'selected' : ''}>1개 크게 출력</option>
-                                <option value="2" data-testid="schedule-print-layout-option-2" ${defaultLayout === 2 ? 'selected' : ''}>2개 세로 반복</option>
-                                <option value="3" data-testid="schedule-print-layout-option-3" ${defaultLayout === 3 ? 'selected' : ''}>3개 세로 반복</option>
+                            <label for="schedule-print-layout-select" style="display: none;">출력 배치:</label>
+                            <select id="schedule-print-layout-select" data-testid="schedule-print-layout-select" class="form-control" style="display: none;">
+                                <option value="1" data-testid="schedule-print-layout-option-1" selected>1개 크게 출력</option>
                             </select>
                             <span id="print-orientation-tip" data-testid="schedule-print-orientation-tip" style="font-size: 0.75rem; color: #6b7280; font-weight: 500; margin-left: 4px;"></span>
                         </div>
@@ -889,6 +914,17 @@ export function renderSchedules(container) {
                         margin: 10mm;
                     }
                 }
+                ${recommendLandscape ? `
+                    .print-layout-1 .print-preview-a4 {
+                        width: 297mm !important;
+                        min-height: 210mm !important;
+                    }
+                ` : `
+                    .print-layout-1 .print-preview-a4 {
+                        width: 210mm !important;
+                        min-height: 297mm !important;
+                    }
+                `}
             `;
             
             const tipEl = modal.querySelector('#print-orientation-tip');
@@ -901,10 +937,11 @@ export function renderSchedules(container) {
             const containerEl = modal.querySelector('#print-preview-content');
             if (!containerEl) return;
             
-            containerEl.className = `print-layout-${count}`;
+            const activeCount = 1;
+            containerEl.className = `print-layout-${activeCount}`;
             
             let copiesHtml = '';
-            for (let i = 1; i <= count; i++) {
+            for (let i = 1; i <= activeCount; i++) {
                 copiesHtml += `
                     <div class="print-preview-a4" data-testid="schedule-print-copy" data-index="${i}" style="background: white; width: 100%; box-shadow: 0 4px 12px rgba(0,0,0,0.1); box-sizing: border-box; display: flex; flex-direction: column; color: #111; margin-bottom: 20px;">
                         <span data-testid="schedule-print-copy-index" data-index="${i}" style="display: none;"></span>
@@ -914,7 +951,7 @@ export function renderSchedules(container) {
                                 ${subtitleText} | ${filterSummaryText}
                             </div>
                         </div>
-                        <div style="flex: 1; min-height: 0;">
+                        <div style="width: 100%; margin-top: 10px;">
                             ${tableHtml}
                         </div>
                         ${notesHtml}
