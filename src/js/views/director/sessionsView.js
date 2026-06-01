@@ -1180,12 +1180,32 @@ export function renderSchedules(container) {
         const workspace = container.querySelector('#schedules-workspace');
         if (!workspace) return;
 
+        // Save active element focus and selection details to prevent blur during typing
+        const activeElementId = document.activeElement ? document.activeElement.id : null;
+        const selectionStart = document.activeElement && ('selectionStart' in document.activeElement) ? document.activeElement.selectionStart : null;
+        const selectionEnd = document.activeElement && ('selectionEnd' in document.activeElement) ? document.activeElement.selectionEnd : null;
+
         if (activeSubTab === 'shift_view') {
             renderShiftView(workspace);
         } else if (activeSubTab === 'shift_edit') {
             renderShiftEditView(workspace);
         } else {
             renderMatchView(workspace);
+        }
+
+        // Restore active element focus and selection details
+        if (activeElementId) {
+            const restoredElement = container.querySelector(`#${activeElementId}`);
+            if (restoredElement) {
+                restoredElement.focus();
+                if (selectionStart !== null && selectionEnd !== null) {
+                    try {
+                        restoredElement.setSelectionRange(selectionStart, selectionEnd);
+                    } catch (e) {
+                        // ignore
+                    }
+                }
+            }
         }
     };
 
@@ -1434,7 +1454,8 @@ export function renderSchedules(container) {
             }
 
             if (filterSearchQuery.trim() !== '') {
-                filteredTeachers = filteredTeachers.filter(t => t.name.includes(filterSearchQuery.trim()));
+                const query = filterSearchQuery.trim().toLowerCase();
+                filteredTeachers = filteredTeachers.filter(t => t.name.toLowerCase().includes(query));
             }
 
             ws.innerHTML = `
@@ -1457,7 +1478,10 @@ export function renderSchedules(container) {
                             </select>
                         </div>
                         <div style="display: flex; align-items: center; gap: 8px; flex-grow: 1; max-width: 250px;">
-                            <input type="text" id="shift-search-input" class="form-control" style="margin-bottom:0; font-size: 0.85rem; padding: 4px 8px;" placeholder="강사명 검색" value="${filterSearchQuery}">
+                            <input type="text" id="shift-search-input" list="shift-teachers-list" class="form-control" style="margin-bottom:0; font-size: 0.85rem; padding: 4px 8px;" placeholder="강사명 검색" value="${filterSearchQuery}">
+                            <datalist id="shift-teachers-list">
+                                ${teachers.map(t => `<option value="${t.name}"></option>`).join('')}
+                            </datalist>
                         </div>
                     </div>
 
@@ -2021,7 +2045,10 @@ export function renderSchedules(container) {
                         </select>
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px; flex-grow: 1; max-width: 250px;">
-                        <input type="text" id="match-search-input" class="form-control" style="margin-bottom:0; font-size: 0.85rem; padding: 4px 8px;" placeholder="강사명 검색" value="${matchSearchQuery}" data-testid="teacher-student-search-input">
+                        <input type="text" id="match-search-input" list="match-teachers-list" class="form-control" style="margin-bottom:0; font-size: 0.85rem; padding: 4px 8px;" placeholder="강사명 검색" value="${matchSearchQuery}" data-testid="teacher-student-search-input">
+                        <datalist id="match-teachers-list">
+                            ${teachers.map(t => `<option value="${t.name}"></option>`).join('')}
+                        </datalist>
                     </div>
                 </div>
             `;
@@ -2051,7 +2078,8 @@ export function renderSchedules(container) {
             }
 
             if (matchSearchQuery.trim() !== '') {
-                filteredTeachers = filteredTeachers.filter(t => t.name.includes(matchSearchQuery.trim()));
+                const query = matchSearchQuery.trim().toLowerCase();
+                filteredTeachers = filteredTeachers.filter(t => t.name.toLowerCase().includes(query));
             }
 
             const dayStudentIds = new Set();
