@@ -709,7 +709,7 @@ export function renderSchedules(container) {
                     const studentNotesList = [];
                     stateStore.getClasses().forEach(c => {
                         const s = students.find(std => std.id === c.studentId);
-                        if (s && s.scheduleNotes && !studentNotesList.some(item => item.id === s.id)) {
+                        if (s && s.scheduleNotes && s.scheduleNotes.trim() !== '' && !studentNotesList.some(item => item.id === s.id)) {
                             studentNotesList.push(s);
                         }
                     });
@@ -2024,8 +2024,8 @@ export function renderSchedules(container) {
 
             // Filtered student notes for panel
             const activeStudents = currentFilterTeacherId 
-                ? students.filter(s => s.teacherId === currentFilterTeacherId && s.scheduleNotes) 
-                : students.filter(s => s.scheduleNotes);
+                ? students.filter(s => s.teacherId === currentFilterTeacherId && s.scheduleNotes && s.scheduleNotes.trim() !== '') 
+                : students.filter(s => s.scheduleNotes && s.scheduleNotes.trim() !== '');
 
             ws.innerHTML = `
                 <div class="glass-card" style="padding: 1.5rem;">
@@ -2066,40 +2066,46 @@ export function renderSchedules(container) {
                                                             const teacher = teachers.find(t => t.id === currentTeacherId);
                                                             const teacherName = teacher ? teacher.name : '미지정';
                                                             const bgColor = teacher ? teacher.color : '#e2e8f0';
-                                                            pillsHtml += `
-                                                            <span class="student-match-pill"
-                                                            data-teacher-id="${currentTeacherId}"
-                                                            data-student-id="${student.id}"
-                                                            data-class-id="${c.id}"
-                                                            data-testid="teacher-student-schedule-card"
-                                                            draggable="true"
-                                                            style="
-                                                            background-color: ${bgColor};
-                                                            color: #111;
-                                                            padding: 6px 10px;
-                                                            border-radius: 6px;
-                                                            font-size: 0.75rem;
-                                                            display: inline-flex;
-                                                            flex-direction: column;
-                                                            align-items: flex-start;
-                                                            text-align: left;
-                                                            gap: 2px;
-                                                            cursor: pointer;
-                                                            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-                                                            transition: all 0.25s;
-                                                            margin: 3px;
-                                                            width: calc(100% - 6px);
-                                                            max-width: 150px;
-                                                            box-sizing: border-box;
-                                                            ">
-                                                            <div style="font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">
-                                                            ${student.name} · ${teacherName}
-                                                            </div>
-                                                            <div style="font-size: 0.65rem; font-weight: normal; opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">
-                                                            ${student.scheduleNotes ? student.scheduleNotes.trim() : '등록된 특이사항 없음'}
-                                                            </div>
-                                                            </span>
-                                                            `;
+                                                            const hasNotes = student.scheduleNotes && student.scheduleNotes.trim() !== '';
+                                                             const notesHtmlLine = hasNotes ? `
+                                                                 <div style="font-size: 0.62rem; font-weight: normal; opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; line-height: 1.1;">
+                                                                 ${student.scheduleNotes.trim()}
+                                                                 </div>
+                                                             ` : '';
+
+                                                             pillsHtml += `
+                                                             <span class="student-match-pill"
+                                                             data-teacher-id="${currentTeacherId}"
+                                                             data-student-id="${student.id}"
+                                                             data-class-id="${c.id}"
+                                                             data-testid="teacher-student-schedule-card"
+                                                             draggable="true"
+                                                             style="
+                                                             background-color: ${bgColor};
+                                                             color: #111;
+                                                             padding: 4px 6px;
+                                                             border-radius: 4px;
+                                                             font-size: 0.7rem;
+                                                             display: inline-flex;
+                                                             flex-direction: column;
+                                                             align-items: flex-start;
+                                                             text-align: left;
+                                                             gap: 1px;
+                                                             cursor: pointer;
+                                                             box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+                                                             transition: all 0.25s;
+                                                             margin: 2px;
+                                                             width: calc(100% - 4px);
+                                                             max-width: 150px;
+                                                             box-sizing: border-box;
+                                                             line-height: 1.2;
+                                                             ">
+                                                             <div style="font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">
+                                                             ${student.name}
+                                                             </div>
+                                                             ${notesHtmlLine}
+                                                             </span>
+                                                             `;
                                                         }
                                                     });
 
@@ -2223,7 +2229,7 @@ export function renderSchedules(container) {
                     }
                 }
             });
-            const activeStudents = students.filter(s => dayStudentIds.has(s.id) && s.scheduleNotes);
+            const activeStudents = students.filter(s => dayStudentIds.has(s.id) && s.scheduleNotes && s.scheduleNotes.trim() !== '');
             const rawDayLogs = stateStore.getScheduleOperationLogs(matchSelectedDateStr) || [];
             const dayLogs = compressScheduleOperationLogs(rawDayLogs);
 
@@ -2258,6 +2264,13 @@ export function renderSchedules(container) {
                                                     cellClasses.forEach(c => {
                                                         const student = students.find(s => s.id === c.studentId && c.teacherId === t.id);
                                                         if (student) {
+                                                            const hasNotes = student.scheduleNotes && student.scheduleNotes.trim() !== '';
+                                                            const notesHtmlLine = hasNotes ? `
+                                                                <div style="font-size: 0.62rem; font-weight: normal; opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; line-height: 1.1;">
+                                                                ${student.scheduleNotes.trim()}
+                                                                </div>
+                                                            ` : '';
+
                                                             pillsHtml += `
                                                             <span class="student-match-pill"
                                                             data-teacher-id="${c.teacherId}"
@@ -2267,28 +2280,27 @@ export function renderSchedules(container) {
                                                             style="
                                                             background-color: ${t.color || 'var(--primary-light)'};
                                                             color: #111;
-                                                            padding: 6px 10px;
-                                                            border-radius: 6px;
-                                                            font-size: 0.75rem;
+                                                            padding: 4px 6px;
+                                                            border-radius: 4px;
+                                                            font-size: 0.7rem;
                                                             display: inline-flex;
                                                             flex-direction: column;
                                                             align-items: flex-start;
                                                             text-align: left;
-                                                            gap: 2px;
+                                                            gap: 1px;
                                                             cursor: pointer;
-                                                            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                                                            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
                                                             transition: all 0.25s;
-                                                            margin: 3px;
-                                                            width: calc(100% - 6px);
+                                                            margin: 2px;
+                                                            width: calc(100% - 4px);
                                                             max-width: 150px;
                                                             box-sizing: border-box;
+                                                            line-height: 1.2;
                                                             ">
                                                             <div style="font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">
-                                                            ${student.name} · ${t.name}
+                                                            ${student.name}
                                                             </div>
-                                                            <div style="font-size: 0.65rem; font-weight: normal; opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">
-                                                            ${student.scheduleNotes ? student.scheduleNotes.trim() : '등록된 특이사항 없음'}
-                                                            </div>
+                                                            ${notesHtmlLine}
                                                             </span>
                                                             `;
                                                         }
