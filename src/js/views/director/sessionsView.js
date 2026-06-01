@@ -2068,7 +2068,7 @@ export function renderSchedules(container) {
                                                             const bgColor = teacher ? teacher.color : '#e2e8f0';
                                                             const hasNotes = student.scheduleNotes && student.scheduleNotes.trim() !== '';
                                                              const notesHtmlLine = hasNotes ? `
-                                                                 <div style="font-size: 0.62rem; font-weight: normal; opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; line-height: 1.1;">
+                                                                 <div style="font-size: 0.58rem; font-weight: normal; opacity: 0.75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; line-height: 1.0; text-align: center;">
                                                                  ${student.scheduleNotes.trim()}
                                                                  </div>
                                                              ` : '';
@@ -2088,8 +2088,8 @@ export function renderSchedules(container) {
                                                              font-size: 0.7rem;
                                                              display: inline-flex;
                                                              flex-direction: column;
-                                                             align-items: flex-start;
-                                                             text-align: left;
+                                                             align-items: center;
+                                                             text-align: center;
                                                              gap: 1px;
                                                              cursor: pointer;
                                                              box-shadow: 0 1px 2px rgba(0,0,0,0.1);
@@ -2100,7 +2100,7 @@ export function renderSchedules(container) {
                                                              box-sizing: border-box;
                                                              line-height: 1.2;
                                                              ">
-                                                             <div style="font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">
+                                                             <div style="font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; text-align: center;">
                                                              ${student.name}
                                                              </div>
                                                              ${notesHtmlLine}
