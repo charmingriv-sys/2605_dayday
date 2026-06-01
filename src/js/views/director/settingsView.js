@@ -86,58 +86,7 @@ export function renderAcademyInfo(container) {
                         </div>
                     </div>
 
-                    <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 0 0 20px 0;">
-                    <h4 style="font-size: 1.15rem; font-weight: 700; color: var(--text-main); margin: 0 0 12px 0; display: flex; align-items: center; gap: 8px;">
-                        <i class="fa-solid fa-clock" style="color: var(--primary);"></i> 시간표 운영 설정
-                    </h4>
 
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 6px; color: var(--text-main);">시간표 시작 시간</label>
-                            <input type="time" id="sched-start-time" class="form-control" value="${settings.scheduleStartTime || '14:00'}" style="margin-bottom: 0;" required>
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 6px; color: var(--text-main);">시간표 종료 시간</label>
-                            <input type="time" id="sched-end-time" class="form-control" value="${settings.scheduleEndTime || '21:00'}" style="margin-bottom: 0;" required>
-                        </div>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 6px; color: var(--text-main);">시간표 칸 간격 (분)</label>
-                            <select id="sched-slot-minutes" class="form-control" style="margin-bottom: 0;">
-                                <option value="10" ${settings.scheduleSlotMinutes == 10 ? 'selected' : ''}>10분</option>
-                                <option value="15" ${settings.scheduleSlotMinutes == 15 ? 'selected' : ''}>15분</option>
-                                <option value="20" ${settings.scheduleSlotMinutes == 20 ? 'selected' : ''}>20분</option>
-                                <option value="30" ${settings.scheduleSlotMinutes == 30 ? 'selected' : ''}>30분</option>
-                                <option value="60" ${settings.scheduleSlotMinutes == 60 ? 'selected' : ''}>60분</option>
-                            </select>
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 6px; color: var(--text-main);">기본 인쇄 배치</label>
-                            <select id="sched-print-layout" class="form-control" style="margin-bottom: 0;">
-                                <option value="one-per-page" ${settings.printLayoutDefault === 'one-per-page' ? 'selected' : ''}>페이지당 표 1개</option>
-                                <option value="two-per-page" ${settings.printLayoutDefault === 'two-per-page' ? 'selected' : ''}>페이지당 표 2개</option>
-                                <option value="three-per-page" ${settings.printLayoutDefault === 'three-per-page' ? 'selected' : ''}>페이지당 표 3개</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="form-group" style="margin-bottom: 0;">
-                        <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 6px; color: var(--text-main);">시간표 노출 요일</label>
-                        <div style="display: flex; gap: 12px; flex-wrap: wrap; background: rgba(255, 255, 255, 0.02); padding: 10px 14px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); margin-bottom: 0;">
-                            ${['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map(day => {
-                                const dayKo = { mon: '월', tue: '화', wed: '수', thu: '목', fri: '금', sat: '토', sun: '일' }[day];
-                                const checked = (settings.scheduleDays || []).includes(day) ? 'checked' : '';
-                                return `
-                                    <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; color: var(--text-main); margin-bottom: 0;">
-                                        <input type="checkbox" name="sched-days" value="${day}" ${checked} style="margin: 0; width: 16px; height: 16px;">
-                                        ${dayKo}
-                                    </label>
-                                `;
-                            }).join('')}
-                        </div>
-                    </div>
 
                     <div class="form-group" style="margin-bottom: 0;">
                         <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 6px; color: var(--text-main);">학원장 서명 이미지 업로드</label>
@@ -333,16 +282,7 @@ export function renderAcademyInfo(container) {
                     directorSignature: uploadedSignatureDataUrl
                 });
 
-                const dayCheckboxes = container.querySelectorAll('input[name="sched-days"]:checked');
-                const scheduleDays = Array.from(dayCheckboxes).map(cb => cb.value);
 
-                stateStore.updateSettings({
-                    scheduleStartTime: container.querySelector('#sched-start-time').value,
-                    scheduleEndTime: container.querySelector('#sched-end-time').value,
-                    scheduleSlotMinutes: parseInt(container.querySelector('#sched-slot-minutes').value, 10),
-                    printLayoutDefault: container.querySelector('#sched-print-layout').value,
-                    scheduleDays: scheduleDays
-                });
 
                 showKakaoTalkToast("학원 정보 및 시간표 설정이 성공적으로 저장되었습니다.");
             } catch (err) {

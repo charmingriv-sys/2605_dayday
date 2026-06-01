@@ -378,7 +378,7 @@ test.describe('Director Teacher-Student Schedule Flow Checks', () => {
     await expect(logPanel).toBeVisible({ timeout: 5000 });
   });
 
-  test('should verify print preview modal functionality in match view', async ({ page }) => {
+  test('should verify print preview modal functionality and page orientation tip in match view', async ({ page }) => {
     // 1. Navigate to Schedules subtab and turn on daily view
     await navigateDirectorView(page, 'dir-schedules');
     const subTabBtn = page.locator('#btn-subtab-match');
@@ -389,7 +389,7 @@ test.describe('Director Teacher-Student Schedule Flow Checks', () => {
     const printBtn = page.locator('[data-testid="teacher-student-print-preview"]');
     await expect(printBtn).toBeVisible({ timeout: 5000 });
 
-    // 3. Click print button to open modal
+    // 3. Click print button to open modal (default: Weekly view, which should recommend landscape)
     await printBtn.click();
 
     // 4. Verify print modal is visible and contains expected print elements
@@ -398,6 +398,11 @@ test.describe('Director Teacher-Student Schedule Flow Checks', () => {
 
     const printTitle = printModal.locator('[data-testid="schedule-print-title"]');
     await expect(printTitle).toContainText('강사-원생 수업 시간표');
+
+    // Verify orientation guidance tip
+    const orientationTip = page.locator('#print-orientation-tip');
+    await expect(orientationTip).toBeVisible({ timeout: 5000 });
+    await expect(orientationTip).toHaveText('* 가로 인쇄 권장');
 
     const printCloseBtn = printModal.locator('[data-testid="schedule-print-close"]');
     await expect(printCloseBtn).toBeVisible({ timeout: 5000 });

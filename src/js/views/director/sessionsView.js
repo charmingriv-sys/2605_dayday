@@ -32,13 +32,94 @@ export function renderSchedules(container) {
     // Temporary overrides Map for visual drag-and-drop simulation (Reset when DB changes or filter reset)
     let tempClassOverrides = {}; // Key: classId, Value: { dayOfWeek, time }
     
+    const openSettingsModal = () => {
+        const settings = stateStore.getSettings() || {};
+        const html = `
+            <div class="modal-header">
+                <h3 class="modal-title"><i class="fa-solid fa-gear" style="color: var(--primary);"></i> 시간표 운영 설정</h3>
+                <button class="modal-close" data-close-modal>&times;</button>
+            </div>
+            <div class="modal-body" style="padding-top: 10px;">
+                <form id="schedule-settings-form" style="display: flex; flex-direction: column; gap: 1.2rem;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 6px; color: var(--text-main);">시간표 시작 시간</label>
+                            <input type="time" id="modal-sched-start-time" class="form-control" value="${settings.scheduleStartTime || '14:00'}" required>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 6px; color: var(--text-main);">시간표 종료 시간</label>
+                            <input type="time" id="modal-sched-end-time" class="form-control" value="${settings.scheduleEndTime || '21:00'}" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 6px; color: var(--text-main);">시간표 칸 간격 (분)</label>
+                        <select id="modal-sched-slot-minutes" class="form-control">
+                            <option value="10" ${settings.scheduleSlotMinutes == 10 ? 'selected' : ''}>10분</option>
+                            <option value="15" ${settings.scheduleSlotMinutes == 15 ? 'selected' : ''}>15분</option>
+                            <option value="20" ${settings.scheduleSlotMinutes == 20 ? 'selected' : ''}>20분</option>
+                            <option value="30" ${settings.scheduleSlotMinutes == 30 ? 'selected' : ''}>30분</option>
+                            <option value="60" ${settings.scheduleSlotMinutes == 60 ? 'selected' : ''}>60분</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 6px; color: var(--text-main);">시간표 노출 요일</label>
+                        <div style="display: flex; gap: 12px; flex-wrap: wrap; background: rgba(255, 255, 255, 0.02); padding: 10px 14px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); margin-bottom: 0;">
+                            ${['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map(day => {
+                                const dayKo = { mon: '월', tue: '화', wed: '수', thu: '목', fri: '금', sat: '토', sun: '일' }[day];
+                                const checked = (settings.scheduleDays || []).includes(day) ? 'checked' : '';
+                                return `
+                                    <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer; color: var(--text-main); margin-bottom: 0;">
+                                        <input type="checkbox" name="modal-sched-days" value="${day}" ${checked} style="margin: 0; width: 16px; height: 16px;">
+                                        ${dayKo}
+                                    </label>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer" style="display: flex; gap: 8px; justify-content: flex-end;">
+                <button type="button" class="btn btn-secondary" data-close-modal>취소</button>
+                <button type="button" id="btn-save-schedule-settings" class="btn btn-primary" data-testid="save-schedule-settings-button">저장하기</button>
+            </div>
+        `;
+
+        const onInitModal = (contentArea) => {
+            const saveBtn = contentArea.querySelector('#btn-save-schedule-settings');
+            if (saveBtn) {
+                saveBtn.addEventListener('click', () => {
+                    const startTime = contentArea.querySelector('#modal-sched-start-time').value;
+                    const endTime = contentArea.querySelector('#modal-sched-end-time').value;
+                    const slotMinutes = parseInt(contentArea.querySelector('#modal-sched-slot-minutes').value, 10);
+                    const dayCheckboxes = contentArea.querySelectorAll('input[name="modal-sched-days"]:checked');
+                    const scheduleDays = Array.from(dayCheckboxes).map(cb => cb.value);
+
+                    stateStore.updateSettings({
+                        scheduleStartTime: startTime,
+                        scheduleEndTime: endTime,
+                        scheduleSlotMinutes: slotMinutes,
+                        scheduleDays: scheduleDays
+                    });
+
+                    showKakaoTalkToast("시간표 설정이 변경되었습니다.");
+                    closeModal();
+                    render(); // Refresh schedules view
+                });
+            }
+        };
+
+        openModal(html, onInitModal);
+    };
+
     const render = () => {
         container.innerHTML = `
             <div class="schedules-view-container">
                 <!-- Sub Tab Navigation Card -->
                 <div class="glass-card" style="margin-bottom: 24px; padding: 1.2rem;">
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
-                        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                        <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
                             <button class="btn ${activeSubTab === 'shift_view' ? 'btn-primary' : 'btn-secondary'}" id="btn-subtab-shift-view">
                                 <i class="fa-solid fa-calendar-week"></i> 강사 출근표 관리
                             </button>
@@ -47,6 +128,9 @@ export function renderSchedules(container) {
                             </button>
                             <button class="btn ${activeSubTab === 'match' ? 'btn-primary' : 'btn-secondary'}" id="btn-subtab-match">
                                 <i class="fa-solid fa-network-wired"></i> 강사-원생 시간표 관리
+                            </button>
+                            <button class="btn btn-secondary" id="btn-schedule-settings" data-testid="schedule-settings-button" style="display: inline-flex; align-items: center; gap: 4px;">
+                                <i class="fa-solid fa-gear"></i> 설정
                             </button>
                         </div>
                         <div id="schedule-date-controls" style="display: ${(activeSubTab === 'shift_view' || activeSubTab === 'shift_edit' || (activeSubTab === 'match' && matchViewMode === 'week')) ? 'flex' : 'none'}; align-items: center; gap: 12px;">
@@ -74,6 +158,9 @@ export function renderSchedules(container) {
         container.querySelector('#btn-subtab-match').addEventListener('click', () => {
             activeSubTab = 'match';
             render();
+        });
+        container.querySelector('#btn-schedule-settings').addEventListener('click', () => {
+            openSettingsModal();
         });
 
         if (activeSubTab === 'shift_view' || activeSubTab === 'shift_edit' || (activeSubTab === 'match' && matchViewMode === 'week')) {
@@ -612,6 +699,7 @@ export function renderSchedules(container) {
                                 <option value="2" data-testid="schedule-print-layout-option-2" ${defaultLayout === 2 ? 'selected' : ''}>2개 세로 반복</option>
                                 <option value="3" data-testid="schedule-print-layout-option-3" ${defaultLayout === 3 ? 'selected' : ''}>3개 세로 반복</option>
                             </select>
+                            <span id="print-orientation-tip" data-testid="schedule-print-orientation-tip" style="font-size: 0.75rem; color: #6b7280; font-weight: 500; margin-left: 4px;"></span>
                         </div>
                         <div style="display: flex; gap: 8px;">
                             <button class="btn btn-secondary" id="btn-print-copy-image" data-testid="schedule-print-copy-image" style="display: inline-flex; align-items: center; gap: 4px;">
@@ -773,6 +861,41 @@ export function renderSchedules(container) {
             });
         };
 
+        let recommendLandscape = false;
+        if (type === 'matches') {
+            if (matchViewMode === 'week') {
+                recommendLandscape = true;
+            } else if (activeTeachers && activeTeachers.length >= 5) {
+                recommendLandscape = true;
+            }
+        } else if (type === 'shifts') {
+            if (shiftViewMode === 'week') {
+                recommendLandscape = true;
+            }
+        }
+
+        const applyPrintOrientation = () => {
+            let styleEl = document.getElementById('dynamic-print-orientation-style');
+            if (!styleEl) {
+                styleEl = document.createElement('style');
+                styleEl.id = 'dynamic-print-orientation-style';
+                document.head.appendChild(styleEl);
+            }
+            styleEl.innerHTML = `
+                @media print {
+                    @page {
+                        size: ${recommendLandscape ? 'landscape' : 'portrait'};
+                        margin: 10mm;
+                    }
+                }
+            `;
+            
+            const tipEl = modal.querySelector('#print-orientation-tip');
+            if (tipEl) {
+                tipEl.textContent = recommendLandscape ? '* 가로 인쇄 권장' : '* 세로 인쇄 권장';
+            }
+        };
+
         const updatePrintLayout = (count) => {
             const containerEl = modal.querySelector('#print-preview-content');
             if (!containerEl) return;
@@ -799,6 +922,7 @@ export function renderSchedules(container) {
                 `;
             }
             containerEl.innerHTML = copiesHtml;
+            applyPrintOrientation();
         };
 
         updatePrintLayout(defaultLayout);
@@ -880,6 +1004,8 @@ export function renderSchedules(container) {
         });
 
         modal.querySelector('#btn-print-close').addEventListener('click', () => {
+            const styleEl = document.getElementById('dynamic-print-orientation-style');
+            if (styleEl) styleEl.remove();
             modal.remove();
         });
 

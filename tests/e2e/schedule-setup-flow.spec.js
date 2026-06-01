@@ -35,45 +35,65 @@ test.describe('Director Schedule Settings and Notes Flow Checks', () => {
     const authBtn = page.locator('#btn-submit-academy-auth');
     await authBtn.click();
 
-    // 4. Change Schedule Settings
-    const startTimeInput = page.locator('#sched-start-time');
+    // 4. Change Schedule Settings via Schedules subtab settings modal
+    // Navigate to Schedules first
+    const schedulesMenu = page.locator('.menu-item[data-view="dir-schedules"]');
+    await expect(schedulesMenu).toBeVisible();
+    await schedulesMenu.click();
+
+    const subTabBtn = page.locator('#btn-subtab-match');
+    await expect(subTabBtn).toBeVisible({ timeout: 5000 });
+    await subTabBtn.click();
+
+    // Click "설정" button to open modal
+    const scheduleSettingsBtn = page.locator('#btn-schedule-settings');
+    await expect(scheduleSettingsBtn).toBeVisible({ timeout: 5000 });
+    await scheduleSettingsBtn.click();
+
+    // Verify settings modal inputs are visible
+    const startTimeInput = page.locator('#modal-sched-start-time');
     await expect(startTimeInput).toBeVisible();
     await startTimeInput.fill('15:00');
 
-    const endTimeInput = page.locator('#sched-end-time');
+    const endTimeInput = page.locator('#modal-sched-end-time');
     await endTimeInput.fill('20:00');
 
-    const slotSelect = page.locator('#sched-slot-minutes');
+    const slotSelect = page.locator('#modal-sched-slot-minutes');
     await slotSelect.selectOption('15');
 
-    const layoutSelect = page.locator('#sched-print-layout');
-    await layoutSelect.selectOption('two-per-page');
-
     // Uncheck Saturday (sat) in days checkboxes
-    const satCheckbox = page.locator('input[name="sched-days"][value="sat"]');
+    const satCheckbox = page.locator('input[name="modal-sched-days"][value="sat"]');
     await expect(satCheckbox).toBeChecked();
     await satCheckbox.uncheck();
 
-    // Submit form
-    const submitSettingsBtn = page.locator('#academy-info-form button[type="submit"]');
-    await submitSettingsBtn.click();
+    // Click save button inside modal
+    const saveSettingsBtn = page.locator('#btn-save-schedule-settings');
+    await saveSettingsBtn.click();
+
+    // Wait for modal to disappear (since we updated settings)
+    await expect(startTimeInput).toBeHidden({ timeout: 5000 });
 
     // 5. Reload Page and verify settings persistence
     await page.reload();
     await page.waitForLoadState('domcontentloaded');
     await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
 
-    // Go back to settings and authenticate
-    await settingsMenu.click();
-    await pwInput.fill('0000');
-    await authBtn.click();
+    // Go back to Schedules subtab and open settings modal
+    await schedulesMenu.click();
+    await subTabBtn.click();
+    await scheduleSettingsBtn.click();
 
-    // Verify settings values
+    // Verify settings values inside modal
     await expect(startTimeInput).toHaveValue('15:00');
     await expect(endTimeInput).toHaveValue('20:00');
     await expect(slotSelect).toHaveValue('15');
-    await expect(layoutSelect).toHaveValue('two-per-page');
     await expect(satCheckbox).not.toBeChecked();
+
+    // Close the settings modal using the 취소 button
+    const cancelSettingsBtn = page.locator('#modal-content-area button:has-text("취소")');
+    await expect(cancelSettingsBtn).toBeVisible({ timeout: 5000 });
+    await cancelSettingsBtn.click();
+    await expect(startTimeInput).toBeHidden({ timeout: 5000 });
 
     // 6. Go to Teacher Management (Staff View)
     const staffMenu = page.locator('.menu-item[data-view="dir-teachers"]');
