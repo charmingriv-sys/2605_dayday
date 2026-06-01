@@ -131,6 +131,8 @@ export function renderSchedules(container) {
                     }
                     #print-preview-modal .btn,
                     #print-preview-modal h3,
+                    #print-preview-modal select,
+                    #print-preview-modal label,
                     #print-preview-modal > div > div:first-child {
                         display: none !important;
                     }
@@ -147,7 +149,102 @@ export function renderSchedules(container) {
                         margin: 0 !important;
                         width: 100% !important;
                         min-height: 0 !important;
+                        page-break-inside: avoid !important;
                     }
+                }
+
+                /* Layout 1: Default A4 */
+                .print-layout-1 .print-preview-a4 {
+                    width: 210mm;
+                    min-height: 297mm;
+                    padding: 20mm;
+                    box-sizing: border-box;
+                    background: white;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 20px;
+                }
+
+                /* Layout 2: 2 copies per page */
+                .print-layout-2 {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 15mm;
+                    width: 210mm;
+                }
+                .print-layout-2 .print-preview-a4 {
+                    width: 210mm;
+                    height: 135mm;
+                    padding: 8mm 12mm;
+                    box-sizing: border-box;
+                    background: white;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8px;
+                    border: 1px dashed #ccc;
+                    overflow: hidden;
+                    page-break-inside: avoid !important;
+                }
+                .print-layout-2 .print-preview-a4 h1 {
+                    font-size: 1.3rem !important;
+                    margin-bottom: 2px !important;
+                }
+                .print-layout-2 .print-preview-a4 div {
+                    font-size: 0.8rem !important;
+                }
+                .print-layout-2 .print-preview-a4 table {
+                    font-size: 0.72rem !important;
+                    margin-top: 4px !important;
+                }
+                .print-layout-2 .print-preview-a4 th, .print-layout-2 .print-preview-a4 td {
+                    padding: 4px !important;
+                }
+                .print-layout-2 [data-testid="schedule-print-notes"],
+                .print-layout-2 [data-testid="schedule-print-logs"] {
+                    margin-top: 8px !important;
+                    padding: 6px !important;
+                    font-size: 0.72rem !important;
+                }
+
+                /* Layout 3: 3 copies per page */
+                .print-layout-3 {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8mm;
+                    width: 210mm;
+                }
+                .print-layout-3 .print-preview-a4 {
+                    width: 210mm;
+                    height: 88mm;
+                    padding: 5mm 10mm;
+                    box-sizing: border-box;
+                    background: white;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 6px;
+                    border: 1px dashed #ccc;
+                    overflow: hidden;
+                    page-break-inside: avoid !important;
+                }
+                .print-layout-3 .print-preview-a4 h1 {
+                    font-size: 1.1rem !important;
+                    margin-bottom: 2px !important;
+                }
+                .print-layout-3 .print-preview-a4 div {
+                    font-size: 0.72rem !important;
+                }
+                .print-layout-3 .print-preview-a4 table {
+                    font-size: 0.65rem !important;
+                    margin-top: 2px !important;
+                }
+                .print-layout-3 .print-preview-a4 th, .print-layout-3 .print-preview-a4 td {
+                    padding: 2px 3px !important;
+                }
+                .print-layout-3 [data-testid="schedule-print-notes"],
+                .print-layout-3 [data-testid="schedule-print-logs"] {
+                    margin-top: 4px !important;
+                    padding: 4px !important;
+                    font-size: 0.65rem !important;
                 }
             `;
             document.head.appendChild(style);
@@ -159,6 +256,13 @@ export function renderSchedules(container) {
         const scheduleStartTime = settings.scheduleStartTime || "14:00";
         const scheduleEndTime = settings.scheduleEndTime || "21:00";
         const scheduleSlotMinutes = settings.scheduleSlotMinutes || 30;
+
+        let defaultLayout = 1;
+        if (settings.printLayoutDefault === 'two-per-page') {
+            defaultLayout = 2;
+        } else if (settings.printLayoutDefault === 'three-per-page') {
+            defaultLayout = 3;
+        }
 
         const teachers = stateStore.getTeachers();
         const students = stateStore.getStudents();
@@ -497,32 +601,64 @@ export function renderSchedules(container) {
             <div style="background: white; border-radius: 12px; width: 90%; max-width: 1000px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; border-bottom: 1px solid #e0e0e0; background: #f8fafc;">
                     <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: #1e293b;">프린트 미리보기</h3>
-                    <div style="display: flex; gap: 8px;">
-                        <button class="btn btn-primary" id="btn-print-confirm" data-testid="schedule-print-action" style="display: inline-flex; align-items: center; gap: 4px;">
-                            <i class="fa-solid fa-print"></i> 인쇄
-                        </button>
-                        <button class="btn btn-secondary" id="btn-print-close" data-testid="schedule-print-close">닫기</button>
+                    <div style="display: flex; align-items: center; gap: 16px;">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <label for="print-layout-select" style="margin: 0; font-size: 0.85rem; font-weight: 600; color: #4b5563;">출력 배치:</label>
+                            <select id="print-layout-select" data-testid="schedule-print-layout-select" class="form-control" style="margin: 0; width: 140px; font-size: 0.85rem; padding: 4px 8px; height: 32px;">
+                                <option value="1" data-testid="schedule-print-layout-option-1" ${defaultLayout === 1 ? 'selected' : ''}>1개 크게 출력</option>
+                                <option value="2" data-testid="schedule-print-layout-option-2" ${defaultLayout === 2 ? 'selected' : ''}>2개 세로 반복</option>
+                                <option value="3" data-testid="schedule-print-layout-option-3" ${defaultLayout === 3 ? 'selected' : ''}>3개 세로 반복</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn btn-primary" id="btn-print-confirm" data-testid="schedule-print-action" style="display: inline-flex; align-items: center; gap: 4px;">
+                                <i class="fa-solid fa-print"></i> 인쇄
+                            </button>
+                            <button class="btn btn-secondary" id="btn-print-close" data-testid="schedule-print-close">닫기</button>
+                        </div>
                     </div>
                 </div>
                 <div id="print-preview-content" data-testid="schedule-print-content" style="flex: 1; overflow-y: auto; padding: 40px; background: #f1f5f9; display: flex; justify-content: center;">
-                    <div class="print-preview-a4" style="background: white; width: 100%; min-height: 297mm; padding: 20mm; box-shadow: 0 4px 12px rgba(0,0,0,0.1); box-sizing: border-box; display: flex; flex-direction: column; gap: 20px; color: #111;">
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        const updatePrintLayout = (count) => {
+            const containerEl = modal.querySelector('#print-preview-content');
+            if (!containerEl) return;
+            
+            containerEl.className = `print-layout-${count}`;
+            
+            let copiesHtml = '';
+            for (let i = 1; i <= count; i++) {
+                copiesHtml += `
+                    <div class="print-preview-a4" data-testid="schedule-print-copy" data-index="${i}" style="background: white; width: 100%; box-shadow: 0 4px 12px rgba(0,0,0,0.1); box-sizing: border-box; display: flex; flex-direction: column; color: #111; margin-bottom: 20px;">
+                        <span data-testid="schedule-print-copy-index" data-index="${i}" style="display: none;"></span>
                         <div style="text-align: center; border-bottom: 2px solid #111; padding-bottom: 12px;">
                             <h1 data-testid="schedule-print-title" style="margin: 0 0 6px 0; font-size: 1.8rem; font-weight: 800; color: #111;">${titleText}</h1>
                             <div style="font-size: 0.95rem; color: #444; font-weight: 500;">
                                 ${subtitleText} | ${filterSummaryText}
                             </div>
                         </div>
-                        <div style="flex: 1;">
+                        <div style="flex: 1; min-height: 0;">
                             ${tableHtml}
                         </div>
                         ${notesHtml}
                         ${logsHtml}
                     </div>
-                </div>
-            </div>
-        `;
+                `;
+            }
+            containerEl.innerHTML = copiesHtml;
+        };
 
-        document.body.appendChild(modal);
+        updatePrintLayout(defaultLayout);
+
+        modal.querySelector('#print-layout-select').addEventListener('change', (e) => {
+            const count = parseInt(e.target.value) || 1;
+            updatePrintLayout(count);
+        });
 
         modal.querySelector('#btn-print-close').addEventListener('click', () => {
             modal.remove();
