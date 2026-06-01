@@ -190,11 +190,11 @@ export function renderSchedules(container) {
                     body * {
                         visibility: hidden !important;
                     }
-                    #print-preview-modal,
-                    #print-preview-modal * {
+                    #schedule-print-modal,
+                    #schedule-print-modal * {
                         visibility: visible !important;
                     }
-                    #print-preview-modal {
+                    #schedule-print-modal {
                         position: absolute !important;
                         left: 0 !important;
                         top: 0 !important;
@@ -206,7 +206,7 @@ export function renderSchedules(container) {
                         overflow: visible !important;
                         display: block !important;
                     }
-                    #print-preview-modal > div {
+                    #schedule-print-modal > div {
                         box-shadow: none !important;
                         width: 100% !important;
                         max-width: 100% !important;
@@ -216,11 +216,11 @@ export function renderSchedules(container) {
                         padding: 0 !important;
                         border-radius: 0 !important;
                     }
-                    #print-preview-modal .btn,
-                    #print-preview-modal h3,
-                    #print-preview-modal select,
-                    #print-preview-modal label,
-                    #print-preview-modal > div > div:first-child {
+                    #schedule-print-modal .btn,
+                    #schedule-print-modal h3,
+                    #schedule-print-modal select,
+                    #schedule-print-modal label,
+                    #schedule-print-modal > div > div:first-child {
                         display: none !important;
                     }
                     #print-preview-content {
@@ -353,6 +353,7 @@ export function renderSchedules(container) {
 
         const teachers = stateStore.getTeachers();
         const students = stateStore.getStudents();
+        let activeTeachers = [];
 
         const getSlotsList = () => {
             const slots = [];
@@ -584,10 +585,9 @@ export function renderSchedules(container) {
 
                 const dayOfWeekEn = dayKoToEn[dayKo];
                 const dayShifts = stateStore.getTeacherShifts().filter(s => s.date === matchSelectedDateStr);
-                const todaySchedule = stateStore.getTeacherStudentScheduleForDate(matchSelectedDateStr);
-                const todayClasses = todaySchedule.classes || [];
-
-                const activeTeachers = teachers.filter(t => {
+                const todayClasses = stateStore.getTeacherStudentScheduleForDate(matchSelectedDateStr) || [];
+                
+                activeTeachers = teachers.filter(t => {
                     if (matchFilterActiveOnly) {
                         const hasClassToday = todayClasses.some(c => c.teacherId === t.id);
                         if (!hasClassToday) return false;
@@ -676,25 +676,26 @@ export function renderSchedules(container) {
         }
 
         const modal = document.createElement('div');
-        modal.id = 'print-preview-modal';
-        modal.className = 'modal-overlay';
+        modal.id = 'schedule-print-modal';
+        modal.className = 'modal-overlay show';
         modal.setAttribute('data-testid', 'schedule-print-modal');
         modal.style.cssText = `
             display: flex; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
             background: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; align-items: center;
+            opacity: 1; pointer-events: auto;
         `;
 
         modal.innerHTML = `
             <div style="background: white; border-radius: 12px; width: 90%; max-width: 1000px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; border-bottom: 1px solid #e0e0e0; background: #f8fafc;">
-                    <div style="display: flex; align-items: center; gap: 16px;">
+                     <div style="display: flex; align-items: center; gap: 16px;">
                         <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: #1e293b;">프린트 미리보기</h3>
                         <span id="print-export-status" data-testid="schedule-print-export-status" style="font-size: 0.85rem; font-weight: 600; color: var(--primary); display: none; padding: 4px 8px; background: #e0f2fe; border-radius: 4px;"></span>
                     </div>
                     <div style="display: flex; align-items: center; gap: 16px;">
                         <div style="display: flex; align-items: center; gap: 6px;">
-                            <label for="print-layout-select" style="margin: 0; font-size: 0.85rem; font-weight: 600; color: #4b5563;">출력 배치:</label>
-                            <select id="print-layout-select" data-testid="schedule-print-layout-select" class="form-control" style="margin: 0; width: 140px; font-size: 0.85rem; padding: 4px 8px; height: 32px;">
+                            <label for="schedule-print-layout-select" style="margin: 0; font-size: 0.85rem; font-weight: 600; color: #4b5563;">출력 배치:</label>
+                            <select id="schedule-print-layout-select" data-testid="schedule-print-layout-select" class="form-control" style="margin: 0; width: 140px; font-size: 0.85rem; padding: 4px 8px; height: 32px;">
                                 <option value="1" data-testid="schedule-print-layout-option-1" ${defaultLayout === 1 ? 'selected' : ''}>1개 크게 출력</option>
                                 <option value="2" data-testid="schedule-print-layout-option-2" ${defaultLayout === 2 ? 'selected' : ''}>2개 세로 반복</option>
                                 <option value="3" data-testid="schedule-print-layout-option-3" ${defaultLayout === 3 ? 'selected' : ''}>3개 세로 반복</option>
@@ -998,7 +999,7 @@ export function renderSchedules(container) {
             }
         });
 
-        modal.querySelector('#print-layout-select').addEventListener('change', (e) => {
+        modal.querySelector('#schedule-print-layout-select').addEventListener('change', (e) => {
             const count = parseInt(e.target.value) || 1;
             updatePrintLayout(count);
         });
@@ -1722,9 +1723,6 @@ export function renderSchedules(container) {
                     <div style="display: flex; gap: 8px; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: center;" id="teacher-filter-row" data-testid="teacher-student-teacher-filter">
                         ${teacherBadgesHtml}
                         <button class="btn btn-secondary" id="btn-clear-match-filter" style="border-radius: 20px; font-weight: 600; padding: 5px 12px; font-size: 0.8rem;">필터 초기화</button>
-                        <button class="btn btn-primary" id="btn-print-match" style="border-radius: 20px; font-weight: 600; padding: 5px 12px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 4px; margin-left: 8px;">
-                            <i class="fa-solid fa-print"></i> 출력하기
-                        </button>
                     </div>
 
                     <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: stretch; width: 100%;">
@@ -2119,12 +2117,7 @@ export function renderSchedules(container) {
 
             ws.querySelector('#btn-clear-match-filter').addEventListener('click', clearFilter);
 
-            const printBtn = ws.querySelector('#btn-print-match');
-            if (printBtn) {
-                printBtn.addEventListener('click', () => {
-                    window.print();
-                });
-            }
+
 
             if (currentFilterTeacherId) {
                 applyFilter(currentFilterTeacherId);
