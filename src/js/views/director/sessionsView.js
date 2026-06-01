@@ -600,7 +600,10 @@ export function renderSchedules(container) {
         modal.innerHTML = `
             <div style="background: white; border-radius: 12px; width: 90%; max-width: 1000px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; border-bottom: 1px solid #e0e0e0; background: #f8fafc;">
-                    <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: #1e293b;">프린트 미리보기</h3>
+                    <div style="display: flex; align-items: center; gap: 16px;">
+                        <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: #1e293b;">프린트 미리보기</h3>
+                        <span id="print-export-status" data-testid="schedule-print-export-status" style="font-size: 0.85rem; font-weight: 600; color: var(--primary); display: none; padding: 4px 8px; background: #e0f2fe; border-radius: 4px;"></span>
+                    </div>
                     <div style="display: flex; align-items: center; gap: 16px;">
                         <div style="display: flex; align-items: center; gap: 6px;">
                             <label for="print-layout-select" style="margin: 0; font-size: 0.85rem; font-weight: 600; color: #4b5563;">출력 배치:</label>
@@ -611,6 +614,12 @@ export function renderSchedules(container) {
                             </select>
                         </div>
                         <div style="display: flex; gap: 8px;">
+                            <button class="btn btn-secondary" id="btn-print-copy-image" data-testid="schedule-print-copy-image" style="display: inline-flex; align-items: center; gap: 4px;">
+                                <i class="fa-solid fa-copy"></i> 이미지 복사
+                            </button>
+                            <button class="btn btn-secondary" id="btn-print-download-png" data-testid="schedule-print-download-png" style="display: inline-flex; align-items: center; gap: 4px;">
+                                <i class="fa-solid fa-download"></i> PNG 다운로드
+                            </button>
                             <button class="btn btn-primary" id="btn-print-confirm" data-testid="schedule-print-action" style="display: inline-flex; align-items: center; gap: 4px;">
                                 <i class="fa-solid fa-print"></i> 인쇄
                             </button>
@@ -624,6 +633,145 @@ export function renderSchedules(container) {
         `;
 
         document.body.appendChild(modal);
+
+        const showExportStatus = (message, isSuccess = true) => {
+            const statusEl = modal.querySelector('#print-export-status');
+            if (!statusEl) return;
+            statusEl.textContent = message;
+            statusEl.style.display = 'inline-block';
+            statusEl.style.color = isSuccess ? '#0369a1' : '#b91c1c';
+            statusEl.style.background = isSuccess ? '#e0f2fe' : '#fee2e2';
+            
+            if (modal.__statusTimeout) clearTimeout(modal.__statusTimeout);
+            modal.__statusTimeout = setTimeout(() => {
+                statusEl.style.display = 'none';
+            }, 4000);
+        };
+
+        const captureContentAsBlob = async () => {
+            const containerEl = modal.querySelector('#print-preview-content');
+            if (!containerEl) throw new Error('Capture target not found');
+
+            const width = 800;
+            const height = containerEl.scrollHeight || 1130;
+
+            const styleEl = document.getElementById('print-preview-style');
+            const stylesText = styleEl ? styleEl.innerHTML : '';
+
+            const captureStyles = `
+                * { box-sizing: border-box; }
+                #print-preview-content {
+                    background: #f1f5f9;
+                    padding: 40px;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    width: 100%;
+                }
+                .print-preview-a4 {
+                    background: white;
+                    width: 100%;
+                    max-width: 720px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                    box-sizing: border-box;
+                    display: flex;
+                    flex-direction: column;
+                    color: #111;
+                    margin-bottom: 20px;
+                    padding: 20px;
+                    border: 1px solid #ddd;
+                }
+                .print-layout-1 .print-preview-a4 {
+                    min-height: 1000px;
+                }
+                .print-layout-2 {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 15mm;
+                    width: 100%;
+                    max-width: 720px;
+                }
+                .print-layout-2 .print-preview-a4 {
+                    height: 500px;
+                    overflow: hidden;
+                }
+                .print-layout-3 {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8mm;
+                    width: 100%;
+                    max-width: 720px;
+                }
+                .print-layout-3 .print-preview-a4 {
+                    height: 330px;
+                    overflow: hidden;
+                }
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-top: 1rem;
+                    font-size: 0.85rem;
+                }
+                th, td {
+                    border: 1px solid #111;
+                    padding: 6px;
+                    text-align: center;
+                    vertical-align: middle;
+                }
+                thead tr {
+                    background-color: #f1f5f9;
+                }
+                ${stylesText}
+            `;
+
+            const s = new XMLSerializer();
+            const contentHtml = s.serializeToString(containerEl);
+
+            const svgString = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+                    <foreignObject width="100%" height="100%">
+                        <style>${captureStyles}</style>
+                        <div xmlns="http://www.w3.org/1999/xhtml" style="width:100%; height:100%; font-family: sans-serif;">
+                            ${contentHtml}
+                        </div>
+                    </foreignObject>
+                </svg>
+            `;
+
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+                const url = URL.createObjectURL(svgBlob);
+
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+
+                    ctx.fillStyle = '#f1f5f9';
+                    ctx.fillRect(0, 0, width, height);
+
+                    ctx.drawImage(img, 0, 0);
+                    URL.revokeObjectURL(url);
+
+                    canvas.toBlob((blob) => {
+                        if (blob) {
+                            resolve(blob);
+                        } else {
+                            reject(new Error('Canvas conversion failed'));
+                        }
+                    }, 'image/png');
+                };
+
+                img.onerror = (err) => {
+                    URL.revokeObjectURL(url);
+                    reject(err);
+                };
+
+                img.src = url;
+            });
+        };
 
         const updatePrintLayout = (count) => {
             const containerEl = modal.querySelector('#print-preview-content');
@@ -654,6 +802,77 @@ export function renderSchedules(container) {
         };
 
         updatePrintLayout(defaultLayout);
+
+        const formatDate = (d) => {
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const date = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${date}`;
+        };
+
+        const dateStr = (type === 'shifts') 
+            ? (shiftViewMode === 'week' ? formatDate(referenceDate) : selectedDateStr)
+            : (matchViewMode === 'week' ? formatDate(referenceDate) : matchSelectedDateStr);
+        const filename = type === 'shifts' ? `teacher-shift-${dateStr}.png` : `teacher-student-schedule-${dateStr}.png`;
+
+        const triggerDownload = (blob, filename) => {
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+        };
+
+        const btnDownload = modal.querySelector('#btn-print-download-png');
+        const btnCopy = modal.querySelector('#btn-print-copy-image');
+
+        btnDownload.addEventListener('click', async () => {
+            btnDownload.disabled = true;
+            btnDownload.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> 처리 중...`;
+            showExportStatus('이미지 다운로드를 준비했습니다.', true);
+            try {
+                const blob = await captureContentAsBlob();
+                triggerDownload(blob, filename);
+                showExportStatus('이미지 다운로드를 준비했습니다.', true);
+            } catch (err) {
+                console.error(err);
+                showExportStatus('이미지 생성에 실패했습니다.', false);
+            } finally {
+                btnDownload.disabled = false;
+                btnDownload.innerHTML = `<i class="fa-solid fa-download"></i> PNG 다운로드`;
+            }
+        });
+
+        btnCopy.addEventListener('click', async () => {
+            btnCopy.disabled = true;
+            btnCopy.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> 처리 중...`;
+            showExportStatus('이미지를 복사하는 중입니다...', true);
+            try {
+                const blob = await captureContentAsBlob();
+                if (navigator.clipboard && navigator.clipboard.write && window.ClipboardItem) {
+                    const item = new ClipboardItem({ 'image/png': blob });
+                    await navigator.clipboard.write([item]);
+                    showExportStatus('이미지가 클립보드에 복사되었습니다.', true);
+                } else {
+                    throw new Error('Clipboard API not supported');
+                }
+            } catch (err) {
+                console.warn(err);
+                showExportStatus('이 브라우저에서는 이미지 복사가 제한되어 PNG 다운로드로 대체합니다.', false);
+                try {
+                    const blob = await captureContentAsBlob();
+                    triggerDownload(blob, filename);
+                } catch (dlErr) {
+                    console.error(dlErr);
+                    showExportStatus('이미지 생성에 실패했습니다.', false);
+                }
+            } finally {
+                btnCopy.disabled = false;
+                btnCopy.innerHTML = `<i class="fa-solid fa-copy"></i> 이미지 복사`;
+            }
+        });
 
         modal.querySelector('#print-layout-select').addEventListener('change', (e) => {
             const count = parseInt(e.target.value) || 1;
