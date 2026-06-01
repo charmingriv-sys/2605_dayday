@@ -1543,10 +1543,34 @@ export function renderSchedules(container) {
 
         const teachers = stateStore.getTeachers();
         const shifts = stateStore.getTeacherShifts();
+        const settings = stateStore.getSettings() || {};
+
+        const scheduleDays = settings.scheduleDays || ["mon", "tue", "wed", "thu", "fri", "sat"];
+        const scheduleStartTime = settings.scheduleStartTime || "14:00";
+        const scheduleEndTime = settings.scheduleEndTime || "21:00";
+        const scheduleSlotMinutes = settings.scheduleSlotMinutes || 30;
+
+        const getSlotsList = () => {
+            const slots = [];
+            const [startH, startM] = scheduleStartTime.split(':').map(Number);
+            const [endH, endM] = scheduleEndTime.split(':').map(Number);
+            let curr = startH * 60 + startM;
+            const end = endH * 60 + endM;
+            while (curr <= end) {
+                const h = Math.floor(curr / 60);
+                const m = curr % 60;
+                slots.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+                curr += scheduleSlotMinutes;
+            }
+            return slots;
+        };
+
+        const timeSlots = getSlotsList();
         
         // Compute week dates based on referenceDate (Monday)
         const weekDates = [];
         const daysOfWeekKo = ['월', '화', '수', '목', '금', '토', '일'];
+        const dayKoToEn = { '월': 'mon', '화': 'tue', '수': 'wed', '목': 'thu', '금': 'fri', '토': 'sat', '일': 'sun' };
         
         const labelStart = `${referenceDate.getMonth() + 1}월 ${referenceDate.getDate()}일`;
         const sunday = new Date(referenceDate);
@@ -1564,9 +1588,12 @@ export function renderSchedules(container) {
             weekDates.push({
                 dateStr: d.toISOString().slice(0, 10),
                 dayKo: daysOfWeekKo[i],
+                dayEn: dayKoToEn[daysOfWeekKo[i]],
                 dayNum: d.getDate()
             });
         }
+
+        const activeWeekDates = weekDates.filter(wd => scheduleDays.includes(wd.dayEn));
 
         const teacherOptions = teachers.map(t => `<option value="${t.id}" ${t.id === selectedTeacherId ? 'selected' : ''}>${t.name} (${t.instrument})</option>`).join('');
 
@@ -1585,16 +1612,16 @@ export function renderSchedules(container) {
                 </div>
 
                 <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5;">
-                    <i class="fa-solid fa-info-circle" style="color: var(--primary);"></i> 설정할 강사를 고른 뒤, 요일별 30분 단위 시간 슬롯 격자를 클릭하여 출근 시간대를 활성화/비활성화할 수 있습니다. 변경 사항은 즉시 데이터베이스에 기록됩니다.
+                    <i class="fa-solid fa-info-circle" style="color: var(--primary);"></i> 설정할 강사를 고른 뒤, 요일별 ${scheduleSlotMinutes}분 단위 시간 슬롯 격자를 클릭하여 출근 시간대를 활성화/비활성화할 수 있습니다. 변경 사항은 즉시 데이터베이스에 기록됩니다.
                 </p>
 
-                <!-- Slot Selector Matrix (08:00 to 24:00) -->
+                <!-- Slot Selector Matrix (dynamic settings-based) -->
                 <div id="shift-editor-scroll-container" style="max-height: 480px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: transparent; padding: 12px;">
                     <table class="custom-table" style="table-layout: fixed; width: 100%; border: 1px solid var(--border-color); border-collapse: collapse;" id="shift-editor-table">
                         <thead>
                             <tr style="border-bottom: 2px solid var(--border-color); background: var(--primary-light);">
                                 <th style="width: 80px; text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 12px 4px; font-weight: bold;"><i class="fa-regular fa-clock"></i></th>
-                                ${weekDates.slice(0, 7).map(wd => `
+                                ${activeWeekDates.map(wd => `
                                     <th style="text-align: center; font-size: 0.85rem; padding: 12px 6px;">
                                         ${wd.dayKo}요일
                                         <span style="display: block; font-size: 0.75rem; color: var(--text-muted); font-weight: normal; margin-top: 4px;">${wd.dateStr.slice(5).replace('-', '/')}</span>
@@ -1606,47 +1633,42 @@ export function renderSchedules(container) {
                             ${
                                 (() => {
                                     let rowsHtml = '';
-                                    // Range: 08:00 to 24:00 (including 24:00)
-                                    for (let h = 8; h <= 24; h++) {
-                                        for (let m = 0; m < 60; m += 30) {
-                                            if (h === 24 && m > 0) continue;
-                                            const timeSlot = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-                                            rowsHtml += `
-                                                <tr style="border-bottom: 1px solid var(--border-color);">
-                                                    <td style="text-align: center; font-weight: bold; color: var(--text-muted); font-size: 0.8rem; padding: 10px 4px; border-right: 1px solid var(--border-color); background: var(--primary-light);">${timeSlot}</td>
-                                                    ${weekDates.slice(0, 7).map(wd => {
-                                                        const hasShift = shifts.some(ts => ts.teacherId === selectedTeacherId && ts.date === wd.dateStr && ts.slots.includes(timeSlot));
-                                                        const cellColor = hasShift ? 'var(--primary)' : 'transparent';
-                                                        const checkedIcon = hasShift ? '<i class="fa-solid fa-check" style="font-size:0.65rem; color:white;"></i>' : '';
-                                                        return `
-                                                            <td style="padding: 6px; text-align: center; border-right: 1px solid var(--border-color); vertical-align: middle;">
-                                                                <div class="shift-slot-cell" 
-                                                                    data-date="${wd.dateStr}" 
-                                                                    data-slot="${timeSlot}" 
-                                                                    style="
-                                                                        height: 24px; 
-                                                                        width: 90%; 
-                                                                        margin: 0 auto;
-                                                                        background: ${cellColor}; 
-                                                                        border: 1px solid var(--border-color); 
-                                                                        border-radius: 4px; 
-                                                                        cursor: pointer;
-                                                                        transition: all 0.15s;
-                                                                        display: flex;
-                                                                        align-items: center;
-                                                                        justify-content: center;
-                                                                    "
-                                                                    onmouseover="this.style.borderColor='var(--primary)'"
-                                                                    onmouseout="this.style.borderColor='var(--border-color)'">
-                                                                    ${checkedIcon}
-                                                                </div>
-                                                            </td>
-                                                        `;
-                                                    }).join('')}
-                                                </tr>
-                                            `;
-                                        }
-                                    }
+                                    timeSlots.forEach(timeSlot => {
+                                        rowsHtml += `
+                                            <tr style="border-bottom: 1px solid var(--border-color);">
+                                                <td style="text-align: center; font-weight: bold; color: var(--text-muted); font-size: 0.8rem; padding: 10px 4px; border-right: 1px solid var(--border-color); background: var(--primary-light);">${timeSlot}</td>
+                                                ${activeWeekDates.map(wd => {
+                                                    const hasShift = shifts.some(ts => ts.teacherId === selectedTeacherId && ts.date === wd.dateStr && ts.slots.includes(timeSlot));
+                                                    const cellColor = hasShift ? 'var(--primary)' : 'transparent';
+                                                    const checkedIcon = hasShift ? '<i class="fa-solid fa-check" style="font-size:0.65rem; color:white;"></i>' : '';
+                                                    return `
+                                                        <td style="padding: 6px; text-align: center; border-right: 1px solid var(--border-color); vertical-align: middle;">
+                                                            <div class="shift-slot-cell" 
+                                                                data-date="${wd.dateStr}" 
+                                                                data-slot="${timeSlot}" 
+                                                                style="
+                                                                    height: 24px; 
+                                                                    width: 90%; 
+                                                                    margin: 0 auto;
+                                                                    background: ${cellColor}; 
+                                                                    border: 1px solid var(--border-color); 
+                                                                    border-radius: 4px; 
+                                                                    cursor: pointer;
+                                                                    transition: all 0.15s;
+                                                                    display: flex;
+                                                                    align-items: center;
+                                                                    justify-content: center;
+                                                                "
+                                                                onmouseover="this.style.borderColor='var(--primary)'"
+                                                                onmouseout="this.style.borderColor='var(--border-color)'">
+                                                                ${checkedIcon}
+                                                            </div>
+                                                        </td>
+                                                    `;
+                                                }).join('')}
+                                            </tr>
+                                        `;
+                                    });
                                     return rowsHtml;
                                 })()
                             }
@@ -2443,11 +2465,13 @@ export function renderSchedules(container) {
         tempClassOverrides = {}; // Reset overrides on student detail edits
         renderWorkspace();
     });
+    const unsubSettings = stateStore.subscribe('SETTINGS_CHANGED', renderWorkspace);
 
     return () => {
         unsubShifts();
         unsubClasses();
         unsubStudents();
+        unsubSettings();
     };
 }
 
