@@ -238,6 +238,13 @@ export function renderSchedules(container) {
                         min-height: 0 !important;
                         page-break-inside: avoid !important;
                     }
+                    .print-preview-a4 table {
+                        table-layout: fixed !important;
+                        width: 100% !important;
+                    }
+                    .print-preview-a4 th, .print-preview-a4 td {
+                        word-break: break-all !important;
+                    }
                     .print-layout-shell {
                         display: flex !important;
                         flex-direction: row !important;
@@ -309,20 +316,23 @@ export function renderSchedules(container) {
                     margin-bottom: 2px !important;
                 }
                 .print-layout-1 .print-preview-a4 table {
+                    table-layout: fixed !important;
+                    width: 100% !important;
                     font-size: 0.7rem !important;
                     margin-top: 4px !important;
                 }
                 .print-layout-1 .print-preview-a4 th, .print-layout-1 .print-preview-a4 td {
                     padding: 1px 3px !important;
                     line-height: 1.05 !important;
+                    word-break: break-all !important;
                 }
                 .print-layout-1 .print-preview-a4 td div {
                     font-size: 0.65rem !important;
                     padding: 0.5px 1.5px !important;
                 }
-                .print-layout-1 [data-testid="schedule-print-notes"],
-                .print-layout-1 [data-testid="schedule-print-logs"] {
-                    margin-top: 6px !important;
+                .print-layout-1 .print-notes-card,
+                .print-layout-1 .print-logs-card {
+                    margin-top: 0 !important;
                     padding: 6px 10px !important;
                     font-size: 0.7rem !important;
                 }
