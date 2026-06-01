@@ -238,6 +238,59 @@ export function renderSchedules(container) {
                         min-height: 0 !important;
                         page-break-inside: avoid !important;
                     }
+                    .print-layout-shell {
+                        display: flex !important;
+                        flex-direction: row !important;
+                        gap: 12px !important;
+                        width: 100% !important;
+                        align-items: flex-start !important;
+                        box-sizing: border-box !important;
+                    }
+                    .print-main-column {
+                        width: 70% !important;
+                        flex-shrink: 0 !important;
+                        box-sizing: border-box !important;
+                    }
+                    .print-side-column {
+                        width: 28% !important;
+                        flex-shrink: 0 !important;
+                        box-sizing: border-box !important;
+                        display: flex !important;
+                        flex-direction: column !important;
+                        gap: 8px !important;
+                    }
+                    .print-notes-card, .print-logs-card {
+                        width: 100% !important;
+                        box-sizing: border-box !important;
+                        margin-top: 0 !important;
+                    }
+                }
+
+                .print-layout-shell {
+                    display: flex !important;
+                    flex-direction: row !important;
+                    gap: 12px !important;
+                    width: 100% !important;
+                    align-items: flex-start !important;
+                    box-sizing: border-box !important;
+                }
+                .print-main-column {
+                    width: 70% !important;
+                    flex-shrink: 0 !important;
+                    box-sizing: border-box !important;
+                }
+                .print-side-column {
+                    width: 28% !important;
+                    flex-shrink: 0 !important;
+                    box-sizing: border-box !important;
+                    display: flex !important;
+                    flex-direction: column !important;
+                    gap: 8px !important;
+                }
+                .print-notes-card, .print-logs-card {
+                    width: 100% !important;
+                    box-sizing: border-box !important;
+                    margin-top: 0 !important;
                 }
 
                 /* Layout 1: Default A4 (Compact Style) */
@@ -458,7 +511,7 @@ export function renderSchedules(container) {
                 if (showNotes) {
                     const noteContent = selectedTeacher.scheduleNotes ? selectedTeacher.scheduleNotes.replace(/\n/g, '<br>') : '등록된 특이사항이 없습니다.';
                     notesHtml = `
-                        <div data-testid="schedule-print-notes" style="margin-top: 1.5rem; border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem; width: 100%; box-sizing: border-box;">
+                        <div class="print-notes-card" data-testid="schedule-print-notes" style="border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem; width: 100%; box-sizing: border-box;">
                             <h4 style="margin: 0 0 6px 0; font-weight: bold;">[강사 특이사항]</h4>
                             <div><strong>${selectedTeacher.name} T:</strong> ${noteContent}</div>
                         </div>
@@ -521,7 +574,7 @@ export function renderSchedules(container) {
                         ? notesList.map(t => `<div style="margin-bottom: 4px;"><strong>${t.name} T:</strong> ${t.scheduleNotes.replace(/\n/g, '<br>')}</div>`).join('')
                         : '<div style="color: #666; font-style: italic;">등록된 특이사항이 없습니다.</div>';
                     notesHtml = `
-                        <div data-testid="schedule-print-notes" style="margin-top: 1.5rem; border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem; width: 100%; box-sizing: border-box;">
+                        <div class="print-notes-card" data-testid="schedule-print-notes" style="border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem; width: 100%; box-sizing: border-box;">
                             <h4 style="margin: 0 0 6px 0; font-weight: bold;">[강사 특이사항 목록]</h4>
                             <div>${noteContent}</div>
                         </div>
@@ -597,7 +650,7 @@ export function renderSchedules(container) {
                         ? studentNotesList.map(s => `<div style="margin-bottom: 4px;"><strong>${s.name}:</strong> ${s.scheduleNotes.replace(/\n/g, '<br>')}</div>`).join('')
                         : '<div style="color: #666; font-style: italic;">등록된 특이사항이 없습니다.</div>';
                     notesHtml = `
-                        <div data-testid="schedule-print-notes" style="margin-top: 1.5rem; border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem; width: 100%; box-sizing: border-box;">
+                        <div class="print-notes-card" data-testid="schedule-print-notes" style="border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem; width: 100%; box-sizing: border-box;">
                             <h4 style="margin: 0 0 6px 0; font-weight: bold;">[원생 일정 특이사항 목록]</h4>
                             <div>${noteContent}</div>
                         </div>
@@ -671,7 +724,7 @@ export function renderSchedules(container) {
                         ? studentNotesList.map(s => `<div style="margin-bottom: 4px;"><strong>${s.name}:</strong> ${s.scheduleNotes.replace(/\n/g, '<br>')}</div>`).join('')
                         : '<div style="color: #666; font-style: italic;">등록된 특이사항이 없습니다.</div>';
                     notesHtml = `
-                        <div data-testid="schedule-print-notes" style="margin-top: 1.5rem; border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem; width: 100%; box-sizing: border-box;">
+                        <div class="print-notes-card" data-testid="schedule-print-notes" style="border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem; width: 100%; box-sizing: border-box;">
                             <h4 style="margin: 0 0 6px 0; font-weight: bold;">[원생 일정 특이사항 목록]</h4>
                             <div>${noteContent}</div>
                         </div>
@@ -681,7 +734,7 @@ export function renderSchedules(container) {
                 if (matchShowLogs) {
                     const logs = stateStore.getScheduleOperationLogs(matchSelectedDateStr) || [];
                     logsHtml = `
-                        <div data-testid="schedule-print-logs" style="margin-top: 1.5rem; border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem; width: 100%; box-sizing: border-box;">
+                        <div class="print-logs-card" data-testid="schedule-print-logs" style="border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem; width: 100%; box-sizing: border-box;">
                             <h4 style="margin: 0 0 6px 0; font-weight: bold;">[시간표 변경 이력 로그]</h4>
                             ${logs.length > 0 ? logs.map(log => {
                                 const s = students.find(std => std.id === log.studentId) || { name: '알수없음' };
@@ -940,11 +993,11 @@ export function renderSchedules(container) {
                                 ${subtitleText} | ${filterSummaryText}
                             </div>
                         </div>
-                        <div style="display: flex; flex-direction: row; gap: 12px; width: 100%; align-items: flex-start; box-sizing: border-box;">
-                            <div style="width: 70%; flex-shrink: 0; box-sizing: border-box;">
+                        <div class="print-layout-shell">
+                            <div class="print-main-column">
                                 ${tableHtml}
                             </div>
-                            <div style="width: 28%; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px;">
+                            <div class="print-side-column">
                                 ${notesHtml}
                                 ${logsHtml}
                             </div>
