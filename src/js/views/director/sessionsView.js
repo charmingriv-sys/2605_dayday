@@ -242,7 +242,10 @@ export function renderSchedules(container) {
                         table-layout: fixed !important;
                         width: 100% !important;
                     }
-                    .print-preview-a4 th, .print-preview-a4 td {
+                    .print-preview-a4 th {
+                        word-break: keep-all !important;
+                    }
+                    .print-preview-a4 td {
                         word-break: break-all !important;
                     }
                     .print-layout-shell {
@@ -321,7 +324,12 @@ export function renderSchedules(container) {
                     font-size: 0.7rem !important;
                     margin-top: 4px !important;
                 }
-                .print-layout-1 .print-preview-a4 th, .print-layout-1 .print-preview-a4 td {
+                .print-layout-1 .print-preview-a4 th {
+                    padding: 1px 3px !important;
+                    line-height: 1.05 !important;
+                    word-break: keep-all !important;
+                }
+                .print-layout-1 .print-preview-a4 td {
                     padding: 1px 3px !important;
                     line-height: 1.05 !important;
                     word-break: break-all !important;
@@ -491,7 +499,7 @@ export function renderSchedules(container) {
                         <thead>
                             <tr style="background-color: #f1f5f9;">
                                 <th style="border: 1px solid #111; padding: 6px; text-align: center; width: 80px;">시간</th>
-                                ${activeWeekDates.map(wd => `<th style="border: 1px solid #111; padding: 6px; text-align: center;">${wd.dayKo} (${wd.dateStr.slice(5)})</th>`).join('')}
+                                ${activeWeekDates.map(wd => `<th style="border: 1px solid #111; padding: 6px; text-align: center;"><span style="white-space: nowrap; display: inline-block;">${wd.dayKo} (${wd.dateStr.slice(5)})</span></th>`).join('')}
                             </tr>
                         </thead>
                         <tbody>
@@ -615,7 +623,7 @@ export function renderSchedules(container) {
                         <thead>
                             <tr style="background-color: #f1f5f9;">
                                 <th style="border: 1px solid #111; padding: 6px; text-align: center; width: 80px;">시간</th>
-                                ${activeWeekDates.map(wd => `<th style="border: 1px solid #111; padding: 6px; text-align: center;">${wd.dayKo} (${wd.dateStr.slice(5)})</th>`).join('')}
+                                ${activeWeekDates.map(wd => `<th style="border: 1px solid #111; padding: 6px; text-align: center;"><span style="white-space: nowrap; display: inline-block;">${wd.dayKo} (${wd.dateStr.slice(5)})</span></th>`).join('')}
                             </tr>
                         </thead>
                         <tbody>
