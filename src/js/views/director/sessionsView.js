@@ -2,6 +2,41 @@ import { stateStore } from '../../state.js';
 import { openModal, closeModal } from '../../app.js';
 import { formatPhoneNumber, showKakaoTalkToast, showLocalConfirm } from './shared.js';
 
+// Compress duplicate schedule operation logs for the same student on the same date
+function compressScheduleOperationLogs(logs) {
+    if (!logs || logs.length === 0) return [];
+    const groups = [];
+    const studentMap = {};
+
+    logs.forEach(log => {
+        const studentId = log.studentId;
+        if (studentMap[studentId] === undefined) {
+            const group = {
+                id: log.id,
+                academyId: log.academyId,
+                date: log.date,
+                action: log.action,
+                studentId: studentId,
+                before: { ...log.before },
+                after: { ...log.after },
+                createdBy: log.createdBy,
+                createdAt: log.createdAt
+            };
+            groups.push(group);
+            studentMap[studentId] = groups.length - 1;
+        } else {
+            const idx = studentMap[studentId];
+            groups[idx].after = { ...log.after };
+            groups[idx].createdBy = log.createdBy;
+            groups[idx].createdAt = log.createdAt;
+        }
+    });
+
+    return groups.filter(g => {
+        return !(g.before.teacherId === g.after.teacherId && g.before.startTime === g.after.startTime);
+    });
+}
+
 // --- TAB SCHEDULES: TEACHER SHIFTS & STUDENT TIMETABLE ---
 export function renderSchedules(container) {
     let activeSubTab = 'shift_view'; // 'shift_view', 'shift_edit', or 'match'
@@ -772,7 +807,8 @@ export function renderSchedules(container) {
                 }
 
                 if (matchShowLogs) {
-                    const logs = stateStore.getScheduleOperationLogs(matchSelectedDateStr) || [];
+                    const rawLogs = stateStore.getScheduleOperationLogs(matchSelectedDateStr) || [];
+                    const logs = compressScheduleOperationLogs(rawLogs);
                     logsHtml = `
                         <div class="print-logs-card" data-testid="schedule-print-logs" style="border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem; width: 100%; box-sizing: border-box;">
                             <h4 style="margin: 0 0 6px 0; font-weight: bold;">[시간표 변경 이력 로그]</h4>
@@ -2188,7 +2224,8 @@ export function renderSchedules(container) {
                 }
             });
             const activeStudents = students.filter(s => dayStudentIds.has(s.id) && s.scheduleNotes);
-            const dayLogs = stateStore.getScheduleOperationLogs(matchSelectedDateStr) || [];
+            const rawDayLogs = stateStore.getScheduleOperationLogs(matchSelectedDateStr) || [];
+            const dayLogs = compressScheduleOperationLogs(rawDayLogs);
 
             ws.innerHTML = `
                 <div class="glass-card" style="padding: 1.5rem;">
