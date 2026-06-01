@@ -1818,9 +1818,9 @@ export function renderSchedules(container) {
                         <button class="btn btn-secondary" id="btn-clear-match-filter" style="border-radius: 20px; font-weight: 600; padding: 5px 12px; font-size: 0.8rem;">필터 초기화</button>
                     </div>
 
-                    <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: stretch; width: 100%;">
+                    <div class="teacher-student-layout" style="display: flex; gap: 20px; flex-wrap: nowrap; align-items: flex-start; width: 100%;">
                         <!-- Timetable wrapper -->
-                        <div class="table-wrapper" style="flex-grow: 3; min-width: 600px;" data-testid="teacher-student-schedule-table">
+                        <div class="table-wrapper teacher-student-main" style="flex: 1 1 auto; min-width: 0; overflow-x: auto;" data-testid="teacher-student-schedule-table">
                             <table class="custom-table" style="table-layout: fixed; width: 100%; border: 1px solid var(--border-color); border-collapse: collapse;">
                                 <thead>
                                     <tr style="border-bottom: 2px solid var(--border-color); background: var(--primary-light);">
@@ -1891,7 +1891,7 @@ export function renderSchedules(container) {
                         </div>
 
                         <!-- Notes Panel -->
-                        <div id="student-match-notes-panel" data-testid="teacher-student-notes-panel" style="flex-grow: 1; width: 250px; display: ${matchShowNotes ? 'block' : 'none'}; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.2rem; background: var(--bg-card); max-height: 600px; overflow-y: auto;">
+                        <div id="student-match-notes-panel" class="teacher-student-side" data-testid="teacher-student-notes-panel" style="flex: 0 0 280px; width: 280px; box-sizing: border-box; display: ${matchShowNotes ? 'block' : 'none'}; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.2rem; background: var(--bg-card); max-height: 600px; overflow-y: auto;">
                             <h4 style="font-weight: 700; font-size: 1rem; margin-top: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
                                 <i class="fa-solid fa-clipboard-question" style="color: var(--primary);"></i> 원생 수업 특이사항
                             </h4>
@@ -1983,9 +1983,9 @@ export function renderSchedules(container) {
                     ${controlsHtml}
                     ${filterRowHtml}
 
-                    <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: stretch; width: 100%;">
+                    <div class="teacher-student-layout" style="display: flex; gap: 20px; flex-wrap: nowrap; align-items: flex-start; width: 100%;">
                         <!-- Daily Matrix Table -->
-                        <div class="table-wrapper" style="flex-grow: 3; min-width: 600px;" data-testid="teacher-student-schedule-table">
+                        <div class="table-wrapper teacher-student-main" style="flex: 1 1 auto; min-width: 0; overflow-x: auto;" data-testid="teacher-student-schedule-table">
                             <table class="custom-table" style="table-layout: fixed; width: 100%; border: 1px solid var(--border-color); border-collapse: collapse;">
                                 <thead>
                                     <tr style="border-bottom: 2px solid var(--border-color); background: var(--primary-light);">
@@ -2052,9 +2052,9 @@ export function renderSchedules(container) {
                         </div>
 
                         <!-- Right Sidebar Column -->
-                        <div id="teacher-student-right-sidebar" style="display: flex; flex-direction: column; gap: 20px; flex-grow: 1; width: 250px;">
+                        <div id="teacher-student-right-sidebar" class="teacher-student-side" style="display: ${(!matchShowNotes && !matchShowLogs) ? 'none' : 'flex'}; flex-direction: column; gap: 20px; flex: 0 0 280px; width: 280px; box-sizing: border-box;">
                             <!-- Notes Panel -->
-                            <div id="student-match-notes-panel" data-testid="teacher-student-notes-panel" style="display: ${matchShowNotes ? 'block' : 'none'}; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.2rem; background: var(--bg-card); max-height: 400px; overflow-y: auto;">
+                            <div id="student-match-notes-panel" data-testid="teacher-student-notes-panel" style="display: ${matchShowNotes ? 'block' : 'none'}; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.2rem; background: var(--bg-card); max-height: 400px; overflow-y: auto; box-sizing: border-box; width: 100%;">
                                 <h4 style="font-weight: 700; font-size: 1rem; margin-top: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
                                     <i class="fa-solid fa-clipboard-question" style="color: var(--primary);"></i> 원생 수업 특이사항
                                 </h4>
@@ -2075,7 +2075,7 @@ export function renderSchedules(container) {
                             </div>
 
                             <!-- Operation Logs Panel -->
-                            <div id="student-match-log-panel" data-testid="teacher-student-log-panel" style="display: ${matchShowLogs ? 'block' : 'none'}; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.2rem; background: var(--bg-card); max-height: 400px; overflow-y: auto;">
+                            <div id="student-match-log-panel" data-testid="teacher-student-log-panel" style="display: ${matchShowLogs ? 'block' : 'none'}; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.2rem; background: var(--bg-card); max-height: 400px; overflow-y: auto; box-sizing: border-box; width: 100%;">
                                 <h4 style="font-weight: 700; font-size: 1rem; margin-top: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
                                     <i class="fa-solid fa-clock-rotate-left" style="color: var(--primary);"></i> 시간표 이동 이력
                                 </h4>
