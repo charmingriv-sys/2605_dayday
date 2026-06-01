@@ -934,17 +934,21 @@ export function renderSchedules(container) {
                 copiesHtml += `
                     <div class="print-preview-a4" data-testid="schedule-print-copy" data-index="${i}" style="background: white; width: 100%; box-shadow: 0 4px 12px rgba(0,0,0,0.1); box-sizing: border-box; display: flex; flex-direction: column; color: #111; margin-bottom: 20px;">
                         <span data-testid="schedule-print-copy-index" data-index="${i}" style="display: none;"></span>
-                        <div style="text-align: center; border-bottom: 2px solid #111; padding-bottom: 12px;">
+                        <div style="text-align: center; border-bottom: 2px solid #111; padding-bottom: 12px; margin-bottom: 8px;">
                             <h1 data-testid="schedule-print-title" style="margin: 0 0 6px 0; font-size: 1.8rem; font-weight: 800; color: #111;">${titleText}</h1>
                             <div style="font-size: 0.95rem; color: #444; font-weight: 500;">
                                 ${subtitleText} | ${filterSummaryText}
                             </div>
                         </div>
-                        <div style="width: 100%; margin-top: 10px;">
-                            ${tableHtml}
+                        <div style="display: flex; flex-direction: row; gap: 12px; width: 100%; align-items: flex-start; box-sizing: border-box;">
+                            <div style="width: 70%; flex-shrink: 0; box-sizing: border-box;">
+                                ${tableHtml}
+                            </div>
+                            <div style="width: 28%; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px;">
+                                ${notesHtml}
+                                ${logsHtml}
+                            </div>
                         </div>
-                        ${notesHtml}
-                        ${logsHtml}
                     </div>
                 `;
             }
