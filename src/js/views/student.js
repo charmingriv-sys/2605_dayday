@@ -123,9 +123,19 @@ export function renderCalendar(container) {
         let cellsHtml = '';
         cells.forEach(cell => {
             if (!cell.isCurrent) {
+                const record = attendanceList.find(a => a.date === cell.dateStr);
+                const hasRecordClass = record ? 'has-record' : '';
+                const pointerStyle = record ? 'style="cursor: pointer; background: rgba(9, 132, 227, 0.04);"' : '';
+                
+                let statusDot = '';
+                if (record) {
+                    statusDot = `<span class="calendar-day-status ${record.status}" title="${STATUS_MAP[record.status]?.text}"></span>`;
+                }
+
                 cellsHtml += `
-                    <div class="calendar-day-cell other-month">
+                    <div class="calendar-day-cell other-month ${hasRecordClass}" data-date="${cell.dateStr}" ${pointerStyle}>
                         <span class="calendar-day-number">${cell.day}</span>
+                        ${statusDot}
                     </div>
                 `;
             } else {

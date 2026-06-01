@@ -350,3 +350,13 @@ Phase 6에서는 바로 대규모 DB 연동을 시작하지 말고, 스키마 DD
   - `tests/e2e/teacher-student-schedule-flow.spec.js`에 감사 로그 생성, 새로고침 영속성, 날짜별 격리, 토글 기능 검증용 E2E 시나리오 신규 추가.
 - **검증**:
   - `node --check` 문법 검사 패스 및 신규 E2E 시나리오를 포함하여 총 15개 통합/E2E 테스트 구동 및 패널 감사 동작 확인.
+
+### Phase 7E-1: 시간표 및 출근표 프린트 미리보기 및 인쇄 레이아웃 구현 (완료)
+- **목표**: 강사 출근표(shifts) 및 강사-원생 시간표(matches) 내에 '출력하기' 버튼을 추가하고, A4 규격의 모던 프린트 미리보기 팝업 모달 구현, 인쇄 스타일 시트(@media print) 바인딩 및 Playwright E2E 테스트를 통한 출력 흐름 검증.
+- **산출물**:
+  - `sessionsView.js` 내에 공통 `openPrintPreview(type)` 도우미 함수 추가 및 인쇄 레이아웃 팝업 마크업 연동.
+  - 강사 출근표 탭 및 강사-원생 시간표 탭 내 '출력하기' 버튼 추가 (`data-testid` 바인딩).
+  - `@media print` 스타일 지정을 통해 인쇄 미리보기 레이아웃 최적화 및 닫기/인쇄 동작 처리.
+  - `tests/e2e/teacher-student-schedule-flow.spec.js` 내에 프린트 미리보기 및 닫기 기능에 대한 Playwright E2E 검증 케이스 추가.
+- **검증**:
+  - `node --check` 문법 검사 패스 및 신규 프린트 E2E 시나리오를 포함한 총 16개 통합/E2E 테스트 100% 통과 확인.

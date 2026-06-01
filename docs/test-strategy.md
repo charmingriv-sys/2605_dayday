@@ -155,7 +155,15 @@ Configured to spawn `node server.js` dynamically on port `3000` to serve the sta
   - Verify `data-testid="teacher-student-log-row"` is created with exact student name, before/after states, and action reason after shift.
   - Verify logs persist after page reload.
   - Verify logs for other dates are isolated.
-  - Verify the log panel hides/shows correctly on toggle click.
+
+#### Scenario I-4: Schedule Print Preview Checks (`tests/e2e/teacher-student-schedule-flow.spec.js`)
+- **Actions**:
+  1. Click "출력하기" button (`data-testid="teacher-student-print-preview"`) in Match View.
+  2. Locate print preview modal overlay (`data-testid="schedule-print-modal"`) and verify layout title ("튜링 음악학원 강사-원생 수업 시간표").
+  3. Close print preview modal using the close button.
+- **Assertions**:
+  - Verify print preview modal displays with correct title and elements.
+  - Verify close button correctly hides/removes the print preview modal.
 
 #### Scenario J: Schedule Override/Snapshot Unit Testing (`tests/unit/schedule_override_test.mjs`)
 - **Actions**:

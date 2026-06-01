@@ -377,4 +377,36 @@ test.describe('Director Teacher-Student Schedule Flow Checks', () => {
     await logToggleBtn.click();
     await expect(logPanel).toBeVisible({ timeout: 5000 });
   });
+
+  test('should verify print preview modal functionality in match view', async ({ page }) => {
+    // 1. Navigate to Schedules subtab and turn on daily view
+    await navigateDirectorView(page, 'dir-schedules');
+    const subTabBtn = page.locator('#btn-subtab-match');
+    await expect(subTabBtn).toBeVisible({ timeout: 5000 });
+    await subTabBtn.click();
+
+    // 2. Locate print button
+    const printBtn = page.locator('[data-testid="teacher-student-print-preview"]');
+    await expect(printBtn).toBeVisible({ timeout: 5000 });
+
+    // 3. Click print button to open modal
+    await printBtn.click();
+
+    // 4. Verify print modal is visible and contains expected print elements
+    const printModal = page.locator('[data-testid="schedule-print-modal"]');
+    await expect(printModal).toBeVisible({ timeout: 5000 });
+
+    const printTitle = printModal.locator('[data-testid="schedule-print-title"]');
+    await expect(printTitle).toContainText('강사-원생 수업 시간표');
+
+    const printCloseBtn = printModal.locator('[data-testid="schedule-print-close"]');
+    await expect(printCloseBtn).toBeVisible({ timeout: 5000 });
+
+    // 5. Close print modal using robust page.evaluate click
+    await page.evaluate(() => {
+      const btn = document.getElementById('btn-print-close');
+      if (btn) btn.click();
+    });
+    await expect(printModal).toBeHidden({ timeout: 5000 });
+  });
 });

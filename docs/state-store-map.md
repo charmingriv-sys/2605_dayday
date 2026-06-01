@@ -67,13 +67,15 @@
   - 선택 일자 (`selectedDateStr`)
   - 특이사항 패널 토글 상태 (`showNotes`)
   - 필터링 조건 (`filterType = 'all' | 'active' | '피아노' | ...`, `filterSearchQuery`)
-- **UI 상태 관리 (Phase 7C, 7D-2, 7D-2.5 & 7D-3)**:
+- **UI 상태 관리 (Phase 7C, 7D-2, 7D-2.5, 7D-3 & 7E-1)**:
   - 주간/일간 보기 전환 (`matchViewMode = 'week' | 'day'`)
   - 선택 일자 (`matchSelectedDateStr`)
   - 특이사항 패널 토글 상태 (`matchShowNotes`)
   - 이동 이력 패널 토글 상태 (`matchShowLogs`)
   - 필터링 조건 (`matchFilterActiveOnly = true | false`, `matchInstrumentFilter = 'all' | '피아노' | ...`, `matchSearchQuery`)
   - 일정 이동 피드백 상태 메시지 (`teacher-student-move-status` 엘리먼트 텍스트 렌더링)
+  - 프린트 미리보기 및 인쇄 팝업 모달 (`data-testid="schedule-print-modal"`, `data-testid="schedule-print-title"`, `data-testid="schedule-print-close"`, `data-testid="schedule-print-action"`)
+  - 프린트 트리거 버튼 (`data-testid="teacher-shift-print-preview"`, `data-testid="teacher-student-print-preview"`)
 
 ### 3.6 강사 관리 (Staff)
 - **설명**: 강사 목록 및 프로필 관리, 강사별 일자별 시프트 근무 스케줄 설정 모달

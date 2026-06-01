@@ -92,6 +92,447 @@ export function renderSchedules(container) {
         renderWorkspace();
     };
 
+    // --- PRINT PREVIEW UTILITY (Phase 7E-1) ---
+    const openPrintPreview = (type) => {
+        // Ensure print CSS is injected
+        if (!document.getElementById('print-preview-style')) {
+            const style = document.createElement('style');
+            style.id = 'print-preview-style';
+            style.innerHTML = `
+                @media print {
+                    body * {
+                        visibility: hidden !important;
+                    }
+                    #print-preview-modal,
+                    #print-preview-modal * {
+                        visibility: visible !important;
+                    }
+                    #print-preview-modal {
+                        position: absolute !important;
+                        left: 0 !important;
+                        top: 0 !important;
+                        width: 100% !important;
+                        height: auto !important;
+                        background: white !important;
+                        z-index: 99999 !important;
+                        box-shadow: none !important;
+                        overflow: visible !important;
+                        display: block !important;
+                    }
+                    #print-preview-modal > div {
+                        box-shadow: none !important;
+                        width: 100% !important;
+                        max-width: 100% !important;
+                        height: auto !important;
+                        max-height: 100% !important;
+                        overflow: visible !important;
+                        padding: 0 !important;
+                        border-radius: 0 !important;
+                    }
+                    #print-preview-modal .btn,
+                    #print-preview-modal h3,
+                    #print-preview-modal > div > div:first-child {
+                        display: none !important;
+                    }
+                    #print-preview-content {
+                        background: white !important;
+                        padding: 0 !important;
+                        overflow: visible !important;
+                        display: block !important;
+                        width: 100% !important;
+                    }
+                    .print-preview-a4 {
+                        box-shadow: none !important;
+                        padding: 0 !important;
+                        margin: 0 !important;
+                        width: 100% !important;
+                        min-height: 0 !important;
+                    }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        const settings = stateStore.getSettings() || {};
+        const academyName = settings.academyName || '음악학원';
+        const scheduleDays = settings.scheduleDays || ["mon", "tue", "wed", "thu", "fri", "sat"];
+        const scheduleStartTime = settings.scheduleStartTime || "14:00";
+        const scheduleEndTime = settings.scheduleEndTime || "21:00";
+        const scheduleSlotMinutes = settings.scheduleSlotMinutes || 30;
+
+        const teachers = stateStore.getTeachers();
+        const students = stateStore.getStudents();
+
+        const getSlotsList = () => {
+            const slots = [];
+            const [startH, startM] = scheduleStartTime.split(':').map(Number);
+            const [endH, endM] = scheduleEndTime.split(':').map(Number);
+            let curr = startH * 60 + startM;
+            const end = endH * 60 + endM;
+            while (curr <= end) {
+                const h = Math.floor(curr / 60);
+                const m = curr % 60;
+                slots.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+                curr += scheduleSlotMinutes;
+            }
+            return slots;
+        };
+
+        const timeSlots = getSlotsList();
+        const daysOfWeekKo = ['월', '화', '수', '목', '금', '토', '일'];
+        const dayKoToEn = { '월': 'mon', '화': 'tue', '수': 'wed', '목': 'thu', '금': 'fri', '토': 'sat', '일': 'sun' };
+
+        let titleText = '';
+        let subtitleText = '';
+        let filterSummaryText = '';
+        let tableHtml = '';
+        let notesHtml = '';
+        let logsHtml = '';
+
+        if (type === 'shifts') {
+            titleText = `${academyName} 강사 출근표`;
+            if (shiftViewMode === 'week') {
+                const selectedTeacher = teachers.find(t => t.id === selectedTeacherId) || teachers[0] || { id: '', name: '', instrument: '', scheduleNotes: '' };
+                const shifts = stateStore.getTeacherShifts();
+                subtitleText = `[주간 보기] ${referenceDate.getFullYear()}년 ${referenceDate.getMonth() + 1}월 ${referenceDate.getDate()}일 주차`;
+                filterSummaryText = `선택 강사: ${selectedTeacher.name || '미선택'} (${selectedTeacher.instrument || '과목 없음'})`;
+
+                const weekDates = [];
+                for (let i = 0; i < 7; i++) {
+                    const d = new Date(referenceDate);
+                    d.setDate(d.getDate() + i);
+                    weekDates.push({
+                        dateStr: d.toISOString().slice(0, 10),
+                        dayKo: daysOfWeekKo[i],
+                        dayEn: dayKoToEn[daysOfWeekKo[i]]
+                    });
+                }
+                const activeWeekDates = weekDates.filter(wd => scheduleDays.includes(wd.dayEn));
+
+                tableHtml = `
+                    <table data-testid="schedule-print-table" style="width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.85rem;">
+                        <thead>
+                            <tr style="background-color: #f1f5f9;">
+                                <th style="border: 1px solid #111; padding: 6px; text-align: center; width: 80px;">시간</th>
+                                ${activeWeekDates.map(wd => `<th style="border: 1px solid #111; padding: 6px; text-align: center;">${wd.dayKo} (${wd.dateStr.slice(5)})</th>`).join('')}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${timeSlots.map(time => {
+                                return `
+                                    <tr>
+                                        <td style="border: 1px solid #111; padding: 6px; text-align: center; font-weight: bold; background-color: #fafafa;">${time}</td>
+                                        ${activeWeekDates.map(wd => {
+                                            const dayShift = shifts.find(s => s.teacherId === selectedTeacher.id && s.date === wd.dateStr);
+                                            let isWorking = false;
+                                            if (dayShift && dayShift.slots) {
+                                                isWorking = dayShift.slots.includes(time);
+                                            }
+                                            return `
+                                                <td style="border: 1px solid #111; padding: 6px; text-align: center; background-color: ${isWorking ? '#e2e8f0' : 'transparent'};">
+                                                    ${isWorking ? '출근' : ''}
+                                                </td>
+                                            `;
+                                        }).join('')}
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                `;
+
+                if (showNotes && selectedTeacher.scheduleNotes) {
+                    notesHtml = `
+                        <div data-testid="schedule-print-notes" style="margin-top: 1.5rem; border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem;">
+                            <h4 style="margin: 0 0 6px 0; font-weight: bold;">[강사 특이사항]</h4>
+                            <div><strong>${selectedTeacher.name} T:</strong> ${selectedTeacher.scheduleNotes}</div>
+                        </div>
+                    `;
+                }
+            } else {
+                subtitleText = `[일간 보기] 날짜: ${selectedDateStr}`;
+                const parsedDate = new Date(selectedDateStr);
+                const dayKo = daysOfWeekKo[parsedDate.getDay() === 0 ? 6 : parsedDate.getDay() - 1];
+                filterSummaryText = `요일: ${dayKo}요일 | 필터: ${filterType} | 검색어: "${filterSearchQuery}"`;
+
+                const shifts = stateStore.getTeacherShifts();
+                const filteredTeachers = teachers.filter(t => {
+                    if (filterType !== 'all') {
+                        if (filterType === 'active') {
+                            const dayShift = shifts.find(s => s.teacherId === t.id && s.date === selectedDateStr);
+                            if (!dayShift || !dayShift.slots || dayShift.slots.length === 0) return false;
+                        } else {
+                            if (t.instrument !== filterType) return false;
+                        }
+                    }
+                    if (filterSearchQuery) {
+                        if (!t.name.toLowerCase().includes(filterSearchQuery.toLowerCase())) return false;
+                    }
+                    return true;
+                });
+
+                tableHtml = `
+                    <table data-testid="schedule-print-table" style="width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.85rem;">
+                        <thead>
+                            <tr style="background-color: #f1f5f9;">
+                                <th style="border: 1px solid #111; padding: 6px; text-align: center; width: 80px;">시간</th>
+                                ${filteredTeachers.map(t => `<th style="border: 1px solid #111; padding: 6px; text-align: center;">${t.name} (${t.instrument})</th>`).join('')}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${timeSlots.map(time => {
+                                return `
+                                    <tr>
+                                        <td style="border: 1px solid #111; padding: 6px; text-align: center; font-weight: bold; background-color: #fafafa;">${time}</td>
+                                        ${filteredTeachers.map(t => {
+                                            const dayShift = shifts.find(s => s.teacherId === t.id && s.date === selectedDateStr);
+                                            const isWorking = dayShift && dayShift.slots && dayShift.slots.includes(time);
+                                            return `
+                                                <td style="border: 1px solid #111; padding: 6px; text-align: center; background-color: ${isWorking ? '#e2e8f0' : 'transparent'};">
+                                                    ${isWorking ? '출근' : ''}
+                                                </td>
+                                            `;
+                                        }).join('')}
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                `;
+
+                if (showNotes) {
+                    const notesList = filteredTeachers.filter(t => t.scheduleNotes);
+                    if (notesList.length > 0) {
+                        notesHtml = `
+                            <div data-testid="schedule-print-notes" style="margin-top: 1.5rem; border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem;">
+                                <h4 style="margin: 0 0 6px 0; font-weight: bold;">[강사 특이사항 목록]</h4>
+                                ${notesList.map(t => `<div style="margin-bottom: 4px;"><strong>${t.name} T:</strong> ${t.scheduleNotes}</div>`).join('')}
+                            </div>
+                        `;
+                    }
+                }
+            }
+        } else if (type === 'matches') {
+            titleText = `${academyName} 강사-원생 수업 시간표`;
+            if (matchViewMode === 'week') {
+                subtitleText = `[주간 보기] ${referenceDate.getFullYear()}년 ${referenceDate.getMonth() + 1}월 ${referenceDate.getDate()}일 주차`;
+                const filterTeacher = teachers.find(t => t.id === currentFilterTeacherId);
+                filterSummaryText = `강사 필터: ${filterTeacher ? `${filterTeacher.name} (${filterTeacher.instrument})` : '전체 강사'}`;
+
+                const weekDates = [];
+                for (let i = 0; i < 7; i++) {
+                    const d = new Date(referenceDate);
+                    d.setDate(d.getDate() + i);
+                    weekDates.push({
+                        dateStr: d.toISOString().slice(0, 10),
+                        dayKo: daysOfWeekKo[i],
+                        dayEn: dayKoToEn[daysOfWeekKo[i]]
+                    });
+                }
+                const activeWeekDates = weekDates.filter(wd => scheduleDays.includes(wd.dayEn));
+
+                tableHtml = `
+                    <table data-testid="schedule-print-table" style="width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.85rem;">
+                        <thead>
+                            <tr style="background-color: #f1f5f9;">
+                                <th style="border: 1px solid #111; padding: 6px; text-align: center; width: 80px;">시간</th>
+                                ${activeWeekDates.map(wd => `<th style="border: 1px solid #111; padding: 6px; text-align: center;">${wd.dayKo} (${wd.dateStr.slice(5)})</th>`).join('')}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${timeSlots.map(time => {
+                                return `
+                                    <tr>
+                                        <td style="border: 1px solid #111; padding: 6px; text-align: center; font-weight: bold; background-color: #fafafa;">${time}</td>
+                                        ${activeWeekDates.map(wd => {
+                                            const dayClasses = stateStore.getClasses().filter(c => c.dayOfWeek === wd.dayEn && c.startTime === time);
+                                            const filteredClasses = currentFilterTeacherId ? dayClasses.filter(c => c.teacherId === currentFilterTeacherId) : dayClasses;
+                                            
+                                            const content = filteredClasses.map(c => {
+                                                const s = students.find(std => std.id === c.studentId) || { name: '알수없음' };
+                                                const t = teachers.find(tchr => tchr.id === c.teacherId) || { name: '알수없음' };
+                                                return `<div style="padding: 2px; font-weight: 500; font-size: 0.8rem; background-color: #f8fafc; border: 1px solid #e2e8f0; margin-bottom: 2px; border-radius: 2px;">
+                                                    ${s.name} (${t.name})
+                                                </div>`;
+                                            }).join('');
+                                            return `
+                                                <td style="border: 1px solid #111; padding: 6px; vertical-align: top;">
+                                                    ${content}
+                                                </td>
+                                            `;
+                                        }).join('')}
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                `;
+
+                if (matchShowNotes) {
+                    const studentNotesList = [];
+                    stateStore.getClasses().forEach(c => {
+                        const s = students.find(std => std.id === c.studentId);
+                        if (s && s.scheduleNotes && !studentNotesList.some(item => item.id === s.id)) {
+                            studentNotesList.push(s);
+                        }
+                    });
+                    if (studentNotesList.length > 0) {
+                        notesHtml = `
+                            <div data-testid="schedule-print-notes" style="margin-top: 1.5rem; border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem;">
+                                <h4 style="margin: 0 0 6px 0; font-weight: bold;">[원생 일정 특이사항 목록]</h4>
+                                ${studentNotesList.map(s => `<div style="margin-bottom: 4px;"><strong>${s.name}:</strong> ${s.scheduleNotes}</div>`).join('')}
+                            </div>
+                        `;
+                    }
+                }
+            } else {
+                subtitleText = `[일간 보기] 날짜: ${matchSelectedDateStr}`;
+                const parsedDate = new Date(matchSelectedDateStr);
+                const dayKo = daysOfWeekKo[parsedDate.getDay() === 0 ? 6 : parsedDate.getDay() - 1];
+                filterSummaryText = `요일: ${dayKo}요일 | 당일수업강사 필터: ${matchFilterActiveOnly ? 'ON' : 'OFF'} | 악기 필터: ${matchInstrumentFilter} | 검색어: "${matchSearchQuery}"`;
+
+                const dayOfWeekEn = dayKoToEn[dayKo];
+                const dayShifts = stateStore.getTeacherShifts().filter(s => s.date === matchSelectedDateStr);
+                const todaySchedule = stateStore.getTeacherStudentScheduleForDate(matchSelectedDateStr);
+                const todayClasses = todaySchedule.classes || [];
+
+                const activeTeachers = teachers.filter(t => {
+                    if (matchFilterActiveOnly) {
+                        const hasClassToday = todayClasses.some(c => c.teacherId === t.id);
+                        if (!hasClassToday) return false;
+                    }
+                    if (matchInstrumentFilter !== 'all' && t.instrument !== matchInstrumentFilter) {
+                        return false;
+                    }
+                    if (matchSearchQuery && !t.name.toLowerCase().includes(matchSearchQuery.toLowerCase())) {
+                        return false;
+                    }
+                    return true;
+                });
+
+                tableHtml = `
+                    <table data-testid="schedule-print-table" style="width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.85rem;">
+                        <thead>
+                            <tr style="background-color: #f1f5f9;">
+                                <th style="border: 1px solid #111; padding: 6px; text-align: center; width: 80px;">시간</th>
+                                ${activeTeachers.map(t => `<th style="border: 1px solid #111; padding: 6px; text-align: center;">${t.name} (${t.instrument})</th>`).join('')}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${timeSlots.map(time => {
+                                return `
+                                    <tr>
+                                        <td style="border: 1px solid #111; padding: 6px; text-align: center; font-weight: bold; background-color: #fafafa;">${time}</td>
+                                        ${activeTeachers.map(t => {
+                                            const cellClasses = todayClasses.filter(c => c.teacherId === t.id && c.startTime === time);
+                                            const cellContent = cellClasses.map(c => {
+                                                const s = students.find(std => std.id === c.studentId) || { name: '알수없음' };
+                                                return `<div style="font-weight: bold; font-size: 0.85rem; color: #1e293b;">${s.name}</div>`;
+                                            }).join('');
+                                            return `
+                                                <td style="border: 1px solid #111; padding: 6px; text-align: center; vertical-align: middle;">
+                                                    ${cellContent}
+                                                </td>
+                                            `;
+                                        }).join('')}
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                `;
+
+                if (matchShowNotes) {
+                    const studentNotesList = [];
+                    todayClasses.forEach(c => {
+                        const s = students.find(std => std.id === c.studentId);
+                        if (s && s.scheduleNotes && !studentNotesList.some(item => item.id === s.id)) {
+                            studentNotesList.push(s);
+                        }
+                    });
+                    if (studentNotesList.length > 0) {
+                        notesHtml = `
+                            <div data-testid="schedule-print-notes" style="margin-top: 1.5rem; border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem;">
+                                <h4 style="margin: 0 0 6px 0; font-weight: bold;">[원생 일정 특이사항 목록]</h4>
+                                ${studentNotesList.map(s => `<div style="margin-bottom: 4px;"><strong>${s.name}:</strong> ${s.scheduleNotes}</div>`).join('')}
+                            </div>
+                        `;
+                    }
+                }
+
+                if (matchShowLogs) {
+                    const logs = stateStore.getScheduleOperationLogs(matchSelectedDateStr) || [];
+                    logsHtml = `
+                        <div data-testid="schedule-print-logs" style="margin-top: 1.5rem; border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem;">
+                            <h4 style="margin: 0 0 6px 0; font-weight: bold;">[시간표 변경 이력 로그]</h4>
+                            ${logs.length > 0 ? logs.map(log => {
+                                const s = students.find(std => std.id === log.studentId) || { name: '알수없음' };
+                                const beforeTeacher = teachers.find(t => t.id === log.before.teacherId) || { name: '알수없음' };
+                                const afterTeacher = teachers.find(t => t.id === log.after.teacherId) || { name: '알수없음' };
+                                const reason = log.before.teacherId !== log.after.teacherId ? '강사 및 시간 변경' : '시간 변경';
+                                return `
+                                    <div style="padding: 6px 0; border-bottom: 1px dashed #e2e8f0; line-height: 1.4;">
+                                        <span style="font-weight: bold; color: var(--primary);">${s.name}</span>:
+                                        ${beforeTeacher.name} (${log.before.startTime}) &rarr; ${afterTeacher.name} (${log.after.startTime})
+                                        <span style="color: #666; font-style: italic; font-size: 0.78rem;"> (사유: ${reason})</span>
+                                    </div>
+                                `;
+                            }).join('') : '<div style="color: #666; font-style: italic;">이동 이력이 없습니다.</div>'}
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        const modal = document.createElement('div');
+        modal.id = 'print-preview-modal';
+        modal.className = 'modal-overlay';
+        modal.setAttribute('data-testid', 'schedule-print-modal');
+        modal.style.cssText = `
+            display: flex; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; align-items: center;
+        `;
+
+        modal.innerHTML = `
+            <div style="background: white; border-radius: 12px; width: 90%; max-width: 1000px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; border-bottom: 1px solid #e0e0e0; background: #f8fafc;">
+                    <h3 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: #1e293b;">프린트 미리보기</h3>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-primary" id="btn-print-confirm" data-testid="schedule-print-action" style="display: inline-flex; align-items: center; gap: 4px;">
+                            <i class="fa-solid fa-print"></i> 인쇄
+                        </button>
+                        <button class="btn btn-secondary" id="btn-print-close" data-testid="schedule-print-close">닫기</button>
+                    </div>
+                </div>
+                <div id="print-preview-content" data-testid="schedule-print-content" style="flex: 1; overflow-y: auto; padding: 40px; background: #f1f5f9; display: flex; justify-content: center;">
+                    <div class="print-preview-a4" style="background: white; width: 100%; min-height: 297mm; padding: 20mm; box-shadow: 0 4px 12px rgba(0,0,0,0.1); box-sizing: border-box; display: flex; flex-direction: column; gap: 20px; color: #111;">
+                        <div style="text-align: center; border-bottom: 2px solid #111; padding-bottom: 12px;">
+                            <h1 data-testid="schedule-print-title" style="margin: 0 0 6px 0; font-size: 1.8rem; font-weight: 800; color: #111;">${titleText}</h1>
+                            <div style="font-size: 0.95rem; color: #444; font-weight: 500;">
+                                ${subtitleText} | ${filterSummaryText}
+                            </div>
+                        </div>
+                        <div style="flex: 1;">
+                            ${tableHtml}
+                        </div>
+                        ${notesHtml}
+                        ${logsHtml}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        modal.querySelector('#btn-print-close').addEventListener('click', () => {
+            modal.remove();
+        });
+
+        modal.querySelector('#btn-print-confirm').addEventListener('click', () => {
+            window.print();
+        });
+    };
+
     const renderWorkspace = () => {
         const workspace = container.querySelector('#schedules-workspace');
         if (!workspace) return;
@@ -219,7 +660,7 @@ export function renderSchedules(container) {
                     <button class="btn btn-secondary" id="btn-shift-notes-toggle" data-testid="teacher-shift-notes-toggle">
                         <i class="fa-solid fa-eye${showNotes ? '-slash' : ''}"></i> 특이사항 ${showNotes ? '숨기기' : '보이기'}
                     </button>
-                    <button class="btn btn-primary" id="btn-print-shifts" style="display: inline-flex; align-items: center; gap: 4px;">
+                    <button class="btn btn-primary" id="btn-print-shifts" data-testid="teacher-shift-print-preview" style="display: inline-flex; align-items: center; gap: 4px;">
                         <i class="fa-solid fa-print"></i> 출력하기
                     </button>
                 </div>
@@ -507,7 +948,7 @@ export function renderSchedules(container) {
             render();
         });
         ws.querySelector('#btn-print-shifts').addEventListener('click', () => {
-            window.print();
+            openPrintPreview('shifts');
         });
     };
 
@@ -762,6 +1203,9 @@ export function renderSchedules(container) {
                         <i class="fa-solid fa-eye${matchShowLogs ? '-slash' : ''}"></i> 이동 이력 ${matchShowLogs ? '숨기기' : '보이기'}
                     </button>
                     ` : ''}
+                    <button class="btn btn-primary" id="btn-print-matches" data-testid="teacher-student-print-preview" style="display: inline-flex; align-items: center; gap: 4px;">
+                        <i class="fa-solid fa-print"></i> 출력하기
+                    </button>
                 </div>
             </div>
         `;
@@ -1123,6 +1567,13 @@ export function renderSchedules(container) {
             matchLogToggleBtn.addEventListener('click', () => {
                 matchShowLogs = !matchShowLogs;
                 render();
+            });
+        }
+
+        const printMatchesBtn = ws.querySelector('#btn-print-matches');
+        if (printMatchesBtn) {
+            printMatchesBtn.addEventListener('click', () => {
+                openPrintPreview('matches');
             });
         }
 
