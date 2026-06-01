@@ -244,34 +244,34 @@ export function renderSchedules(container) {
                 .print-layout-1 .print-preview-a4 {
                     width: 210mm;
                     min-height: 297mm;
-                    padding: 15mm;
+                    padding: 10mm 12mm;
                     box-sizing: border-box;
                     background: white;
                     display: flex;
                     flex-direction: column;
-                    gap: 12px;
+                    gap: 6px;
                 }
                 .print-layout-1 .print-preview-a4 h1 {
-                    font-size: 1.6rem !important;
-                    margin-bottom: 4px !important;
+                    font-size: 1.3rem !important;
+                    margin-bottom: 2px !important;
                 }
                 .print-layout-1 .print-preview-a4 table {
-                    font-size: 0.78rem !important;
-                    margin-top: 8px !important;
+                    font-size: 0.7rem !important;
+                    margin-top: 4px !important;
                 }
                 .print-layout-1 .print-preview-a4 th, .print-layout-1 .print-preview-a4 td {
-                    padding: 2px 4px !important;
-                    line-height: 1.1 !important;
+                    padding: 1px 3px !important;
+                    line-height: 1.05 !important;
                 }
                 .print-layout-1 .print-preview-a4 td div {
-                    font-size: 0.72rem !important;
-                    padding: 1px 2px !important;
+                    font-size: 0.65rem !important;
+                    padding: 0.5px 1.5px !important;
                 }
                 .print-layout-1 [data-testid="schedule-print-notes"],
                 .print-layout-1 [data-testid="schedule-print-logs"] {
-                    margin-top: 10px !important;
-                    padding: 8px 12px !important;
-                    font-size: 0.78rem !important;
+                    margin-top: 6px !important;
+                    padding: 6px 10px !important;
+                    font-size: 0.7rem !important;
                 }
 
                 /* Layout 2: 2 copies per page */
@@ -887,18 +887,7 @@ export function renderSchedules(container) {
             });
         };
 
-        let recommendLandscape = false;
-        if (type === 'matches') {
-            if (matchViewMode === 'week') {
-                recommendLandscape = true;
-            } else if (activeTeachers && activeTeachers.length >= 5) {
-                recommendLandscape = true;
-            }
-        } else if (type === 'shifts') {
-            if (shiftViewMode === 'week') {
-                recommendLandscape = true;
-            }
-        }
+        const recommendLandscape = false;
 
         const applyPrintOrientation = () => {
             let styleEl = document.getElementById('dynamic-print-orientation-style');

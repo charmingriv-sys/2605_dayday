@@ -402,7 +402,7 @@ test.describe('Director Teacher-Student Schedule Flow Checks', () => {
     // Verify orientation guidance tip
     const orientationTip = page.locator('#print-orientation-tip');
     await expect(orientationTip).toBeVisible({ timeout: 5000 });
-    await expect(orientationTip).toHaveText('* 가로 인쇄 권장');
+    await expect(orientationTip).toHaveText('* 세로 인쇄 권장');
 
     const printCloseBtn = printModal.locator('[data-testid="schedule-print-close"]');
     await expect(printCloseBtn).toBeVisible({ timeout: 5000 });
