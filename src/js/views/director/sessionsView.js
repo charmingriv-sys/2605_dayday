@@ -32,6 +32,20 @@ export function renderSchedules(container) {
     // Temporary overrides Map for visual drag-and-drop simulation (Reset when DB changes or filter reset)
     let tempClassOverrides = {}; // Key: classId, Value: { dayOfWeek, time }
     
+    let searchDebounceTimer = null;
+    const debounceRender = (delay = 100) => {
+        if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(() => {
+            const activeEl = document.activeElement;
+            if (activeEl && (activeEl.id === 'shift-search-input' || activeEl.id === 'match-search-input')) {
+                if (activeEl.dataset.composing === 'true') {
+                    return;
+                }
+            }
+            renderWorkspace();
+        }, delay);
+    };
+
     const openSettingsModal = () => {
         const settings = stateStore.getSettings() || {};
         const html = `
@@ -1477,11 +1491,30 @@ export function renderSchedules(container) {
                                 <option value="플루트" ${filterType === '플루트' ? 'selected' : ''}>플루트 전담</option>
                             </select>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 8px; flex-grow: 1; max-width: 250px;">
-                            <input type="text" id="shift-search-input" list="shift-teachers-list" class="form-control" style="margin-bottom:0; font-size: 0.85rem; padding: 4px 8px;" placeholder="강사명 검색" value="${filterSearchQuery}">
+                        <div style="display: flex; align-items: center; gap: 8px; flex-grow: 1; max-width: 280px; position: relative;">
+                            <input type="text" id="shift-search-input" list="shift-teachers-list" class="form-control" style="margin-bottom:0; font-size: 0.85rem; padding: 4px 8px; padding-right: 28px; width: 100%;" placeholder="강사명 검색" value="${filterSearchQuery}" data-composing="false">
                             <datalist id="shift-teachers-list">
                                 ${teachers.map(t => `<option value="${t.name}"></option>`).join('')}
                             </datalist>
+                            ${filterSearchQuery ? `
+                                <button id="btn-clear-shift-search" style="
+                                    position: absolute;
+                                    right: 8px;
+                                    top: 50%;
+                                    transform: translateY(-50%);
+                                    background: transparent;
+                                    border: none;
+                                    color: var(--text-muted);
+                                    cursor: pointer;
+                                    padding: 4px;
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: center;
+                                    font-size: 0.85rem;
+                                " title="검색어 초기화">
+                                    <i class="fa-solid fa-xmark"></i>
+                                </button>
+                            ` : ''}
                         </div>
                     </div>
 
@@ -1595,10 +1628,37 @@ export function renderSchedules(container) {
             });
 
             const searchInput = ws.querySelector('#shift-search-input');
+            let isComposing = false;
+            searchInput.addEventListener('compositionstart', () => {
+                isComposing = true;
+                searchInput.dataset.composing = 'true';
+            });
+            searchInput.addEventListener('compositionend', (e) => {
+                isComposing = false;
+                searchInput.dataset.composing = 'false';
+                filterSearchQuery = e.target.value;
+                debounceRender(100);
+            });
             searchInput.addEventListener('input', (e) => {
                 filterSearchQuery = e.target.value;
-                renderWorkspace();
+                if (!isComposing) {
+                    debounceRender(100);
+                }
             });
+            searchInput.addEventListener('focus', (e) => {
+                e.target.select();
+            });
+            searchInput.addEventListener('click', (e) => {
+                e.target.select();
+            });
+
+            const clearBtn = ws.querySelector('#btn-clear-shift-search');
+            if (clearBtn) {
+                clearBtn.addEventListener('click', () => {
+                    filterSearchQuery = '';
+                    renderWorkspace();
+                });
+            }
         }
 
         // Common events
@@ -2044,11 +2104,30 @@ export function renderSchedules(container) {
                             <option value="플루트" ${matchInstrumentFilter === '플루트' ? 'selected' : ''}>플루트</option>
                         </select>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 8px; flex-grow: 1; max-width: 250px;">
-                        <input type="text" id="match-search-input" list="match-teachers-list" class="form-control" style="margin-bottom:0; font-size: 0.85rem; padding: 4px 8px;" placeholder="강사명 검색" value="${matchSearchQuery}" data-testid="teacher-student-search-input">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-grow: 1; max-width: 280px; position: relative;">
+                        <input type="text" id="match-search-input" list="match-teachers-list" class="form-control" style="margin-bottom:0; font-size: 0.85rem; padding: 4px 8px; padding-right: 28px; width: 100%;" placeholder="강사명 검색" value="${matchSearchQuery}" data-testid="teacher-student-search-input" data-composing="false">
                         <datalist id="match-teachers-list">
                             ${teachers.map(t => `<option value="${t.name}"></option>`).join('')}
                         </datalist>
+                        ${matchSearchQuery ? `
+                            <button id="btn-clear-match-search" style="
+                                position: absolute;
+                                right: 8px;
+                                top: 50%;
+                                transform: translateY(-50%);
+                                background: transparent;
+                                border: none;
+                                color: var(--text-muted);
+                                cursor: pointer;
+                                padding: 4px;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                font-size: 0.85rem;
+                            " title="검색어 초기화">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        ` : ''}
                     </div>
                 </div>
             `;
@@ -2348,10 +2427,37 @@ export function renderSchedules(container) {
             });
 
             const searchInput = ws.querySelector('#match-search-input');
+            let isComposing = false;
+            searchInput.addEventListener('compositionstart', () => {
+                isComposing = true;
+                searchInput.dataset.composing = 'true';
+            });
+            searchInput.addEventListener('compositionend', (e) => {
+                isComposing = false;
+                searchInput.dataset.composing = 'false';
+                matchSearchQuery = e.target.value;
+                debounceRender(100);
+            });
             searchInput.addEventListener('input', (e) => {
                 matchSearchQuery = e.target.value;
-                renderWorkspace();
+                if (!isComposing) {
+                    debounceRender(100);
+                }
             });
+            searchInput.addEventListener('focus', (e) => {
+                e.target.select();
+            });
+            searchInput.addEventListener('click', (e) => {
+                e.target.select();
+            });
+
+            const clearBtn = ws.querySelector('#btn-clear-match-search');
+            if (clearBtn) {
+                clearBtn.addEventListener('click', () => {
+                    matchSearchQuery = '';
+                    renderWorkspace();
+                });
+            }
 
 
         }
