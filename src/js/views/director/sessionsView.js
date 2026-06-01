@@ -841,15 +841,43 @@ export function renderSchedules(container) {
 
             // Use html2canvas if available to prevent canvas tainting
             if (window.html2canvas) {
+                let exportWrapper = null;
                 try {
-                    // Small delay to ensure styles are painted
+                    const clone = targetEl.cloneNode(true);
+                    
+                    // Add export-specific styles to override A4 print sizing constraints
+                    clone.style.setProperty('width', '1000px', 'important');
+                    clone.style.setProperty('min-height', 'auto', 'important');
+                    clone.style.setProperty('height', 'auto', 'important');
+                    clone.style.setProperty('max-height', 'none', 'important');
+                    clone.style.setProperty('padding', '24px', 'important');
+                    clone.style.setProperty('box-shadow', 'none', 'important');
+                    clone.style.setProperty('margin', '0', 'important');
+                    clone.style.setProperty('border', 'none', 'important');
+                    clone.style.setProperty('background', '#ffffff', 'important');
+
+                    // Create offscreen wrapper container with print-layout-* class to inherit styles
+                    exportWrapper = document.createElement('div');
+                    exportWrapper.id = 'print-export-temp-wrapper';
+                    exportWrapper.className = containerEl.className || '';
+                    exportWrapper.style.position = 'fixed';
+                    exportWrapper.style.left = '-99999px';
+                    exportWrapper.style.top = '0';
+                    exportWrapper.style.width = '1050px';
+                    exportWrapper.style.background = '#ffffff';
+                    exportWrapper.appendChild(clone);
+                    document.body.appendChild(exportWrapper);
+
+                    // Small delay to ensure styles are painted on the offscreen DOM
                     await new Promise(resolve => setTimeout(resolve, 50));
-                    const canvas = await window.html2canvas(targetEl, {
+                    
+                    const canvas = await window.html2canvas(clone, {
                         useCORS: true,
                         scale: 2, // High resolution crisp text/borders
                         backgroundColor: '#ffffff',
                         logging: false
                     });
+                    
                     return new Promise((resolve, reject) => {
                         canvas.toBlob((blob) => {
                             if (blob) {
@@ -861,6 +889,10 @@ export function renderSchedules(container) {
                     });
                 } catch (err) {
                     console.error('html2canvas capture failed, falling back to SVG capture:', err);
+                } finally {
+                    if (exportWrapper && exportWrapper.parentNode) {
+                        exportWrapper.parentNode.removeChild(exportWrapper);
+                    }
                 }
             }
 
