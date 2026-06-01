@@ -2265,11 +2265,11 @@ export function renderSchedules(container) {
                                                         const student = students.find(s => s.id === c.studentId && c.teacherId === t.id);
                                                         if (student) {
                                                             const hasNotes = student.scheduleNotes && student.scheduleNotes.trim() !== '';
-                                                            const notesHtmlLine = hasNotes ? `
-                                                                <div style="font-size: 0.62rem; font-weight: normal; opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; line-height: 1.1;">
-                                                                ${student.scheduleNotes.trim()}
-                                                                </div>
-                                                            ` : '';
+                                                             const notesHtmlLine = hasNotes ? `
+                                                                 <div style="font-size: 0.58rem; font-weight: normal; opacity: 0.75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; line-height: 1.0; text-align: center;">
+                                                                 ${student.scheduleNotes.trim()}
+                                                                 </div>
+                                                             ` : '';
 
                                                             pillsHtml += `
                                                             <span class="student-match-pill"
