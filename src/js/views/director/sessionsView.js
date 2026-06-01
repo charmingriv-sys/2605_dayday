@@ -2066,12 +2066,7 @@ export function renderSchedules(container) {
                                                             const teacher = teachers.find(t => t.id === currentTeacherId);
                                                             const teacherName = teacher ? teacher.name : '미지정';
                                                             const bgColor = teacher ? teacher.color : '#e2e8f0';
-                                                            const hasNotes = student.scheduleNotes && student.scheduleNotes.trim() !== '';
-                                                             const notesHtmlLine = hasNotes ? `
-                                                                 <div style="font-size: 0.58rem; font-weight: normal; opacity: 0.75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; line-height: 1.0; text-align: center;">
-                                                                 ${student.scheduleNotes.trim()}
-                                                                 </div>
-                                                             ` : '';
+
 
                                                              pillsHtml += `
                                                              <span class="student-match-pill"
@@ -2103,8 +2098,7 @@ export function renderSchedules(container) {
                                                              <div style="font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; text-align: center;">
                                                              ${student.name}
                                                              </div>
-                                                             ${notesHtmlLine}
-                                                             </span>
+</span>
                                                              `;
                                                         }
                                                     });
@@ -2264,12 +2258,7 @@ export function renderSchedules(container) {
                                                     cellClasses.forEach(c => {
                                                         const student = students.find(s => s.id === c.studentId && c.teacherId === t.id);
                                                         if (student) {
-                                                            const hasNotes = student.scheduleNotes && student.scheduleNotes.trim() !== '';
-                                                             const notesHtmlLine = hasNotes ? `
-                                                                 <div style="font-size: 0.58rem; font-weight: normal; opacity: 0.75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; line-height: 1.0; text-align: center;">
-                                                                 ${student.scheduleNotes.trim()}
-                                                                 </div>
-                                                             ` : '';
+
 
                                                             pillsHtml += `
                                                             <span class="student-match-pill"
@@ -2300,8 +2289,7 @@ export function renderSchedules(container) {
                                                             <div style="font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; text-align: center;">
                                                             ${student.name}
                                                             </div>
-                                                            ${notesHtmlLine}
-                                                            </span>
+</span>
                                                             `;
                                                         }
                                                     });
