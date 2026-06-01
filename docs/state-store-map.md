@@ -67,10 +67,11 @@
   - 선택 일자 (`selectedDateStr`)
   - 특이사항 패널 토글 상태 (`showNotes`)
   - 필터링 조건 (`filterType = 'all' | 'active' | '피아노' | ...`, `filterSearchQuery`)
-- **UI 상태 관리 (Phase 7C, 7D-2 & 7D-2.5)**:
+- **UI 상태 관리 (Phase 7C, 7D-2, 7D-2.5 & 7D-3)**:
   - 주간/일간 보기 전환 (`matchViewMode = 'week' | 'day'`)
   - 선택 일자 (`matchSelectedDateStr`)
   - 특이사항 패널 토글 상태 (`matchShowNotes`)
+  - 이동 이력 패널 토글 상태 (`matchShowLogs`)
   - 필터링 조건 (`matchFilterActiveOnly = true | false`, `matchInstrumentFilter = 'all' | '피아노' | ...`, `matchSearchQuery`)
   - 일정 이동 피드백 상태 메시지 (`teacher-student-move-status` 엘리먼트 텍스트 렌더링)
 
@@ -154,8 +155,8 @@ View -> StateStore Public API -> Memory Cache -> LocalStorageAdapter -> localSto
     *   `stateStore`에 정의된 핵심 12개 캡슐화 API의 정상 바인딩 상태를 런타임에 자동 점검합니다.
 2.  **SupabaseAdapter mock 검증 (`tests/unit/supabase_adapter_mock_test.mjs`)**:
     *   실제 Supabase DB 없이 Mock 클라이언트를 활용해 쿼리 모델링 변환, 멀티 테넌트(`organizationId`) 무결성 가드, `authUserId` 감사 로그 기록의 작동 여부를 검증합니다.
-3.  **강사-원생 드래그 이동 E2E 검증 (`tests/e2e/teacher-student-schedule-flow.spec.js`)**:
-    *   일간 보기에서 특정 원생을 드래그앤드롭하여 다른 슬롯으로 옮길 때 발생하는 영속 데이터의 갱신, 새로고침 후 복구, 타 날짜 격리 여부를 실제 Chromium 브라우저 세션 상에서 검증합니다. (E2E-only test bridge 안전 가드문 적용)
+3.  **강사-원생 드래그 이동 및 시간표 감사 로그 E2E 검증 (`tests/e2e/teacher-student-schedule-flow.spec.js`)**:
+    *   일간 보기에서 특정 원생을 드래그앤드롭하여 다른 슬롯으로 옮길 때 발생하는 영속 데이터의 갱신, 새로고침 후 복구, 타 날짜 격리 여부 및 실시간 변경 이력(감사 로그)이 올바르게 적재되고 화면에 렌더링/토글되는지 실제 Chromium 브라우저 세션 상에서 검증합니다. (E2E-only test bridge 안전 가드문 적용)
 4.  **정기 테스트 강제화 규칙**:
     *   새로운 도메인 확장이나 필드 추가 시, 반드시 `npm run test:all`을 통과해야 배포 준비 상태로 간주합니다.
 

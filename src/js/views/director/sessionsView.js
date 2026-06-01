@@ -19,6 +19,7 @@ export function renderSchedules(container) {
     let matchViewMode = 'week'; // 'week' or 'day'
     let matchSelectedDateStr = '2026-05-18'; // Default date for daily match view
     let matchShowNotes = true; // Toggle for student scheduleNotes panel
+    let matchShowLogs = true; // Toggle for daily schedule operation logs panel
     let matchFilterActiveOnly = false; // "당일 수업 있는 강사만" 필터
     let matchInstrumentFilter = 'all'; // 과목/악기 필터
     let matchSearchQuery = ''; // 강사명 검색
@@ -756,6 +757,11 @@ export function renderSchedules(container) {
                     <button class="btn btn-secondary" id="btn-match-notes-toggle" data-testid="teacher-student-notes-toggle">
                         <i class="fa-solid fa-eye${matchShowNotes ? '-slash' : ''}"></i> 특이사항 ${matchShowNotes ? '숨기기' : '보이기'}
                     </button>
+                    ${matchViewMode === 'day' ? `
+                    <button class="btn btn-secondary" id="btn-match-log-toggle" data-testid="teacher-student-log-toggle">
+                        <i class="fa-solid fa-eye${matchShowLogs ? '-slash' : ''}"></i> 이동 이력 ${matchShowLogs ? '숨기기' : '보이기'}
+                    </button>
+                    ` : ''}
                 </div>
             </div>
         `;
@@ -954,6 +960,7 @@ export function renderSchedules(container) {
                 }
             });
             const activeStudents = students.filter(s => dayStudentIds.has(s.id) && s.scheduleNotes);
+            const dayLogs = stateStore.getScheduleOperationLogs(matchSelectedDateStr) || [];
 
             ws.innerHTML = `
                 <div class="glass-card" style="padding: 1.5rem;">
@@ -1028,24 +1035,69 @@ export function renderSchedules(container) {
                             </table>
                         </div>
 
-                        <!-- Notes Panel -->
-                        <div id="student-match-notes-panel" data-testid="teacher-student-notes-panel" style="flex-grow: 1; width: 250px; display: ${matchShowNotes ? 'block' : 'none'}; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.2rem; background: var(--bg-card); max-height: 600px; overflow-y: auto;">
-                            <h4 style="font-weight: 700; font-size: 1rem; margin-top: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
-                                <i class="fa-solid fa-clipboard-question" style="color: var(--primary);"></i> 원생 수업 특이사항
-                            </h4>
-                            <div style="display: flex; flex-direction: column; gap: 12px;">
-                                ${activeStudents.length > 0 ? activeStudents.map(s => {
-                                    const teacher = teachers.find(t => t.id === s.teacherId);
-                                    return `
-                                        <div style="border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
-                                            <strong>${s.name} (${s.instrument})</strong>
-                                            <span style="font-size:0.75rem; color:var(--text-muted); display:block; margin-top:2px;">담당: ${teacher ? teacher.name : '미지정'}</span>
-                                            <div style="font-size:0.85rem; color:var(--text-main); margin-top:4px; font-style:italic;">
-                                                ${s.scheduleNotes.replace(/\n/g, '<br>')}
+                        <!-- Right Sidebar Column -->
+                        <div id="teacher-student-right-sidebar" style="display: flex; flex-direction: column; gap: 20px; flex-grow: 1; width: 250px;">
+                            <!-- Notes Panel -->
+                            <div id="student-match-notes-panel" data-testid="teacher-student-notes-panel" style="display: ${matchShowNotes ? 'block' : 'none'}; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.2rem; background: var(--bg-card); max-height: 400px; overflow-y: auto;">
+                                <h4 style="font-weight: 700; font-size: 1rem; margin-top: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                                    <i class="fa-solid fa-clipboard-question" style="color: var(--primary);"></i> 원생 수업 특이사항
+                                </h4>
+                                <div style="display: flex; flex-direction: column; gap: 12px;">
+                                    ${activeStudents.length > 0 ? activeStudents.map(s => {
+                                        const teacher = teachers.find(t => t.id === s.teacherId);
+                                        return `
+                                            <div style="border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
+                                                <strong>${s.name} (${s.instrument})</strong>
+                                                <span style="font-size:0.75rem; color:var(--text-muted); display:block; margin-top:2px;">담당: ${teacher ? teacher.name : '미지정'}</span>
+                                                <div style="font-size:0.85rem; color:var(--text-main); margin-top:4px; font-style:italic;">
+                                                    ${s.scheduleNotes.replace(/\n/g, '<br>')}
+                                                </div>
                                             </div>
-                                        </div>
-                                    `;
-                                }).join('') : '<div style="font-size: 0.85rem; color: var(--text-muted); font-style: italic;">등록된 특이사항이 없습니다.</div>'}
+                                        `;
+                                    }).join('') : '<div style="font-size: 0.85rem; color: var(--text-muted); font-style: italic;">등록된 특이사항이 없습니다.</div>'}
+                                </div>
+                            </div>
+
+                            <!-- Operation Logs Panel -->
+                            <div id="student-match-log-panel" data-testid="teacher-student-log-panel" style="display: ${matchShowLogs ? 'block' : 'none'}; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.2rem; background: var(--bg-card); max-height: 400px; overflow-y: auto;">
+                                <h4 style="font-weight: 700; font-size: 1rem; margin-top: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                                    <i class="fa-solid fa-clock-rotate-left" style="color: var(--primary);"></i> 시간표 이동 이력
+                                </h4>
+                                <div style="display: flex; flex-direction: column; gap: 12px;">
+                                    ${dayLogs.length > 0 ? dayLogs.map(log => {
+                                        const logStudent = students.find(s => s.id === log.studentId);
+                                        const studentName = logStudent ? logStudent.name : log.studentId;
+
+                                        const beforeTeacher = teachers.find(t => t.id === log.before.teacherId);
+                                        const beforeTeacherName = beforeTeacher ? beforeTeacher.name : (log.before.teacherId || '미지정');
+
+                                        const afterTeacher = teachers.find(t => t.id === log.after.teacherId);
+                                        const afterTeacherName = afterTeacher ? afterTeacher.name : (log.after.teacherId || '미지정');
+                                        
+                                        const creatorName = log.createdBy === 'USR_DIR_DEMO' ? '원장' : log.createdBy;
+                                        
+                                        return `
+                                            <div data-testid="teacher-student-log-row" style="border-bottom: 1px solid var(--border-color); padding-bottom: 8px; font-size: 0.85rem;">
+                                                <div style="font-weight: bold; margin-bottom: 4px; display: flex; justify-content: space-between;">
+                                                    <span data-testid="teacher-student-log-student" style="color: var(--primary);">${studentName}</span>
+                                                    <span style="font-size: 0.72rem; color: var(--text-muted);">${creatorName}</span>
+                                                </div>
+                                                <div style="margin-top: 2px;">
+                                                    <span data-testid="teacher-student-log-before" style="text-decoration: line-through; color: var(--text-muted); font-size: 0.78rem;">
+                                                        ${beforeTeacherName} (${log.before.startTime})
+                                                    </span>
+                                                    <span style="margin: 0 4px; color: var(--text-muted);">→</span>
+                                                    <span data-testid="teacher-student-log-after" style="font-weight: 700; color: var(--good-color, #087443); font-size: 0.78rem;">
+                                                        ${afterTeacherName} (${log.after.startTime})
+                                                    </span>
+                                                </div>
+                                                <div data-testid="teacher-student-log-reason" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px; font-style: italic;">
+                                                    사유: ${log.before.teacherId !== log.after.teacherId ? '강사 및 시간 변경' : '시간 변경'}
+                                                </div>
+                                            </div>
+                                        `;
+                                    }).join('') : '<div data-testid="teacher-student-log-empty" style="font-size: 0.85rem; color: var(--text-muted); font-style: italic;">선택한 날짜의 시간표 이동 이력이 없습니다.</div>'}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1066,6 +1118,13 @@ export function renderSchedules(container) {
             matchShowNotes = !matchShowNotes;
             render();
         });
+        const matchLogToggleBtn = ws.querySelector('#btn-match-log-toggle');
+        if (matchLogToggleBtn) {
+            matchLogToggleBtn.addEventListener('click', () => {
+                matchShowLogs = !matchShowLogs;
+                render();
+            });
+        }
 
         // Mode specific event handlers
         if (matchViewMode === 'week') {

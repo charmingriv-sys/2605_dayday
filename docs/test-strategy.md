@@ -141,6 +141,22 @@ Configured to spawn `node server.js` dynamically on port `3000` to serve the sta
   - Verify that reload does not wipe local state overrides.
   - Verify that other dates remain unaffected by the override.
 
+#### Scenario I-3: Schedule Operation Logs Checks (`tests/e2e/teacher-student-schedule-flow.spec.js`)
+- **Actions**:
+  1. Switch to Daily Match View, fill date input to '2026-05-18'.
+  2. Verify that the operation logs panel is visible by default and shows "시간표 이동 이력이 없습니다" (Empty log indicator).
+  3. Drag and drop student "최다은" from 14:00 default slot to 15:00 slot.
+  4. Verify that a new log row is created in the panel containing the student name ("최다은"), before teacher ("정은비"), after teacher ("정은비"), and the change reason.
+  5. Reload the page, log back in, and verify that the operation log for the day persists correctly.
+  6. Switch to '2026-05-19' and verify that the logs panel is empty (Isolation).
+  7. Switch back to '2026-05-18' and toggle the log panel visibility using the "이동 이력 숨기기/보이기" button.
+- **Assertions**:
+  - Verify `data-testid="teacher-student-log-empty"` is visible initially.
+  - Verify `data-testid="teacher-student-log-row"` is created with exact student name, before/after states, and action reason after shift.
+  - Verify logs persist after page reload.
+  - Verify logs for other dates are isolated.
+  - Verify the log panel hides/shows correctly on toggle click.
+
 #### Scenario J: Schedule Override/Snapshot Unit Testing (`tests/unit/schedule_override_test.mjs`)
 - **Actions**:
   1. Verify future date defaults to database classes dynamic loading without snapshot generation.

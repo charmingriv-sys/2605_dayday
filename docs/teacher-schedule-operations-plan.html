@@ -564,6 +564,7 @@
           <li><strong>강사-원생 일간 운영표 드래그 이동 UI 구현 <span class="label good">완료 (Phase 7D-2)</span></strong><br/>일간 보기에서 수업 카드를 다른 강사/시간 슬롯으로 드래그 이동하여 영속 저장(moveStudentScheduleForDate)하고 화면을 리액티브하게 리렌더링합니다.</li>
           <li><strong>E2E 전용 드롭 트리거 안전화 및 Phase 정합성 정리 <span class="label good">완료 (Phase 7D-2.5)</span></strong><br/>테스트용 드롭 트리거(__triggerDrop)를 window.__DAYDAY_E2E__ 플래그 조건 하에 격리하고 Phase 명칭 및 문서 정합성을 일괄 정돈합니다.</li>
           <li><strong>모바일 대체 UI 후보 기획 및 문서화 <span class="label good">완료 (Phase 7D-2)</span></strong><br/>모바일 환경의 터치 스크롤 오버랩 문제를 대비하여 클릭 식별 방식의 이동 모달 대안을 기획서에 추가 기재합니다.</li>
+          <li><strong>날짜별 이동 로그 감사/UI 보강 <span class="label good">완료 (Phase 7D-3)</span></strong><br/>일간 일정 드래그 이동 시 생성되는 이동 감사 로그를 조회하고, 이동 이력 패널(토글 버튼 연동)을 통해 원장에게 감사 내역을 실시간 렌더링합니다.</li>
           <li><strong>주간 보기 개선</strong><br/>강사 1명의 주간 출근표와 기존 강사-원생 주간표를 정리합니다.</li>
           <li><strong>프린트/이미지 내보내기</strong><br/>사용자가 필터링한 일간/주간/강사 조건과 특이사항 포함 토글을 반영해 한 페이지 1/2/3개 배치, PNG 다운로드, 클립보드 복사를 순서대로 붙입니다.</li>
           <li><strong>E2E 테스트 확장 <span class="label good">완료 (Phase 7C / 7D-1.5)</span></strong><br/>표 설정 저장, 일간 보기 날짜 선택, 수납/출결처럼 새 기능별 자동 테스트 및 유닛 테스트 세트를 추가합니다.</li>
@@ -607,6 +608,14 @@
           <strong>Phase 7E: 프린트/이미지 복사 기능</strong>
           <p>선택된 일간/주간, 날짜, 강사 필터, 특이사항 가시성 여부를 그대로 반영하여 한 페이지에 1/2/3개 배치 인쇄 및 PNG 이미지 내보내기/클립보드 복사를 완료합니다.</p>
         </div>
+        <h3>이전 Phase 7D-3 완료 내역</h3>
+        <ul>
+          <li>일간 일정 드래그 이동 시 `stateStore.getScheduleOperationLogs(date)` API를 통한 실시간 변경 이력(감사 로그) 연동 완료</li>
+          <li>우측 사이드바 구조를 개편하여 원생 수업 특이사항과 시간표 이동 이력(Operation Logs) 패널을 수직 나열 배치 완료</li>
+          <li>상단 컨트롤바에 "이동 이력 숨기기/보이기" 토글 버튼 추가 및 `matchShowLogs` 상태에 맞게 실시간 렌더링 전환 완료</li>
+          <li>이동 이력 전용 Playwright E2E 통합 테스트 케이스 추가 및 검증 완료</li>
+        </ul>
+
         <h3>이전 Phase 7D-2.5 완료 내역</h3>
         <ul>
           <li>테스트 전용 드롭 트리거(test-only drop trigger)를 window.__DAYDAY_E2E__ 플래그 조건 하에 격리 적용</li>

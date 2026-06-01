@@ -248,4 +248,133 @@ test.describe('Director Teacher-Student Schedule Flow Checks', () => {
     const targetSlotNextWeek = page.locator('[data-testid="teacher-student-drop-slot"][data-time="15:00"][data-teacher-id="T8"]').first();
     await expect(targetSlotNextWeek.locator('text=최다은')).toBeHidden({ timeout: 5000 });
   });
+
+  test('should verify daily schedule operation logs on drag-and-drop, reload, date change, and panel toggle', async ({ page }) => {
+    // 1. Navigate to Schedules subtab and turn on daily view
+    await navigateDirectorView(page, 'dir-schedules');
+    const subTabBtn = page.locator('#btn-subtab-match');
+    await expect(subTabBtn).toBeVisible({ timeout: 5000 });
+    await subTabBtn.click();
+
+    const dayViewBtn = page.locator('[data-testid="teacher-student-day-view"]');
+    await expect(dayViewBtn).toBeVisible({ timeout: 5000 });
+    await dayViewBtn.click();
+
+    // 2. Select Date: 2026-05-18 (Monday)
+    const dateInput = page.locator('[data-testid="teacher-student-date-input"]');
+    await expect(dateInput).toBeVisible({ timeout: 5000 });
+    await dateInput.fill('2026-05-18');
+    await dateInput.press('Enter');
+
+    // 3. Verify logs are initially empty
+    const emptyLog = page.locator('[data-testid="teacher-student-log-empty"]');
+    await expect(emptyLog).toBeVisible({ timeout: 5000 });
+    await expect(emptyLog).toHaveText(/시간표 이동 이력이 없습니다/);
+
+    // 4. Find the card for student "최다은" and target drop cell
+    const studentCard = page.locator('[data-testid="teacher-student-schedule-card"]:has-text("최다은")').first();
+    await expect(studentCard).toBeVisible({ timeout: 5000 });
+
+    // Target Slot: Teacher T8 (정은비), Time: 15:00
+    const targetSlot = page.locator('[data-testid="teacher-student-drop-slot"][data-time="15:00"][data-teacher-id="T8"]').first();
+    await expect(targetSlot).toBeVisible({ timeout: 5000 });
+
+    // 5. HTML5 Drag and Drop simulation via page.evaluate
+    await page.evaluate(({ cardSelector, slotSelector }) => {
+      const cards = Array.from(document.querySelectorAll(cardSelector));
+      const cardEl = cards.find(el => el.textContent.includes('최다은'));
+      const slotEl = document.querySelector(slotSelector);
+      if (!cardEl || !slotEl) return;
+      const parentCell = cardEl.closest('.match-cell-drop');
+      const fromTime = parentCell ? parentCell.dataset.time : '';
+
+      const mockDataTransfer = {
+        getData: (key) => {
+          if (key === 'text/class-id') return cardEl.dataset.classId || '';
+          if (key === 'text/student-id') return cardEl.dataset.studentId || '';
+          if (key === 'text/from-teacher-id') return cardEl.dataset.teacherId || '';
+          if (key === 'text/from-time') return fromTime || '';
+          return '';
+        },
+        setData: () => {},
+        effectAllowed: 'move',
+        dropEffect: 'none'
+      };
+
+      if (typeof slotEl.__triggerDrop === 'function') {
+        slotEl.__triggerDrop({
+          preventDefault: () => {},
+          dataTransfer: mockDataTransfer
+        });
+      }
+    }, {
+      cardSelector: '[data-testid="teacher-student-schedule-card"]',
+      slotSelector: '[data-testid="teacher-student-drop-slot"][data-time="15:00"][data-teacher-id="T8"]'
+    });
+
+    // 6. Verify success alert banner
+    const statusEl = page.locator('[data-testid="teacher-student-move-status"]');
+    await expect(statusEl).toBeVisible({ timeout: 5000 });
+
+    // 7. Verify Operation Logs Panel has one log row generated
+    const logRow = page.locator('[data-testid="teacher-student-log-row"]').first();
+    await expect(logRow).toBeVisible({ timeout: 5000 });
+    
+    // Check inner details of the log row
+    const logStudent = logRow.locator('[data-testid="teacher-student-log-student"]');
+    await expect(logStudent).toHaveText('최다은');
+    
+    const logBefore = logRow.locator('[data-testid="teacher-student-log-before"]');
+    await expect(logBefore).toHaveText(/정은비/);
+    
+    const logAfter = logRow.locator('[data-testid="teacher-student-log-after"]');
+    await expect(logAfter).toHaveText(/정은비/);
+
+    // 8. Verify persistence across page reload
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    const roleGrid = page.locator('.role-grid');
+    if (await roleGrid.isVisible()) {
+      await loginAsDirector(page);
+    } else {
+      await waitForAppReady(page);
+    }
+    await navigateDirectorView(page, 'dir-schedules');
+    await page.locator('#btn-subtab-match').click();
+    await page.locator('[data-testid="teacher-student-day-view"]').click();
+    
+    const dateInput2 = page.locator('[data-testid="teacher-student-date-input"]');
+    await dateInput2.fill('2026-05-18');
+    await dateInput2.press('Enter');
+
+    const logRowAfterReload = page.locator('[data-testid="teacher-student-log-row"]').first();
+    await expect(logRowAfterReload).toBeVisible({ timeout: 5000 });
+    await expect(logRowAfterReload.locator('[data-testid="teacher-student-log-student"]')).toHaveText('최다은');
+
+    // 9. Verify date isolation
+    const dateInput3 = page.locator('[data-testid="teacher-student-date-input"]');
+    await dateInput3.fill('2026-05-19');
+    await dateInput3.press('Enter');
+    
+    const emptyLogNextDay = page.locator('[data-testid="teacher-student-log-empty"]');
+    await expect(emptyLogNextDay).toBeVisible({ timeout: 5000 });
+
+    // Go back to 2026-05-18
+    await dateInput3.fill('2026-05-18');
+    await dateInput3.press('Enter');
+
+    // 10. Verify Toggle Log Panel button (show/hide)
+    const logToggleBtn = page.locator('[data-testid="teacher-student-log-toggle"]');
+    await expect(logToggleBtn).toBeVisible({ timeout: 5000 });
+    
+    const logPanel = page.locator('[data-testid="teacher-student-log-panel"]');
+    await expect(logPanel).toBeVisible({ timeout: 5000 });
+
+    // Hide log panel
+    await logToggleBtn.click();
+    await expect(logPanel).toBeHidden({ timeout: 5000 });
+
+    // Show log panel
+    await logToggleBtn.click();
+    await expect(logPanel).toBeVisible({ timeout: 5000 });
+  });
 });
