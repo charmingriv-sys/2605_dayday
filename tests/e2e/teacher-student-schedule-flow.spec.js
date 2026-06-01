@@ -90,9 +90,6 @@ test.describe('Director Teacher-Student Schedule Flow Checks', () => {
     const instrumentFilter = page.locator('[data-testid="teacher-student-teacher-filter"]');
     await expect(instrumentFilter).toBeVisible({ timeout: 5000 });
 
-    const activeFilterBtn = page.locator('[data-testid="teacher-student-active-filter"]');
-    await expect(activeFilterBtn).toBeVisible({ timeout: 5000 });
-
     const searchInput = page.locator('[data-testid="teacher-student-search-input"]');
     await expect(searchInput).toBeVisible({ timeout: 5000 });
 
@@ -112,11 +109,6 @@ test.describe('Director Teacher-Student Schedule Flow Checks', () => {
     // Verify piano student 최다은 is back
     await expect(table.locator('text=최다은')).toBeVisible({ timeout: 5000 });
 
-    // Apply Active only filter (당일 수업 강사만)
-    await activeFilterBtn.click();
-    
-    // Active filter button should become active (primary color or state)
-    await expect(activeFilterBtn).toHaveClass(/btn-primary/);
   });
 
   test('should drag and drop student card to another slot, verify state updates, persist on reload, and keep other dates isolated', async ({ page }) => {

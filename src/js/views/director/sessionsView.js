@@ -1933,11 +1933,6 @@ export function renderSchedules(container) {
                     <div style="display: flex; align-items: center; gap: 8px; flex-grow: 1; max-width: 250px;">
                         <input type="text" id="match-search-input" class="form-control" style="margin-bottom:0; font-size: 0.85rem; padding: 4px 8px;" placeholder="강사명 검색" value="${matchSearchQuery}" data-testid="teacher-student-search-input">
                     </div>
-                    <div style="display: flex; align-items: center; gap: 6px;">
-                        <button class="btn ${matchFilterActiveOnly ? 'btn-primary' : 'btn-secondary'}" id="btn-match-active-only" data-testid="teacher-student-active-filter" style="font-size: 0.85rem; padding: 5px 12px;">
-                            당일 수업 강사만
-                        </button>
-                    </div>
                 </div>
             `;
 
@@ -1947,16 +1942,19 @@ export function renderSchedules(container) {
 
             const daySchedule = stateStore.getTeacherStudentScheduleForDate(matchSelectedDateStr);
 
-            let filteredTeachers = teachers;
-            if (matchFilterActiveOnly) {
-                const activeTeacherIds = new Set();
-                daySchedule.forEach(c => {
-                    if (c.teacherId) {
-                        activeTeacherIds.add(c.teacherId);
-                    }
-                });
-                filteredTeachers = teachers.filter(t => activeTeacherIds.has(t.id));
-            }
+            const activeTeacherIds = new Set();
+            daySchedule.forEach(c => {
+                if (c.teacherId) {
+                    activeTeacherIds.add(c.teacherId);
+                }
+            });
+            const dayShifts = stateStore.getTeacherShifts() || [];
+            dayShifts.forEach(s => {
+                if (s.teacherId && s.date === matchSelectedDateStr) {
+                    activeTeacherIds.add(s.teacherId);
+                }
+            });
+            let filteredTeachers = teachers.filter(t => activeTeacherIds.has(t.id));
 
             if (matchInstrumentFilter !== 'all') {
                 filteredTeachers = filteredTeachers.filter(t => t.instrument.includes(matchInstrumentFilter));
@@ -2237,10 +2235,7 @@ export function renderSchedules(container) {
                 renderWorkspace();
             });
 
-            ws.querySelector('#btn-match-active-only').addEventListener('click', () => {
-                matchFilterActiveOnly = !matchFilterActiveOnly;
-                render();
-            });
+
         }
 
         // HTML5 Drag and Drop Handlers
