@@ -202,6 +202,105 @@ assert(undismissedTask.status === 'open', 'Status set to open from dismissed');
 assert(undismissedTask.dismissedAt === undefined, 'dismissedAt was successfully removed on status transition to open');
 
 
+// ==========================================
+// ADDITIONAL SELECTOR TEST CASES (Phase 8B-3)
+// ==========================================
+
+console.log('--- Unit Test: Starting TodayTask API Selector Verification ---');
+
+// Reset store again for selector tests
+stateStore.db.todayTasks = [];
+
+const testTime = new Date('2026-06-02T12:00:00.000Z');
+
+// 1. Seed tasks with various statuses to check visibility
+stateStore.addTodayTask({ id: 'task-open', title: 'Open Task', status: 'open', dueAt: '2026-06-02T15:00:00.000Z', priority: 'today' });
+stateStore.addTodayTask({ id: 'task-done', title: 'Done Task', status: 'done', dueAt: '2026-06-02T15:00:00.000Z', priority: 'today' });
+stateStore.addTodayTask({ id: 'task-dismissed', title: 'Dismissed Task', status: 'dismissed', dueAt: '2026-06-02T15:00:00.000Z', priority: 'today' });
+
+// Snoozed - future (snoozedUntil > now) -> Should be hidden
+stateStore.addTodayTask({ id: 'task-snoozed-future', title: 'Snoozed Future Task', status: 'snoozed', snoozedUntil: '2026-06-02T13:00:00.000Z', dueAt: '2026-06-02T15:00:00.000Z', priority: 'today' });
+
+// Snoozed - expired (snoozedUntil <= now) -> Should be visible
+stateStore.addTodayTask({ id: 'task-snoozed-expired', title: 'Snoozed Expired Task', status: 'snoozed', snoozedUntil: '2026-06-02T11:00:00.000Z', dueAt: '2026-06-02T15:00:00.000Z', priority: 'today' });
+
+const visibleTasks = stateStore.getActiveTodayTasks(testTime);
+const visibleIds = visibleTasks.map(t => t.id);
+
+assert(visibleIds.includes('task-open'), 'getActiveTodayTasks exposes open task');
+assert(visibleIds.includes('task-snoozed-expired'), 'getActiveTodayTasks exposes expired snoozed task');
+assert(!visibleIds.includes('task-done'), 'getActiveTodayTasks hides done task');
+assert(!visibleIds.includes('task-dismissed'), 'getActiveTodayTasks hides dismissed task');
+assert(!visibleIds.includes('task-snoozed-future'), 'getActiveTodayTasks hides future snoozed task');
+
+// 2. Verify sorting logic (priority -> dueAt -> createdAt)
+stateStore.db.todayTasks = [];
+
+// Seed sorting test tasks
+// T1: urgent, due: 15:00, created: 10:00
+stateStore.addTodayTask({ id: 'T1', priority: 'urgent', dueAt: '2026-06-02T15:00:00.000Z', createdAt: '2026-06-02T10:00:00.000Z' });
+// T2: today, due: 14:00, created: 10:00
+stateStore.addTodayTask({ id: 'T2', priority: 'today', dueAt: '2026-06-02T14:00:00.000Z', createdAt: '2026-06-02T10:00:00.000Z' });
+// T3: closing, due: 14:00, created: 10:00
+stateStore.addTodayTask({ id: 'T3', priority: 'closing', dueAt: '2026-06-02T14:00:00.000Z', createdAt: '2026-06-02T10:00:00.000Z' });
+// T4: info, due: 14:00, created: 10:00
+stateStore.addTodayTask({ id: 'T4', priority: 'info', dueAt: '2026-06-02T14:00:00.000Z', createdAt: '2026-06-02T10:00:00.000Z' });
+// T5: unknown/none, due: 14:00, created: 10:00
+stateStore.addTodayTask({ id: 'T5', priority: 'unknown', dueAt: '2026-06-02T14:00:00.000Z', createdAt: '2026-06-02T10:00:00.000Z' });
+
+// T6: urgent, due: 16:00, created: 10:00 (urgent but later than T1)
+stateStore.addTodayTask({ id: 'T6', priority: 'urgent', dueAt: '2026-06-02T16:00:00.000Z', createdAt: '2026-06-02T10:00:00.000Z' });
+// T7: urgent, due: 15:00, created: 11:00 (urgent, same due as T1, but created later)
+stateStore.addTodayTask({ id: 'T7', priority: 'urgent', dueAt: '2026-06-02T15:00:00.000Z', createdAt: '2026-06-02T11:00:00.000Z' });
+
+const sortedTasks = stateStore.getActiveTodayTasks(testTime);
+const sortedIds = sortedTasks.map(t => t.id);
+
+// Expected Order: 
+// 1. T1 (urgent, due 15:00, created 10:00)
+// 2. T7 (urgent, due 15:00, created 11:00)
+// 3. T6 (urgent, due 16:00, created 10:00)
+// 4. T2 (today, due 14:00)
+// 5. T3 (closing, due 14:00)
+// 6. T4 (info, due 14:00)
+// 7. T5 (unknown/99, due 14:00)
+
+assert(sortedIds[0] === 'T1', `First: T1 (${sortedIds[0]})`);
+assert(sortedIds[1] === 'T7', `Second: T7 (${sortedIds[1]})`);
+assert(sortedIds[2] === 'T6', `Third: T6 (${sortedIds[2]})`);
+assert(sortedIds[3] === 'T2', `Fourth: T2 (${sortedIds[3]})`);
+assert(sortedIds[4] === 'T3', `Fifth: T3 (${sortedIds[4]})`);
+assert(sortedIds[5] === 'T4', `Sixth: T4 (${sortedIds[5]})`);
+assert(sortedIds[6] === 'T5', `Seventh: T5 (${sortedIds[6]})`);
+
+// 3. Verify getActiveTodayTasks invalid/missing date sorting fallbacks
+stateStore.db.todayTasks = [];
+
+// Seed tasks directly with push to bypass default auto-population of missing dates
+stateStore.db.todayTasks.push({ id: 'T_valid_due', status: 'open', priority: 'urgent', dueAt: '2026-06-02T14:00:00.000Z', createdAt: '2026-06-02T10:00:00.000Z' });
+stateStore.db.todayTasks.push({ id: 'T_missing_due', status: 'open', priority: 'urgent', createdAt: '2026-06-02T10:00:00.000Z' }); // dueAt is missing
+stateStore.db.todayTasks.push({ id: 'T_invalid_due', status: 'open', priority: 'urgent', dueAt: 'invalid-date-string', createdAt: '2026-06-02T10:00:00.000Z' }); // dueAt is invalid
+
+stateStore.db.todayTasks.push({ id: 'T_missing_created', status: 'open', priority: 'urgent', dueAt: '2026-06-02T14:00:00.000Z' }); // createdAt is missing
+stateStore.db.todayTasks.push({ id: 'T_invalid_created', status: 'open', priority: 'urgent', dueAt: '2026-06-02T14:00:00.000Z', createdAt: 'invalid-date-string' }); // createdAt is invalid
+
+const fallbackSortedTasks = stateStore.getActiveTodayTasks(testTime);
+const fallbackSortedIds = fallbackSortedTasks.map(t => t.id);
+
+assert(fallbackSortedIds.indexOf('T_valid_due') < fallbackSortedIds.indexOf('T_missing_due'), 'Valid dueAt task is sorted before missing dueAt task');
+assert(fallbackSortedIds.indexOf('T_valid_due') < fallbackSortedIds.indexOf('T_invalid_due'), 'Valid dueAt task is sorted before invalid dueAt task');
+assert(fallbackSortedIds.indexOf('T_valid_due') < fallbackSortedIds.indexOf('T_missing_created'), 'Valid createdAt task is sorted before missing createdAt task');
+assert(fallbackSortedIds.indexOf('T_valid_due') < fallbackSortedIds.indexOf('T_invalid_created'), 'Valid createdAt task is sorted before invalid createdAt task');
+assert(fallbackSortedIds.indexOf('T_missing_created') < fallbackSortedIds.indexOf('T_missing_due'), 'Valid dueAt (but missing createdAt) is sorted before missing dueAt task');
+
+// 4. Verify getActiveTodayTasks return array copy safety
+const activeList = stateStore.getActiveTodayTasks(testTime);
+const countBeforeMutation = activeList.length;
+activeList.push({ id: 'temp-task-mutate', priority: 'urgent' });
+const activeListAgain = stateStore.getActiveTodayTasks(testTime);
+assert(activeListAgain.length === countBeforeMutation, 'getActiveTodayTasks() returns a shallow copy and prevents mutation of internal list');
+
+
 if (hasError) {
     console.error('--- Unit Test: TodayTask API Verification FAILED ---');
     process.exit(1);

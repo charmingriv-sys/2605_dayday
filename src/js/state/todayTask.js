@@ -6,6 +6,52 @@ export const todayTaskMethods = {
         return [...(this.db.todayTasks || [])];
     },
 
+    getActiveTodayTasks(now = new Date()) {
+        const parsedNow = now instanceof Date ? now : new Date(now);
+        const nowTime = parsedNow.getTime();
+
+        const activeTasks = (this.db.todayTasks || []).filter(task => {
+            if (task.status === 'open') {
+                return true;
+            }
+            if (task.status === 'snoozed' && task.snoozedUntil) {
+                return new Date(task.snoozedUntil).getTime() <= nowTime;
+            }
+            return false;
+        });
+
+        const getPriorityWeight = (priority) => {
+            const weights = { urgent: 0, today: 1, closing: 2, info: 3 };
+            return weights[priority] !== undefined ? weights[priority] : 99;
+        };
+
+        const toSortableTime = (value, fallback = Number.POSITIVE_INFINITY) => {
+            const time = value ? new Date(value).getTime() : NaN;
+            return Number.isFinite(time) ? time : fallback;
+        };
+
+        activeTasks.sort((a, b) => {
+            // 1. Priority Weight ascending
+            const wA = getPriorityWeight(a.priority);
+            const wB = getPriorityWeight(b.priority);
+            if (wA !== wB) return wA - wB;
+
+            // 2. dueAt ascending
+            const dueA = toSortableTime(a.dueAt);
+            const dueB = toSortableTime(b.dueAt);
+            if (dueA !== dueB) return dueA - dueB;
+
+            // 3. createdAt ascending
+            const createA = toSortableTime(a.createdAt);
+            const createB = toSortableTime(b.createdAt);
+            if (createA !== createB) return createA - createB;
+
+            return 0;
+        });
+
+        return [...activeTasks];
+    },
+
     addTodayTask(task) {
         if (!task) return null;
 
