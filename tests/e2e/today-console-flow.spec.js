@@ -161,4 +161,29 @@ test.describe('Director Today Console Flow Checks', () => {
     // Verify no dialog was triggered
     expect(dialogTriggered).toBe(false);
   });
+
+  test('should display parallel layout with tasks queue and calendar skeleton', async ({ page }) => {
+    // 1. Assert Manual Task Form is inside the top workspace grid
+    const formInWorkspace = page.locator('.today-console-workspace #form-add-task');
+    await expect(formInWorkspace).toBeVisible();
+
+    // 2. Assert Calendar Skeleton Section is inside the top workspace grid
+    const calendarSection = page.locator('.today-console-workspace #calendar-timeline-section');
+    await expect(calendarSection).toBeVisible();
+    await expect(calendarSection.locator('text=오늘 일정')).toBeVisible();
+
+    // 3. Assert time labels are visible (e.g. 09:00, 10:00, etc.)
+    await expect(calendarSection.locator('text=09:00')).toBeVisible();
+    await expect(calendarSection.locator('text=10:00')).toBeVisible();
+    await expect(calendarSection.locator('text=14:00')).toBeVisible();
+
+    // 4. Assert overlay message is visible
+    await expect(calendarSection.locator('#calendar-skeleton-overlay')).toBeVisible();
+    await expect(calendarSection.locator('text=캘린더 일정 연동 대기')).toBeVisible();
+
+    // 5. Assert Tasks Queue Section exists at the bottom (outside workspace, as a full-width container)
+    const tasksQueue = page.locator('#tasks-queue-section');
+    await expect(tasksQueue).toBeVisible();
+    await expect(tasksQueue.locator('text=운영 대기 업무 (Active & Completed Queue)')).toBeVisible();
+  });
 });

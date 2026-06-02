@@ -140,80 +140,124 @@ export function renderTodayConsole(container) {
                 </div>
             </div>
 
-            <!-- Manual Task Addition Form Card -->
-            <div class="glass-card" style="padding: 1.5rem; margin-bottom: 24px;">
-                <h3 style="font-size: 1.05rem; font-weight: 700; margin: 0 0 1.2rem 0; display: flex; align-items: center; gap: 8px;">
-                    <i class="fa-solid fa-circle-plus" style="color: var(--primary);"></i>
-                    새로운 운영 메모 / 할 일 추가
-                </h3>
-                <form id="form-add-task" style="display: flex; flex-direction: column; gap: 16px;">
-                    <!-- Row 1: Quick Memo Textarea -->
-                    <div style="display: flex; flex-direction: column; gap: 6px;">
-                        <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">운영 메모 (첫 줄은 제목, 이후 줄은 설명)</label>
-                        <textarea id="task-content-input" placeholder="오늘 메모할 내용을 입력하세요.&#10;예:&#10;신규 회원 상담 예약&#10;오후 3시에 방문하여 수강 일정 및 악기 대여 문의 예정" rows="4" required style="width: 100%; padding: 12px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; resize: vertical; line-height: 1.5; outline: none;"></textarea>
-                    </div>
-                    
-                    <!-- Row 2: Category & Times & Button -->
-                    <div style="display: grid; grid-template-columns: 1.2fr 2fr 2fr auto; gap: 12px; align-items: end;" class="task-form-grid">
+            <!-- Main Grid Layout (Parallel Columns: Form & Calendar) -->
+            <div class="today-console-workspace" style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px; align-items: start; margin-bottom: 24px;">
+                <!-- Left Column: Manual Task Form Card -->
+                <div class="glass-card" style="padding: 1.5rem; display: flex; flex-direction: column; height: 100%;">
+                    <h3 style="font-size: 1.05rem; font-weight: 700; margin: 0 0 1.2rem 0; display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-circle-plus" style="color: var(--primary);"></i>
+                        새로운 운영 메모 / 할 일 추가
+                    </h3>
+                    <form id="form-add-task" style="display: flex; flex-direction: column; gap: 16px;">
+                        <!-- Row 1: Quick Memo Textarea -->
                         <div style="display: flex; flex-direction: column; gap: 6px;">
-                            <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">구분</label>
-                            <select id="task-category-input" style="width: 100%; height: 38px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; cursor: pointer; outline: none;">
-                                <option value="memo" selected>메모</option>
-                                <option value="consult">상담예약</option>
-                                <option value="check">확인필요</option>
-                                <option value="closing">마감체크</option>
-                            </select>
+                            <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">운영 메모 (첫 줄은 제목, 이후 줄은 설명)</label>
+                            <textarea id="task-content-input" placeholder="오늘 메모할 내용을 입력하세요.&#10;예:&#10;신규 회원 상담 예약&#10;오후 3시에 방문하여 수강 일정 및 악기 대여 문의 예정" rows="4" required style="width: 100%; padding: 12px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; resize: vertical; line-height: 1.5; outline: none;"></textarea>
                         </div>
-                        <div style="display: flex; flex-direction: column; gap: 6px;">
-                            <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">시작 시각</label>
-                            <div style="display: flex; gap: 4px;">
-                                <input type="date" id="task-start-date-input" value="${startComponents.dateStr}" required style="width: 120px; height: 38px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; outline: none;">
-                                <select id="task-start-ampm-input" style="height: 38px; padding: 0 4px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; cursor: pointer; outline: none;">
-                                    <option value="AM" ${startComponents.ampm === 'AM' ? 'selected' : ''}>오전</option>
-                                    <option value="PM" ${startComponents.ampm === 'PM' ? 'selected' : ''}>오후</option>
-                                </select>
-                                <select id="task-start-hour-input" style="height: 38px; padding: 0 4px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; cursor: pointer; outline: none;">
-                                    ${Array.from({ length: 12 }, (_, i) => i + 1).map(h => `
-                                        <option value="${h}" ${startComponents.hourStr === String(h) ? 'selected' : ''}>${h}시</option>
-                                    `).join('')}
-                                </select>
-                                <select id="task-start-minute-input" style="height: 38px; padding: 0 4px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; cursor: pointer; outline: none;">
-                                    ${Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0')).map(m => `
-                                        <option value="${m}" ${startComponents.minStr === m ? 'selected' : ''}>${m}분</option>
-                                    `).join('')}
+                        
+                        <!-- Row 2: Category & Submit Button -->
+                        <div style="display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end;">
+                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">구분</label>
+                                <select id="task-category-input" style="width: 100%; height: 38px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; cursor: pointer; outline: none;">
+                                    <option value="memo" selected>메모</option>
+                                    <option value="consult">상담예약</option>
+                                    <option value="check">확인필요</option>
+                                    <option value="closing">마감체크</option>
                                 </select>
                             </div>
+                            <button type="submit" class="btn btn-primary" style="height: 38px; padding: 0 24px; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; margin: 0;">추가</button>
                         </div>
-                        <div style="display: flex; flex-direction: column; gap: 6px;">
-                            <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">종료 시각</label>
-                            <div style="display: flex; gap: 4px;">
-                                <input type="date" id="task-end-date-input" value="${endComponents.dateStr}" required style="width: 120px; height: 38px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; outline: none;">
-                                <select id="task-end-ampm-input" style="height: 38px; padding: 0 4px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; cursor: pointer; outline: none;">
-                                    <option value="AM" ${endComponents.ampm === 'AM' ? 'selected' : ''}>오전</option>
-                                    <option value="PM" ${endComponents.ampm === 'PM' ? 'selected' : ''}>오후</option>
-                                </select>
-                                <select id="task-end-hour-input" style="height: 38px; padding: 0 4px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; cursor: pointer; outline: none;">
-                                    ${Array.from({ length: 12 }, (_, i) => i + 1).map(h => `
-                                        <option value="${h}" ${endComponents.hourStr === String(h) ? 'selected' : ''}>${h}시</option>
-                                    `).join('')}
-                                </select>
-                                <select id="task-end-minute-input" style="height: 38px; padding: 0 4px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; cursor: pointer; outline: none;">
-                                    ${Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0')).map(m => `
-                                        <option value="${m}" ${endComponents.minStr === m ? 'selected' : ''}>${m}분</option>
-                                    `).join('')}
-                                </select>
+
+                        <!-- Row 3: Start and End Times -->
+                        <div style="display: grid; grid-template-columns: 1fr; gap: 12px;">
+                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">시작 시각</label>
+                                <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                                    <input type="date" id="task-start-date-input" value="${startComponents.dateStr}" required style="flex: 1 1 120px; min-width: 120px; height: 38px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; outline: none;">
+                                    <select id="task-start-ampm-input" style="flex: 0 0 auto; height: 38px; padding: 0 4px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; cursor: pointer; outline: none;">
+                                        <option value="AM" ${startComponents.ampm === 'AM' ? 'selected' : ''}>오전</option>
+                                        <option value="PM" ${startComponents.ampm === 'PM' ? 'selected' : ''}>오후</option>
+                                    </select>
+                                    <select id="task-start-hour-input" style="flex: 0 0 auto; height: 38px; padding: 0 4px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; cursor: pointer; outline: none;">
+                                        ${Array.from({ length: 12 }, (_, i) => i + 1).map(h => `
+                                            <option value="${h}" ${startComponents.hourStr === String(h) ? 'selected' : ''}>${h}시</option>
+                                        `).join('')}
+                                    </select>
+                                    <select id="task-start-minute-input" style="flex: 0 0 auto; height: 38px; padding: 0 4px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; cursor: pointer; outline: none;">
+                                        ${Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0')).map(m => `
+                                            <option value="${m}" ${startComponents.minStr === m ? 'selected' : ''}>${m}분</option>
+                                        `).join('')}
+                                    </select>
+                                </div>
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">종료 시각</label>
+                                <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                                    <input type="date" id="task-end-date-input" value="${endComponents.dateStr}" required style="flex: 1 1 120px; min-width: 120px; height: 38px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; outline: none;">
+                                    <select id="task-end-ampm-input" style="flex: 0 0 auto; height: 38px; padding: 0 4px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; cursor: pointer; outline: none;">
+                                        <option value="AM" ${endComponents.ampm === 'AM' ? 'selected' : ''}>오전</option>
+                                        <option value="PM" ${endComponents.ampm === 'PM' ? 'selected' : ''}>오후</option>
+                                    </select>
+                                    <select id="task-end-hour-input" style="flex: 0 0 auto; height: 38px; padding: 0 4px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; cursor: pointer; outline: none;">
+                                        ${Array.from({ length: 12 }, (_, i) => i + 1).map(h => `
+                                            <option value="${h}" ${endComponents.hourStr === String(h) ? 'selected' : ''}>${h}시</option>
+                                        `).join('')}
+                                    </select>
+                                    <select id="task-end-minute-input" style="flex: 0 0 auto; height: 38px; padding: 0 4px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; cursor: pointer; outline: none;">
+                                        ${Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0')).map(m => `
+                                            <option value="${m}" ${endComponents.minStr === m ? 'selected' : ''}>${m}분</option>
+                                        `).join('')}
+                                    </select>
+                                </div>
                             </div>
                         </div>
-                        <button type="submit" class="btn btn-primary" style="height: 38px; padding: 0 24px; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; margin: 0;">추가</button>
+                    </form>
+                </div>
+
+                <!-- Right Column: Calendar Timeline Skeleton Section -->
+                <div class="glass-card" style="padding: 1.8rem; min-height: 400px; display: flex; flex-direction: column;" id="calendar-timeline-section">
+                    <h3 style="font-size: 1.1rem; font-weight: 700; margin: 0 0 1.5rem 0; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                        <span style="display: flex; align-items: center; gap: 8px;">
+                            <i class="fa-regular fa-calendar-days" style="color: var(--primary);"></i>
+                            오늘 일정
+                        </span>
+                        <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">${new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}</span>
+                    </h3>
+
+                    <!-- Calendar hours timeline skeleton -->
+                    <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 0; position: relative;">
+                        ${
+                            // Time blocks from 09:00 to 21:00
+                            Array.from({ length: 13 }, (_, i) => {
+                                const hour = i + 9;
+                                const timeStr = `${String(hour).padStart(2, '0')}:00`;
+                                return `
+                                    <div style="display: flex; align-items: flex-start; min-height: 45px; border-top: 1px dashed rgba(255, 255, 255, 0.05); padding-top: 6px; position: relative;" class="timeline-row">
+                                        <div style="width: 50px; font-size: 0.72rem; color: var(--text-muted); font-weight: 600; line-height: 1;" class="timeline-time">${timeStr}</div>
+                                        <div style="flex-grow: 1; min-height: 38px; position: relative;" class="timeline-slot"></div>
+                                    </div>
+                                `;
+                            }).join('')
+                        }
+                        
+                        <!-- Overlay message for pending integrations -->
+                        <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(1.5px); text-align: center; padding: 24px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.03);" id="calendar-skeleton-overlay">
+                            <div style="width: 48px; height: 48px; border-radius: 50%; background: rgba(9, 132, 227, 0.08); display: flex; align-items: center; justify-content: center; font-size: 1.25rem; color: var(--primary); margin-bottom: 12px;">
+                                <i class="fa-solid fa-link-slash"></i>
+                            </div>
+                            <h4 style="margin: 0 0 6px 0; font-size: 0.92rem; font-weight: 700; color: var(--text-main);">캘린더 일정 연동 대기</h4>
+                            <p style="margin: 0; font-size: 0.78rem; color: var(--text-muted); line-height: 1.4;">App Calendar / Google Calendar 일정은<br>다음 단계에서 표시됩니다.</p>
+                        </div>
                     </div>
-                </form>
+                </div>
             </div>
 
-            <!-- Tasks Queue Section -->
-            <div class="glass-card" style="padding: 2rem; min-height: 400px; display: flex; flex-direction: column;">
+            <!-- Bottom Layout: Tasks Queue Section (Full Width Card) -->
+            <div class="glass-card" style="padding: 1.8rem; min-height: 250px; display: flex; flex-direction: column; margin-bottom: 24px;" id="tasks-queue-section">
                 <h3 style="font-size: 1.1rem; font-weight: 700; margin: 0 0 1.5rem 0; display: flex; align-items: center; gap: 8px;">
                     <i class="fa-solid fa-hourglass-half" style="color: var(--accent);"></i>
-                    운영 업무 관제 (Active & Completed Queue)
+                    운영 대기 업무 (Active & Completed Queue)
                 </h3>
                 
                 <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 12px;">
@@ -307,11 +351,13 @@ export function renderTodayConsole(container) {
             </div>
 
             <style>
-                @media (max-width: 768px) {
-                    .task-form-grid {
+                @media (max-width: 992px) {
+                    .today-console-workspace {
                         grid-template-columns: 1fr !important;
-                        gap: 16px !important;
+                        gap: 24px !important;
                     }
+                }
+                @media (max-width: 768px) {
                     .task-action-wrapper {
                         flex-direction: column !important;
                         align-items: flex-end !important;
