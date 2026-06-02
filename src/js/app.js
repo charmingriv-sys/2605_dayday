@@ -34,6 +34,7 @@ let viewCleanup = null; // Store function to cleanup view listeners
 const VIEW_TITLES = {
     // Director views
     'dir-dashboard': '종합 분석 대시보드',
+    'dir-today-console': '오늘 원장 콘솔',
     'dir-students': '원생 명부 관리',
     'dir-payments': '수납 및 결제 현황',
     'dir-teachers': '강사 명부 관리',
@@ -1878,6 +1879,7 @@ async function switchView(viewName) {
             const module = await import(modulePath);
             // Save routes
             viewModules['dir-dashboard'] = module.renderDashboard;
+            viewModules['dir-today-console'] = module.renderTodayConsole;
             viewModules['dir-students'] = module.renderStudents;
             viewModules['dir-payments'] = module.renderPayments;
             viewModules['dir-teachers'] = module.renderTeachers;

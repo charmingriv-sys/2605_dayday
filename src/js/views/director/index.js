@@ -6,6 +6,7 @@ import { renderDirectorAttendance, renderKioskAttendance } from './attendanceVie
 import { renderCommunication, renderApprovals } from './communicationView.js';
 import { renderPayments, renderBooks, renderBooksElapsed, renderSubjects } from './billingView.js';
 import { renderAcademyInfo } from './settingsView.js';
+import { renderTodayConsole } from './todayConsoleView.js';
 
 export {
     renderDashboard,
@@ -20,5 +21,6 @@ export {
     renderBooks,
     renderBooksElapsed,
     renderSubjects,
-    renderAcademyInfo
+    renderAcademyInfo,
+    renderTodayConsole
 };
