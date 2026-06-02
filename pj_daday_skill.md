@@ -185,4 +185,58 @@
 5.  **배포 전 브라우저 콘솔 에러 검증**:
     *   실 서버 배포 직전 브라우저 개발자 도구의 Console을 열고 로그인, 대시보드 로딩, 탭 전환을 거치며 `Unexpected token`이나 `ReferenceError` 등 붉은색 콘솔 에러가 단 1건도 표시되지 않는지 최종 수동 또는 E2E 자동 점검해야 합니다.
 
+---
 
+## 8. Segment-First Architecture 원칙 (Segment-First Architecture Principles)
+
+DayDay의 지속 가능한 확장과 다중 업종 지원을 위해, 사이드바에서 독립 레이어로 분리되는 주요 기능은 단순한 화면(Page/View)이 아닌 Product Segment/Module 후보로 관리합니다.
+
+### 8.1 Segment-First Architecture 개념
+*   **다중 업종 확장 구조**: DayDay는 단일 음악학원 전용 서비스에 그치지 않고, 업종별 운영 서비스로 확장 가능한 구조를 지향합니다.
+*   **세그먼트(Segment) 후보 평가**: 사이드바에 독립 레이어로 추가되는 주요 기능들은 단순 화면(page/view)이 아닌 product segment/module 후보로 평가합니다.
+*   **예시**: "오늘 원장 콘솔"은 `academy_director_console` 세그먼트로 개발되지만, 추후 `PT/필라테스/병원/스튜디오` 운영 콘솔로 커스터마이징이 용이하도록 설계 방향성을 설정합니다.
+
+### 8.2 Core Engine / Domain Adapter / Segment Config 분리
+*   **Core Engine (공통 비즈니스 엔진)**:
+    - TodayTask Queue
+    - Calendar / Reminder
+    - Notification / Alert
+    - Billing / Payment
+    - Customer Risk Tracking
+    - Messaging / Communication
+    - Timeline Logs
+*   **Domain Adapter (업종별 도메인 연동 계층)**:
+    - **academy adapter**: 원생/강사/출결/수납/교재 등의 음악학원 도메인 데이터 매핑
+    - **PT/pilates adapter**: 회원/트레이너/예약/출석/이용권/락커/측정 기록 매핑
+    - 각기 다른 업종의 고유 도메인을 이 어댑터를 거쳐 공통 task 및 action 모델로 변환합니다.
+*   **Segment Config (세그먼트별 설정)**:
+    - 업종별로 활성화할 기능 카드, 가용 액션 목록, 권한 범위, 연동 provider, 다국어 문구 및 알림 정책을 관리합니다.
+
+### 8.3 UI Shell 재사용 원칙
+*   큐(Queue), 타임라인(Timeline), 우측 패널(Right Notes Panel), 마감 체크리스트, 액션 카드, 알림 카드 등 대시보드를 구성하는 주요 레이아웃과 UI 컴포넌트는 특정 도메인에 고착시키지 않고 재사용 가능한 **UI Shell 패턴**으로 설계합니다.
+*   실제 시각 디자인(색상, 간격, 컴포넌트 형태 등)은 현재 DayDay 디자인 시스템과의 일관성을 완벽히 유지합니다.
+
+### 8.4 Domain Copy / Terminology Layer (용어 사전 레이어)
+*   도메인 종속적인 용어는 화면 및 로직 내부에 하드코딩하지 않습니다.
+*   **예시 (업종별 용어 대응)**:
+    - *학원*: 원생 / 강사 / 수업 / 출결 / 수납 / 교재
+    - *PT/필라테스*: 회원 / 트레이너 / 세션 또는 예약 / 출석 / 이용권 / 락커 또는 운동 기록
+*   모든 도메인 용어는 segment config 또는 terminology layer를 통해 동적으로 치환 가능하도록 아키텍처를 설계합니다.
+
+### 8.5 Provider Layer (외부 연동 분리)
+*   Google Calendar, SMS/Talk 알림톡 발송, Web Push, 결제 링크, 네이버 예약/마케팅 연동 등 외부 API 연동은 비즈니스 로직 및 View 레이어에 직접 작성하지 않고 **Provider Layer**로 추상화하여 관리합니다.
+*   각 provider는 활성화된 세그먼트별로 쉽게 켜고 끌 수 있어야 합니다.
+
+### 8.6 신규 기능 적용 기준 (체크리스트)
+새로운 기능이 사이드바에서 독립 레이어/메뉴로 분리될 때, 개발에 착수하기 전 반드시 아래 질문을 먼저 검토합니다:
+1.  이 기능은 product segment/module 후보인가?
+2.  이 기능에서 공통 Core Engine으로 추출할 수 있는 로직은 무엇인가?
+3.  현재 학원 도메인에만 국한되는 Domain Adapter 성격의 데이터는 무엇인가?
+4.  추후 다른 업종으로 마이그레이션할 때 치환되어야 할 용어/정책/provider는 무엇인가?
+5.  기존 DayDay 디자인 시스템 및 UI Shell 패턴을 어떻게 공유할 수 있는가?
+
+### 8.7 개발 시 금지 원칙
+*   **도메인 결합 금지**: 독립 기능을 특정 도메인(예: 학원) 문구와 고정된 데이터 구조에 직접 강하게 결합(Hard Coupling)하지 않습니다.
+*   **Provider 직접 주입 금지**: 특정 연동 API(예: Google API, 알림톡 API 등)를 View 소스코드 내에 직접 작성하지 않습니다.
+*   **화면 단위 중복 구현 금지**: 공통 엔진(예: 큐 관리, 알림 처리 등)으로 추상화할 수 있는 비즈니스 로직을 화면 단위로 복사-붙여넣기하여 중복 개발하지 않습니다.
+*   **점진적 분리 준수**: 현재의 어플리케이션 흐름을 깨뜨리는 과도한 사전 추상화는 지양하며, 각 Phase의 릴리즈 단위에 맞춰 점진적으로 분리해 나갑니다.
