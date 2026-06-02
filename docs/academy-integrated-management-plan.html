@@ -1,0 +1,2307 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DayDay 학원 통합 자동화 관리 시스템 상세 기획서 및 Mockup</title>
+  <!-- FontAwesome for Premium Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Google Fonts for modern typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --bg-dark: #0f172a;
+      --bg-card: rgba(30, 41, 59, 0.7);
+      --bg-card-hover: rgba(30, 41, 59, 0.9);
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --primary-glow: rgba(99, 102, 241, 0.15);
+      --secondary: #0ea5e9;
+      --accent-green: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-red: #ef4444;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dark: #1e293b;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-focus: rgba(99, 102, 241, 0.4);
+      --font-sans: 'Inter', 'Noto Sans KR', sans-serif;
+      --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.12) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(14, 165, 233, 0.12) 0px, transparent 50%);
+      background-attachment: fixed;
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .app-container {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* Sidebar Navigation styling */
+    .sidebar {
+      width: 280px;
+      background: rgba(15, 23, 42, 0.95);
+      border-right: 1px solid var(--border);
+      padding: 2rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      height: 100vh;
+      z-index: 10;
+    }
+
+    .logo-area {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 2.5rem;
+    }
+
+    .logo-icon {
+      font-size: 1.8rem;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .logo-title {
+      font-size: 1.25rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+
+    .logo-version {
+      font-size: 0.7rem;
+      background: var(--primary-glow);
+      color: var(--primary);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+
+    .nav-menu {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      color: var(--text-muted);
+      font-weight: 500;
+      transition: var(--transition);
+      border: 1px solid transparent;
+    }
+
+    .nav-item i {
+      font-size: 1.1rem;
+      width: 20px;
+      text-align: center;
+    }
+
+    .nav-item:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .nav-item.active {
+      color: var(--text-main);
+      background: var(--primary-glow);
+      border-color: rgba(99, 102, 241, 0.25);
+    }
+
+    .nav-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 1.5rem 0;
+    }
+
+    .nav-header {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+      padding-left: 12px;
+    }
+
+    /* Main Content Section */
+    .main-content {
+      margin-left: 280px;
+      flex: 1;
+      padding: 2.5rem;
+      max-width: 1200px;
+    }
+
+    .header-banner {
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.5rem;
+    }
+
+    .header-title {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin-bottom: 6px;
+    }
+
+    .header-desc {
+      color: var(--text-muted);
+      font-size: 1rem;
+    }
+
+    /* View Sections */
+    .view-section {
+      display: none;
+    }
+
+    .view-section.active {
+      display: block;
+      animation: fadeIn 0.4s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Grid & Cards (Glassmorphism) */
+    .glass-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.75rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+      transition: var(--transition);
+    }
+
+    .glass-card:hover {
+      border-color: rgba(255, 255, 255, 0.12);
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+    }
+
+    .glass-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.25rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 10px;
+    }
+
+    .card-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-title i {
+      color: var(--primary);
+    }
+
+    /* General Styling Elements */
+    h3 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+      color: var(--text-main);
+    }
+
+    p {
+      margin-bottom: 1rem;
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.5rem;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+    }
+
+    /* Warning Callout Box */
+    .callout {
+      border-left: 4px solid var(--primary);
+      background: rgba(99, 102, 241, 0.08);
+      border-radius: 0 8px 8px 0;
+      padding: 16px;
+      margin: 1.5rem 0;
+    }
+
+    .callout.warn {
+      border-left-color: var(--accent-amber);
+      background: rgba(245, 158, 11, 0.06);
+    }
+
+    .callout.danger {
+      border-left-color: var(--accent-red);
+      background: rgba(239, 68, 68, 0.06);
+    }
+
+    .callout-title {
+      font-weight: 700;
+      margin-bottom: 6px;
+      font-size: 0.95rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Table styling */
+    .table-container {
+      overflow-x: auto;
+      margin: 1rem 0;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.9rem;
+    }
+
+    th {
+      background: rgba(15, 23, 42, 0.6);
+      font-weight: 600;
+      color: var(--text-main);
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-muted);
+      vertical-align: middle;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+      color: var(--text-main);
+    }
+
+    /* Form Fields & Controls */
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    .form-row {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .form-row .form-group {
+      flex: 1;
+      margin-bottom: 0;
+    }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    input[type="email"],
+    select,
+    textarea {
+      width: 100%;
+      padding: 10px 14px;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      font-size: 0.9rem;
+      transition: var(--transition);
+    }
+
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-glow);
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: var(--transition);
+      border: none;
+      text-decoration: none;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-hover);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text-main);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .btn-danger {
+      background: var(--accent-red);
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #dc2626;
+    }
+
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 0.8rem;
+    }
+
+    /* Custom Toggles / Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .badge-success { background: rgba(16, 185, 129, 0.15); color: var(--accent-green); }
+    .badge-warning { background: rgba(245, 158, 11, 0.15); color: var(--accent-amber); }
+    .badge-danger { background: rgba(239, 68, 68, 0.15); color: var(--accent-red); }
+    .badge-info { background: rgba(14, 165, 233, 0.15); color: var(--secondary); }
+
+    /* Switch toggle button */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 48px;
+      height: 24px;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(255, 255, 255, 0.15);
+      transition: .4s;
+      border-radius: 34px;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+
+    input:checked + .slider {
+      background-color: var(--primary);
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(24px);
+    }
+
+    /* KPI Cards */
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .kpi-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      text-align: left;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .kpi-val {
+      font-size: 1.75rem;
+      font-weight: 800;
+      margin: 4px 0;
+      color: var(--text-main);
+    }
+
+    .kpi-label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .kpi-icon {
+      font-size: 1.8rem;
+      opacity: 0.8;
+      width: 48px;
+      height: 48px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .kpi-icon.blue { background: rgba(99, 102, 241, 0.1); color: var(--primary); }
+    .kpi-icon.green { background: rgba(16, 185, 129, 0.1); color: var(--accent-green); }
+    .kpi-icon.amber { background: rgba(245, 158, 11, 0.1); color: var(--accent-amber); }
+    .kpi-icon.red { background: rgba(239, 68, 68, 0.1); color: var(--accent-red); }
+
+    /* Interactive Simulators specific styling */
+    .simulator-container {
+      background: rgba(15, 23, 42, 0.4);
+      border: 1px dashed var(--primary);
+      border-radius: 10px;
+      padding: 1.25rem;
+      margin-top: 1rem;
+    }
+
+    .sim-tag {
+      font-size: 0.7rem;
+      background: var(--primary);
+      color: white;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: inline-block;
+      margin-bottom: 8px;
+    }
+
+    .interactive-badge {
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+      70% { transform: scale(1.03); box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+      100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+    }
+
+    /* Tabbed elements inside cards */
+    .inner-tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+
+    .inner-tab {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.85rem;
+      padding: 6px 12px;
+      cursor: pointer;
+      transition: var(--transition);
+      border-radius: 4px;
+    }
+
+    .inner-tab.active {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    /* Calendar view styling (Student profile) */
+    .attendance-calendar {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 6px;
+      max-width: 320px;
+      margin: 0 auto;
+    }
+
+    .cal-day-name {
+      text-align: center;
+      font-weight: 700;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      padding-bottom: 4px;
+    }
+
+    .cal-cell {
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      position: relative;
+    }
+
+    .cal-cell.present {
+      background: rgba(16, 185, 129, 0.15);
+      border-color: rgba(16, 185, 129, 0.3);
+      color: var(--accent-green);
+    }
+
+    .cal-cell.absent {
+      background: rgba(239, 68, 68, 0.15);
+      border-color: rgba(239, 68, 68, 0.3);
+      color: var(--accent-red);
+    }
+
+    .cal-cell.warning {
+      background: rgba(245, 158, 11, 0.15);
+      border-color: rgba(245, 158, 11, 0.3);
+      color: var(--accent-amber);
+    }
+
+    .cal-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      position: absolute;
+      bottom: 4px;
+    }
+    .cal-dot.green { background: var(--accent-green); }
+    .cal-dot.red { background: var(--accent-red); }
+    .cal-dot.amber { background: var(--accent-amber); }
+
+    /* SMS Composition Panel */
+    .sms-layout {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 1.5rem;
+    }
+
+    .phone-preview-card {
+      background: #000;
+      border: 8px solid #27272a;
+      border-radius: 28px;
+      height: 520px;
+      padding: 1.25rem 1rem;
+      display: flex;
+      flex-direction: column;
+      color: #fff;
+      position: relative;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+    }
+
+    .phone-speaker {
+      width: 60px;
+      height: 4px;
+      background: #27272a;
+      border-radius: 99px;
+      margin: 0 auto 15px;
+    }
+
+    .phone-screen {
+      flex: 1;
+      background: #18181b;
+      border-radius: 16px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      font-size: 0.8rem;
+    }
+
+    .phone-header {
+      background: #27272a;
+      padding: 8px;
+      text-align: center;
+      font-weight: 600;
+      font-size: 0.75rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .phone-messages {
+      flex: 1;
+      padding: 10px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+    }
+
+    .bubble {
+      background: #27272a;
+      padding: 10px 12px;
+      border-radius: 12px 12px 12px 2px;
+      max-width: 85%;
+      margin-bottom: 8px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      align-self: flex-start;
+    }
+
+    .bubble.sender-me {
+      background: var(--primary);
+      border-radius: 12px 12px 2px 12px;
+      align-self: flex-end;
+    }
+
+    .phone-footer {
+      background: #27272a;
+      padding: 8px;
+      display: flex;
+      gap: 6px;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    /* Disclaimer banner */
+    .disclaimer-banner {
+      background: rgba(239, 68, 68, 0.06);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      border-radius: 8px;
+      padding: 12px;
+      color: #fca5a5;
+      font-size: 0.8rem;
+      margin-top: 1.5rem;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+
+    .disclaimer-banner i {
+      color: var(--accent-red);
+      font-size: 1.1rem;
+      margin-top: 2px;
+    }
+
+    /* Search control layout */
+    .filter-bar {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 1.25rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .filter-search {
+      flex: 1;
+      min-width: 200px;
+    }
+
+    .filter-select {
+      width: auto;
+      min-width: 130px;
+    }
+
+    /* Excel drag/drop area */
+    .upload-zone {
+      border: 2px dashed rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      padding: 1.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .upload-zone:hover {
+      border-color: var(--primary);
+      background: rgba(99, 102, 241, 0.03);
+    }
+
+    .upload-icon {
+      font-size: 2rem;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    /* Restricted view style overlay */
+    .restricted-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(8px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      z-index: 5;
+      text-align: center;
+      padding: 2rem;
+    }
+
+    .restricted-icon {
+      font-size: 3rem;
+      color: var(--accent-amber);
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+    
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="logo-area">
+        <i class="fa-solid fa-graduation-cap logo-icon"></i>
+        <div>
+          <span class="logo-title">DayDay CRM</span>
+          <span class="logo-version">v2.0</span>
+        </div>
+      </div>
+      
+      <ul class="nav-menu">
+        <li class="nav-item active" data-target="view-overview">
+          <i class="fa-solid fa-book-open"></i>
+          <span>기획 개요 & API 분석</span>
+        </li>
+        
+        <div class="nav-divider"></div>
+        <div class="nav-header">핵심 기능 제안</div>
+        
+        <li class="nav-item" data-target="view-attendance">
+          <i class="fa-solid fa-calendar-check"></i>
+          <span>원생 출결 & 경고 로직</span>
+        </li>
+        <li class="nav-item" data-target="view-splits">
+          <i class="fa-solid fa-wallet"></i>
+          <span>수납 분석 & 강사 정산</span>
+        </li>
+        <li class="nav-item" data-target="view-history">
+          <i class="fa-solid fa-clock-rotate-left"></i>
+          <span>알림 발송 이력 내역</span>
+        </li>
+        <li class="nav-item" data-target="view-sender">
+          <i class="fa-solid fa-paper-plane"></i>
+          <span>메시지 통합 발송기</span>
+        </li>
+        <li class="nav-item" data-target="view-settings">
+          <i class="fa-solid fa-sliders"></i>
+          <span>학원 관리 & 설정</span>
+        </li>
+      </ul>
+      
+      <div style="margin-top: auto; padding: 8px; font-size: 0.75rem; color: var(--text-muted);">
+        <p>© 2026 ViaLabs. <br>원장의 '가려운 곳'을 해소하는 자동화 백오피스 기획</p>
+      </div>
+    </aside>
+
+    <!-- Main Workspace -->
+    <main class="main-content">
+      
+      <!-- HEADER HEADER -->
+      <div class="header-banner">
+        <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+          <div>
+            <h1 class="header-title" id="main-view-title">기획 개요 및 메시지 API 분석</h1>
+            <p class="header-desc" id="main-view-desc">학원의 비즈니스 성장을 위한 반자동화/자동화 운영 기획안</p>
+          </div>
+          <span class="badge badge-info" style="padding: 6px 12px; font-size: 0.85rem;"><i class="fa-solid fa-wand-magic-sparkles"></i> 대화형 기획안</span>
+        </div>
+      </div>
+
+      <!-- ==================== VIEW 1: OVERVIEW & RESEARCH ==================== -->
+      <section id="view-overview" class="view-section active">
+        
+        <div class="glass-card">
+          <div class="glass-card-header">
+            <span class="card-title"><i class="fa-solid fa-bullseye"></i> 학원장이 가려운 진짜 '불편함' 정의</span>
+          </div>
+          <p>
+            학원을 운영하는 학원장의 하루는 수많은 행정과 잔업으로 채워집니다. 학원장에게 진정으로 필요한 소프트웨어는 마케팅 통계나 어려운 재무 복식 부기가 아닙니다. 
+            <strong>"오늘 당연히 해야 하는 일"을 덜어내어 주는 반자동화(Semi-automation) 엔진</strong>이 그들의 가장 가려운 곳을 긁어줄 수 있습니다.
+          </p>
+          <div class="grid-3" style="margin-top: 1.5rem;">
+            <div class="glass-card" style="margin-bottom: 0; background: rgba(255,255,255,0.01);">
+              <h4 style="color: var(--accent-amber); margin-bottom: 6px;"><i class="fa-solid fa-triangle-exclamation"></i> 출결 안전 불안</h4>
+              <p style="font-size: 0.85rem; margin-bottom: 0;">아이가 제시간에 도착했는지 확인하고 부모에게 알리는 단순 반복 업무. 늦었을 때 부모와 즉시 소통하여 민원을 방지해야 함.</p>
+            </div>
+            <div class="glass-card" style="margin-bottom: 0; background: rgba(255,255,255,0.01);">
+              <h4 style="color: var(--accent-green); margin-bottom: 6px;"><i class="fa-solid fa-hand-holding-dollar"></i> 미납 수납 유도 피로</h4>
+              <p style="font-size: 0.85rem; margin-bottom: 0;">매달 학부모에게 교육비 청구 알림을 보내고 미납을 독촉하는 것은 상당한 감정 소모를 유발함. 정중한 자동화 발송이 해법.</p>
+            </div>
+            <div class="glass-card" style="margin-bottom: 0; background: rgba(255,255,255,0.01);">
+              <h4 style="color: var(--primary); margin-bottom: 6px;"><i class="fa-solid fa-percent"></i> 프리랜서 강사 정산</h4>
+              <p style="font-size: 0.85rem; margin-bottom: 0;">특히 성인 대상 레슨의 경우 비율제(예: 학원 40% 대 강사 60%) 정산 처리가 수수료 계산 등 엑셀 잔업의 주범임.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-card">
+          <div class="glass-card-header">
+            <span class="card-title"><i class="fa-solid fa-comment-sms"></i> 메시지 발송 체계 기획: SMS vs Talk vs Push 및 API 추천</span>
+          </div>
+          
+          <div class="callout">
+            <div class="callout-title"><i class="fa-solid fa-circle-question"></i> "메시지 기능에서 SMS, Talk, Push를 생각 중인데 SMS도 만들어진 API를 쓰면 좋을까요?"</div>
+            <p style="margin-bottom: 0; font-size: 0.95rem; color: var(--text-main);">
+              <strong>결론부터 말씀드리면, 자체 SMS 모듈 구축은 불가능하며 반드시 검증된 써드파티 API 서비스를 연동해야 합니다.</strong>
+              통신사(SKT/KT/LGU+)망과 직접 전용선을 연결해 단문/장문 메시지를 전달하는 것은 막대한 보증금과 인프라가 필요합니다. 
+              표준적인 접근은 <u>SMS와 알림톡(Kakao Alimtalk)을 하나의 REST API로 대행 처리해 주는 게이트웨이 서비스</u>를 채택하는 것입니다.
+            </p>
+          </div>
+
+          <h3>1. 메시지 발송 수단별 특징 비교</h3>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>구분</th>
+                  <th>발송 비용 (건당)</th>
+                  <th>장점</th>
+                  <th>단점 / 한계</th>
+                  <th>권장 활용처</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>카카오 알림톡 (Talk)</strong></td>
+                  <td>약 6원 ~ 8원</td>
+                  <td>- SMS 대비 60% 이상 저렴<br>- 공인 비즈니스 마크 부여로 학부모 신뢰도 극대화<br>- 길이에 관계없이 고정 단가 (최대 1,000자)</td>
+                  <td>- 사전 등록된 '템플릿'만 전송 가능<br>- 카카오톡 미설치자/차단자는 발송 실패</td>
+                  <td><strong>등/하원 안심 메시지, 수강료 청구서, 보강 안내</strong> 등 고정 템플릿 정보성 메시지 (핵심 수단)</td>
+                </tr>
+                <tr>
+                  <td><strong>SMS (단문 메시지)</strong></td>
+                  <td>약 15원 ~ 20원</td>
+                  <td>- 피처폰 및 카카오톡 미사용자에게 확실한 도달<br>- 템플릿 심사 없이 즉시 전송 가능</td>
+                  <td>- 비용이 알림톡 대비 비쌈<br>- 글자 제한 (90바이트/한글 45자 초과 시 LMS 자동 전환되어 건당 40원 이상 청구됨)</td>
+                  <td><strong>알림톡 실패 건에 대한 자동 대체 발송(Failover)</strong>, 긴급 휴원 안내 및 자유로운 내용의 수동 전체 문자</td>
+                </tr>
+                <tr>
+                  <td><strong>웹 / 앱 푸시 (Push)</strong></td>
+                  <td><strong>무료 (0원)</strong></td>
+                  <td>- 비용이 전혀 들지 않음<br>- 사용자 화면에 실시간 팝업 노출 극대화</td>
+                  <td>- 학부모가 모바일 브라우저 알림 권한을 승인하거나, 자체 하이브리드 앱을 설치해야만 수신 가능</td>
+                  <td><strong>앱/웹 페이지를 자주 사용하는 성인 원생</strong> 대상 일정 피드백 알림, 학부모 상담 답변 알림</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 style="margin-top: 1.5rem;">2. 한국형 메시징 API 서비스 추천</h3>
+          <p>SaaS 플랫폼을 개발하여 입주 학원들에게 메시지를 재판매하거나 자체 대량 발송을 하려면 아래의 API 연동을 추천합니다.</p>
+          <div class="grid-2">
+            <div class="glass-card" style="background: rgba(255,255,255,0.01); border-color: rgba(99, 102, 241, 0.2);">
+              <h4 style="color: var(--primary);"><i class="fa-solid fa-rocket"></i> 1. 솔라피 (Solapi / 구 쿨에스엠에스) - 적극 추천</h4>
+              <ul style="margin: 8px 0 0 16px; font-size: 0.85rem; color: var(--text-muted);">
+                <li><strong>특징</strong>: 개발자 친화적인 문서와 SDK(Node.js, Python 등) 제공. 하나의 API 키로 알림톡, SMS, LMS, 친구톡 통합 발송.</li>
+                <li><strong>장점</strong>: 발송 실패 시 SMS로 자동 대체 전송해주는 <u>Failover 라우팅 내장</u>. 소액 충전 및 월 요금제 자유 선택 가능.</li>
+              </ul>
+            </div>
+            <div class="glass-card" style="background: rgba(255,255,255,0.01); border-color: rgba(14, 165, 233, 0.2);">
+              <h4 style="color: var(--secondary);"><i class="fa-solid fa-cloud"></i> 2. 네이버 클라우드 플랫폼 SENS (Simple Easy Notification Service)</h4>
+              <ul style="margin: 8px 0 0 16px; font-size: 0.85rem; color: var(--text-muted);">
+                <li><strong>특징</strong>: 네이버의 강력한 인프라 보장. 대량 발송 시 처리량이 우수함.</li>
+                <li><strong>장점</strong>: SMS/Alimtalk뿐만 아니라 Push API와 메일(SES)까지 동일 인프라에서 연동 가능하여 보안 규정이 까다로울 때 적합.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 2: ATTENDANCE WARNING BOARD ==================== -->
+      <section id="view-attendance" class="view-section">
+        
+        <!-- KPI Metrics -->
+        <div class="kpi-row">
+          <div class="kpi-card">
+            <div>
+              <span class="kpi-label">전체 출결률</span>
+              <div class="kpi-val">94.2%</div>
+              <span style="font-size: 0.75rem; color: var(--accent-green);"><i class="fa-solid fa-caret-up"></i> 전주 대비 0.5%↑</span>
+            </div>
+            <div class="kpi-icon blue"><i class="fa-solid fa-chart-line"></i></div>
+          </div>
+          <div class="kpi-card">
+            <div>
+              <span class="kpi-label">비성인 출결률 (아동)</span>
+              <div class="kpi-val">97.8%</div>
+              <span style="font-size: 0.75rem; color: var(--accent-green);"><i class="fa-solid fa-shield-halved"></i> 안심 안전 수치</span>
+            </div>
+            <div class="kpi-icon green"><i class="fa-solid fa-children"></i></div>
+          </div>
+          <div class="kpi-card">
+            <div>
+              <span class="kpi-label">성인 출결률</span>
+              <div class="kpi-val">85.4%</div>
+              <span style="font-size: 0.75rem; color: var(--accent-amber);"><i class="fa-solid fa-arrows-rotate"></i> 차감 대상자 포함</span>
+            </div>
+            <div class="kpi-icon amber"><i class="fa-solid fa-user-tie"></i></div>
+          </div>
+          <div class="kpi-card">
+            <div>
+              <span class="kpi-label">미출결 워닝 경고</span>
+              <div class="kpi-val" id="warning-kpi-count">1건</div>
+              <span style="font-size: 0.75rem; color: var(--accent-red);"><i class="fa-solid fa-circle-exclamation"></i> 빠른 원장 조치 요망</span>
+            </div>
+            <div class="kpi-icon red"><i class="fa-solid fa-bell"></i></div>
+          </div>
+        </div>
+
+        <div class="glass-card">
+          <div class="glass-card-header">
+            <span class="card-title"><i class="fa-solid fa-calendar-check"></i> 오늘 일간 출결 현황 & 미출결 자동 워닝 시스템</span>
+            <div>
+              <input type="date" value="2026-06-02" style="width: auto; padding: 4px 10px;">
+            </div>
+          </div>
+          <p>
+            아동(비성인)은 설정된 수업 시간보다 <strong>10분 이상 지체될 시 '미등원 경고(Warning)'</strong>가 활성화되며, 원장은 테이블에서 즉시 학부모에게 긴급 카톡을 보낼 수 있습니다.
+            성인은 <strong>차감/비차감 기준</strong>에 근거하여 출결 처리가 자동으로 진행됩니다.
+          </p>
+
+          <div class="filter-bar">
+            <select class="filter-select" id="att-type-filter" onchange="filterAttendanceTable()">
+              <option value="ALL">구분 전체</option>
+              <option value="KIDS">비성인 (아동)</option>
+              <option value="ADULT">성인</option>
+            </select>
+            <select class="filter-select" id="att-status-filter" onchange="filterAttendanceTable()">
+              <option value="ALL">출결 상태 전체</option>
+              <option value="PRESENT">출석 완료</option>
+              <option value="ABSENT">결석</option>
+              <option value="WARNING">경고 (미등원)</option>
+            </select>
+            <input type="text" class="filter-search" id="att-search-input" placeholder="원생 이름 혹은 번호로 검색..." onkeyup="filterAttendanceTable()">
+          </div>
+
+          <div class="table-container">
+            <table id="attendance-table">
+              <thead>
+                <tr>
+                  <th>구분</th>
+                  <th>회원번호</th>
+                  <th>원생명</th>
+                  <th>예정 시간</th>
+                  <th>체크인 시간</th>
+                  <th>출결 현황</th>
+                  <th>비고 / 워닝 세부</th>
+                  <th>즉시 액션</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr data-type="KIDS" data-status="WARNING">
+                  <td><span class="badge badge-danger">비성인</span></td>
+                  <td>STU-1042</td>
+                  <td style="font-weight: 600; color: #fff;">김민우</td>
+                  <td>15:30 - 16:30</td>
+                  <td>-- : --</td>
+                  <td><span class="badge badge-danger interactive-badge"><i class="fa-solid fa-triangle-exclamation"></i> 미등원 경고</span></td>
+                  <td>
+                    <span style="color: var(--accent-red); font-size: 0.85rem; font-weight: 500;">
+                      수업 시작 시간 15분 경과. 보호자 미등원 노티 대상.
+                    </span>
+                  </td>
+                  <td>
+                    <button class="btn btn-primary btn-sm" onclick="sendWarningSMS('김민우', '보호자(010-9876-5432)')">
+                      <i class="fa-solid fa-comment-sms"></i> 경고 알림톡 전송
+                    </button>
+                  </td>
+                </tr>
+                <tr data-type="KIDS" data-status="PRESENT">
+                  <td><span class="badge badge-danger">비성인</span></td>
+                  <td>STU-1089</td>
+                  <td style="font-weight: 600; color: #fff;">이지아</td>
+                  <td>16:00 - 17:00</td>
+                  <td>15:55 (키오스크)</td>
+                  <td><span class="badge badge-success"><i class="fa-solid fa-check"></i> 등원 완료</span></td>
+                  <td>등원 안심 카카오톡 발송 완료 (15:55)</td>
+                  <td><button class="btn btn-secondary btn-sm" disabled>알림 전송완료</button></td>
+                </tr>
+                <tr data-type="ADULT" data-status="PRESENT">
+                  <td><span class="badge badge-info">성인</span></td>
+                  <td>STU-2051</td>
+                  <td style="font-weight: 600; color: #fff;">박성현</td>
+                  <td>19:00 - 20:00</td>
+                  <td>19:15 (지각)</td>
+                  <td><span class="badge badge-warning">지각 (출석)</span></td>
+                  <td>
+                    <span style="font-size: 0.85rem;">
+                      지각 15분. <strong>차감 정책 적용:</strong> 15분 차감 (잔여: 45분)
+                    </span>
+                  </td>
+                  <td>
+                    <button class="btn btn-secondary btn-sm" onclick="alert('차감 방식 수정 모달이 열립니다.')">수정</button>
+                  </td>
+                </tr>
+                <tr data-type="ADULT" data-status="ABSENT">
+                  <td><span class="badge badge-info">성인</span></td>
+                  <td>STU-2099</td>
+                  <td style="font-weight: 600; color: #fff;">최유진</td>
+                  <td>20:00 - 21:00</td>
+                  <td>-- : --</td>
+                  <td><span class="badge badge-warning">결석 (당일취소)</span></td>
+                  <td>
+                    <span style="font-size: 0.85rem;">
+                      수업 1시간 전 예약 취소. <strong>차감 정책 적용:</strong> 미차감 (보강권 1회 부여)
+                    </span>
+                  </td>
+                  <td>
+                    <button class="btn btn-primary btn-sm btn-secondary" onclick="alert('보강권 수동 수정 패널이 열립니다.')">보강 내역</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Simulator interactive alert -->
+          <div class="simulator-container">
+            <span class="sim-tag">자동화 시뮬레이터</span>
+            <h4>미등원 자동 알림 발생 시나리오 테스트</h4>
+            <p style="font-size: 0.85rem; margin-top: 5px;">
+              실제 Kiosk 혹은 시간표 정보 상에서 약속한 시간 내 원생이 등원 태그를 하지 않았을 때, 
+              학원장이 번거롭게 대조할 필요 없이 아래처럼 대시보드 상단에 <strong>즉각적 안심 알림 팝업</strong>을 발생시킵니다.
+            </p>
+            <button class="btn btn-primary btn-sm" onclick="triggerAttendanceSimulation()">
+              <i class="fa-solid fa-play"></i> 10분 지연 미등원 아동 알림 시뮬레이션
+            </button>
+          </div>
+        </div>
+
+        <!-- Student-specific calendar attendance view -->
+        <div class="glass-card">
+          <div class="glass-card-header">
+            <span class="card-title"><i class="fa-solid fa-address-card"></i> 개별 원생 정보 베이스 연계 - 달력 기반 출결 리스트</span>
+            <div style="display: flex; gap: 10px;">
+              <select style="width: auto; padding: 4px;" id="calendar-student-select" onchange="updateCalendarView()">
+                <option value="1">김민우 (비성인 / 피아노 월수금)</option>
+                <option value="2">박성현 (성인 / 첼로 목)</option>
+              </select>
+            </div>
+          </div>
+          <p>
+            원생 정보 상세 모달이나 탭 안에 삽입되어 직관적으로 학부모 상담 또는 본인 상담 시 과거 출결률과 결석 히스토리를 
+            달력(Calendar) 형태로 한눈에 보여주는 UI/UX 구현입니다.
+          </p>
+
+          <div class="grid-2">
+            <div class="glass-card" style="margin-bottom: 0; background: rgba(0,0,0,0.2);">
+              <h4 style="margin-bottom: 12px; text-align: center;" id="calendar-month-title">2026년 6월 출결 현황</h4>
+              
+              <div class="attendance-calendar">
+                <div class="cal-day-name">일</div>
+                <div class="cal-day-name">월</div>
+                <div class="cal-day-name">화</div>
+                <div class="cal-day-name">수</div>
+                <div class="cal-day-name">목</div>
+                <div class="cal-day-name">금</div>
+                <div class="cal-day-name">토</div>
+                
+                <!-- Week 1 -->
+                <div class="cal-cell">31</div>
+                <div class="cal-cell present">1 <div class="cal-dot green"></div></div>
+                <div class="cal-cell">2</div>
+                <div class="cal-cell present" id="cal-day-3">3 <div class="cal-dot green"></div></div>
+                <div class="cal-cell">4</div>
+                <div class="cal-cell present">5 <div class="cal-dot green"></div></div>
+                <div class="cal-cell">6</div>
+                
+                <!-- Week 2 -->
+                <div class="cal-cell">7</div>
+                <div class="cal-cell present">8 <div class="cal-dot green"></div></div>
+                <div class="cal-cell">9</div>
+                <div class="cal-cell absent">10 <div class="cal-dot red"></div></div>
+                <div class="cal-cell">11</div>
+                <div class="cal-cell present">12 <div class="cal-dot green"></div></div>
+                <div class="cal-cell">13</div>
+                
+                <!-- Week 3 -->
+                <div class="cal-cell">14</div>
+                <div class="cal-cell present">15 <div class="cal-dot green"></div></div>
+                <div class="cal-cell">16</div>
+                <div class="cal-cell present">17 <div class="cal-dot green"></div></div>
+                <div class="cal-cell">18</div>
+                <div class="cal-cell present">19 <div class="cal-dot green"></div></div>
+                <div class="cal-cell">20</div>
+                
+                <!-- Week 4 -->
+                <div class="cal-cell">21</div>
+                <div class="cal-cell present">22 <div class="cal-dot green"></div></div>
+                <div class="cal-cell">23</div>
+                <div class="cal-cell present">24 <div class="cal-dot green"></div></div>
+                <div class="cal-cell">25</div>
+                <div class="cal-cell warning">26 <div class="cal-dot amber"></div></div>
+                <div class="cal-cell">27</div>
+              </div>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; justify-content: center;">
+              <h4 style="margin-bottom: 8px;"><i class="fa-solid fa-list-check"></i> 요약 통계 및 분석</h4>
+              <table style="font-size: 0.85rem;">
+                <tr>
+                  <td><strong>수강 과목</strong></td>
+                  <td id="cal-stats-subject">피아노 클래스 A</td>
+                </tr>
+                <tr>
+                  <td><strong>출석률</strong></td>
+                  <td style="color: var(--accent-green); font-weight: 700;" id="cal-stats-rate">91.6% (11회 / 12회)</td>
+                </tr>
+                <tr>
+                  <td><strong>지각 / 보강 대기</strong></td>
+                  <td>지각 0회 | 보강 발생 1회</td>
+                </tr>
+                <tr>
+                  <td><strong>특이 경고 이력</strong></td>
+                  <td>
+                    <span class="badge badge-warning" id="cal-stats-warn">6월 26일 미등원 경고 1회 발생</span>
+                  </td>
+                </tr>
+              </tbody>
+              </table>
+              <p style="font-size: 0.8rem; margin-top: 10px;">
+                * 출결 마크를 클릭하면 당일의 상세 타임라인(등원시각, 보호자에게 문자 발송된 시각 등)을 타임라인 팝업으로 상세 확인 가능합니다.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 3: PAYMENTS & PROFITS ==================== -->
+      <section id="view-splits" class="view-section">
+        
+        <!-- KPI Metrics for billing -->
+        <div class="kpi-row">
+          <div class="kpi-card">
+            <div>
+              <span class="kpi-label">당월 총 매출액</span>
+              <div class="kpi-val">₩24,800,000</div>
+              <span style="font-size: 0.75rem; color: var(--accent-green);"><i class="fa-solid fa-caret-up"></i> 전월 대비 12%↑</span>
+            </div>
+            <div class="kpi-icon green"><i class="fa-solid fa-sack-dollar"></i></div>
+          </div>
+          <div class="kpi-card">
+            <div>
+              <span class="kpi-label">강사 정산 지급금</span>
+              <div class="kpi-val">₩10,912,000</div>
+              <span style="font-size: 0.75rem; color: var(--text-muted);">평균 정산율 44%</span>
+            </div>
+            <div class="kpi-icon blue"><i class="fa-solid fa-handshake"></i></div>
+          </div>
+          <div class="kpi-card">
+            <div>
+              <span class="kpi-label">학원 순수익</span>
+              <div class="kpi-val" style="color: var(--accent-green);">₩13,888,000</div>
+              <span style="font-size: 0.75rem; color: var(--accent-green);">임대료 및 부대비용 제외 전</span>
+            </div>
+            <div class="kpi-icon green"><i class="fa-solid fa-wallet"></i></div>
+          </div>
+          <div class="kpi-card">
+            <div>
+              <span class="kpi-label">미납 수납률</span>
+              <div class="kpi-val" style="color: var(--accent-amber);">87.5%</div>
+              <span style="font-size: 0.75rem; color: var(--accent-red);"><i class="fa-solid fa-triangle-exclamation"></i> 미납액 ₩3,100,000</span>
+            </div>
+            <div class="kpi-icon amber"><i class="fa-solid fa-file-invoice-dollar"></i></div>
+          </div>
+        </div>
+
+        <div class="glass-card" style="position: relative;">
+          
+          <!-- Restricted View overlay simulator -->
+          <div class="restricted-overlay" id="payout-security-overlay" style="display: none;">
+            <i class="fa-solid fa-lock restricted-icon"></i>
+            <h3 style="margin-bottom: 5px;">접근 권한이 제한되었습니다</h3>
+            <p style="max-width: 450px; font-size: 0.9rem;">
+              재무 요약, 매장 순수익, 전체 강사 정산 데이터는 <strong>원장(Director) 계정</strong>에서만 조회할 수 있습니다. 
+              일반 강사(Teacher) 및 매니저 계정은 접근이 불가능합니다.
+            </p>
+            <button class="btn btn-primary" onclick="toggleSecurityRole('director')">원장 권한으로 화면 보기</button>
+          </div>
+
+          <div class="glass-card-header">
+            <span class="card-title"><i class="fa-solid fa-chart-line"></i> 월별 손익 분석 및 강사 비율제 정산</span>
+            <div>
+              <button class="btn btn-secondary btn-sm" onclick="toggleSecurityRole('teacher')">강사 시점으로 권한 제한하기 테스트</button>
+            </div>
+          </div>
+
+          <p>
+            성인 대상 취미 클래스 및 개별 레슨은 강사와 학원의 정산 방식이 다양합니다(예: 비율 배분, 수업당 정산 등). 
+            원생 테이블의 수강 정보와 연동하여 자동으로 강사 정산금을 산출하고 차감 여부를 반영합니다.
+          </p>
+
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>강사명</th>
+                  <th>담당 원생</th>
+                  <th>수강 형태</th>
+                  <th>총 수강료</th>
+                  <th>학원 매출</th>
+                  <th>강사 정산 (%)</th>
+                  <th>정산 실지급액</th>
+                  <th>지급 상태</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="font-weight: 600; color: #fff;">정은비 (피아노)</td>
+                  <td>박성현 외 4명</td>
+                  <td>비율제 (40:60)</td>
+                  <td>₩1,200,000</td>
+                  <td>₩480,000</td>
+                  <td>60%</td>
+                  <td style="color: var(--accent-green); font-weight: 600;">₩720,000</td>
+                  <td><span class="badge badge-success">정산 완료</span></td>
+                </tr>
+                <tr>
+                  <td style="font-weight: 600; color: #fff;">문승현 (바이올린)</td>
+                  <td>김라온 외 2명</td>
+                  <td>비율제 (50:50)</td>
+                  <td>₩900,000</td>
+                  <td>₩450,000</td>
+                  <td>50%</td>
+                  <td style="color: var(--accent-green); font-weight: 600;">₩450,000</td>
+                  <td><span class="badge badge-warning">지급 대기</span></td>
+                </tr>
+                <tr>
+                  <td style="font-weight: 600; color: #fff;">조아라 (첼로)</td>
+                  <td>강수호 외 3명</td>
+                  <td>회당 고정제 (₩35k)</td>
+                  <td>₩1,400,000</td>
+                  <td>₩840,000 (16회)</td>
+                  <td>₩35,000 / 회</td>
+                  <td style="color: var(--accent-green); font-weight: 600;">₩560,000</td>
+                  <td><span class="badge badge-warning">지급 대기</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Revenue Split Simulator -->
+          <div class="simulator-container">
+            <span class="sim-tag">모의 계산기</span>
+            <h4>신규 프리랜서 강사 비율제 수수료 모의 계산</h4>
+            <p style="font-size: 0.85rem; margin-bottom: 12px;">원생이 납부할 총액과 배분 비율을 넣으면 강사와 원장의 수익 분할이 즉시 계산됩니다.</p>
+            
+            <div class="form-row">
+              <div class="form-group">
+                <label>총 수강료 (₩)</label>
+                <input type="number" id="calc-tuition" value="350000" oninput="calculateSplitSim()">
+              </div>
+              <div class="form-group">
+                <label>강사 배분율 (%)</label>
+                <input type="number" id="calc-split-rate" value="60" oninput="calculateSplitSim()">
+              </div>
+            </div>
+            
+            <div class="grid-2" style="background: rgba(255, 255, 255, 0.02); padding: 12px; border-radius: 6px;">
+              <div>
+                <span style="font-size: 0.8rem; color: var(--text-muted);">강사 실지급액</span>
+                <div style="font-size: 1.25rem; font-weight: 700; color: var(--accent-green);" id="calc-teacher-result">₩210,000</div>
+              </div>
+              <div>
+                <span style="font-size: 0.8rem; color: var(--text-muted);">학원 순매출액</span>
+                <div style="font-size: 1.25rem; font-weight: 700; color: var(--primary);" id="calc-academy-result">₩140,000</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 4: NOTIFICATION LOG ==================== -->
+      <section id="view-history" class="view-section">
+        
+        <div class="glass-card">
+          <div class="glass-card-header">
+            <span class="card-title"><i class="fa-solid fa-clock-rotate-left"></i> 알림 발송 이력 및 전송 수단 검증 보드</span>
+            
+            <div class="inner-tabs">
+              <button class="inner-tab active" id="log-tab-daily" onclick="switchLogTab('daily')">일별 이력</button>
+              <button class="inner-tab" id="log-tab-monthly" onclick="switchLogTab('monthly')">월별 누적</button>
+            </div>
+          </div>
+
+          <p>
+            학부모에게 발송된 알림톡, 미등원 경고, 결제 청구 문자 등의 도달 여부와 세부 전송 방식(SMS / Talk / Push)을 명확하게 모니터링합니다.
+          </p>
+
+          <div class="filter-bar">
+            <div class="filter-group" style="width: auto; min-width: 150px;" id="log-date-filter-container">
+              <label>일자 필터</label>
+              <input type="date" value="2026-06-02" id="log-date-filter" onchange="filterLogTable()">
+            </div>
+            <div class="filter-group" style="width: auto; min-width: 150px; display: none;" id="log-month-filter-container">
+              <label>월별 필터</label>
+              <select id="log-month-filter" onchange="filterLogTable()">
+                <option value="2026-06">2026년 6월</option>
+                <option value="2026-05">2026년 5월</option>
+              </select>
+            </div>
+            <div class="filter-group filter-select">
+              <label>발송 구분</label>
+              <select id="log-category-filter" onchange="filterLogTable()">
+                <option value="ALL">전체 구분</option>
+                <option value="attendance">출결</option>
+                <option value="billing">수납</option>
+                <option value="notice">알림</option>
+              </select>
+            </div>
+            <div class="filter-group filter-select">
+              <label>발송 방식</label>
+              <select id="log-method-filter" onchange="filterLogTable()">
+                <option value="ALL">전체 방식</option>
+                <option value="Talk">KakaoTalk</option>
+                <option value="SMS">SMS</option>
+                <option value="Push">Push</option>
+              </select>
+            </div>
+            <div class="filter-group filter-search">
+              <label>검색 (받는사람, 제목, 메세지)</label>
+              <input type="text" id="log-search-input" placeholder="검색어 입력..." onkeyup="filterLogTable()">
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="font-size: 0.8rem; color: var(--text-muted);">
+              표시 개수: 
+              <select style="width: auto; padding: 2px 6px; background: rgba(0,0,0,0.3); border: 1px solid var(--border);" id="log-page-size" onchange="filterLogTable()">
+                <option value="5">5개씩 보기</option>
+                <option value="10" selected>10개씩 보기</option>
+                <option value="20">20개씩 보기</option>
+              </select>
+            </div>
+            <span style="font-size: 0.8rem; color: var(--text-muted);" id="log-total-count">총 4건의 전송 이력 조회됨</span>
+          </div>
+
+          <div class="table-container">
+            <table id="log-table">
+              <thead>
+                <tr>
+                  <th>No</th>
+                  <th>발송일시</th>
+                  <th>받는 사람</th>
+                  <th>구분</th>
+                  <th>발송 방식</th>
+                  <th>제목 및 전송 메시지 요약</th>
+                  <th>상태</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr data-date="2026-06-02" data-category="attendance" data-method="Talk">
+                  <td>4</td>
+                  <td>2026-06-02 15:55:12</td>
+                  <td>이지아 (보호자)</td>
+                  <td><span class="badge badge-success">출결</span></td>
+                  <td><span class="badge badge-info"><i class="fa-solid fa-comment"></i> Talk</span></td>
+                  <td><strong>[등원안심]</strong> 이지아 원생이 등원하였습니다.</td>
+                  <td><span class="badge badge-success">전송성공</span></td>
+                </tr>
+                <tr data-date="2026-06-02" data-category="attendance" data-method="SMS">
+                  <td>3</td>
+                  <td>2026-06-02 15:46:00</td>
+                  <td>김민우 (보호자)</td>
+                  <td><span class="badge badge-danger">출결</span></td>
+                  <td><span class="badge badge-warning"><i class="fa-solid fa-envelope"></i> SMS</span></td>
+                  <td><strong>[미등원경고]</strong> 김민우 학생이 등원 예정시간에 등원하지 않았습니다.</td>
+                  <td><span class="badge badge-success">전송성공</span></td>
+                </tr>
+                <tr data-date="2026-06-02" data-category="billing" data-method="Talk">
+                  <td>2</td>
+                  <td>2026-06-02 09:10:00</td>
+                  <td>박성현 (원생)</td>
+                  <td><span class="badge badge-warning">수납</span></td>
+                  <td><span class="badge badge-info"><i class="fa-solid fa-comment"></i> Talk</span></td>
+                  <td><strong>[교육비청구]</strong> 6월 첼로 정규 클래스 수강료 청구 안내</td>
+                  <td><span class="badge badge-success">전송성공</span></td>
+                </tr>
+                <tr data-date="2026-05-28" data-category="notice" data-method="Push">
+                  <td>1</td>
+                  <td>2026-05-28 17:00:22</td>
+                  <td>최유진 (원생)</td>
+                  <td><span class="badge badge-info">알림</span></td>
+                  <td><span class="badge badge-success"><i class="fa-solid fa-bell"></i> Push</span></td>
+                  <td><strong>[피드백알림]</strong> 정은비 선생님이 수업 코멘트를 남겼습니다.</td>
+                  <td><span class="badge badge-success">수신완료</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div style="display: flex; justify-content: center; gap: 8px; margin-top: 1rem;">
+            <button class="btn btn-secondary btn-sm" disabled><i class="fa-solid fa-angle-left"></i> 이전</button>
+            <button class="btn btn-primary btn-sm">1</button>
+            <button class="btn btn-secondary btn-sm" disabled>다음 <i class="fa-solid fa-angle-right"></i></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 5: SMS INTEGRATED SENDER ==================== -->
+      <section id="view-sender" class="view-section">
+        
+        <div class="glass-card">
+          <div class="glass-card-header">
+            <span class="card-title"><i class="fa-solid fa-paper-plane"></i> 다채널 메시지 통합 발송 패널 (SMS / 카카오 알림톡 / 푸시)</span>
+          </div>
+
+          <div class="sms-layout">
+            
+            <!-- Left inputs panel -->
+            <div>
+              <h3>1. 수신자 선택</h3>
+              
+              <div class="form-row">
+                <div class="form-group">
+                  <label>반 필터</label>
+                  <select id="sender-class-filter" onchange="filterSenderStudentList()">
+                    <option value="ALL">전체 반</option>
+                    <option value="piano">피아노 전공반</option>
+                    <option value="cello">첼로 취미반</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>납부 여부 필터</label>
+                  <select id="sender-pay-filter" onchange="filterSenderStudentList()">
+                    <option value="ALL">납부 여부 전체</option>
+                    <option value="PAID">납부 완료</option>
+                    <option value="UNPAID">미납</option>
+                    <option value="UNREGISTERED">미등록</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Student recipient table -->
+              <div class="table-container" style="max-height: 200px; overflow-y: auto;">
+                <table id="sender-student-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 40px;"><input type="checkbox" id="select-all-students" onchange="toggleAllSenderStudents()"></th>
+                      <th>이름</th>
+                      <th>반 구분</th>
+                      <th>수납 상태</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr data-class="piano" data-pay="UNPAID">
+                      <td><input type="checkbox" class="student-select-cb" value="STU-1042" data-name="김민우" data-unpaid="150000" onchange="updateSelectedCount()"></td>
+                      <td>김민우</td>
+                      <td>피아노 전공반</td>
+                      <td><span class="badge badge-danger">미납 (₩150k)</span></td>
+                    </tr>
+                    <tr data-class="piano" data-pay="PAID">
+                      <td><input type="checkbox" class="student-select-cb" value="STU-1089" data-name="이지아" data-unpaid="0" onchange="updateSelectedCount()"></td>
+                      <td>이지아</td>
+                      <td>피아노 전공반</td>
+                      <td><span class="badge badge-success">완납</span></td>
+                    </tr>
+                    <tr data-class="cello" data-pay="PAID">
+                      <td><input type="checkbox" class="student-select-cb" value="STU-2051" data-name="박성현" data-unpaid="0" onchange="updateSelectedCount()"></td>
+                      <td>박성현</td>
+                      <td>첼로 취미반</td>
+                      <td><span class="badge badge-success">완납</span></td>
+                    </tr>
+                    <tr data-class="cello" data-pay="UNPAID">
+                      <td><input type="checkbox" class="student-select-cb" value="STU-2099" data-name="최유진" data-unpaid="250000" onchange="updateSelectedCount()"></td>
+                      <td>최유진</td>
+                      <td>첼로 취미반</td>
+                      <td><span class="badge badge-danger">미납 (₩250k)</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div style="display: flex; justify-content: space-between; align-items: center; margin: 10px 0;">
+                <span style="font-size: 0.85rem; font-weight: 700;" id="selected-count-label">선택된 인원수: 0명</span>
+                <div style="display: flex; gap: 8px;">
+                  <label style="display: flex; align-items: center; gap: 4px; margin-bottom: 0; font-size: 0.8rem;">
+                    <input type="checkbox" id="send-to-student" checked> 학생 본인
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 4px; margin-bottom: 0; font-size: 0.8rem;">
+                    <input type="checkbox" id="send-to-parent1" checked> 보호자 1
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 4px; margin-bottom: 0; font-size: 0.8rem;">
+                    <input type="checkbox" id="send-to-parent2"> 보호자 2
+                  </label>
+                </div>
+              </div>
+
+              <!-- Manual list addition / Excel -->
+              <div class="grid-2" style="margin-top: 1rem; gap: 10px;">
+                <div class="upload-zone" onclick="alert('엑셀 업로드 파일 선택 창이 활성화됩니다.')" style="padding: 10px;">
+                  <i class="fa-solid fa-file-excel" style="color: var(--accent-green);"></i> 엑셀 일괄 추가
+                </div>
+                <div class="upload-zone" onclick="addManualRecipient()" style="padding: 10px;">
+                  <i class="fa-solid fa-keyboard" style="color: var(--secondary);"></i> 직접 연락처 입력
+                </div>
+              </div>
+
+              <h3 style="margin-top: 1.5rem;">2. 메시지 입력</h3>
+              <div class="form-group">
+                <label>알림 전송 방식</label>
+                <select id="send-channel" onchange="updatePhonePreview()">
+                  <option value="Talk">카카오 알림톡 (고객 신뢰도 추천)</option>
+                  <option value="SMS">일반 SMS/LMS</option>
+                  <option value="Push">푸시(Push) 알림 (앱 전용)</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label>제목</label>
+                <input type="text" id="sms-title-input" value="[Turing] 교육비 미납 수납 안내" onkeyup="updatePhonePreview()">
+              </div>
+
+              <div class="form-group">
+                <label>내용</label>
+                <textarea id="sms-body-input" rows="6" onkeyup="updatePhonePreview()">안녕하세요 [이름] 학부모님,
+튜링음악학원 원장입니다.
+다름이 아니라 금월 교육비 [미납금액]이 미납상태로 확인되어 문자 드립니다. 아래 계좌로 수납 요청 부탁드립니다.
+
+■ 가상계좌: 신한 110-123-456789 (예금주: 튜링학원)</textarea>
+                <span style="font-size: 0.75rem; color: var(--text-muted); float: right; margin-top: 4px;">
+                  대체 적용 가능 태그: <code style="cursor: pointer;" onclick="insertTag('[이름]')">[이름]</code>, <code style="cursor: pointer;" onclick="insertTag('[미납금액]')">[미납금액]</code>
+                </span>
+              </div>
+
+              <div class="form-group">
+                <label>이미지 첨부 (MMS 전용)</label>
+                <input type="file" style="font-size: 0.8rem; background: none; border: none; padding: 0;">
+              </div>
+
+              <button class="btn btn-primary" style="width: 100%;" onclick="sendMockMessage()">
+                <i class="fa-solid fa-paper-plane"></i> 선택 인원 대상 즉시 발송하기
+              </button>
+            </div>
+
+            <!-- Right phone preview and templates -->
+            <div>
+              <h3>3. 모바일 수신 실시간 미리보기</h3>
+              <div class="phone-preview-card">
+                <div class="phone-speaker"></div>
+                <div class="phone-screen">
+                  <div class="phone-header" id="phone-preview-header">카카오톡 - Turing Academy</div>
+                  <div class="phone-messages">
+                    <div class="bubble" id="phone-bubble-content">
+                      여기에 메시지 내용이 표시됩니다.
+                    </div>
+                  </div>
+                  <div class="phone-footer">
+                    <input type="text" style="flex: 1; padding: 4px 8px; border-radius: 99px; background: rgba(255,255,255,0.1); border: none; color: #fff; font-size: 0.7rem;" placeholder="메시지 전송..." disabled>
+                  </div>
+                </div>
+              </div>
+
+              <h3 style="margin-top: 1.5rem;">4. 메시지 보관함</h3>
+              
+              <div class="inner-tabs">
+                <button class="inner-tab active" id="btn-template-box" onclick="switchTemplateTab('box')">저장 메시지함</button>
+                <button class="inner-tab" id="btn-template-recent" onclick="switchTemplateTab('recent')">최근 보낸 내역</button>
+              </div>
+
+              <div id="template-box-content" style="max-height: 180px; overflow-y: auto;">
+                <div class="glass-card" style="padding: 10px; font-size: 0.8rem; margin-bottom: 8px; cursor: pointer;" onclick="applyTemplate('수강료 수납 안내', '안녕하세요 [이름] 학부모님,\n튜링음악학원입니다.\n\n이번 달 교습비 청구일은 [수강일]입니다.\n\n수강료: [미납금액]')">
+                  <strong>[수납] 수강료 수납 안내</strong>
+                  <p style="margin: 4px 0 0; font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">안녕하세요 [이름] 학부모님, 이번 달 교습비 청구일...</p>
+                </div>
+                <div class="glass-card" style="padding: 10px; font-size: 0.8rem; margin-bottom: 8px; cursor: pointer;" onclick="applyTemplate('미등원 안전 안내', '안녕하세요 [이름] 보호자님,\n\n아이가 아직 등원하지 않아 안전 확인차 연락드립니다. 혹시 변동 사항이 있다면 학원으로 연락 부탁드립니다.')">
+                  <strong>[출결] 미등원 안전 확인</strong>
+                  <p style="margin: 4px 0 0; font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">안녕하세요 [이름] 보호자님, 아이가 아직 등원하지 않아...</p>
+                </div>
+              </div>
+
+              <div id="template-recent-content" style="max-height: 180px; overflow-y: auto; display: none;">
+                <div class="glass-card" style="padding: 10px; font-size: 0.8rem; margin-bottom: 8px; cursor: pointer;" onclick="applyTemplate('최근: 휴원 긴급 안내', '안녕하세요 학부모님,\n폭설로 인해 금일 모든 레슨은 임시 휴원합니다.\n금일 보강 일정은 추후 개별 통지드리겠습니다.')">
+                  <strong>[긴급] 폭설 임시 휴강 안내 (5/28 발송)</strong>
+                  <p style="margin: 4px 0 0; font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">안녕하세요 학부모님, 폭설로 인해 금일 모든 레슨...</p>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- KISA Compliancy warning banner -->
+          <div class="disclaimer-banner">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <div>
+              <strong>광고성 문자 발송 시 의무 기재사항 고지 안내 (KISA 규정 준수)</strong>
+              <p style="margin: 4px 0 0; font-size: 0.75rem; color: #fca5a5;">
+                영리 목적의 광고성 전송 시 반드시 제목에 <strong>(광고)</strong> 표기, 본문에 <strong>[무료수신거부 080-XXX-XXXX]</strong> 번호를 기재하셔야 합니다. 
+                의무사항 미준수 시 정보통신망법에 의거하여 알림 전송이 자동 차단되거나 벌금이 부과될 수 있습니다.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 6: SETTINGS ==================== -->
+      <section id="view-settings" class="view-section">
+        
+        <div class="glass-card">
+          <div class="glass-card-header">
+            <span class="card-title"><i class="fa-solid fa-sliders"></i> 학원 자동화 메시지 & 키오스크 & 사업자 설정</span>
+          </div>
+
+          <!-- Tab Selector within settings -->
+          <div class="inner-tabs" style="margin-bottom: 1.5rem;">
+            <button class="inner-tab active" id="set-tab-auto" onclick="switchSettingTab('auto')">SMS/푸시 자동알림 정책</button>
+            <button class="inner-tab" id="set-tab-kiosk" onclick="switchSettingTab('kiosk')">키오스크 노출 문구</button>
+            <button class="inner-tab" id="set-tab-tax" onclick="switchSettingTab('tax')">현금영수증 사업자 설정</button>
+          </div>
+
+          <!-- Sub-Tab 1: SMS/Push auto trigger policy -->
+          <div id="set-content-auto">
+            <h3>요일별 및 상황별 자동 메시지 자동 트리거 옵션</h3>
+            <p>특정 조건 충족 시 학원장이 별도로 발송을 누르지 않아도 시스템이 백그라운드에서 메시지를 전송합니다.</p>
+            
+            <div style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem;">
+              
+              <div class="glass-card" style="margin-bottom: 0; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <h4 style="color: var(--text-main);"><i class="fa-solid fa-arrow-right-to-bracket"></i> 등원 안심 문자 자동 발송</h4>
+                  <p style="font-size: 0.85rem; margin-bottom: 0;">원생이 태블릿 키오스크로 등원 인증 완료 시 부모님께 등원 알림을 전송합니다.</p>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" checked id="toggle-auto-checkin">
+                  <span class="slider"></span>
+                </label>
+              </div>
+
+              <div class="glass-card" style="margin-bottom: 0; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <h4 style="color: var(--text-main);"><i class="fa-solid fa-arrow-right-from-bracket"></i> 하원 안심 문자 자동 발송</h4>
+                  <p style="font-size: 0.85rem; margin-bottom: 0;">강사 수업지나 키오스크에서 하원 체크를 기록할 시 알림을 전송합니다.</p>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" checked id="toggle-auto-checkout">
+                  <span class="slider"></span>
+                </label>
+              </div>
+
+              <div class="glass-card" style="margin-bottom: 0; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <h4 style="color: var(--text-main);"><i class="fa-solid fa-circle-dollar-to-slot"></i> 수납 자동 요청 알림톡 발송</h4>
+                  <p style="font-size: 0.85rem; margin-bottom: 0;">매달 지정된 수납 납부요청일 도래 <strong>3일 전</strong> 자동으로 청구서를 발송합니다.</p>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" checked id="toggle-auto-invoice">
+                  <span class="slider"></span>
+                </label>
+              </div>
+
+              <div class="glass-card" style="margin-bottom: 0; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <h4 style="color: var(--text-main);"><i class="fa-solid fa-triangle-exclamation"></i> 미등원 자동 경고 알림</h4>
+                  <p style="font-size: 0.85rem; margin-bottom: 0;">비성인 수업 시작시간 기준 <strong>15분</strong> 이상 미출결일 때 보호자 자동 발송</p>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggle-auto-warning">
+                  <span class="slider"></span>
+                </label>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Sub-Tab 2: Kiosk display text settings -->
+          <div id="set-content-kiosk" style="display: none;">
+            <h3>키오스크 메인 화면 노출 및 개인화 메시지</h3>
+            <p>원생들이 학원 입구에 비치된 태블릿/PC 키오스크 화면에서 번호를 입력할 때 표시되는 UI 메시지를 편집합니다.</p>
+
+            <div class="form-group">
+              <label>대기 상태 메인 안내 문구</label>
+              <input type="text" id="kiosk-idle-text" value="반가워요! 등원 혹은 하원 번호를 입력해 주세요.">
+            </div>
+
+            <div class="form-group">
+              <label>등원 완료 성공 팝업 문구</label>
+              <input type="text" id="kiosk-success-text" value="[이름] 원생님, 등원 확인 완료되었습니다. 오늘도 즐거운 레슨 되세요!">
+            </div>
+
+            <div class="form-group">
+              <label>수납/미납 발생자 입력 시 노출 경고 (선택 사항)</label>
+              <textarea id="kiosk-warning-text" rows="3">등원이 완료되었습니다. 이번 주 보강 일정 및 수강료 수납 안내장이 전달되었습니다.</textarea>
+            </div>
+
+            <button class="btn btn-primary" onclick="alert('키오스크 안내 설정이 저장되었습니다.')">키오스크 노출 문구 저장</button>
+          </div>
+
+          <!-- Sub-Tab 3: Cash Receipt tax registry settings -->
+          <div id="set-content-tax" style="display: none;">
+            <h3>현금영수증 발행용 가맹 사업자 관리</h3>
+            <p>학원에서 교습비를 현금이나 계좌이체로 수납받을 시 국세청 가맹점 자격으로 현금영수증을 의무 발행할 사업자 정보입니다.</p>
+
+            <div class="table-container">
+              <table id="tax-business-table">
+                <thead>
+                  <tr>
+                    <th>구분</th>
+                    <th>상호명</th>
+                    <th>사업자등록번호</th>
+                    <th>대표자명</th>
+                    <th>담당자 연락처</th>
+                    <th>관리</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>1</td>
+                    <td style="font-weight: 600; color:#fff;">Turing 음악학원 본점</td>
+                    <td>120-12-34567</td>
+                    <td>김대원</td>
+                    <td>010-1234-5678</td>
+                    <td>
+                      <button class="btn btn-secondary btn-sm" onclick="alert('수정 패널 오픈')">정보수정</button>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>2</td>
+                    <td style="font-weight: 600; color:#fff;">튜링음악학원 2호점 (첼로전용)</td>
+                    <td>120-85-99923</td>
+                    <td>김대원</td>
+                    <td>010-8765-4321</td>
+                    <td>
+                      <button class="btn btn-secondary btn-sm" onclick="alert('수정 패널 오픈')">정보수정</button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="glass-card" style="margin-top: 1.5rem; background: rgba(0,0,0,0.15);">
+              <h4><i class="fa-solid fa-plus"></i> 신규 사업자 등록</h4>
+              
+              <div class="form-row">
+                <div class="form-group">
+                  <label>사업자번호</label>
+                  <input type="text" id="biz-no" placeholder="000-00-00000">
+                </div>
+                <div class="form-group">
+                  <label>대표자성명</label>
+                  <input type="text" id="biz-owner" placeholder="홍길동">
+                </div>
+                <div class="form-group">
+                  <label>상호명</label>
+                  <input type="text" id="biz-name" placeholder="튜링 실용음악원">
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label>주소</label>
+                  <input type="text" id="biz-address" placeholder="서울특별시 서초구 서초동 123">
+                </div>
+                <div class="form-group">
+                  <label>업태</label>
+                  <input type="text" id="biz-status" placeholder="서비스업">
+                </div>
+                <div class="form-group">
+                  <label>종목</label>
+                  <input type="text" id="biz-category" placeholder="음악학원 / 교육서비스">
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label>담당자명</label>
+                  <input type="text" id="biz-manager" placeholder="김매니저">
+                </div>
+                <div class="form-group">
+                  <label>담당자 연락처</label>
+                  <input type="text" id="biz-phone" placeholder="010-0000-0000">
+                </div>
+                <div class="form-group">
+                  <label>담당자 이메일</label>
+                  <input type="email" id="biz-email" placeholder="manager@turing.com">
+                </div>
+              </div>
+
+              <button class="btn btn-primary" onclick="addBusinessEntity()">신규 사업자 추가하기</button>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </main>
+
+  </div>
+
+  <!-- Interactive JavaScript logic -->
+  <script>
+    // Tab switching for main sidebar
+    const navItems = document.querySelectorAll('.nav-item');
+    const sections = document.querySelectorAll('.view-section');
+    const viewTitle = document.getElementById('main-view-title');
+    const viewDesc = document.getElementById('main-view-desc');
+
+    const titleMap = {
+      'view-overview': { title: '기획 개요 및 메시지 API 분석', desc: '학원의 비즈니스 성장을 위한 반자동화/자동화 운영 기획안' },
+      'view-attendance': { title: '원생 출결 & 경고 로직', desc: '아동 미등원 긴급 경고 통제 및 성인 타임제 차감 정산' },
+      'view-splits': { title: '수납 분석 및 강사 정산', desc: '성인 클래스 비율제(Fee Split) 계산기 및 원장 권한 보안 설정' },
+      'view-history': { title: '알림 발송 이력 내역', desc: '등하원 안심 문자, 수강 청구 알림 기록 통합 조회' },
+      'view-sender': { title: '다채널 메시지 통합 발송 패널', desc: '학생 조건부 필터링 발송, 치환 태그 및 보관함 기능' },
+      'view-settings': { title: '학원 관리 & 설정', desc: '자동 메시지 트리거 규칙, 키오스크 및 현금영수증 사업자 관리' }
+    };
+
+    navItems.forEach(item => {
+      item.addEventListener('click', () => {
+        navItems.forEach(i => i.classList.remove('active'));
+        sections.forEach(s => s.classList.remove('active'));
+        
+        item.classList.add('active');
+        const targetId = item.getAttribute('data-target');
+        const targetSection = document.getElementById(targetId);
+        targetSection.classList.add('active');
+
+        // Update titles
+        viewTitle.innerText = titleMap[targetId].title;
+        viewDesc.innerText = titleMap[targetId].desc;
+      });
+    });
+
+    // Attendance Table Filtering
+    function filterAttendanceTable() {
+      const typeVal = document.getElementById('att-type-filter').value;
+      const statusVal = document.getElementById('att-status-filter').value;
+      const query = document.getElementById('att-search-input').value.toLowerCase();
+      
+      const rows = document.querySelectorAll('#attendance-table tbody tr');
+      rows.forEach(row => {
+        const type = row.getAttribute('data-type');
+        const status = row.getAttribute('data-status');
+        const text = row.innerText.toLowerCase();
+        
+        const typeMatch = (typeVal === 'ALL' || type === typeVal);
+        const statusMatch = (statusVal === 'ALL' || status === statusVal);
+        const queryMatch = (query === '' || text.includes(query));
+        
+        if (typeMatch && statusMatch && queryMatch) {
+          row.style.display = '';
+        } else {
+          row.style.display = 'none';
+        }
+      });
+    }
+
+    // Interactive simulator for Attendance
+    function triggerAttendanceSimulation() {
+      alert("🚨 [자동화 경고 감지]\n\n원생 '이지성(비성인 / 16:00 클래스)'이(가) 등원 예정 시간 15분이 경과했으나 등원 태그를 하지 않았습니다.\n\n대시보드 경고 건수가 추가되며, 보호자 긴급 연락 알림톡 발송 대기 상태로 자동 변경됩니다.");
+      
+      // Dynamically add a simulated warning row
+      const tbody = document.querySelector('#attendance-table tbody');
+      
+      // Check if already added to prevent duplicates
+      if (document.getElementById('sim-row-jisung')) return;
+      
+      const newRow = document.createElement('tr');
+      newRow.id = 'sim-row-jisung';
+      newRow.setAttribute('data-type', 'KIDS');
+      newRow.setAttribute('data-status', 'WARNING');
+      newRow.innerHTML = `
+        <td><span class="badge badge-danger">비성인</span></td>
+        <td>STU-1120</td>
+        <td style="font-weight: 600; color: #fff;">이지성</td>
+        <td>16:00 - 17:00</td>
+        <td>-- : --</td>
+        <td><span class="badge badge-danger interactive-badge"><i class="fa-solid fa-triangle-exclamation"></i> 미등원 경고</span></td>
+        <td><span style="color: var(--accent-red); font-size: 0.85rem; font-weight: 500;">수업 시작 15분 경과. 보호자 미등원 노티 대상.</span></td>
+        <td>
+          <button class="btn btn-primary btn-sm" onclick="sendWarningSMS('이지성', '보호자(010-5555-8888)')">
+            <i class="fa-solid fa-comment-sms"></i> 경고 알림톡 전송
+          </button>
+        </td>
+      `;
+      
+      tbody.insertBefore(newRow, tbody.firstChild);
+      
+      // Update KPI
+      document.getElementById('warning-kpi-count').innerText = '2건';
+      document.getElementById('warning-kpi-count').style.color = 'var(--accent-red)';
+    }
+
+    function sendWarningSMS(studentName, recipient) {
+      alert(`💬 KakaoTalk 알림톡 전송 완료\n\n수신자: ${recipient}\n내용: "[안심경고] 안녕하세요 학부모님, 금일 ${studentName} 학생이 등원 예정시간 내에 등원 태그를 하지 않았습니다. 안전 확인을 요청드립니다."`);
+    }
+
+    // Individual Calendar selector changer
+    function updateCalendarView() {
+      const selected = document.getElementById('calendar-student-select').value;
+      const rateEl = document.getElementById('cal-stats-rate');
+      const subjectEl = document.getElementById('cal-stats-subject');
+      const warnEl = document.getElementById('cal-stats-warn');
+      const day3El = document.getElementById('cal-day-3');
+
+      if (selected === '1') {
+        rateEl.innerText = "91.6% (11회 / 12회)";
+        subjectEl.innerText = "피아노 클래스 A";
+        warnEl.innerText = "6월 26일 미등원 경고 1회 발생";
+        day3El.className = "cal-cell present";
+        day3El.innerHTML = '3 <div class="cal-dot green"></div>';
+      } else {
+        rateEl.innerText = "100.0% (4회 / 4회)";
+        subjectEl.innerText = "첼로 취미반";
+        warnEl.innerText = "특이 경고 이력 없음";
+        day3El.className = "cal-cell";
+        day3El.innerHTML = '3';
+      }
+    }
+
+    // Security Role Toggle Simulator
+    function toggleSecurityRole(role) {
+      const overlay = document.getElementById('payout-security-overlay');
+      if (role === 'teacher') {
+        overlay.style.display = 'flex';
+      } else {
+        overlay.style.display = 'none';
+      }
+    }
+
+    // Revenue Split Calculator simulator
+    function calculateSplitSim() {
+      const tuition = parseFloat(document.getElementById('calc-tuition').value) || 0;
+      const rate = parseFloat(document.getElementById('calc-split-rate').value) || 0;
+
+      const teacherAmt = tuition * (rate / 100);
+      const academyAmt = tuition - teacherAmt;
+
+      document.getElementById('calc-teacher-result').innerText = `₩${teacherAmt.toLocaleString()}`;
+      document.getElementById('calc-academy-result').innerText = `₩${academyAmt.toLocaleString()}`;
+    }
+
+    // Switch between Daily and Monthly notification logs
+    function switchLogTab(tab) {
+      const dailyTab = document.getElementById('log-tab-daily');
+      const monthlyTab = document.getElementById('log-tab-monthly');
+      const dateFilter = document.getElementById('log-date-filter-container');
+      const monthFilter = document.getElementById('log-month-filter-container');
+
+      if (tab === 'daily') {
+        dailyTab.classList.add('active');
+        monthlyTab.classList.remove('active');
+        dateFilter.style.display = 'block';
+        monthFilter.style.display = 'none';
+      } else {
+        dailyTab.classList.remove('active');
+        monthlyTab.classList.add('active');
+        dateFilter.style.display = 'none';
+        monthFilter.style.display = 'block';
+      }
+      filterLogTable();
+    }
+
+    function filterLogTable() {
+      const dailyActive = document.getElementById('log-tab-daily').classList.contains('active');
+      const selectedDate = document.getElementById('log-date-filter').value;
+      const selectedMonth = document.getElementById('log-month-filter').value;
+      const categoryVal = document.getElementById('log-category-filter').value;
+      const methodVal = document.getElementById('log-method-filter').value;
+      const query = document.getElementById('log-search-input').value.toLowerCase();
+      
+      const rows = document.querySelectorAll('#log-table tbody tr');
+      let visibleCount = 0;
+
+      rows.forEach(row => {
+        const date = row.getAttribute('data-date');
+        const category = row.getAttribute('data-category');
+        const method = row.getAttribute('data-method');
+        const text = row.innerText.toLowerCase();
+
+        let dateMatch = true;
+        if (dailyActive) {
+          dateMatch = (date === selectedDate);
+        } else {
+          dateMatch = date.startsWith(selectedMonth);
+        }
+
+        const categoryMatch = (categoryVal === 'ALL' || category === categoryVal);
+        const methodMatch = (methodVal === 'ALL' || method === methodVal);
+        const queryMatch = (query === '' || text.includes(query));
+
+        if (dateMatch && categoryMatch && methodMatch && queryMatch) {
+          row.style.display = '';
+          visibleCount++;
+        } else {
+          row.style.display = 'none';
+        }
+      });
+
+      document.getElementById('log-total-count').innerText = `총 ${visibleCount}건의 전송 이력 조회됨`;
+    }
+
+    // SMS Sender logic
+    function filterSenderStudentList() {
+      const classVal = document.getElementById('sender-class-filter').value;
+      const payVal = document.getElementById('sender-pay-filter').value;
+      const rows = document.querySelectorAll('#sender-student-table tbody tr');
+
+      rows.forEach(row => {
+        const studentClass = row.getAttribute('data-class');
+        const studentPay = row.getAttribute('data-pay');
+
+        const classMatch = (classVal === 'ALL' || studentClass === classVal);
+        const payMatch = (payVal === 'ALL' || studentPay === payVal);
+
+        if (classMatch && payMatch) {
+          row.style.display = '';
+        } else {
+          row.style.display = 'none';
+        }
+      });
+    }
+
+    function toggleAllSenderStudents() {
+      const selectAll = document.getElementById('select-all-students').checked;
+      const checkboxes = document.querySelectorAll('.student-select-cb');
+      checkboxes.forEach(cb => {
+        if (cb.closest('tr').style.display !== 'none') {
+          cb.checked = selectAll;
+        }
+      });
+      updateSelectedCount();
+    }
+
+    function updateSelectedCount() {
+      const checkboxes = document.querySelectorAll('.student-select-cb:checked');
+      document.getElementById('selected-count-label').innerText = `선택된 인원수: ${checkboxes.length}명`;
+      updatePhonePreview();
+    }
+
+    function addManualRecipient() {
+      const number = prompt("직접 입력할 전화번호를 입력하세요 (예: 010-1234-5678):");
+      if (number) {
+        const name = prompt("이름을 입력하세요 (예: 이홍길):") || "직접입력";
+        const tbody = document.querySelector('#sender-student-table tbody');
+        const newRow = document.createElement('tr');
+        newRow.setAttribute('data-class', 'ALL');
+        newRow.setAttribute('data-pay', 'ALL');
+        newRow.innerHTML = `
+          <td><input type="checkbox" class="student-select-cb" checked value="MANUAL" data-name="${name}" data-unpaid="0" onchange="updateSelectedCount()"></td>
+          <td>${name} (${number})</td>
+          <td>직접 추가</td>
+          <td><span class="badge badge-info">외부 등록</span></td>
+        `;
+        tbody.appendChild(newRow);
+        updateSelectedCount();
+      }
+    }
+
+    // Placeholder replace and Phone Preview
+    function updatePhonePreview() {
+      const channel = document.getElementById('send-channel').value;
+      const title = document.getElementById('sms-title-input').value;
+      let body = document.getElementById('sms-body-input').value;
+      
+      const headerEl = document.getElementById('phone-preview-header');
+      const bubbleEl = document.getElementById('phone-bubble-content');
+
+      // Replace placeholders with the first selected student if any, or default
+      const selectedStudent = document.querySelector('.student-select-cb:checked');
+      let nameValue = "홍길동";
+      let unpaidValue = "250,000원";
+      let classTimeValue = "15:30";
+
+      if (selectedStudent) {
+        nameValue = selectedStudent.getAttribute('data-name');
+        const unpaid = parseInt(selectedStudent.getAttribute('data-unpaid')) || 0;
+        unpaidValue = unpaid > 0 ? `${unpaid.toLocaleString()}원` : "0원";
+      }
+
+      body = body.replace(/\[이름\]/g, nameValue);
+      body = body.replace(/\[미납금액\]/g, unpaidValue);
+      body = body.replace(/\[수강일\]/g, "매월 5일");
+
+      if (channel === 'Talk') {
+        headerEl.innerText = "알림톡 - 튜링음악학원";
+        bubbleEl.innerHTML = `<span style="color: var(--primary); font-weight: 700;">[알림톡 비즈니스]</span><br><strong style="font-size:0.9rem;">${title}</strong><br><br>${body}`;
+        bubbleEl.className = "bubble";
+      } else if (channel === 'SMS') {
+        headerEl.innerText = "문자 메시지";
+        bubbleEl.innerHTML = `<strong style="font-size:0.9rem;">${title}</strong><br><br>${body}`;
+        bubbleEl.className = "bubble sender-me";
+      } else {
+        headerEl.innerText = "Push 알림 알림창";
+        bubbleEl.innerHTML = `<i class="fa-solid fa-bell" style="color: var(--primary); margin-right: 5px;"></i> <strong>${title}</strong><br>${body.substring(0, 50)}...`;
+        bubbleEl.className = "bubble";
+      }
+    }
+
+    function insertTag(tag) {
+      const textarea = document.getElementById('sms-body-input');
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const text = textarea.value;
+      textarea.value = text.substring(0, start) + tag + text.substring(end);
+      textarea.focus();
+      textarea.selectionStart = textarea.selectionEnd = start + tag.length;
+      updatePhonePreview();
+    }
+
+    function applyTemplate(title, body) {
+      document.getElementById('sms-title-input').value = `[Turing] ${title}`;
+      document.getElementById('sms-body-input').value = body;
+      updatePhonePreview();
+    }
+
+    function switchTemplateTab(tab) {
+      const btnBox = document.getElementById('btn-template-box');
+      const btnRecent = document.getElementById('btn-template-recent');
+      const boxContent = document.getElementById('template-box-content');
+      const recentContent = document.getElementById('template-recent-content');
+
+      if (tab === 'box') {
+        btnBox.classList.add('active');
+        btnRecent.classList.remove('active');
+        boxContent.style.display = 'block';
+        recentContent.style.display = 'none';
+      } else {
+        btnBox.classList.remove('active');
+        btnRecent.classList.add('active');
+        boxContent.style.display = 'none';
+        recentContent.style.display = 'block';
+      }
+    }
+
+    function sendMockMessage() {
+      const selected = document.querySelectorAll('.student-select-cb:checked');
+      if (selected.length === 0) {
+        alert("⚠️ 수신 대상 원생을 최소 1명 선택해 주세요.");
+        return;
+      }
+      const channel = document.getElementById('send-channel').value;
+      alert(`🚀 발송 완료!\n\n선택된 ${selected.length}명 원생(및 학부모) 대상으로 [${channel}] 메시지가 정상 발송되었습니다.\n전송 결과는 [알림 발송 이력 내역] 탭에 즉시 누적됩니다.`);
+      
+      // Reset selections
+      document.getElementById('select-all-students').checked = false;
+      toggleAllSenderStudents();
+    }
+
+    // Switch tabs inside Settings
+    function switchSettingTab(tab) {
+      const tabs = ['auto', 'kiosk', 'tax'];
+      tabs.forEach(t => {
+        const btn = document.getElementById(`set-tab-${t}`);
+        const content = document.getElementById(`set-content-${t}`);
+        if (t === tab) {
+          btn.classList.add('active');
+          content.style.display = 'block';
+        } else {
+          btn.classList.remove('active');
+          content.style.display = 'none';
+        }
+      });
+    }
+
+    // Business Add Entity simulator
+    function addBusinessEntity() {
+      const bizNo = document.getElementById('biz-no').value;
+      const owner = document.getElementById('biz-owner').value;
+      const name = document.getElementById('biz-name').value;
+      const phone = document.getElementById('biz-phone').value;
+
+      if (!bizNo || !owner || !name) {
+        alert("⚠️ 사업자번호, 대표자명, 상호명은 필수 입력사항입니다.");
+        return;
+      }
+
+      const table = document.getElementById('tax-business-table').getElementsByTagName('tbody')[0];
+      const newRowIndex = table.rows.length + 1;
+      const row = table.insertRow();
+      row.innerHTML = `
+        <td>${newRowIndex}</td>
+        <td style="font-weight: 600; color:#fff;">${name}</td>
+        <td>${bizNo}</td>
+        <td>${owner}</td>
+        <td>${phone || '--'}</td>
+        <td>
+          <button class="btn btn-secondary btn-sm" onclick="alert('수정 패널 오픈')">정보수정</button>
+        </td>
+      `;
+
+      // Clear fields
+      document.getElementById('biz-no').value = '';
+      document.getElementById('biz-owner').value = '';
+      document.getElementById('biz-name').value = '';
+      document.getElementById('biz-address').value = '';
+      document.getElementById('biz-status').value = '';
+      document.getElementById('biz-category').value = '';
+      document.getElementById('biz-manager').value = '';
+      document.getElementById('biz-phone').value = '';
+      document.getElementById('biz-email').value = '';
+
+      alert("🏢 신규 가맹 사업자가 정상적으로 등록되었습니다.");
+    }
+
+    // Initial load updates
+    updatePhonePreview();
+  </script>
+</body>
+</html>
