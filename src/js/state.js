@@ -9,6 +9,7 @@ import { membersMethods } from './state/members.js';
 import { staffMethods } from './state/staff.js';
 import { authUsersMethods } from './state/authUsers.js';
 import { sessionsMethods } from './state/sessions.js';
+import { todayTaskMethods } from './state/todayTask.js';
 
 import { LocalStorageAdapter } from './state/adapters/localStorageAdapter.js';
 
@@ -289,6 +290,7 @@ Object.assign(StateStore.prototype, membersMethods);
 Object.assign(StateStore.prototype, staffMethods);
 Object.assign(StateStore.prototype, authUsersMethods);
 Object.assign(StateStore.prototype, sessionsMethods);
+Object.assign(StateStore.prototype, todayTaskMethods);
 
 // Export a single instance to be used globally
 export const stateStore = new StateStore();
