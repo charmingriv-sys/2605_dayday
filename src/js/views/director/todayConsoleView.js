@@ -27,6 +27,47 @@ export function renderTodayConsole(container) {
         return date;
     };
 
+    const decomposeDate = (date) => {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        const dateStr = `${y}-${m}-${d}`;
+
+        const rawHours = date.getHours();
+        const ampm = rawHours >= 12 ? 'PM' : 'AM';
+        let hour = rawHours % 12;
+        if (hour === 0) hour = 12;
+        
+        let min = 5 * Math.round(date.getMinutes() / 5);
+        if (min === 60) {
+            const adjustedDate = new Date(date.getTime() + 60 * 60 * 1000);
+            adjustedDate.setMinutes(0, 0, 0);
+            return decomposeDate(adjustedDate);
+        }
+        
+        const minStr = String(min).padStart(2, '0');
+        return {
+            dateStr,
+            ampm,
+            hourStr: String(hour),
+            minStr
+        };
+    };
+
+    const composeISOString = (dateVal, ampmVal, hourVal, minuteVal) => {
+        if (!dateVal) return new Date().toISOString();
+        const [year, month, day] = dateVal.split('-').map(Number);
+        let hour = Number(hourVal);
+        if (ampmVal === 'PM' && hour < 12) {
+            hour += 12;
+        } else if (ampmVal === 'AM' && hour === 12) {
+            hour = 0;
+        }
+        const min = Number(minuteVal);
+        const dateObj = new Date(year, month - 1, day, hour, min, 0, 0);
+        return dateObj.toISOString();
+    };
+
     const render = () => {
         // Fetch active tasks using store public API
         const activeTasks = stateStore.getActiveTodayTasks(new Date());
@@ -63,11 +104,12 @@ export function renderTodayConsole(container) {
         };
 
         const nextHourDate = getNextHourDate();
-        const defaultStartVal = getLocalISOString(nextHourDate);
-        const defaultEndVal = getLocalISOString(new Date(nextHourDate.getTime() + 60 * 60 * 1000));
+        const startComponents = decomposeDate(nextHourDate);
+        const endComponents = decomposeDate(new Date(nextHourDate.getTime() + 60 * 60 * 1000));
         
+        const defaultEndValISO = composeISOString(endComponents.dateStr, endComponents.ampm, endComponents.hourStr, endComponents.minStr);
         if (!lastAutoEndTime) {
-            lastAutoEndTime = defaultEndVal;
+            lastAutoEndTime = defaultEndValISO;
         }
 
         container.innerHTML = `
@@ -106,7 +148,7 @@ export function renderTodayConsole(container) {
                     </div>
                     
                     <!-- Row 2: Category & Times & Button -->
-                    <div style="display: grid; grid-template-columns: 1fr 1.2fr 1.2fr auto; gap: 12px; align-items: end;" class="task-form-grid">
+                    <div style="display: grid; grid-template-columns: 1.2fr 2fr 2fr auto; gap: 12px; align-items: end;" class="task-form-grid">
                         <div style="display: flex; flex-direction: column; gap: 6px;">
                             <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">구분</label>
                             <select id="task-category-input" style="width: 100%; height: 38px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; cursor: pointer; outline: none;">
@@ -118,11 +160,43 @@ export function renderTodayConsole(container) {
                         </div>
                         <div style="display: flex; flex-direction: column; gap: 6px;">
                             <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">시작 시각</label>
-                            <input type="datetime-local" id="task-start-input" value="${defaultStartVal}" required style="width: 100%; height: 38px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; outline: none;">
+                            <div style="display: flex; gap: 4px;">
+                                <input type="date" id="task-start-date-input" value="${startComponents.dateStr}" required style="width: 120px; height: 38px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; outline: none;">
+                                <select id="task-start-ampm-input" style="height: 38px; padding: 0 4px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; cursor: pointer; outline: none;">
+                                    <option value="AM" ${startComponents.ampm === 'AM' ? 'selected' : ''}>오전</option>
+                                    <option value="PM" ${startComponents.ampm === 'PM' ? 'selected' : ''}>오후</option>
+                                </select>
+                                <select id="task-start-hour-input" style="height: 38px; padding: 0 4px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; cursor: pointer; outline: none;">
+                                    ${Array.from({ length: 12 }, (_, i) => i + 1).map(h => `
+                                        <option value="${h}" ${startComponents.hourStr === String(h) ? 'selected' : ''}>${h}시</option>
+                                    `).join('')}
+                                </select>
+                                <select id="task-start-minute-input" style="height: 38px; padding: 0 4px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; cursor: pointer; outline: none;">
+                                    ${Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0')).map(m => `
+                                        <option value="${m}" ${startComponents.minStr === m ? 'selected' : ''}>${m}분</option>
+                                    `).join('')}
+                                </select>
+                            </div>
                         </div>
                         <div style="display: flex; flex-direction: column; gap: 6px;">
                             <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">종료 시각</label>
-                            <input type="datetime-local" id="task-end-input" value="${defaultEndVal}" required style="width: 100%; height: 38px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; outline: none;">
+                            <div style="display: flex; gap: 4px;">
+                                <input type="date" id="task-end-date-input" value="${endComponents.dateStr}" required style="width: 120px; height: 38px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; outline: none;">
+                                <select id="task-end-ampm-input" style="height: 38px; padding: 0 4px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; cursor: pointer; outline: none;">
+                                    <option value="AM" ${endComponents.ampm === 'AM' ? 'selected' : ''}>오전</option>
+                                    <option value="PM" ${endComponents.ampm === 'PM' ? 'selected' : ''}>오후</option>
+                                </select>
+                                <select id="task-end-hour-input" style="height: 38px; padding: 0 4px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; cursor: pointer; outline: none;">
+                                    ${Array.from({ length: 12 }, (_, i) => i + 1).map(h => `
+                                        <option value="${h}" ${endComponents.hourStr === String(h) ? 'selected' : ''}>${h}시</option>
+                                    `).join('')}
+                                </select>
+                                <select id="task-end-minute-input" style="height: 38px; padding: 0 4px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; cursor: pointer; outline: none;">
+                                    ${Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0')).map(m => `
+                                        <option value="${m}" ${endComponents.minStr === m ? 'selected' : ''}>${m}분</option>
+                                    `).join('')}
+                                </select>
+                            </div>
                         </div>
                         <button type="submit" class="btn btn-primary" style="height: 38px; padding: 0 24px; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; margin: 0;">추가</button>
                     </div>
@@ -225,19 +299,54 @@ export function renderTodayConsole(container) {
     // Shared Event Handler for event delegation
     const handleEvents = (e) => {
         // Automatic end-time synchronization when start time is updated
-        if (e.type === 'change' && e.target && e.target.id === 'task-start-input') {
-            const startInput = container.querySelector('#task-start-input');
-            const endInput = container.querySelector('#task-end-input');
-            if (startInput && endInput) {
-                const currentEnd = endInput.value;
-                if (!currentEnd || currentEnd === lastAutoEndTime) {
+        if (e.type === 'change' && e.target && (
+            e.target.id === 'task-start-date-input' ||
+            e.target.id === 'task-start-ampm-input' ||
+            e.target.id === 'task-start-hour-input' ||
+            e.target.id === 'task-start-minute-input'
+        )) {
+            const startDateInput = container.querySelector('#task-start-date-input');
+            const startAmpmInput = container.querySelector('#task-start-ampm-input');
+            const startHourInput = container.querySelector('#task-start-hour-input');
+            const startMinInput = container.querySelector('#task-start-minute-input');
+
+            const endDateInput = container.querySelector('#task-end-date-input');
+            const endAmpmInput = container.querySelector('#task-end-ampm-input');
+            const endHourInput = container.querySelector('#task-end-hour-input');
+            const endMinInput = container.querySelector('#task-end-minute-input');
+
+            if (startDateInput && endDateInput) {
+                const currentEndISO = composeISOString(
+                    endDateInput.value,
+                    endAmpmInput ? endAmpmInput.value : 'AM',
+                    endHourInput ? endHourInput.value : '12',
+                    endMinInput ? endMinInput.value : '00'
+                );
+
+                if (!lastAutoEndTime || currentEndISO === lastAutoEndTime) {
                     try {
-                        const startDate = new Date(startInput.value);
+                        const startISO = composeISOString(
+                            startDateInput.value,
+                            startAmpmInput ? startAmpmInput.value : 'AM',
+                            startHourInput ? startHourInput.value : '12',
+                            startMinInput ? startMinInput.value : '00'
+                        );
+                        const startDate = new Date(startISO);
                         if (!isNaN(startDate.getTime())) {
                             const newEndDate = new Date(startDate.getTime() + 60 * 60 * 1000);
-                            const newEndVal = getLocalISOString(newEndDate);
-                            endInput.value = newEndVal;
-                            lastAutoEndTime = newEndVal;
+                            const newEndComponents = decomposeDate(newEndDate);
+                            
+                            if (endDateInput) endDateInput.value = newEndComponents.dateStr;
+                            if (endAmpmInput) endAmpmInput.value = newEndComponents.ampm;
+                            if (endHourInput) endHourInput.value = newEndComponents.hourStr;
+                            if (endMinInput) endMinInput.value = newEndComponents.minStr;
+
+                            lastAutoEndTime = composeISOString(
+                                newEndComponents.dateStr,
+                                newEndComponents.ampm,
+                                newEndComponents.hourStr,
+                                newEndComponents.minStr
+                            );
                         }
                     } catch (err) {
                         // ignore invalid dates
@@ -252,8 +361,16 @@ export function renderTodayConsole(container) {
             e.preventDefault();
             const contentInput = container.querySelector('#task-content-input');
             const categoryInput = container.querySelector('#task-category-input');
-            const startInput = container.querySelector('#task-start-input');
-            const endInput = container.querySelector('#task-end-input');
+
+            const startDateInput = container.querySelector('#task-start-date-input');
+            const startAmpmInput = container.querySelector('#task-start-ampm-input');
+            const startHourInput = container.querySelector('#task-start-hour-input');
+            const startMinInput = container.querySelector('#task-start-minute-input');
+
+            const endDateInput = container.querySelector('#task-end-date-input');
+            const endAmpmInput = container.querySelector('#task-end-ampm-input');
+            const endHourInput = container.querySelector('#task-end-hour-input');
+            const endMinInput = container.querySelector('#task-end-minute-input');
 
             const content = contentInput.value.trim();
             if (!content) return;
@@ -272,8 +389,18 @@ export function renderTodayConsole(container) {
             else if (category === 'check') priority = 'urgent';
             else if (category === 'closing') priority = 'closing';
 
-            const startAt = startInput.value ? new Date(startInput.value).toISOString() : new Date().toISOString();
-            const endAt = endInput.value ? new Date(endInput.value).toISOString() : new Date().toISOString();
+            const startAt = composeISOString(
+                startDateInput ? startDateInput.value : '',
+                startAmpmInput ? startAmpmInput.value : 'AM',
+                startHourInput ? startHourInput.value : '12',
+                startMinInput ? startMinInput.value : '00'
+            );
+            const endAt = composeISOString(
+                endDateInput ? endDateInput.value : '',
+                endAmpmInput ? endAmpmInput.value : 'AM',
+                endHourInput ? endHourInput.value : '12',
+                endMinInput ? endMinInput.value : '00'
+            );
             const dueAt = startAt; // For sorting and selector backward compatibility
 
             stateStore.addTodayTask({

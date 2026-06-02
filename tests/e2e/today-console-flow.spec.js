@@ -21,24 +21,45 @@ test.describe('Director Today Console Flow Checks', () => {
     await page.fill('#task-content-input', content);
     await page.selectOption('#task-category-input', 'check'); // maps to priority 'urgent' (확인필요)
     
-    // Check start and end time are pre-populated
-    const startInput = page.locator('#task-start-input');
-    const endInput = page.locator('#task-end-input');
-    await expect(startInput).not.toHaveValue('');
-    await expect(endInput).not.toHaveValue('');
+    // 2. Verify start minute select only contains 5-minute increments
+    const minOptions = await page.locator('#task-start-minute-input option').allTextContents();
+    expect(minOptions.length).toBe(12);
+    for (let i = 0; i < 12; i++) {
+      const valStr = String(i * 5).padStart(2, '0');
+      expect(minOptions[i]).toBe(`${valStr}분`);
+    }
 
-    // Change start time explicitly to "2026-06-03T10:00"
-    await startInput.fill('2026-06-03T10:00');
-    // End time should auto-update to "2026-06-03T11:00" (start + 1 hour)
-    await expect(endInput).toHaveValue('2026-06-03T11:00');
+    // 3. Verify start and end time are pre-populated
+    await expect(page.locator('#task-start-date-input')).not.toHaveValue('');
+    await expect(page.locator('#task-start-ampm-input')).not.toHaveValue('');
+    await expect(page.locator('#task-start-hour-input')).not.toHaveValue('');
+    await expect(page.locator('#task-start-minute-input')).not.toHaveValue('');
 
-    // Manually change end time to "2026-06-03T15:00"
-    await endInput.fill('2026-06-03T15:00');
+    // 4. Change start time explicitly to 2026-06-03, AM 10:00
+    await page.fill('#task-start-date-input', '2026-06-03');
+    await page.selectOption('#task-start-ampm-input', 'AM');
+    await page.selectOption('#task-start-hour-input', '10');
+    await page.selectOption('#task-start-minute-input', '00');
 
-    // Change start time again to "2026-06-03T12:00"
-    await startInput.fill('2026-06-03T12:00');
-    // End time should NOT be overwritten (remains "2026-06-03T15:00" because it was customized)
-    await expect(endInput).toHaveValue('2026-06-03T15:00');
+    // Verify end time auto-updates to 2026-06-03, AM 11:00 (+1 hour)
+    await expect(page.locator('#task-end-date-input')).toHaveValue('2026-06-03');
+    await expect(page.locator('#task-end-ampm-input')).toHaveValue('AM');
+    await expect(page.locator('#task-end-hour-input')).toHaveValue('11');
+    await expect(page.locator('#task-end-minute-input')).toHaveValue('00');
+
+    // 5. Manually change end time to 2026-06-03, PM 03:00 (15:00)
+    await page.selectOption('#task-end-ampm-input', 'PM');
+    await page.selectOption('#task-end-hour-input', '3');
+    await page.selectOption('#task-end-minute-input', '00');
+
+    // 6. Change start time hour again to 12
+    await page.selectOption('#task-start-hour-input', '12');
+
+    // Verify end time is NOT overwritten (remains PM 03:00)
+    await expect(page.locator('#task-end-date-input')).toHaveValue('2026-06-03');
+    await expect(page.locator('#task-end-ampm-input')).toHaveValue('PM');
+    await expect(page.locator('#task-end-hour-input')).toHaveValue('3');
+    await expect(page.locator('#task-end-minute-input')).toHaveValue('00');
 
     // Submit the form
     await page.click('#form-add-task button[type="submit"]');
@@ -54,6 +75,9 @@ test.describe('Director Today Console Flow Checks', () => {
     }, taskTitle);
     expect(taskInStore).toBeDefined();
     expect(taskInStore.description).toBe(content);
+    expect(taskInStore.startAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    expect(taskInStore.endAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    expect(taskInStore.dueAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
 
     // Assert category badge "확인필요" is visible on the card
     const badgeCheck = page.locator(`.glass-card:has-text("${taskTitle}") .badge`);
