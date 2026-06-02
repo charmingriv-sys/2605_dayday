@@ -68,6 +68,177 @@ export function renderTodayConsole(container) {
         return dateObj.toISOString();
     };
 
+    const loadEventToForm = (eventId, eventSource) => {
+        // Query details directly from stateStore
+        let foundEvent = null;
+        if (eventSource === 'todayTask') {
+            const tasks = stateStore.getTodayTasks();
+            const task = tasks.find(t => t.id === eventId);
+            if (task) {
+                foundEvent = {
+                    id: task.id,
+                    source: 'todayTask',
+                    title: task.title,
+                    description: task.description || '',
+                    rawContent: task.rawContent || task.description || task.title,
+                    startsAt: task.startAt,
+                    endsAt: task.endAt,
+                    category: task.category || 'memo'
+                };
+            }
+        } else if (eventSource === 'mockCalendar') {
+            const events = stateStore.getMockCalendarEvents();
+            const event = events.find(e => e.id === eventId);
+            if (event) {
+                foundEvent = {
+                    id: event.id,
+                    source: 'mockCalendar',
+                    title: event.title,
+                    description: event.description || '',
+                    rawContent: `${event.title}\n${event.description || ''}`.trim(),
+                    startsAt: event.startsAt,
+                    endsAt: event.endsAt,
+                    category: 'memo'
+                };
+            }
+        }
+
+        if (foundEvent) {
+            const contentInput = container.querySelector('#task-content-input');
+            const categoryInput = container.querySelector('#task-category-input');
+
+            const startDateInput = container.querySelector('#task-start-date-input');
+            const startAmpmInput = container.querySelector('#task-start-ampm-input');
+            const startHourInput = container.querySelector('#task-start-hour-input');
+            const startMinInput = container.querySelector('#task-start-minute-input');
+
+            const endDateInput = container.querySelector('#task-end-date-input');
+            const endAmpmInput = container.querySelector('#task-end-ampm-input');
+            const endHourInput = container.querySelector('#task-end-hour-input');
+            const endMinInput = container.querySelector('#task-end-minute-input');
+
+            try {
+                const startDecomp = decomposeDate(new Date(foundEvent.startsAt));
+                const endDecomp = decomposeDate(new Date(foundEvent.endsAt));
+
+                if (contentInput) contentInput.value = foundEvent.rawContent || '';
+                if (categoryInput) categoryInput.value = foundEvent.category || 'memo';
+
+                if (startDateInput) startDateInput.value = startDecomp.dateStr;
+                if (startAmpmInput) startAmpmInput.value = startDecomp.ampm;
+                if (startHourInput) startHourInput.value = startDecomp.hourStr;
+                if (startMinInput) startMinInput.value = startDecomp.minStr;
+
+                if (endDateInput) endDateInput.value = endDecomp.dateStr;
+                if (endAmpmInput) endAmpmInput.value = endDecomp.ampm;
+                if (endHourInput) endHourInput.value = endDecomp.hourStr;
+                if (endMinInput) endMinInput.value = endDecomp.minStr;
+
+                // Align lastAutoEndTime to loaded endsAt so subsequent start time changes auto-synchronize
+                lastAutoEndTime = new Date(foundEvent.endsAt).toISOString();
+            } catch (err) {
+                // ignore invalid dates in event
+            }
+        }
+    };
+
+    const showDayEventsPopover = (dateStr) => {
+        const popover = container.querySelector('#calendar-popover-container');
+        const title = container.querySelector('#calendar-popover-title');
+        const body = container.querySelector('#calendar-popover-body');
+        if (!popover || !body || !title) return;
+
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const cellStart = new Date(y, m - 1, d, 0, 0, 0, 0);
+        const cellEnd = new Date(y, m - 1, d, 23, 59, 59, 999);
+
+        // Fetch events for this specific date range
+        const dayEvents = stateStore.getCalendarEventsForRange
+            ? stateStore.getCalendarEventsForRange(cellStart, cellEnd)
+            : (stateStore.getTodayCalendarEvents ? stateStore.getTodayCalendarEvents(new Date()) : []);
+
+        if (dayEvents.length === 0) {
+            popover.style.display = 'none';
+            return;
+        }
+
+        title.textContent = `${y}년 ${m}월 ${d}일 일정 목록`;
+
+        const eventsHtml = dayEvents.map(event => {
+            const isDone = event.status === 'done';
+            let chipBg = 'rgba(9, 132, 227, 0.12)';
+            let chipBorder = '1px solid rgba(9, 132, 227, 0.35)';
+            let accentColor = 'var(--primary)';
+            let prefix = '';
+            let sourceBadge = '';
+
+            if (isDone) {
+                chipBg = 'rgba(100, 116, 139, 0.06)';
+                chipBorder = '1px solid rgba(100, 116, 139, 0.15)';
+                accentColor = 'var(--text-muted)';
+            } else if (event.source === 'mockCalendar') {
+                chipBg = 'rgba(241, 196, 15, 0.08)';
+                chipBorder = '1px solid rgba(241, 196, 15, 0.25)';
+                accentColor = '#f1c40f';
+                const providerLabel = event.provider === 'google' ? 'Google' : (event.provider || 'mock');
+                prefix = `<span style="font-size: 0.58rem; color: #f1c40f; font-weight: 700; margin-right: 3px; background: rgba(241, 196, 15, 0.15); padding: 1px 3px; border-radius: 2px;">${providerLabel}</span>`;
+                sourceBadge = `<span style="font-size: 0.65rem; background: rgba(241,196,15,0.15); color: #f1c40f; padding: 2px 6px; border-radius: 4px; font-weight: 700;">로컬 캘린더</span>`;
+            } else {
+                sourceBadge = `<span style="font-size: 0.65rem; background: rgba(9,132,227,0.12); color: var(--primary); padding: 2px 6px; border-radius: 4px; font-weight: 700;">운영 업무</span>`;
+                if (event.category === 'check' || event.category === 'urgent') {
+                    chipBg = 'rgba(214, 48, 49, 0.08)';
+                    chipBorder = '1px solid rgba(214, 48, 49, 0.25)';
+                    accentColor = 'var(--danger)';
+                } else if (event.category === 'consult' || event.category === 'today') {
+                    chipBg = 'rgba(0, 184, 148, 0.08)';
+                    chipBorder = '1px solid rgba(0, 184, 148, 0.25)';
+                    accentColor = 'var(--success)';
+                } else if (event.category === 'closing') {
+                    chipBg = 'rgba(165, 94, 234, 0.08)';
+                    chipBorder = '1px solid rgba(165, 94, 234, 0.25)';
+                    accentColor = '#a55eea';
+                } else {
+                    chipBg = 'rgba(9, 132, 227, 0.06)';
+                    chipBorder = '1px solid rgba(9, 132, 227, 0.2)';
+                    accentColor = 'var(--primary)';
+                }
+            }
+
+            const formatHM = (isoStr) => {
+                if (!isoStr) return '';
+                try {
+                    const date = new Date(isoStr);
+                    const h = String(date.getHours()).padStart(2, '0');
+                    const min = String(date.getMinutes()).padStart(2, '0');
+                    return `${h}:${min}`;
+                } catch (e) {
+                    return '';
+                }
+            };
+
+            const timeRange = `${formatHM(event.startsAt)} ~ ${formatHM(event.endsAt)}`;
+            const textStyle = isDone ? 'text-decoration: line-through; color: var(--text-muted); opacity: 0.6;' : 'color: var(--text-main);';
+
+            return `
+                <div class="popover-event-item" data-id="${escapeHtml(event.id)}" data-source="${escapeHtml(event.source)}" style="padding: 10px; border-radius: 6px; background: ${chipBg}; border: ${chipBorder}; border-left: 4px solid ${accentColor}; cursor: pointer; user-select: none; display: flex; flex-direction: column; gap: 4px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                        <div style="font-weight: 700; font-size: 0.82rem; ${textStyle} overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            ${prefix}${escapeHtml(event.title)}
+                        </div>
+                        ${sourceBadge}
+                    </div>
+                    <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.72rem; color: var(--text-muted);">
+                        <span><i class="fa-regular fa-clock" style="margin-right: 4px;"></i>${timeRange}</span>
+                        ${event.status === 'done' ? '<span style="color: var(--success); font-weight: 700;">완료</span>' : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        body.innerHTML = eventsHtml;
+        popover.style.display = 'flex';
+    };
+
     const render = () => {
         // Fetch active tasks using store public API
         const activeTasks = stateStore.getActiveTodayTasks(new Date());
@@ -76,6 +247,167 @@ export function renderTodayConsole(container) {
         const urgentCount = activeTasks.filter(t => t.priority === 'urgent').length;
         const totalCount = activeTasks.length + doneTasks.length;
         const doneCount = doneTasks.length;
+
+        // Calculate Month Calendar Grid Days (Phase 8C-3D-Repair-A)
+        const viewDate = new Date();
+        const year = viewDate.getFullYear();
+        const month = viewDate.getMonth(); // 0-indexed
+
+        // Calculate variable weeks grid (35 or 42 cells depending on the month layout)
+        const firstDayOfMonth = new Date(year, month, 1);
+        const startDayOfWeek = firstDayOfMonth.getDay();
+        const lastDayOfMonth = new Date(year, month + 1, 0);
+        const daysInMonth = lastDayOfMonth.getDate();
+        const numWeeks = Math.ceil((startDayOfWeek + daysInMonth) / 7);
+        const totalCells = numWeeks * 7;
+
+        const gridStart = new Date(year, month, 1 - startDayOfWeek, 0, 0, 0, 0);
+        const gridEnd = new Date(gridStart.getTime() + (totalCells - 1) * 24 * 60 * 60 * 1000);
+        gridEnd.setHours(23, 59, 59, 999);
+
+        // Fetch events for this range
+        const calendarEvents = stateStore.getCalendarEventsForRange
+            ? stateStore.getCalendarEventsForRange(gridStart, gridEnd)
+            : (stateStore.getTodayCalendarEvents ? stateStore.getTodayCalendarEvents(new Date()) : []);
+
+        const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+        const daysOfWeekHtml = dayNames.map(name => `
+            <div style="text-align: center; font-size: 0.7rem; font-weight: 700; color: var(--text-muted); padding: 4px 0;">${name}</div>
+        `).join('');
+
+        const today = new Date();
+        const todayY = today.getFullYear();
+        const todayM = today.getMonth();
+        const todayD = today.getDate();
+
+        const cellsHtml = [];
+        for (let i = 0; i < totalCells; i++) {
+            const cellDate = new Date(gridStart.getTime() + i * 24 * 60 * 60 * 1000);
+            const cellY = cellDate.getFullYear();
+            const cellM = cellDate.getMonth();
+            const cellD = cellDate.getDate();
+
+            const isToday = cellY === todayY && cellM === todayM && cellD === todayD;
+            const isCurrentMonth = cellM === month;
+
+            // Filter events for this cell date (range overlap: cell starts at cellStart and ends at cellEnd)
+            const cellStart = new Date(cellY, cellM, cellD, 0, 0, 0, 0).getTime();
+            const cellEnd = new Date(cellY, cellM, cellD, 23, 59, 59, 999).getTime();
+
+            const dayEvents = calendarEvents.filter(event => {
+                try {
+                    const eventStart = new Date(event.startsAt).getTime();
+                    const eventEnd = new Date(event.endsAt).getTime();
+                    if (isNaN(eventStart) || isNaN(eventEnd)) return false;
+                    return eventStart <= cellEnd && eventEnd >= cellStart;
+                } catch (err) {
+                    return false;
+                }
+            });
+
+            const maxVisibleEvents = 2;
+            const visibleEvents = dayEvents.slice(0, maxVisibleEvents);
+            const hiddenCount = dayEvents.length - maxVisibleEvents;
+
+            const eventsHtml = visibleEvents.map(event => {
+                const isDone = event.status === 'done';
+                let chipBg = 'rgba(9, 132, 227, 0.12)';
+                let chipBorder = '1px solid rgba(9, 132, 227, 0.35)';
+                let accentColor = 'var(--primary)';
+                let prefix = '';
+
+                if (isDone) {
+                    chipBg = 'rgba(255, 255, 255, 0.02)';
+                    chipBorder = '1px solid rgba(255, 255, 255, 0.08)';
+                    accentColor = 'var(--text-muted)';
+                } else if (event.source === 'mockCalendar') {
+                    chipBg = 'rgba(241, 196, 15, 0.12)';
+                    chipBorder = '1px solid rgba(241, 196, 15, 0.35)';
+                    accentColor = '#f1c40f';
+                    const providerLabel = event.provider === 'google' ? 'Google' : (event.provider || 'mock');
+                    prefix = `<span style="font-size: 0.58rem; color: #f1c40f; font-weight: 700; margin-right: 3px; background: rgba(241, 196, 15, 0.15); padding: 1px 3px; border-radius: 2px;">${providerLabel}</span>`;
+                } else {
+                    if (event.category === 'check' || event.category === 'urgent') {
+                        chipBg = 'rgba(235, 94, 85, 0.12)';
+                        chipBorder = '1px solid rgba(235, 94, 85, 0.35)';
+                        accentColor = 'var(--danger)';
+                    } else if (event.category === 'consult' || event.category === 'today') {
+                        chipBg = 'rgba(46, 204, 113, 0.12)';
+                        chipBorder = '1px solid rgba(46, 204, 113, 0.35)';
+                        accentColor = 'var(--success)';
+                    } else if (event.category === 'closing') {
+                        chipBg = 'rgba(165, 94, 234, 0.12)';
+                        chipBorder = '1px solid rgba(165, 94, 234, 0.35)';
+                        accentColor = '#a55eea';
+                    }
+                }
+
+                // Determine multi-day connection styles
+                let borderRadius = '3px';
+                let borderLeftStyle = `2px solid ${accentColor}`;
+                
+                try {
+                    const eStart = new Date(event.startsAt);
+                    const eEnd = new Date(event.endsAt);
+                    if (eStart.toDateString() !== eEnd.toDateString()) {
+                        const isFirst = cellDate.toDateString() === eStart.toDateString();
+                        const isLast = cellDate.toDateString() === eEnd.toDateString();
+                        if (isFirst) {
+                            borderRadius = '3px 0 0 3px';
+                            borderLeftStyle = `2px solid ${accentColor}`;
+                        } else if (isLast) {
+                            borderRadius = '0 3px 3px 0';
+                            borderLeftStyle = 'none';
+                        } else {
+                            borderRadius = '0';
+                            borderLeftStyle = 'none';
+                        }
+                    }
+                } catch (err) {
+                    // fallback
+                }
+
+                const textStyle = isDone ? 'text-decoration: line-through; color: var(--text-muted); opacity: 0.6;' : 'color: var(--text-main);';
+
+                return `
+                    <div class="calendar-event-chip" data-id="${escapeHtml(event.id)}" data-source="${escapeHtml(event.source)}" style="margin-top: 3px; padding: 2px 4px; border-radius: ${borderRadius}; background: ${chipBg}; border: ${chipBorder}; border-left: ${borderLeftStyle}; font-size: 0.65rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; user-select: none; display: flex; align-items: center; justify-content: flex-start; max-width: 100%;" title="${escapeHtml(event.title)} (${escapeHtml(event.description || '상세 없음')})">
+                        ${prefix}
+                        <span style="${textStyle} cursor: pointer; user-select: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(event.title)}</span>
+                    </div>
+                `;
+            }).join('');
+
+            const moreHtml = hiddenCount > 0 
+                ? `<div style="font-size: 0.58rem; color: var(--text-muted); font-weight: 700; margin-top: 2px; padding-left: 4px;">+${hiddenCount}개</div>` 
+                : '';
+
+            let cellStyle = 'min-height: 70px; padding: 4px; display: flex; flex-direction: column; justify-content: flex-start; position: relative; border-bottom: 1px solid rgba(255,255,255,0.03); border-right: 1px solid rgba(255,255,255,0.03); overflow: hidden; cursor: pointer; user-select: none;';
+            let dayNumStyle = 'font-size: 0.72rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%;';
+
+            if (!isCurrentMonth) {
+                cellStyle += ' opacity: 0.35; background: rgba(0, 0, 0, 0.1);';
+                dayNumStyle += ' color: var(--text-muted);';
+            } else {
+                dayNumStyle += ' color: var(--text-main);';
+            }
+
+            if (isToday) {
+                cellStyle += ' background: rgba(9, 132, 227, 0.04);';
+                dayNumStyle += ' background: var(--primary); color: #fff; box-shadow: 0 0 8px var(--primary);';
+            }
+
+            cellsHtml.push(`
+                <div class="calendar-day-cell" style="${cellStyle}" data-date="${cellY}-${String(cellM+1).padStart(2,'0')}-${String(cellD).padStart(2,'0')}">
+                    <div>
+                        <span style="${dayNumStyle}">${cellD}</span>
+                    </div>
+                    <div style="flex-grow: 1; overflow: hidden; display: flex; flex-direction: column;">
+                        ${eventsHtml}
+                        ${moreHtml}
+                    </div>
+                </div>
+            `);
+        }
 
         // Custom Priority badge helper (mapped to Categories for Phase 8C-3A)
         const getPriorityBadge = (priority) => {
@@ -115,6 +447,16 @@ export function renderTodayConsole(container) {
         }
 
         container.innerHTML = `
+            <style>
+                .popover-event-item {
+                    transition: all 0.2s ease-in-out;
+                }
+                .popover-event-item:hover {
+                    filter: brightness(0.96) contrast(1.02);
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 12px rgba(9, 132, 227, 0.08);
+                }
+            </style>
             <!-- Header Summary Card (Rich Glassmorphism UI) -->
             <div class="glass-card" style="padding: 1.8rem; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
                 <div style="display: flex; flex-direction: column; gap: 6px;">
@@ -141,7 +483,7 @@ export function renderTodayConsole(container) {
             </div>
 
             <!-- Main Grid Layout (Parallel Columns: Form & Calendar) -->
-            <div class="today-console-workspace" style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px; align-items: start; margin-bottom: 24px;">
+            <div class="today-console-workspace" style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 24px; align-items: start; margin-bottom: 24px;">
                 <!-- Left Column: Manual Task Form Card -->
                 <div class="glass-card" style="padding: 1.5rem; display: flex; flex-direction: column; height: 100%;">
                     <h3 style="font-size: 1.05rem; font-weight: 700; margin: 0 0 1.2rem 0; display: flex; align-items: center; gap: 8px;">
@@ -215,39 +557,53 @@ export function renderTodayConsole(container) {
                     </form>
                 </div>
 
-                <!-- Right Column: Calendar Timeline Skeleton Section -->
-                <div class="glass-card" style="padding: 1.8rem; min-height: 400px; display: flex; flex-direction: column;" id="calendar-timeline-section">
-                    <h3 style="font-size: 1.1rem; font-weight: 700; margin: 0 0 1.5rem 0; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                <!-- Right Column: Calendar Monthly Grid Section -->
+                <div class="glass-card" style="padding: 1.5rem; min-height: 450px; display: flex; flex-direction: column;" id="calendar-timeline-section">
+                    <h3 style="font-size: 1.05rem; font-weight: 700; margin: 0 0 1rem 0; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                         <span style="display: flex; align-items: center; gap: 8px;">
                             <i class="fa-regular fa-calendar-days" style="color: var(--primary);"></i>
                             오늘 일정
                         </span>
-                        <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">${new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}</span>
+                        <span style="font-size: 0.85rem; font-weight: 700; color: var(--text-main);">${year}년 ${month + 1}월</span>
                     </h3>
 
-                    <!-- Calendar hours timeline skeleton -->
-                    <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 0; position: relative;">
-                        ${
-                            // Time blocks from 09:00 to 21:00
-                            Array.from({ length: 13 }, (_, i) => {
-                                const hour = i + 9;
-                                const timeStr = `${String(hour).padStart(2, '0')}:00`;
-                                return `
-                                    <div style="display: flex; align-items: flex-start; min-height: 45px; border-top: 1px dashed rgba(255, 255, 255, 0.05); padding-top: 6px; position: relative;" class="timeline-row">
-                                        <div style="width: 50px; font-size: 0.72rem; color: var(--text-muted); font-weight: 600; line-height: 1;" class="timeline-time">${timeStr}</div>
-                                        <div style="flex-grow: 1; min-height: 38px; position: relative;" class="timeline-slot"></div>
-                                    </div>
-                                `;
-                            }).join('')
-                        }
-                        
+                    <div style="flex-grow: 1; display: flex; flex-direction: column; position: relative;">
+                        <!-- Days of Week Header Grid -->
+                        <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 0; border-bottom: 1px solid rgba(255,255,255,0.05); margin-bottom: 4px;" id="calendar-days-header">
+                            ${daysOfWeekHtml}
+                        </div>
+
+                        <!-- Days Dates Grid -->
+                        <div style="display: grid; grid-template-columns: repeat(7, 1fr); grid-template-rows: repeat(${numWeeks}, 1fr); gap: 0; flex-grow: 1; border-top: 1px solid rgba(255,255,255,0.03); border-left: 1px solid rgba(255,255,255,0.03);" id="calendar-days-grid">
+                            ${cellsHtml.join('')}
+                        </div>
+
                         <!-- Overlay message for pending integrations -->
-                        <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(1.5px); text-align: center; padding: 24px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.03);" id="calendar-skeleton-overlay">
-                            <div style="width: 48px; height: 48px; border-radius: 50%; background: rgba(9, 132, 227, 0.08); display: flex; align-items: center; justify-content: center; font-size: 1.25rem; color: var(--primary); margin-bottom: 12px;">
-                                <i class="fa-solid fa-link-slash"></i>
+                        ${
+                            calendarEvents.length === 0
+                                ? `
+                                <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(1.5px); text-align: center; padding: 24px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.03);" id="calendar-skeleton-overlay">
+                                    <div style="width: 48px; height: 48px; border-radius: 50%; background: rgba(9, 132, 227, 0.08); display: flex; align-items: center; justify-content: center; font-size: 1.25rem; color: var(--primary); margin-bottom: 12px;">
+                                        <i class="fa-solid fa-link-slash"></i>
+                                    </div>
+                                    <h4 style="margin: 0 0 6px 0; font-size: 0.92rem; font-weight: 700; color: var(--text-main);">캘린더 일정 연동 대기</h4>
+                                    <p style="margin: 0; font-size: 0.78rem; color: var(--text-muted); line-height: 1.4;">이번 달 등록된 일정이 없습니다.</p>
+                                </div>
+                                `
+                                : ''
+                        }
+
+                        <!-- Hidden Day Events Popover Modal (Phase 8C-3D-Repair-E) -->
+                        <div id="calendar-popover-container" style="position: absolute; inset: 0; background: rgba(0, 0, 0, 0.2); backdrop-filter: blur(1.5px); z-index: 100; display: none; align-items: center; justify-content: center; padding: 16px; border-radius: 8px;">
+                            <div class="glass-card" style="width: 100%; max-width: 320px; background: rgba(255, 255, 255, 0.95); border: 1px solid rgba(9, 132, 227, 0.15); border-radius: 12px; padding: 16px; box-shadow: 0 10px 25px rgba(9, 132, 227, 0.08); backdrop-filter: blur(10px); display: flex; flex-direction: column; max-height: 90%; overflow: hidden;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(9, 132, 227, 0.08); padding-bottom: 8px; margin-bottom: 12px;">
+                                    <h4 id="calendar-popover-title" style="margin: 0; font-size: 0.88rem; font-weight: 700; color: var(--text-main);">일정 목록</h4>
+                                    <button type="button" id="calendar-popover-close" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1rem; padding: 0 4px; display: flex; align-items: center; justify-content: center;">
+                                        <i class="fa-solid fa-xmark"></i>
+                                    </button>
+                                </div>
+                                <div id="calendar-popover-body" style="overflow-y: auto; flex-grow: 1; display: flex; flex-direction: column; gap: 8px;"></div>
                             </div>
-                            <h4 style="margin: 0 0 6px 0; font-size: 0.92rem; font-weight: 700; color: var(--text-main);">캘린더 일정 연동 대기</h4>
-                            <p style="margin: 0; font-size: 0.78rem; color: var(--text-muted); line-height: 1.4;">App Calendar / Google Calendar 일정은<br>다음 단계에서 표시됩니다.</p>
                         </div>
                     </div>
                 </div>
@@ -396,32 +752,44 @@ export function renderTodayConsole(container) {
                 );
 
                 if (!lastAutoEndTime || currentEndISO === lastAutoEndTime) {
-                    try {
-                        const startISO = composeISOString(
-                            startDateInput.value,
-                            startAmpmInput ? startAmpmInput.value : 'AM',
-                            startHourInput ? startHourInput.value : '12',
-                            startMinInput ? startMinInput.value : '00'
+                    if (e.target.id === 'task-start-date-input') {
+                        // Start Date updated manually: copy same date to end date, keep select times
+                        endDateInput.value = startDateInput.value;
+                        lastAutoEndTime = composeISOString(
+                            endDateInput.value,
+                            endAmpmInput ? endAmpmInput.value : 'AM',
+                            endHourInput ? endHourInput.value : '12',
+                            endMinInput ? endMinInput.value : '00'
                         );
-                        const startDate = new Date(startISO);
-                        if (!isNaN(startDate.getTime())) {
-                            const newEndDate = new Date(startDate.getTime() + 60 * 60 * 1000);
-                            const newEndComponents = decomposeDate(newEndDate);
-                            
-                            if (endDateInput) endDateInput.value = newEndComponents.dateStr;
-                            if (endAmpmInput) endAmpmInput.value = newEndComponents.ampm;
-                            if (endHourInput) endHourInput.value = newEndComponents.hourStr;
-                            if (endMinInput) endMinInput.value = newEndComponents.minStr;
-
-                            lastAutoEndTime = composeISOString(
-                                newEndComponents.dateStr,
-                                newEndComponents.ampm,
-                                newEndComponents.hourStr,
-                                newEndComponents.minStr
+                    } else {
+                        // Start Time selectors updated manually: apply +1 hour policy
+                        try {
+                            const startISO = composeISOString(
+                                startDateInput.value,
+                                startAmpmInput ? startAmpmInput.value : 'AM',
+                                startHourInput ? startHourInput.value : '12',
+                                startMinInput ? startMinInput.value : '00'
                             );
+                            const startDate = new Date(startISO);
+                            if (!isNaN(startDate.getTime())) {
+                                const newEndDate = new Date(startDate.getTime() + 60 * 60 * 1000);
+                                const newEndComponents = decomposeDate(newEndDate);
+                                
+                                if (endDateInput) endDateInput.value = newEndComponents.dateStr;
+                                if (endAmpmInput) endAmpmInput.value = newEndComponents.ampm;
+                                if (endHourInput) endHourInput.value = newEndComponents.hourStr;
+                                if (endMinInput) endMinInput.value = newEndComponents.minStr;
+
+                                lastAutoEndTime = composeISOString(
+                                    newEndComponents.dateStr,
+                                    newEndComponents.ampm,
+                                    newEndComponents.hourStr,
+                                    newEndComponents.minStr
+                                );
+                            }
+                        } catch (err) {
+                            // ignore invalid dates
                         }
-                    } catch (err) {
-                        // ignore invalid dates
                     }
                 }
             }
@@ -496,6 +864,102 @@ export function renderTodayConsole(container) {
 
         // Click actions
         if (e.type === 'click') {
+            // Intercept calendar event chip click first to open its day's popover (Phase 8C-3D-Repair-F)
+            const chip = e.target.closest('.calendar-event-chip');
+            if (chip) {
+                e.stopPropagation();
+                e.preventDefault();
+                const cell = chip.closest('.calendar-day-cell');
+                if (cell) {
+                    const clickedDateStr = cell.dataset.date;
+                    const startDateInput = container.querySelector('#task-start-date-input');
+                    const endDateInput = container.querySelector('#task-end-date-input');
+                    if (startDateInput && clickedDateStr) {
+                        const oldStartVal = startDateInput.value;
+                        startDateInput.value = clickedDateStr;
+                        
+                        // Dispatch change event to let start time listener trigger auto end time calculations
+                        startDateInput.dispatchEvent(new Event('change', { bubbles: true }));
+                        
+                        // Also if the end date was same as old start date, update end date to clicked date
+                        if (endDateInput && endDateInput.value === oldStartVal) {
+                            endDateInput.value = clickedDateStr;
+                            endDateInput.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+                    }
+                    // Since a chip exists, dayEvents.length is guaranteed to be > 0. Open the popover.
+                    showDayEventsPopover(clickedDateStr);
+                }
+                return;
+            }
+
+            // Intercept popover event item click to load its values
+            const popoverItem = e.target.closest('.popover-event-item');
+            if (popoverItem) {
+                e.stopPropagation();
+                e.preventDefault();
+                loadEventToForm(popoverItem.dataset.id, popoverItem.dataset.source);
+                return;
+            }
+
+            // Intercept popover close button click
+            const btnClose = e.target.closest('#calendar-popover-close');
+            if (btnClose) {
+                e.stopPropagation();
+                e.preventDefault();
+                const popover = container.querySelector('#calendar-popover-container');
+                if (popover) popover.style.display = 'none';
+                return;
+            }
+
+            // Intercept popover backdrop click
+            if (e.target && e.target.id === 'calendar-popover-container') {
+                e.stopPropagation();
+                e.preventDefault();
+                e.target.style.display = 'none';
+                return;
+            }
+
+            // Calendar Day Cell Click Action
+            const cell = e.target.closest('.calendar-day-cell');
+            if (cell) {
+                const clickedDateStr = cell.dataset.date;
+                const startDateInput = container.querySelector('#task-start-date-input');
+                const endDateInput = container.querySelector('#task-end-date-input');
+                if (startDateInput && clickedDateStr) {
+                    const oldStartVal = startDateInput.value;
+                    startDateInput.value = clickedDateStr;
+                    
+                    // Dispatch change event to let start time listener trigger auto end time calculations
+                    startDateInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    
+                    // Also if the end date was same as old start date, update end date to clicked date
+                    if (endDateInput && endDateInput.value === oldStartVal) {
+                        endDateInput.value = clickedDateStr;
+                        // Dispatch change event on end date to update lastAutoEndTime
+                        endDateInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }
+                
+                // Show pop-over for the clicked day's events if it has at least one event
+                const [y, m, d] = clickedDateStr.split('-').map(Number);
+                const cellStart = new Date(y, m - 1, d, 0, 0, 0, 0);
+                const cellEnd = new Date(y, m - 1, d, 23, 59, 59, 999);
+                const dayEvents = stateStore.getCalendarEventsForRange
+                    ? stateStore.getCalendarEventsForRange(cellStart, cellEnd)
+                    : [];
+
+                if (dayEvents.length > 0) {
+                    showDayEventsPopover(clickedDateStr);
+                } else {
+                    const popover = container.querySelector('#calendar-popover-container');
+                    if (popover) {
+                        popover.style.display = 'none';
+                    }
+                }
+                return;
+            }
+
             // Done Action
             const btnDone = e.target.closest('[data-action="done"]');
             if (btnDone) {

@@ -211,18 +211,29 @@ console.log('--- Unit Test: Starting TodayTask API Selector Verification ---');
 // Reset store again for selector tests
 stateStore.db.todayTasks = [];
 
-const testTime = new Date('2026-06-02T12:00:00.000Z');
+const testTime = new Date();
+const y = testTime.getFullYear();
+const m = testTime.getMonth();
+const d = testTime.getDate();
+
+const makeTestIso = (hour) => {
+    return new Date(y, m, d, hour, 0, 0, 0).toISOString();
+};
+
+const makeTomorrowIso = (hour) => {
+    return new Date(y, m, d + 1, hour, 0, 0, 0).toISOString();
+};
 
 // 1. Seed tasks with various statuses to check visibility
-stateStore.addTodayTask({ id: 'task-open', title: 'Open Task', status: 'open', dueAt: '2026-06-02T15:00:00.000Z', priority: 'today' });
-stateStore.addTodayTask({ id: 'task-done', title: 'Done Task', status: 'done', dueAt: '2026-06-02T15:00:00.000Z', priority: 'today' });
-stateStore.addTodayTask({ id: 'task-dismissed', title: 'Dismissed Task', status: 'dismissed', dueAt: '2026-06-02T15:00:00.000Z', priority: 'today' });
+stateStore.addTodayTask({ id: 'task-open', title: 'Open Task', status: 'open', dueAt: makeTestIso(15), priority: 'today' });
+stateStore.addTodayTask({ id: 'task-done', title: 'Done Task', status: 'done', dueAt: makeTestIso(15), priority: 'today' });
+stateStore.addTodayTask({ id: 'task-dismissed', title: 'Dismissed Task', status: 'dismissed', dueAt: makeTestIso(15), priority: 'today' });
 
 // Snoozed - future (snoozedUntil > now) -> Should be hidden
-stateStore.addTodayTask({ id: 'task-snoozed-future', title: 'Snoozed Future Task', status: 'snoozed', snoozedUntil: '2026-06-02T13:00:00.000Z', dueAt: '2026-06-02T15:00:00.000Z', priority: 'today' });
+stateStore.addTodayTask({ id: 'task-snoozed-future', title: 'Snoozed Future Task', status: 'snoozed', snoozedUntil: new Date(testTime.getTime() + 60 * 60 * 1000).toISOString(), dueAt: makeTestIso(15), priority: 'today' });
 
 // Snoozed - expired (snoozedUntil <= now) -> Should be visible
-stateStore.addTodayTask({ id: 'task-snoozed-expired', title: 'Snoozed Expired Task', status: 'snoozed', snoozedUntil: '2026-06-02T11:00:00.000Z', dueAt: '2026-06-02T15:00:00.000Z', priority: 'today' });
+stateStore.addTodayTask({ id: 'task-snoozed-expired', title: 'Snoozed Expired Task', status: 'snoozed', snoozedUntil: new Date(testTime.getTime() - 60 * 60 * 1000).toISOString(), dueAt: makeTestIso(15), priority: 'today' });
 
 const visibleTasks = stateStore.getActiveTodayTasks(testTime);
 const visibleIds = visibleTasks.map(t => t.id);
@@ -238,20 +249,20 @@ stateStore.db.todayTasks = [];
 
 // Seed sorting test tasks
 // T1: urgent, due: 15:00, created: 10:00
-stateStore.addTodayTask({ id: 'T1', priority: 'urgent', dueAt: '2026-06-02T15:00:00.000Z', createdAt: '2026-06-02T10:00:00.000Z' });
+stateStore.addTodayTask({ id: 'T1', priority: 'urgent', dueAt: makeTestIso(15), createdAt: makeTestIso(10) });
 // T2: today, due: 14:00, created: 10:00
-stateStore.addTodayTask({ id: 'T2', priority: 'today', dueAt: '2026-06-02T14:00:00.000Z', createdAt: '2026-06-02T10:00:00.000Z' });
+stateStore.addTodayTask({ id: 'T2', priority: 'today', dueAt: makeTestIso(14), createdAt: makeTestIso(10) });
 // T3: closing, due: 14:00, created: 10:00
-stateStore.addTodayTask({ id: 'T3', priority: 'closing', dueAt: '2026-06-02T14:00:00.000Z', createdAt: '2026-06-02T10:00:00.000Z' });
+stateStore.addTodayTask({ id: 'T3', priority: 'closing', dueAt: makeTestIso(14), createdAt: makeTestIso(10) });
 // T4: info, due: 14:00, created: 10:00
-stateStore.addTodayTask({ id: 'T4', priority: 'info', dueAt: '2026-06-02T14:00:00.000Z', createdAt: '2026-06-02T10:00:00.000Z' });
+stateStore.addTodayTask({ id: 'T4', priority: 'info', dueAt: makeTestIso(14), createdAt: makeTestIso(10) });
 // T5: unknown/none, due: 14:00, created: 10:00
-stateStore.addTodayTask({ id: 'T5', priority: 'unknown', dueAt: '2026-06-02T14:00:00.000Z', createdAt: '2026-06-02T10:00:00.000Z' });
+stateStore.addTodayTask({ id: 'T5', priority: 'unknown', dueAt: makeTestIso(14), createdAt: makeTestIso(10) });
 
 // T6: urgent, due: 16:00, created: 10:00 (urgent but later than T1)
-stateStore.addTodayTask({ id: 'T6', priority: 'urgent', dueAt: '2026-06-02T16:00:00.000Z', createdAt: '2026-06-02T10:00:00.000Z' });
+stateStore.addTodayTask({ id: 'T6', priority: 'urgent', dueAt: makeTestIso(16), createdAt: makeTestIso(10) });
 // T7: urgent, due: 15:00, created: 11:00 (urgent, same due as T1, but created later)
-stateStore.addTodayTask({ id: 'T7', priority: 'urgent', dueAt: '2026-06-02T15:00:00.000Z', createdAt: '2026-06-02T11:00:00.000Z' });
+stateStore.addTodayTask({ id: 'T7', priority: 'urgent', dueAt: makeTestIso(15), createdAt: makeTestIso(11) });
 
 const sortedTasks = stateStore.getActiveTodayTasks(testTime);
 const sortedIds = sortedTasks.map(t => t.id);
@@ -277,12 +288,12 @@ assert(sortedIds[6] === 'T5', `Seventh: T5 (${sortedIds[6]})`);
 stateStore.db.todayTasks = [];
 
 // Seed tasks directly with push to bypass default auto-population of missing dates
-stateStore.db.todayTasks.push({ id: 'T_valid_due', status: 'open', priority: 'urgent', dueAt: '2026-06-02T14:00:00.000Z', createdAt: '2026-06-02T10:00:00.000Z' });
-stateStore.db.todayTasks.push({ id: 'T_missing_due', status: 'open', priority: 'urgent', createdAt: '2026-06-02T10:00:00.000Z' }); // dueAt is missing
-stateStore.db.todayTasks.push({ id: 'T_invalid_due', status: 'open', priority: 'urgent', dueAt: 'invalid-date-string', createdAt: '2026-06-02T10:00:00.000Z' }); // dueAt is invalid
+stateStore.db.todayTasks.push({ id: 'T_valid_due', status: 'open', priority: 'urgent', dueAt: makeTestIso(14), createdAt: makeTestIso(10) });
+stateStore.db.todayTasks.push({ id: 'T_missing_due', status: 'open', priority: 'urgent', createdAt: makeTestIso(10) }); // dueAt is missing
+stateStore.db.todayTasks.push({ id: 'T_invalid_due', status: 'open', priority: 'urgent', dueAt: 'invalid-date-string', createdAt: makeTestIso(10) }); // dueAt is invalid
 
-stateStore.db.todayTasks.push({ id: 'T_missing_created', status: 'open', priority: 'urgent', dueAt: '2026-06-02T14:00:00.000Z' }); // createdAt is missing
-stateStore.db.todayTasks.push({ id: 'T_invalid_created', status: 'open', priority: 'urgent', dueAt: '2026-06-02T14:00:00.000Z', createdAt: 'invalid-date-string' }); // createdAt is invalid
+stateStore.db.todayTasks.push({ id: 'T_missing_created', status: 'open', priority: 'urgent', dueAt: makeTestIso(14) }); // createdAt is missing
+stateStore.db.todayTasks.push({ id: 'T_invalid_created', status: 'open', priority: 'urgent', dueAt: makeTestIso(14), createdAt: 'invalid-date-string' }); // createdAt is invalid
 
 const fallbackSortedTasks = stateStore.getActiveTodayTasks(testTime);
 const fallbackSortedIds = fallbackSortedTasks.map(t => t.id);
@@ -307,11 +318,11 @@ stateStore.db.todayTasks = [];
 
 // Seed tasks
 // Task A: Done today (completedAt is today)
-stateStore.addTodayTask({ id: 'done-A', title: 'Done A', status: 'done', completedAt: '2026-06-02T10:00:00.000Z', priority: 'today' });
+stateStore.addTodayTask({ id: 'done-A', title: 'Done A', status: 'done', completedAt: makeTestIso(10), priority: 'today' });
 // Task B: Done today (completedAt is empty, but dueAt is today)
-stateStore.addTodayTask({ id: 'done-B', title: 'Done B', status: 'done', completedAt: undefined, dueAt: '2026-06-02T15:00:00.000Z', priority: 'today' });
+stateStore.addTodayTask({ id: 'done-B', title: 'Done B', status: 'done', completedAt: undefined, dueAt: makeTestIso(15), priority: 'today' });
 // Task C: Done today (completedAt/dueAt empty, but startAt is today)
-stateStore.addTodayTask({ id: 'done-C', title: 'Done C', status: 'done', completedAt: undefined, dueAt: undefined, startAt: '2026-06-02T08:00:00.000Z', priority: 'today' });
+stateStore.addTodayTask({ id: 'done-C', title: 'Done C', status: 'done', completedAt: undefined, dueAt: undefined, startAt: makeTestIso(8), priority: 'today' });
 // Task D: Done yesterday (completedAt/dueAt/startAt are yesterday relative to testTime)
 stateStore.addTodayTask({
   id: 'done-D',
@@ -323,9 +334,9 @@ stateStore.addTodayTask({
   priority: 'today'
 });
 // Task E: Dismissed today (should NOT match done tasks)
-stateStore.addTodayTask({ id: 'dismissed-E', title: 'Dismissed E', status: 'dismissed', completedAt: '2026-06-02T10:00:00.000Z', priority: 'today' });
+stateStore.addTodayTask({ id: 'dismissed-E', title: 'Dismissed E', status: 'dismissed', completedAt: makeTestIso(10), priority: 'today' });
 // Task F: Open today (should NOT match done tasks)
-stateStore.addTodayTask({ id: 'open-F', title: 'Open F', status: 'open', dueAt: '2026-06-02T10:00:00.000Z', priority: 'today' });
+stateStore.addTodayTask({ id: 'open-F', title: 'Open F', status: 'open', dueAt: makeTestIso(10), priority: 'today' });
 
 const doneTodayList = stateStore.getDoneTodayTasks(testTime);
 const doneTodayIds = doneTodayList.map(t => t.id);
@@ -336,6 +347,117 @@ assert(doneTodayIds.includes('done-C'), 'getDoneTodayTasks includes task with st
 assert(!doneTodayIds.includes('done-D'), 'getDoneTodayTasks excludes task completed yesterday');
 assert(!doneTodayIds.includes('dismissed-E'), 'getDoneTodayTasks excludes dismissed task');
 assert(!doneTodayIds.includes('open-F'), 'getDoneTodayTasks excludes open task');
+
+
+// ==========================================
+// CALENDAR INTEGRATION TEST CASES (Phase 8C-3D)
+// ==========================================
+console.log('--- Unit Test: Starting TodayTask API Calendar Selector Verification ---');
+stateStore.db.todayTasks = [];
+stateStore.db.mockCalendarEvents = [];
+
+const calTestTime = testTime;
+
+// 1. Seed todayTasks with startAt/endAt
+// Today open task -> Should be included
+stateStore.addTodayTask({ id: 'task-cal-open', title: 'Cal Open Task', status: 'open', startAt: makeTestIso(14), endAt: makeTestIso(15) });
+// Today done task -> Should be included
+stateStore.addTodayTask({ id: 'task-cal-done', title: 'Cal Done Task', status: 'done', startAt: makeTestIso(10), endAt: makeTestIso(11) });
+// Today dismissed task -> Should NOT be included
+stateStore.addTodayTask({ id: 'task-cal-dismissed', title: 'Cal Dismissed Task', status: 'dismissed', startAt: makeTestIso(11), endAt: makeTestIso(12) });
+// Tomorrow task -> Should NOT be included
+stateStore.addTodayTask({ id: 'task-cal-tomorrow', title: 'Cal Tomorrow Task', status: 'open', startAt: makeTomorrowIso(10), endAt: makeTomorrowIso(11) });
+
+// 2. Seed mockCalendarEvents
+// Today mock event -> Should be included
+stateStore.addMockCalendarEvent({ id: 'mock-cal-today', title: 'Mock Today Event', startsAt: makeTestIso(9), endsAt: makeTestIso(10), provider: 'google' });
+// Tomorrow mock event -> Should NOT be included
+stateStore.addMockCalendarEvent({ id: 'mock-cal-tomorrow', title: 'Mock Tomorrow Event', startsAt: makeTomorrowIso(9), endsAt: makeTomorrowIso(10), provider: 'google' });
+
+const mergedEvents = stateStore.getTodayCalendarEvents(calTestTime);
+const mergedIds = mergedEvents.map(e => e.id);
+
+assert(mergedIds.includes('task-cal-open'), 'getTodayCalendarEvents includes open todayTask');
+assert(mergedIds.includes('task-cal-done'), 'getTodayCalendarEvents includes done todayTask');
+assert(!mergedIds.includes('task-cal-dismissed'), 'getTodayCalendarEvents excludes dismissed todayTask');
+assert(!mergedIds.includes('task-cal-tomorrow'), 'getTodayCalendarEvents excludes tomorrow todayTask');
+assert(mergedIds.includes('mock-cal-today'), 'getTodayCalendarEvents includes today mockCalendarEvent');
+assert(!mergedIds.includes('mock-cal-tomorrow'), 'getTodayCalendarEvents excludes tomorrow mockCalendarEvent');
+
+// 3. Verify sorting by startsAt
+// startsAt:
+// mock-cal-today -> 09:00
+// task-cal-done -> 10:00
+// task-cal-open -> 14:00
+assert(mergedIds[0] === 'mock-cal-today', 'First event sorted correctly by startsAt (09:00)');
+assert(mergedIds[1] === 'task-cal-done', 'Second event sorted correctly by startsAt (10:00)');
+assert(mergedIds[2] === 'task-cal-open', 'Third event sorted correctly by startsAt (14:00)');
+
+// 4. Test range-based calendar query
+const rangeStart = new Date(calTestTime);
+rangeStart.setHours(0, 0, 0, 0);
+const rangeEnd = new Date(calTestTime);
+rangeEnd.setDate(rangeEnd.getDate() + 1); // covers tomorrow too
+rangeEnd.setHours(23, 59, 59, 999);
+
+const rangeEvents = stateStore.getCalendarEventsForRange(rangeStart, rangeEnd);
+const rangeIds = rangeEvents.map(e => e.id);
+
+assert(rangeIds.includes('task-cal-open'), 'getCalendarEventsForRange includes open todayTask');
+assert(rangeIds.includes('task-cal-done'), 'getCalendarEventsForRange includes done todayTask');
+assert(!rangeIds.includes('task-cal-dismissed'), 'getCalendarEventsForRange excludes dismissed todayTask');
+assert(rangeIds.includes('task-cal-tomorrow'), 'getCalendarEventsForRange includes tomorrow todayTask');
+assert(rangeIds.includes('mock-cal-today'), 'getCalendarEventsForRange includes today mockCalendarEvent');
+assert(rangeIds.includes('mock-cal-tomorrow'), 'getCalendarEventsForRange includes tomorrow mockCalendarEvent');
+
+// 5. Verify getMockCalendarEvents
+const allMockEvents = stateStore.getMockCalendarEvents();
+assert(allMockEvents.length === 2, 'getMockCalendarEvents returns all seeded mock events');
+
+// 6. Verify clearMockCalendarEvents
+stateStore.clearMockCalendarEvents();
+const clearedMockEvents = stateStore.getMockCalendarEvents();
+assert(clearedMockEvents.length === 0, 'clearMockCalendarEvents empties the mock event list');
+
+// 7. Verify multi-day event span retrieval
+console.log('--- Unit Test: Starting TodayTask API Multi-Day Span Range Verification ---');
+stateStore.db.todayTasks = [];
+stateStore.db.mockCalendarEvents = [];
+
+const spanStart = new Date(y, m, d, 10, 0, 0); // Day 1, 10:00 AM
+const spanEnd = new Date(y, m, d + 2, 17, 0, 0); // Day 3, 05:00 PM
+
+stateStore.addTodayTask({
+    id: 'multi-day-task-1',
+    title: '3-Day Task',
+    status: 'open',
+    startAt: spanStart.toISOString(),
+    endAt: spanEnd.toISOString()
+});
+
+// Check Day 1 range -> should overlap
+const day1Start = new Date(y, m, d, 0, 0, 0, 0);
+const day1End = new Date(y, m, d, 23, 59, 59, 999);
+const day1Events = stateStore.getCalendarEventsForRange(day1Start, day1End);
+assert(day1Events.some(e => e.id === 'multi-day-task-1'), 'getCalendarEventsForRange includes multi-day task on Day 1');
+
+// Check Day 2 range (middle day) -> should overlap
+const day2Start = new Date(y, m, d + 1, 0, 0, 0, 0);
+const day2End = new Date(y, m, d + 1, 23, 59, 59, 999);
+const day2Events = stateStore.getCalendarEventsForRange(day2Start, day2End);
+assert(day2Events.some(e => e.id === 'multi-day-task-1'), 'getCalendarEventsForRange includes multi-day task on Day 2 (middle day)');
+
+// Check Day 3 range (last day) -> should overlap
+const day3Start = new Date(y, m, d + 2, 0, 0, 0, 0);
+const day3End = new Date(y, m, d + 2, 23, 59, 59, 999);
+const day3Events = stateStore.getCalendarEventsForRange(day3Start, day3End);
+assert(day3Events.some(e => e.id === 'multi-day-task-1'), 'getCalendarEventsForRange includes multi-day task on Day 3 (last day)');
+
+// Check Day 4 range (after event ends) -> should NOT overlap
+const day4Start = new Date(y, m, d + 3, 0, 0, 0, 0);
+const day4End = new Date(y, m, d + 3, 23, 59, 59, 999);
+const day4Events = stateStore.getCalendarEventsForRange(day4Start, day4End);
+assert(!day4Events.some(e => e.id === 'multi-day-task-1'), 'getCalendarEventsForRange excludes multi-day task on Day 4');
 
 
 if (hasError) {

@@ -256,5 +256,111 @@ export const todayTaskMethods = {
 
     dismissTodayTask(taskId) {
         return this.updateTodayTask(taskId, { status: 'dismissed' });
+    },
+
+    // --- MOCK CALENDAR EVENTS ---
+    getMockCalendarEvents() {
+        return [...(this.db.mockCalendarEvents || [])];
+    },
+
+    addMockCalendarEvent(event) {
+        if (!event) return null;
+        const newEvent = {
+            id: event.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'CAL_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)),
+            externalId: event.externalId || '',
+            provider: event.provider || 'local',
+            calendarId: event.calendarId || 'default',
+            title: event.title || '',
+            description: event.description || '',
+            startsAt: event.startsAt || '',
+            endsAt: event.endsAt || '',
+            ...event
+        };
+        if (!this.db.mockCalendarEvents) {
+            this.db.mockCalendarEvents = [];
+        }
+        this.db.mockCalendarEvents.push(newEvent);
+        this.saveDB();
+        this.notify('TODAY_TASKS_CHANGED', this.db.todayTasks);
+        return newEvent;
+    },
+
+    clearMockCalendarEvents() {
+        this.db.mockCalendarEvents = [];
+        this.saveDB();
+        this.notify('TODAY_TASKS_CHANGED', this.db.todayTasks);
+    },
+
+    getTodayCalendarEvents(now = new Date()) {
+        const parsedNow = now instanceof Date ? now : new Date(now);
+        const y = parsedNow.getFullYear();
+        const m = parsedNow.getMonth();
+        const d = parsedNow.getDate();
+
+        const startOfDay = new Date(y, m, d, 0, 0, 0, 0);
+        const endOfDay = new Date(y, m, d, 23, 59, 59, 999);
+        return this.getCalendarEventsForRange(startOfDay, endOfDay);
+    },
+
+    getCalendarEventsForRange(startDate, endDate) {
+        const startMs = new Date(startDate).getTime();
+        const endMs = new Date(endDate).getTime();
+
+        const overlapsRange = (startsISO, endsISO) => {
+            if (!startsISO || !endsISO) return false;
+            try {
+                const s = new Date(startsISO).getTime();
+                const e = new Date(endsISO).getTime();
+                if (isNaN(s) || isNaN(e)) return false;
+                return s <= endMs && e >= startMs;
+            } catch (err) {
+                return false;
+            }
+        };
+
+        // 1. Map and filter TodayTask events
+        const taskEvents = (this.db.todayTasks || [])
+            .filter(task => {
+                if (task.status !== 'open' && task.status !== 'done') return false;
+                return task.startAt && task.endAt && overlapsRange(task.startAt, task.endAt);
+            })
+            .map(task => ({
+                id: task.id,
+                source: 'todayTask',
+                title: task.title,
+                description: task.description || '',
+                startsAt: task.startAt,
+                endsAt: task.endAt,
+                status: task.status,
+                category: task.category || '',
+                provider: 'app'
+            }));
+
+        // 2. Map and filter mockCalendarEvents
+        const calendarEvents = (this.db.mockCalendarEvents || [])
+            .filter(event => {
+                return event.startsAt && event.endsAt && overlapsRange(event.startsAt, event.endsAt);
+            })
+            .map(event => ({
+                id: event.id,
+                source: 'mockCalendar',
+                title: event.title,
+                description: event.description || '',
+                startsAt: event.startsAt,
+                endsAt: event.endsAt,
+                status: 'open',
+                category: '',
+                provider: event.provider || 'local'
+            }));
+
+        // 3. Merge and sort
+        const merged = [...taskEvents, ...calendarEvents];
+        merged.sort((a, b) => {
+            const timeA = new Date(a.startsAt).getTime();
+            const timeB = new Date(b.startsAt).getTime();
+            return timeA - timeB;
+        });
+
+        return merged;
     }
 };
