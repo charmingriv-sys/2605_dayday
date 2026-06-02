@@ -227,7 +227,10 @@ const DEFAULT_DB = {
     ],
     scheduleSnapshots: [],
     scheduleOverrides: [],
-    scheduleOperationLogs: []
+    scheduleOperationLogs: [],
+    todayTasks: [],
+    todayTaskRoutines: [],
+    mockCalendarEvents: []
 };
 
 const adapter = new LocalStorageAdapter({

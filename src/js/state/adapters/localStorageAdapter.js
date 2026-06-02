@@ -264,6 +264,20 @@ export class LocalStorageAdapter extends DataAdapter {
             db.scheduleOperationLogs = [];
             migrated = true;
         }
+
+        // Migrate todayTasks, routines, and mock calendar if missing
+        if (!db.todayTasks) {
+            db.todayTasks = [];
+            migrated = true;
+        }
+        if (!db.todayTaskRoutines) {
+            db.todayTaskRoutines = [];
+            migrated = true;
+        }
+        if (!db.mockCalendarEvents) {
+            db.mockCalendarEvents = [];
+            migrated = true;
+        }
  
         return migrated;
     }
