@@ -12,12 +12,19 @@ const escapeHtml = (value) => {
 
 export function renderTodayConsole(container) {
     const segmentId = 'academy_director_console'; // Segment-First Architecture Token
+    let lastAutoEndTime = '';
 
     // Datetime default offset helper (Local ISO formatting)
     const getLocalISOString = (date) => {
         const offset = date.getTimezoneOffset();
         const localDate = new Date(date.getTime() - (offset * 60 * 1000));
         return localDate.toISOString().slice(0, 16);
+    };
+
+    const getNextHourDate = () => {
+        const date = new Date();
+        date.setHours(date.getHours() + 1, 0, 0, 0);
+        return date;
     };
 
     const render = () => {
@@ -27,18 +34,18 @@ export function renderTodayConsole(container) {
         const urgentCount = activeTasks.filter(t => t.priority === 'urgent').length;
         const totalCount = activeTasks.length;
 
-        // Custom Priority badge helper
+        // Custom Priority badge helper (mapped to Categories for Phase 8C-3A)
         const getPriorityBadge = (priority) => {
             const safePriority = escapeHtml(priority);
             switch (priority) {
                 case 'urgent':
-                    return '<span class="badge badge-danger" style="padding: 4px 10px; font-weight: 700;">긴급</span>';
+                    return '<span class="badge badge-danger" style="padding: 4px 10px; font-weight: 700;">확인필요</span>';
                 case 'today':
-                    return '<span class="badge badge-info" style="padding: 4px 10px; font-weight: 700; background-color: var(--primary); color: #ffffff;">오늘</span>';
+                    return '<span class="badge badge-info" style="padding: 4px 10px; font-weight: 700; background-color: var(--primary); color: #ffffff;">상담예약</span>';
                 case 'closing':
-                    return '<span class="badge" style="padding: 4px 10px; font-weight: 700; background-color: #a55eea; color: #ffffff;">마감</span>';
+                    return '<span class="badge" style="padding: 4px 10px; font-weight: 700; background-color: #a55eea; color: #ffffff;">마감체크</span>';
                 case 'info':
-                    return '<span class="badge badge-success" style="padding: 4px 10px; font-weight: 700;">안내</span>';
+                    return '<span class="badge badge-success" style="padding: 4px 10px; font-weight: 700;">메모</span>';
                 default:
                     return `<span class="badge" style="padding: 4px 10px; font-weight: 700; background-color: var(--text-muted); color: #ffffff;">${safePriority}</span>`;
             }
@@ -55,7 +62,13 @@ export function renderTodayConsole(container) {
             }
         };
 
-        const defaultDueVal = getLocalISOString(new Date(Date.now() + 60 * 60 * 1000)); // Default due is +1 hour
+        const nextHourDate = getNextHourDate();
+        const defaultStartVal = getLocalISOString(nextHourDate);
+        const defaultEndVal = getLocalISOString(new Date(nextHourDate.getTime() + 60 * 60 * 1000));
+        
+        if (!lastAutoEndTime) {
+            lastAutoEndTime = defaultEndVal;
+        }
 
         container.innerHTML = `
             <!-- Header Summary Card (Rich Glassmorphism UI) -->
@@ -73,7 +86,7 @@ export function renderTodayConsole(container) {
                         <div style="font-size: 1.5rem; font-weight: 800; color: var(--text-main); margin-top: 4px;">${totalCount}개</div>
                     </div>
                     <div class="glass-card" style="padding: 8px 16px; min-width: 100px; text-align: center; border-color: var(--danger-light); background: rgba(235, 94, 85, 0.05);">
-                        <div style="font-size: 0.75rem; color: var(--danger); font-weight: 600;">긴급 업무</div>
+                        <div style="font-size: 0.75rem; color: var(--danger); font-weight: 600;">확인필요</div>
                         <div style="font-size: 1.5rem; font-weight: 800; color: var(--danger); margin-top: 4px;">${urgentCount}개</div>
                     </div>
                 </div>
@@ -85,29 +98,34 @@ export function renderTodayConsole(container) {
                     <i class="fa-solid fa-circle-plus" style="color: var(--primary);"></i>
                     새로운 운영 메모 / 할 일 추가
                 </h3>
-                <form id="form-add-task" style="display: grid; grid-template-columns: 1fr 1.2fr 0.8fr 1fr auto; gap: 12px; align-items: end;" class="task-form-grid">
+                <form id="form-add-task" style="display: flex; flex-direction: column; gap: 16px;">
+                    <!-- Row 1: Quick Memo Textarea -->
                     <div style="display: flex; flex-direction: column; gap: 6px;">
-                        <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">제목</label>
-                        <input type="text" id="task-title-input" placeholder="업무 제목" required style="width: 100%; height: 38px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0;">
+                        <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">운영 메모 (첫 줄은 제목, 이후 줄은 설명)</label>
+                        <textarea id="task-content-input" placeholder="오늘 메모할 내용을 입력하세요.&#10;예:&#10;신규 회원 상담 예약&#10;오후 3시에 방문하여 수강 일정 및 악기 대여 문의 예정" rows="4" required style="width: 100%; padding: 12px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; resize: vertical; line-height: 1.5; outline: none;"></textarea>
                     </div>
-                    <div style="display: flex; flex-direction: column; gap: 6px;">
-                        <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">설명 (선택)</label>
-                        <input type="text" id="task-desc-input" placeholder="세부 내용 입력" style="width: 100%; height: 38px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0;">
+                    
+                    <!-- Row 2: Category & Times & Button -->
+                    <div style="display: grid; grid-template-columns: 1fr 1.2fr 1.2fr auto; gap: 12px; align-items: end;" class="task-form-grid">
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                            <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">구분</label>
+                            <select id="task-category-input" style="width: 100%; height: 38px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; cursor: pointer; outline: none;">
+                                <option value="memo" selected>메모</option>
+                                <option value="consult">상담예약</option>
+                                <option value="check">확인필요</option>
+                                <option value="closing">마감체크</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                            <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">시작 시각</label>
+                            <input type="datetime-local" id="task-start-input" value="${defaultStartVal}" required style="width: 100%; height: 38px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; outline: none;">
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                            <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">종료 시각</label>
+                            <input type="datetime-local" id="task-end-input" value="${defaultEndVal}" required style="width: 100%; height: 38px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; outline: none;">
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="height: 38px; padding: 0 24px; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; margin: 0;">추가</button>
                     </div>
-                    <div style="display: flex; flex-direction: column; gap: 6px;">
-                        <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">우선순위</label>
-                        <select id="task-priority-input" style="width: 100%; height: 38px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; cursor: pointer;">
-                            <option value="today" selected>오늘</option>
-                            <option value="urgent">긴급</option>
-                            <option value="closing">마감</option>
-                            <option value="info">안내</option>
-                        </select>
-                    </div>
-                    <div style="display: flex; flex-direction: column; gap: 6px;">
-                        <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">마감 시각</label>
-                        <input type="datetime-local" id="task-due-input" value="${defaultDueVal}" required style="width: 100%; height: 38px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0;">
-                    </div>
-                    <button type="submit" class="btn btn-primary" style="height: 38px; padding: 0 16px; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; margin: 0;">추가</button>
                 </form>
             </div>
 
@@ -135,7 +153,18 @@ export function renderTodayConsole(container) {
                                 ${activeTasks.map(task => {
                                     const safeId = escapeHtml(task.id);
                                     const safeTitle = escapeHtml(task.title);
-                                    const safeDescription = escapeHtml(task.description);
+                                    
+                                    // Extract preview description (everything after the title line if duplicated)
+                                    let previewDescription = '';
+                                    if (task.description) {
+                                        const descLines = task.description.split('\n');
+                                        if (descLines.length > 0 && descLines[0].trim() === task.title.trim()) {
+                                            previewDescription = descLines.slice(1).join('\n').trim();
+                                        } else {
+                                            previewDescription = task.description.trim();
+                                        }
+                                    }
+                                    const safeDescription = escapeHtml(previewDescription);
                                     const safeType = escapeHtml(task.type);
                                     return `
                                         <div class="glass-card" style="padding: 1rem 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-color: rgba(255,255,255,0.06); transition: all 0.2s ease-in-out; background: rgba(255,255,255,0.01);" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='rgba(255,255,255,0.01)'">
@@ -145,7 +174,7 @@ export function renderTodayConsole(container) {
                                                 </div>
                                                 <div style="display: flex; flex-direction: column; gap: 4px;">
                                                     <div style="font-weight: 700; color: var(--text-main); font-size: 0.95rem;">${safeTitle}</div>
-                                                    ${task.description ? `<div style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.4;">${safeDescription}</div>` : ''}
+                                                    ${previewDescription ? `<div style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.4; white-space: pre-wrap;">${safeDescription}</div>` : ''}
                                                 </div>
                                             </div>
                                             
@@ -195,23 +224,66 @@ export function renderTodayConsole(container) {
 
     // Shared Event Handler for event delegation
     const handleEvents = (e) => {
+        // Automatic end-time synchronization when start time is updated
+        if (e.type === 'change' && e.target && e.target.id === 'task-start-input') {
+            const startInput = container.querySelector('#task-start-input');
+            const endInput = container.querySelector('#task-end-input');
+            if (startInput && endInput) {
+                const currentEnd = endInput.value;
+                if (!currentEnd || currentEnd === lastAutoEndTime) {
+                    try {
+                        const startDate = new Date(startInput.value);
+                        if (!isNaN(startDate.getTime())) {
+                            const newEndDate = new Date(startDate.getTime() + 60 * 60 * 1000);
+                            const newEndVal = getLocalISOString(newEndDate);
+                            endInput.value = newEndVal;
+                            lastAutoEndTime = newEndVal;
+                        }
+                    } catch (err) {
+                        // ignore invalid dates
+                    }
+                }
+            }
+            return;
+        }
+
         // Form submit intercept
         if (e.type === 'submit' && e.target && e.target.id === 'form-add-task') {
             e.preventDefault();
-            const titleInput = container.querySelector('#task-title-input');
-            const descInput = container.querySelector('#task-desc-input');
-            const priorityInput = container.querySelector('#task-priority-input');
-            const dueInput = container.querySelector('#task-due-input');
+            const contentInput = container.querySelector('#task-content-input');
+            const categoryInput = container.querySelector('#task-category-input');
+            const startInput = container.querySelector('#task-start-input');
+            const endInput = container.querySelector('#task-end-input');
 
-            const title = titleInput.value.trim();
-            const description = descInput.value.trim();
-            const priority = priorityInput.value;
-            const dueAt = dueInput.value ? new Date(dueInput.value).toISOString() : new Date().toISOString();
+            const content = contentInput.value.trim();
+            if (!content) return;
+
+            // Extract title as first line, description as the entire raw input content
+            const lines = content.split('\n');
+            const title = lines[0].trim();
+            const description = content;
+
+            if (!title) return;
+
+            const category = categoryInput.value;
+            // Map category to priority
+            let priority = 'info';
+            if (category === 'consult') priority = 'today';
+            else if (category === 'check') priority = 'urgent';
+            else if (category === 'closing') priority = 'closing';
+
+            const startAt = startInput.value ? new Date(startInput.value).toISOString() : new Date().toISOString();
+            const endAt = endInput.value ? new Date(endInput.value).toISOString() : new Date().toISOString();
+            const dueAt = startAt; // For sorting and selector backward compatibility
 
             stateStore.addTodayTask({
                 title,
                 description,
+                rawContent: content,
                 priority,
+                category,
+                startAt,
+                endAt,
                 dueAt,
                 source: 'manual',
                 type: 'memo',
@@ -219,6 +291,7 @@ export function renderTodayConsole(container) {
                 domain: 'academy',
                 visibilityRoles: ['director']
             });
+            contentInput.value = '';
             return;
         }
 
@@ -256,6 +329,7 @@ export function renderTodayConsole(container) {
     // Bind event listeners to top-level container (Delegation)
     container.addEventListener('submit', handleEvents);
     container.addEventListener('click', handleEvents);
+    container.addEventListener('change', handleEvents);
 
     // Subscribe to TodayTask store changes to reflect real-time queue states
     const unsubTodayTasks = stateStore.subscribe('TODAY_TASKS_CHANGED', render);
@@ -265,5 +339,6 @@ export function renderTodayConsole(container) {
         unsubTodayTasks();
         container.removeEventListener('submit', handleEvents);
         container.removeEventListener('click', handleEvents);
+        container.removeEventListener('change', handleEvents);
     };
 }
