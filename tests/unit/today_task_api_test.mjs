@@ -301,6 +301,43 @@ const activeListAgain = stateStore.getActiveTodayTasks(testTime);
 assert(activeListAgain.length === countBeforeMutation, 'getActiveTodayTasks() returns a shallow copy and prevents mutation of internal list');
 
 
+// 5. Verify getDoneTodayTasks selector (Phase 8C-3B)
+console.log('--- Unit Test: Starting TodayTask API Done Selector Verification ---');
+stateStore.db.todayTasks = [];
+
+// Seed tasks
+// Task A: Done today (completedAt is today)
+stateStore.addTodayTask({ id: 'done-A', title: 'Done A', status: 'done', completedAt: '2026-06-02T10:00:00.000Z', priority: 'today' });
+// Task B: Done today (completedAt is empty, but dueAt is today)
+stateStore.addTodayTask({ id: 'done-B', title: 'Done B', status: 'done', completedAt: undefined, dueAt: '2026-06-02T15:00:00.000Z', priority: 'today' });
+// Task C: Done today (completedAt/dueAt empty, but startAt is today)
+stateStore.addTodayTask({ id: 'done-C', title: 'Done C', status: 'done', completedAt: undefined, dueAt: undefined, startAt: '2026-06-02T08:00:00.000Z', priority: 'today' });
+// Task D: Done yesterday (completedAt/dueAt/startAt are yesterday relative to testTime)
+stateStore.addTodayTask({
+  id: 'done-D',
+  title: 'Done D',
+  status: 'done',
+  completedAt: new Date(testTime.getTime() - 36 * 60 * 60 * 1000).toISOString(),
+  dueAt: new Date(testTime.getTime() - 36 * 60 * 60 * 1000).toISOString(),
+  startAt: new Date(testTime.getTime() - 36 * 60 * 60 * 1000).toISOString(),
+  priority: 'today'
+});
+// Task E: Dismissed today (should NOT match done tasks)
+stateStore.addTodayTask({ id: 'dismissed-E', title: 'Dismissed E', status: 'dismissed', completedAt: '2026-06-02T10:00:00.000Z', priority: 'today' });
+// Task F: Open today (should NOT match done tasks)
+stateStore.addTodayTask({ id: 'open-F', title: 'Open F', status: 'open', dueAt: '2026-06-02T10:00:00.000Z', priority: 'today' });
+
+const doneTodayList = stateStore.getDoneTodayTasks(testTime);
+const doneTodayIds = doneTodayList.map(t => t.id);
+
+assert(doneTodayIds.includes('done-A'), 'getDoneTodayTasks includes task with completedAt today');
+assert(doneTodayIds.includes('done-B'), 'getDoneTodayTasks includes task with dueAt today when completedAt is missing');
+assert(doneTodayIds.includes('done-C'), 'getDoneTodayTasks includes task with startAt today when others are missing');
+assert(!doneTodayIds.includes('done-D'), 'getDoneTodayTasks excludes task completed yesterday');
+assert(!doneTodayIds.includes('dismissed-E'), 'getDoneTodayTasks excludes dismissed task');
+assert(!doneTodayIds.includes('open-F'), 'getDoneTodayTasks excludes open task');
+
+
 if (hasError) {
     console.error('--- Unit Test: TodayTask API Verification FAILED ---');
     process.exit(1);

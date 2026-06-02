@@ -71,9 +71,11 @@ export function renderTodayConsole(container) {
     const render = () => {
         // Fetch active tasks using store public API
         const activeTasks = stateStore.getActiveTodayTasks(new Date());
+        const doneTasks = stateStore.getDoneTodayTasks ? stateStore.getDoneTodayTasks(new Date()) : [];
 
         const urgentCount = activeTasks.filter(t => t.priority === 'urgent').length;
-        const totalCount = activeTasks.length;
+        const totalCount = activeTasks.length + doneTasks.length;
+        const doneCount = doneTasks.length;
 
         // Custom Priority badge helper (mapped to Categories for Phase 8C-3A)
         const getPriorityBadge = (priority) => {
@@ -126,6 +128,10 @@ export function renderTodayConsole(container) {
                     <div class="glass-card" style="padding: 8px 16px; min-width: 100px; text-align: center; border-color: rgba(255,255,255,0.06); background: rgba(255,255,255,0.02);">
                         <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">총 업무</div>
                         <div style="font-size: 1.5rem; font-weight: 800; color: var(--text-main); margin-top: 4px;">${totalCount}개</div>
+                    </div>
+                    <div class="glass-card" style="padding: 8px 16px; min-width: 100px; text-align: center; border-color: var(--success-light); background: rgba(46, 204, 113, 0.05);">
+                        <div style="font-size: 0.75rem; color: var(--success); font-weight: 600;">완료 업무</div>
+                        <div style="font-size: 1.5rem; font-weight: 800; color: var(--success); margin-top: 4px;">${doneCount}개</div>
                     </div>
                     <div class="glass-card" style="padding: 8px 16px; min-width: 100px; text-align: center; border-color: var(--danger-light); background: rgba(235, 94, 85, 0.05);">
                         <div style="font-size: 0.75rem; color: var(--danger); font-weight: 600;">확인필요</div>
@@ -207,12 +213,12 @@ export function renderTodayConsole(container) {
             <div class="glass-card" style="padding: 2rem; min-height: 400px; display: flex; flex-direction: column;">
                 <h3 style="font-size: 1.1rem; font-weight: 700; margin: 0 0 1.5rem 0; display: flex; align-items: center; gap: 8px;">
                     <i class="fa-solid fa-hourglass-half" style="color: var(--accent);"></i>
-                    운영 대기 업무 (Active Queue)
+                    운영 업무 관제 (Active & Completed Queue)
                 </h3>
                 
                 <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 12px;">
                     ${
-                        activeTasks.length === 0
+                        (activeTasks.length + doneTasks.length) === 0
                             ? `
                             <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 3rem 0; gap: 12px; color: var(--text-muted);">
                                 <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(9, 132, 227, 0.06); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: var(--primary);">
@@ -224,7 +230,7 @@ export function renderTodayConsole(container) {
                             `
                             : `
                             <div style="display: flex; flex-direction: column; gap: 12px;" id="tasks-list-container">
-                                ${activeTasks.map(task => {
+                                ${[...activeTasks, ...doneTasks].map(task => {
                                     const safeId = escapeHtml(task.id);
                                     const safeTitle = escapeHtml(task.title);
                                     
@@ -240,26 +246,46 @@ export function renderTodayConsole(container) {
                                     }
                                     const safeDescription = escapeHtml(previewDescription);
                                     const safeType = escapeHtml(task.type);
+
+                                    const isDone = task.status === 'done';
+
+                                    // Card styles based on status
+                                    const cardStyle = isDone
+                                        ? `padding: 1rem 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-color: rgba(255,255,255,0.04); transition: all 0.2s ease-in-out; background: rgba(255,255,255,0.01); opacity: 0.55;`
+                                        : `padding: 1rem 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-color: rgba(255,255,255,0.06); transition: all 0.2s ease-in-out; background: rgba(255,255,255,0.01);`;
+
+                                    const titleStyle = isDone
+                                        ? `font-weight: 700; color: var(--text-muted); font-size: 0.95rem; text-decoration: line-through;`
+                                        : `font-weight: 700; color: var(--text-main); font-size: 0.95rem;`;
+
+                                    const badgeHtml = isDone
+                                        ? `<span class="badge badge-success" style="padding: 4px 10px; font-weight: 700; background-color: var(--success); color: #ffffff;">완료</span>`
+                                        : getPriorityBadge(task.priority);
+
+                                    const timeTextHtml = isDone
+                                        ? `<div style="font-size: 0.8rem; font-weight: 600; color: var(--success);"><i class="fa-solid fa-circle-check" style="margin-right: 4px;"></i>${formatTime(task.completedAt)} 완료</div>`
+                                        : `<div style="font-size: 0.8rem; font-weight: 600; color: var(--accent);"><i class="fa-regular fa-clock" style="margin-right: 4px;"></i>${formatTime(task.dueAt)}</div>`;
+
                                     return `
-                                        <div class="glass-card" style="padding: 1rem 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-color: rgba(255,255,255,0.06); transition: all 0.2s ease-in-out; background: rgba(255,255,255,0.01);" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='rgba(255,255,255,0.01)'">
+                                        <div class="glass-card" style="${cardStyle}" ${!isDone ? `onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='rgba(255,255,255,0.01)'"` : ''}>
                                             <div style="display: flex; align-items: center; gap: 16px; flex-grow: 1;">
                                                 <div style="flex-shrink: 0;">
-                                                    ${getPriorityBadge(task.priority)}
+                                                    ${badgeHtml}
                                                 </div>
                                                 <div style="display: flex; flex-direction: column; gap: 4px;">
-                                                    <div style="font-weight: 700; color: var(--text-main); font-size: 0.95rem;">${safeTitle}</div>
+                                                    <div style="${titleStyle}">${safeTitle}</div>
                                                     ${previewDescription ? `<div style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.4; white-space: pre-wrap;">${safeDescription}</div>` : ''}
                                                 </div>
                                             </div>
                                             
                                             <!-- Right side actions & metadata -->
                                             <div style="display: flex; align-items: center; gap: 20px; flex-shrink: 0;" class="task-action-wrapper">
-                                                <div style="text-align: right; display: flex; flex-direction: column; gap: 4px; min-width: 70px;">
-                                                    <div style="font-size: 0.8rem; font-weight: 600; color: var(--accent);"><i class="fa-regular fa-clock" style="margin-right: 4px;"></i>${formatTime(task.dueAt)}</div>
+                                                <div style="text-align: right; display: flex; flex-direction: column; gap: 4px; min-width: 80px;">
+                                                    ${timeTextHtml}
                                                     <div style="font-size: 0.72rem; color: var(--text-muted);">${safeType}</div>
                                                 </div>
                                                 
-                                                <div style="display: flex; gap: 6px;">
+                                                <div style="display: flex; gap: 6px; ${isDone ? 'visibility: hidden; pointer-events: none;' : ''}">
                                                     <button type="button" class="btn btn-sm" data-action="done" data-id="${safeId}" style="padding: 6px 10px; font-size: 0.75rem; margin: 0; background: var(--success); color: #fff; justify-content: center; border-radius: 4px;" title="완료 처리">
                                                         <i class="fa-solid fa-check"></i>
                                                     </button>

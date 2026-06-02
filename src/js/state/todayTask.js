@@ -52,6 +52,40 @@ export const todayTaskMethods = {
         return [...activeTasks];
     },
 
+    getDoneTodayTasks(now = new Date()) {
+        const parsedNow = now instanceof Date ? now : new Date(now);
+        const y = parsedNow.getFullYear();
+        const m = parsedNow.getMonth();
+        const d = parsedNow.getDate();
+
+        const isSameDay = (isoStr) => {
+            if (!isoStr) return false;
+            try {
+                const date = new Date(isoStr);
+                return date.getFullYear() === y &&
+                       date.getMonth() === m &&
+                       date.getDate() === d;
+            } catch (e) {
+                return false;
+            }
+        };
+
+        const doneTasks = (this.db.todayTasks || []).filter(task => {
+            if (task.status !== 'done') return false;
+            return isSameDay(task.completedAt) ||
+                   isSameDay(task.dueAt) ||
+                   isSameDay(task.startAt);
+        });
+
+        doneTasks.sort((a, b) => {
+            const timeA = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+            const timeB = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+            return timeA - timeB;
+        });
+
+        return [...doneTasks];
+    },
+
     addTodayTask(task) {
         if (!task) return null;
 

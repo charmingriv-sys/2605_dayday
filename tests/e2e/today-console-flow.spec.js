@@ -80,7 +80,7 @@ test.describe('Director Today Console Flow Checks', () => {
     expect(taskInStore.dueAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
 
     // Assert category badge "확인필요" is visible on the card
-    const badgeCheck = page.locator(`.glass-card:has-text("${taskTitle}") .badge`);
+    const badgeCheck = page.locator(`#tasks-list-container .glass-card:has-text("${taskTitle}") .badge`);
     await expect(badgeCheck).toContainText('확인필요');
 
     // Assert inputs are cleared/reset
@@ -89,11 +89,19 @@ test.describe('Director Today Console Flow Checks', () => {
 
     // 2. Done Action
     // Find the card containing our task title and click its 'done' button
-    const doneButton = page.locator(`.glass-card:has-text("${taskTitle}") button[data-action="done"]`);
+    const doneButton = page.locator(`#tasks-list-container .glass-card:has-text("${taskTitle}") button[data-action="done"]`);
     await doneButton.click();
 
-    // Assert task is removed from active queue
-    await expect(page.locator(`text=${taskTitle}`)).toBeHidden();
+    // Assert task remains visible in the queue (as done preservation)
+    await expect(page.locator(`text=${taskTitle}`)).toBeVisible();
+    
+    // Assert it now has the "완료" badge
+    const badgeDone = page.locator(`#tasks-list-container .glass-card:has-text("${taskTitle}") .badge`);
+    await expect(badgeDone).toContainText('완료');
+
+    // Assert the action buttons are hidden/disabled on this card
+    const cardActions = page.locator(`#tasks-list-container .glass-card:has-text("${taskTitle}") .task-action-wrapper > div`).nth(1);
+    await expect(cardActions).toHaveCSS('visibility', 'hidden');
 
     // 3. Snooze Action
     const snoozeTitle = `Snooze 테스트 ${Date.now()}`;
@@ -103,10 +111,10 @@ test.describe('Director Today Console Flow Checks', () => {
     await expect(page.locator(`text=${snoozeTitle}`)).toBeVisible();
 
     // Assert category badge "상담예약" is visible on the card
-    const badgeConsult = page.locator(`.glass-card:has-text("${snoozeTitle}") .badge`);
+    const badgeConsult = page.locator(`#tasks-list-container .glass-card:has-text("${snoozeTitle}") .badge`);
     await expect(badgeConsult).toContainText('상담예약');
 
-    const snoozeButton = page.locator(`.glass-card:has-text("${snoozeTitle}") button[data-action="snooze"]`);
+    const snoozeButton = page.locator(`#tasks-list-container .glass-card:has-text("${snoozeTitle}") button[data-action="snooze"]`);
     await snoozeButton.click();
     await expect(page.locator(`text=${snoozeTitle}`)).toBeHidden();
 
@@ -116,7 +124,7 @@ test.describe('Director Today Console Flow Checks', () => {
     await page.click('#form-add-task button[type="submit"]');
     await expect(page.locator(`text=${dismissTitle}`)).toBeVisible();
 
-    const dismissButton = page.locator(`.glass-card:has-text("${dismissTitle}") button[data-action="dismiss"]`);
+    const dismissButton = page.locator(`#tasks-list-container .glass-card:has-text("${dismissTitle}") button[data-action="dismiss"]`);
     await dismissButton.click();
     await expect(page.locator(`text=${dismissTitle}`)).toBeHidden();
   });
