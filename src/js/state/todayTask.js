@@ -364,5 +364,136 @@ export const todayTaskMethods = {
         });
 
         return merged;
+    },
+
+    // --- SYSTEM RECOMMENDATIONS ---
+    syncSystemRecommendations(now = new Date()) {
+        const parsedNow = now instanceof Date ? now : new Date(now);
+        const y = parsedNow.getFullYear();
+        const m = parsedNow.getMonth();
+        const d = parsedNow.getDate();
+        const dateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const monthStr = `${y}-${String(m + 1).padStart(2, '0')}`;
+
+        const newRecommendations = [];
+
+        // 1. Billing Unpaid Rule
+        if (typeof this.getStudents === 'function' && typeof this.getPayments === 'function') {
+            const students = this.getStudents();
+            const payments = this.getPayments();
+            students.forEach(student => {
+                const payment = payments.find(p => p.studentId === student.id && p.type === 'education' && p.month === monthStr);
+                if (payment && payment.status !== 'paid') {
+                    const dueDay = student.dueDay || 10;
+                    if (d >= dueDay) {
+                        const dedupeKey = `SYSTEM_RECOMMEND_BILLING_UNPAID_${payment.id}_${monthStr}`;
+                        const dueTime = new Date(y, m, dueDay, 9, 0, 0, 0);
+                        const endTime = new Date(y, m, dueDay, 10, 0, 0, 0);
+                        newRecommendations.push({
+                            organizationId: student.academyId || '',
+                            segment: 'academy_director_console',
+                            domain: 'academy',
+                            source: 'system',
+                            type: 'billing',
+                            category: 'system_check',
+                            priority: 'today',
+                            status: 'open',
+                            dueAt: dueTime.toISOString(),
+                            startAt: dueTime.toISOString(),
+                            endAt: endTime.toISOString(),
+                            title: `${student.name} 원생 수강료 미납 확인 필요`,
+                            description: `${student.name} 원생의 ${y}년 ${m + 1}월 교육비 수강료(${payment.amount.toLocaleString()}원) 정기 수납일(매월 ${dueDay}일)이 경과하였으나 미납 상태입니다. 수납 상태 확인 및 학부모 안내가 필요합니다.`,
+                            relatedStudentIds: [student.id],
+                            dedupeKey: dedupeKey,
+                            visibilityRoles: ['director'],
+                            actionType: 'NAVIGATE',
+                            actionPayload: { route: '/billing', studentId: student.id }
+                        });
+                    }
+                }
+            });
+        }
+
+        // 2. Attendance Delay Rule
+        if (typeof this.getTeacherStudentScheduleForDate === 'function' && typeof this.getAttendance === 'function') {
+            const todaySchedule = this.getTeacherStudentScheduleForDate(dateStr) || [];
+            const attendanceList = this.getAttendance() || [];
+            todaySchedule.forEach(entry => {
+                const att = attendanceList.find(a => a.studentId === entry.studentId && a.date === dateStr);
+                const hasAttendance = att && att.status !== 'none';
+                if (!hasAttendance) {
+                    const timePart = entry.time || '14:00';
+                    const [h, min] = timePart.split(':').map(Number);
+                    const classStartTime = new Date(y, m, d, h, min, 0, 0);
+                    // Check if 15 minutes have passed
+                    if (parsedNow.getTime() - classStartTime.getTime() >= 15 * 60 * 1000) {
+                        const dedupeKey = `SYSTEM_RECOMMEND_ATTENDANCE_LATE_${entry.studentId}_${dateStr}`;
+                        const student = typeof this.getStudent === 'function' ? this.getStudent(entry.studentId) : null;
+                        const studentName = student ? student.name : '원생';
+                        newRecommendations.push({
+                            organizationId: student ? (student.academyId || '') : '',
+                            segment: 'academy_director_console',
+                            domain: 'academy',
+                            source: 'system',
+                            type: 'attendance',
+                            category: 'system_check',
+                            priority: 'today',
+                            status: 'open',
+                            dueAt: new Date(classStartTime.getTime() + 15 * 60 * 1000).toISOString(),
+                            startAt: classStartTime.toISOString(),
+                            endAt: new Date(classStartTime.getTime() + 60 * 60 * 1000).toISOString(),
+                            title: `${studentName} 원생 출결 입력 지연`,
+                            description: `${studentName} 원생의 오늘 ${timePart} 수업 시작 후 15분이 경과하였으나 출결 기록이 완료되지 않았습니다. 등원 여부 확인 및 출결 태깅 지도가 필요합니다.`,
+                            relatedStudentIds: [entry.studentId],
+                            relatedTeacherIds: [entry.teacherId].filter(Boolean),
+                            dedupeKey: dedupeKey,
+                            visibilityRoles: ['director'],
+                            actionType: 'NAVIGATE',
+                            actionPayload: { route: '/attendance', studentId: entry.studentId }
+                        });
+                    }
+                }
+            });
+        }
+
+        // Apply dedupe/upsert check
+        newRecommendations.forEach(rec => {
+            this.addTodayTask(rec);
+        });
+
+        // 3. Auto-Resolve Conditions
+        const existingTasks = this.getTodayTasks() || [];
+        existingTasks.forEach(task => {
+            if (task.source === 'system' && task.status === 'open') {
+                if (task.dedupeKey && task.dedupeKey.startsWith('SYSTEM_RECOMMEND_BILLING_UNPAID_')) {
+                    const prefix = 'SYSTEM_RECOMMEND_BILLING_UNPAID_';
+                    const rest = task.dedupeKey.substring(prefix.length);
+                    const lastUnderscore = rest.lastIndexOf('_');
+                    const paymentId = lastUnderscore !== -1 ? rest.substring(0, lastUnderscore) : rest;
+                    if (typeof this.getPayments === 'function') {
+                        const payments = this.getPayments();
+                        const payment = payments.find(p => p.id === paymentId);
+                        if (payment && payment.status === 'paid') {
+                            this.updateTodayTask(task.id, { status: 'done', completedAt: parsedNow.toISOString() });
+                        }
+                    }
+                } else if (task.dedupeKey && task.dedupeKey.startsWith('SYSTEM_RECOMMEND_ATTENDANCE_LATE_')) {
+                    const prefix = 'SYSTEM_RECOMMEND_ATTENDANCE_LATE_';
+                    const rest = task.dedupeKey.substring(prefix.length);
+                    const lastUnderscore = rest.lastIndexOf('_');
+                    const studentId = lastUnderscore !== -1 ? rest.substring(0, lastUnderscore) : rest;
+                    const targetDate = lastUnderscore !== -1 ? rest.substring(lastUnderscore + 1) : '';
+                    if (typeof this.getAttendance === 'function') {
+                        const attendanceList = this.getAttendance() || [];
+                        const att = attendanceList.find(a => a.studentId === studentId && a.date === targetDate);
+                        if (att && att.status !== 'none') {
+                            this.updateTodayTask(task.id, { status: 'done', completedAt: parsedNow.toISOString() });
+                        }
+                    }
+                }
+            }
+        });
+
+        return this.getTodayTasks();
     }
 };
