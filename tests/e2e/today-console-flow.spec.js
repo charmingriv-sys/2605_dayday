@@ -112,16 +112,25 @@ test.describe('Director Today Console Flow Checks', () => {
     const doneButton = page.locator(`#tasks-list-container .glass-card:has-text("${taskTitle}") button[data-action="done"]`);
     await doneButton.click();
 
-    // Assert task remains visible in the queue (as done preservation)
+    // Assert task disappears from the active queue
+    await expect(page.locator(`#tasks-list-container :text("${taskTitle}")`)).toBeHidden();
+    
+    // Switch to done tab
+    await page.locator('.tab-btn:has-text("완료")').click();
+
+    // Assert task is visible in the done queue
     await expect(page.locator(`#tasks-list-container :text("${taskTitle}")`)).toBeVisible();
     
     // Assert it now has the "완료" badge
     const badgeDone = page.locator(`#tasks-list-container .glass-card:has-text("${taskTitle}") .badge`);
     await expect(badgeDone).toContainText('완료');
 
-    // Assert the action buttons are hidden/disabled on this card
-    const cardActions = page.locator(`#tasks-list-container .glass-card:has-text("${taskTitle}") .task-action-wrapper > div`).nth(1);
-    await expect(cardActions).toHaveCSS('visibility', 'hidden');
+    // Assert the action buttons (done, snooze, dismiss) are replaced by Reopen button
+    const cardReopenButton = page.locator(`#tasks-list-container .glass-card:has-text("${taskTitle}") button[data-action="reopen"]`);
+    await expect(cardReopenButton).toBeVisible();
+
+    // Switch back to active tab
+    await page.locator('.tab-btn:has-text("대기")').click();
 
     // 3. Snooze Action
     const snoozeTitle = `Snooze 테스트 ${Date.now()}`;
@@ -1074,13 +1083,21 @@ test.describe('Director Today Console Flow Checks', () => {
     await page.reload();
     await page.locator('.menu-item[data-view="dir-today-console"]').click();
 
-    // Verify billing task is now resolved and shows "완료" badge
+    // Verify billing task is now resolved and disappears from active queue
+    await expect(page.locator(`#tasks-list-container :text("${billingTitle}")`)).toBeHidden();
+
+    // Switch to done tab
+    await page.locator('.tab-btn:has-text("완료")').click();
+
+    // Verify billing task is now resolved and shows "완료" badge on Done tab
     const resolvedBillingCard = page.locator(`#tasks-list-container .glass-card:has-text("${billingTitle}")`);
     await expect(resolvedBillingCard.locator('.badge')).toContainText('완료');
     
-    // Verify actions are hidden on this card
-    const cardActions = resolvedBillingCard.locator('.task-action-wrapper > div').nth(1);
-    await expect(cardActions).toHaveCSS('visibility', 'hidden');
+    // Verify Reopen action is visible instead of active actions
+    await expect(resolvedBillingCard.locator('button[data-action="reopen"]')).toBeVisible();
+
+    // Switch back to active tab
+    await page.locator('.tab-btn:has-text("대기")').click();
   });
 
   test('should support editing and deleting manual tasks but prevent editing system recommendations', async ({ page }) => {
@@ -1392,6 +1409,170 @@ test.describe('Director Today Console Flow Checks', () => {
     const badgeStyle = await popoverBadge.getAttribute('style');
     expect(badgeStyle).toContain('white-space: nowrap');
     expect(badgeStyle).toContain('flex-shrink: 0');
+  });
+
+  test('should support restoring completed task and filtering queue by tabs', async ({ page }) => {
+    // 1. Seed 3 tasks
+    const mTitle = '복원 테스트용 수동';
+    const sTitle = '복원 테스트용 추천';
+    const dTitle = '숨김 테스트용 태스크';
+
+    await page.evaluate(([m, s, d]) => {
+      window.stateStore.clearMockCalendarEvents();
+      window.stateStore.db.todayTasks = [];
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 0, 0).toISOString();
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 11, 0, 0).toISOString();
+      
+      // Manual
+      window.stateStore.addTodayTask({
+        id: 'task-restore-manual-e2e',
+        title: m,
+        description: '설명',
+        status: 'open',
+        priority: 'today',
+        category: 'memo',
+        startAt: start,
+        endAt: end,
+        dueAt: start,
+        source: 'manual',
+        type: 'memo',
+        segment: 'academy_director_console',
+        domain: 'academy',
+        visibilityRoles: ['director']
+      });
+
+      // System
+      window.stateStore.addTodayTask({
+        id: 'task-restore-system-e2e',
+        title: s,
+        description: '설명',
+        status: 'open',
+        priority: 'today',
+        category: 'system_check',
+        startAt: start,
+        endAt: end,
+        dueAt: start,
+        source: 'system',
+        type: 'memo',
+        segment: 'academy_director_console',
+        domain: 'academy',
+        visibilityRoles: ['director']
+      });
+
+      // Temporary for dismiss
+      window.stateStore.addTodayTask({
+        id: 'task-restore-dismiss-e2e',
+        title: d,
+        description: '설명',
+        status: 'open',
+        priority: 'info',
+        category: 'memo',
+        startAt: start,
+        endAt: end,
+        dueAt: start,
+        source: 'manual',
+        type: 'memo',
+        segment: 'academy_director_console',
+        domain: 'academy',
+        visibilityRoles: ['director']
+      });
+    }, [mTitle, sTitle, dTitle]);
+
+    await page.reload();
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+
+    const tasksList = page.locator('#tasks-list-container');
+    const tabActive = page.locator('.tab-btn:has-text("대기")');
+    const tabDone = page.locator('.tab-btn:has-text("완료")');
+    const tabHidden = page.locator('.tab-btn:has-text("숨김/보류")');
+    const tabAll = page.locator('.tab-btn:has-text("전체")');
+
+    // 2. Verify all are in Active Tab by default
+    await expect(tasksList.locator(`.glass-card:has-text("${mTitle}")`)).toBeVisible();
+    await expect(tasksList.locator(`.glass-card:has-text("${sTitle}")`)).toBeVisible();
+    await expect(tasksList.locator(`.glass-card:has-text("${dTitle}")`)).toBeVisible();
+
+    // 3. Mark manual task done
+    await tasksList.locator(`.glass-card:has-text("${mTitle}") [data-action="done"]`).click();
+
+    // Verify it disappears from Active Tab
+    await expect(tasksList.locator(`.glass-card:has-text("${mTitle}")`)).toBeHidden();
+
+    // 4. Switch to Done Tab
+    await tabDone.click();
+    const manualDoneCard = tasksList.locator(`.glass-card:has-text("${mTitle}")`);
+    await expect(manualDoneCard).toBeVisible();
+
+    // 5. Click Reopen (restore) on manual Done card
+    await manualDoneCard.locator('[data-action="reopen"]').click();
+
+    // Verify it disappears from Done Tab
+    await expect(tasksList.locator(`.glass-card:has-text("${mTitle}")`)).toBeHidden();
+
+    // 6. Switch back to Active Tab and verify task is back
+    await tabActive.click();
+    await expect(tasksList.locator(`.glass-card:has-text("${mTitle}")`)).toBeVisible();
+
+    // Verify calendar chip color/style is restored (no check icon or done styling)
+    const calendarSection = page.locator('#calendar-timeline-section');
+    const chip = calendarSection.locator(`.calendar-event-chip:has-text("${mTitle}")`);
+    await expect(chip).toBeVisible();
+    await expect(chip.locator('i.fa-check')).toBeHidden();
+
+    // 7. Dismiss temporary task
+    await tasksList.locator(`.glass-card:has-text("${dTitle}") [data-action="dismiss"]`).click();
+    await expect(tasksList.locator(`.glass-card:has-text("${dTitle}")`)).toBeHidden();
+
+    // 8. Switch to Hidden/Pending Tab and verify it's visible
+    await tabHidden.click();
+    const dismissCard = tasksList.locator(`.glass-card:has-text("${dTitle}")`);
+    await expect(dismissCard).toBeVisible();
+
+    // 9. Reopen dismissed task
+    await dismissCard.locator('[data-action="reopen"]').click();
+    await expect(tasksList.locator(`.glass-card:has-text("${dTitle}")`)).toBeHidden();
+
+    // Verify it's back in Active Tab
+    await tabActive.click();
+    await expect(tasksList.locator(`.glass-card:has-text("${dTitle}")`)).toBeVisible();
+
+    // 10. Complete system task, restore and check system badge retention
+    await tasksList.locator(`.glass-card:has-text("${sTitle}") [data-action="done"]`).click();
+    await tabDone.click();
+    const systemDoneCard = tasksList.locator(`.glass-card:has-text("${sTitle}")`);
+    await systemDoneCard.locator('[data-action="reopen"]').click();
+    
+    await tabActive.click();
+    const restoredSystemCard = tasksList.locator(`.glass-card:has-text("${sTitle}")`);
+    await expect(restoredSystemCard).toBeVisible();
+    await expect(restoredSystemCard.locator('.badge')).toContainText('추천확인');
+
+    // 11. Switch to All Tab and verify counts & multiple states are listed
+    await tabAll.click();
+    // Complete manual task again to have one active, one done task
+    await tabActive.click();
+    await tasksList.locator(`.glass-card:has-text("${mTitle}") [data-action="done"]`).click();
+    await tabAll.click();
+    await expect(tasksList.locator(`.glass-card:has-text("${mTitle}")`)).toBeVisible(); // done
+    await expect(tasksList.locator(`.glass-card:has-text("${sTitle}")`)).toBeVisible(); // active
+
+    // 12. Verify scroll position preservation on tab transitions (Phase 8C-5B-Repair-A)
+    // Scroll down the page by 100px
+    await page.evaluate(() => window.scrollTo(0, 100));
+    const initialScroll = await page.evaluate(() => window.scrollY);
+    console.log('DEBUG_SCROLL_INITIAL:', initialScroll);
+    
+    // Switch tab to Active using evaluate to avoid Playwright auto-scroll
+    await tabActive.evaluate(el => el.click());
+    
+    // Switch tab back to Done using evaluate to avoid Playwright auto-scroll
+    await tabDone.evaluate(el => el.click());
+    
+    const finalScroll = await page.evaluate(() => window.scrollY);
+    console.log('DEBUG_SCROLL_FINAL:', finalScroll);
+    // Ensure final scroll position is close to the initial scroll position (within 2px tolerance)
+    expect(Math.abs(finalScroll - initialScroll)).toBeLessThanOrEqual(2);
   });
 });
 

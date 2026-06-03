@@ -15,6 +15,7 @@ export function renderTodayConsole(container) {
     let isEndTimeManuallyChanged = false; // Track manual override of end time
     let editingTaskId = null; // Track editing task ID
     let selectedDateStr = null; // Track clicked calendar date
+    let activeTab = 'active'; // Tab state: active, done, hidden, all
 
     const isSystemCheck = (item) => {
         if (!item) return false;
@@ -299,6 +300,10 @@ export function renderTodayConsole(container) {
     };
 
     const render = () => {
+        const savedScrollY = typeof window !== 'undefined' ? window.scrollY : 0;
+        if (typeof window !== 'undefined' && container) {
+            container.style.minHeight = container.scrollHeight + 'px';
+        }
         // Opt-in check for manual recommendations verification
         let enableDemo = false;
         if (typeof window !== 'undefined') {
@@ -327,9 +332,45 @@ export function renderTodayConsole(container) {
         // Sync system recommendations before retrieving active tasks
         stateStore.syncSystemRecommendations(new Date());
 
-        // Fetch active tasks using store public API
-        let activeTasks = stateStore.getActiveTodayTasks(new Date());
-        const doneTasks = stateStore.getDoneTodayTasks ? stateStore.getDoneTodayTasks(new Date()) : [];
+        // Fetch active tasks using detailed today filtering logic
+        const isTodayTaskDetailed = (task) => {
+            if (task.status === 'open') {
+                return true; // Keep open tasks visible regardless of date (legacy carryover / unpaid recommendations)
+            }
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = now.getMonth();
+            const d = now.getDate();
+            const isSameDay = (isoStr) => {
+                if (!isoStr) return false;
+                try {
+                    const date = new Date(isoStr);
+                    return date.getFullYear() === y &&
+                           date.getMonth() === m &&
+                           date.getDate() === d;
+                } catch (e) {
+                    return false;
+                }
+            };
+            return isSameDay(task.startAt) || isSameDay(task.dueAt) || isSameDay(task.completedAt) || isSameDay(task.createdAt) || isSameDay(task.dismissedAt) || (task.snoozedUntil && isSameDay(task.snoozedUntil));
+        };
+
+        const todayTasksAll = stateStore.getTodayTasks().filter(isTodayTaskDetailed);
+        const activeTasksList = todayTasksAll.filter(t => t.status === 'open' || (t.status === 'snoozed' && new Date(t.snoozedUntil).getTime() <= Date.now()));
+        const doneTasksList = todayTasksAll.filter(t => t.status === 'done');
+        const hiddenTasksList = todayTasksAll.filter(t => t.status === 'dismissed' || (t.status === 'snoozed' && new Date(t.snoozedUntil).getTime() > Date.now()));
+        const allTasksList = todayTasksAll;
+
+        let filteredTasks = [];
+        if (activeTab === 'active') {
+            filteredTasks = activeTasksList;
+        } else if (activeTab === 'done') {
+            filteredTasks = doneTasksList;
+        } else if (activeTab === 'hidden') {
+            filteredTasks = hiddenTasksList;
+        } else {
+            filteredTasks = allTasksList;
+        }
 
         // Apply startAt/dueAt time-based sorting policy for Phase 8C-3E
         const getTaskSortTime = (task) => {
@@ -344,7 +385,7 @@ export function renderTodayConsole(container) {
             return Number.POSITIVE_INFINITY;
         };
 
-        activeTasks = [...activeTasks].sort((a, b) => {
+        filteredTasks = [...filteredTasks].sort((a, b) => {
             const timeA = getTaskSortTime(a);
             const timeB = getTaskSortTime(b);
             if (timeA !== timeB) return timeA - timeB;
@@ -353,9 +394,12 @@ export function renderTodayConsole(container) {
             return createA - createB;
         });
 
-        const urgentCount = activeTasks.filter(t => t.priority === 'urgent').length;
-        const totalCount = activeTasks.length + doneTasks.length;
-        const doneCount = doneTasks.length;
+        const activeTasks = activeTasksList;
+        const doneTasks = doneTasksList;
+
+        const urgentCount = activeTasksList.filter(t => t.priority === 'urgent').length;
+        const totalCount = todayTasksAll.length;
+        const doneCount = doneTasksList.length;
 
         // Calculate Month Calendar Grid Days (Phase 8C-3D-Repair-A)
         const viewDate = new Date();
@@ -896,22 +940,37 @@ export function renderTodayConsole(container) {
                     <i class="fa-solid fa-hourglass-half" style="color: var(--accent);"></i>
                     운영 대기 업무 (Active & Completed Queue)
                 </h3>
+
+                <!-- Filter Tabs for Phase 8C-5B -->
+                <div class="queue-filter-tabs" style="display: flex; gap: 8px; margin-bottom: 1.25rem; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 12px; flex-wrap: wrap;">
+                    <button type="button" class="tab-btn ${activeTab === 'active' ? 'active' : ''}" data-tab="active" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 4px; font-weight: 600; cursor: pointer; transition: all 0.2s; border: 1px solid ${activeTab === 'active' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; background: ${activeTab === 'active' ? 'rgba(9, 132, 227, 0.15)' : 'rgba(255,255,255,0.01)'}; color: ${activeTab === 'active' ? 'var(--primary)' : 'var(--text-muted)'}; margin: 0;">
+                        대기 (${activeTasksList.length})
+                    </button>
+                    <button type="button" class="tab-btn ${activeTab === 'done' ? 'active' : ''}" data-tab="done" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 4px; font-weight: 600; cursor: pointer; transition: all 0.2s; border: 1px solid ${activeTab === 'done' ? 'var(--success)' : 'rgba(255,255,255,0.05)'}; background: ${activeTab === 'done' ? 'rgba(46, 204, 113, 0.15)' : 'rgba(255,255,255,0.01)'}; color: ${activeTab === 'done' ? 'var(--success)' : 'var(--text-muted)'}; margin: 0;">
+                        완료 (${doneTasksList.length})
+                    </button>
+                    <button type="button" class="tab-btn ${activeTab === 'hidden' ? 'active' : ''}" data-tab="hidden" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 4px; font-weight: 600; cursor: pointer; transition: all 0.2s; border: 1px solid ${activeTab === 'hidden' ? 'var(--accent)' : 'rgba(255,255,255,0.05)'}; background: ${activeTab === 'hidden' ? 'rgba(165, 94, 234, 0.15)' : 'rgba(255,255,255,0.01)'}; color: ${activeTab === 'hidden' ? 'var(--accent)' : 'var(--text-muted)'}; margin: 0;">
+                        숨김/보류 (${hiddenTasksList.length})
+                    </button>
+                    <button type="button" class="tab-btn ${activeTab === 'all' ? 'active' : ''}" data-tab="all" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 4px; font-weight: 600; cursor: pointer; transition: all 0.2s; border: 1px solid ${activeTab === 'all' ? 'var(--text-main)' : 'rgba(255,255,255,0.05)'}; background: ${activeTab === 'all' ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.01)'}; color: ${activeTab === 'all' ? 'var(--text-main)' : 'var(--text-muted)'}; margin: 0;">
+                        전체 (${allTasksList.length})
+                    </button>
+                </div>
                 
                 <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 12px;">
                     ${
-                        (activeTasks.length + doneTasks.length) === 0
+                        filteredTasks.length === 0
                             ? `
                             <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 3rem 0; gap: 12px; color: var(--text-muted);">
                                 <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(9, 132, 227, 0.06); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: var(--primary);">
                                     <i class="fa-solid fa-check"></i>
                                 </div>
-                                <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-main);">오늘 표시할 업무가 없습니다.</span>
-                                <span style="font-size: 0.8rem;">모든 업무가 완료되었거나 대기 중인 일정이 없습니다.</span>
+                                <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-main);">해당 상태의 업무가 없습니다.</span>
                             </div>
                             `
                             : `
                             <div style="display: flex; flex-direction: column; gap: 12px;" id="tasks-list-container">
-                                ${[...activeTasks, ...doneTasks].map(task => {
+                                ${filteredTasks.map(task => {
                                     const safeId = escapeHtml(task.id);
                                     const safeTitle = escapeHtml(task.title);
                                     
@@ -927,42 +986,80 @@ export function renderTodayConsole(container) {
                                     }
                                     const safeDescription = escapeHtml(previewDescription);
                                     const safeType = escapeHtml(task.type);
-
+ 
                                     const isDone = task.status === 'done';
-
+                                    const isDismissed = task.status === 'dismissed';
+                                    const isSnoozed = task.status === 'snoozed' && new Date(task.snoozedUntil).getTime() > Date.now();
+                                    const isRestorable = isDone || isDismissed || isSnoozed;
+ 
                                     // Card styles based on status
-                                    const cardStyle = isDone
+                                    const cardStyle = isRestorable
                                         ? `padding: 1rem 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-color: rgba(255,255,255,0.04); transition: all 0.2s ease-in-out; background: rgba(255,255,255,0.01); opacity: 0.55;`
                                         : `padding: 1rem 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-color: rgba(255,255,255,0.06); transition: all 0.2s ease-in-out; background: rgba(255,255,255,0.01);`;
-
+ 
                                     const titleStyle = isDone
                                         ? `font-weight: 700; color: var(--text-muted); font-size: 0.95rem; text-decoration: line-through;`
                                         : `font-weight: 700; color: var(--text-main); font-size: 0.95rem;`;
-
-                                    const badgeHtml = isDone
-                        ? `<span class="badge badge-success" style="padding: 4px 10px; font-weight: 700; background-color: var(--success); color: #ffffff;">완료</span>`
-                                        : getPriorityBadge(task);
-
+ 
+                                    let badgeHtml = '';
+                                    if (isDone) {
+                                        badgeHtml = `<span class="badge badge-success" style="padding: 4px 10px; font-weight: 700; background-color: var(--success); color: #ffffff;">완료</span>`;
+                                    } else if (task.status === 'dismissed') {
+                                        badgeHtml = `<span class="badge" style="padding: 4px 10px; font-weight: 700; background-color: var(--text-muted); color: #ffffff;">숨김</span>`;
+                                    } else if (task.status === 'snoozed' && new Date(task.snoozedUntil).getTime() > Date.now()) {
+                                        badgeHtml = `<span class="badge" style="padding: 4px 10px; font-weight: 700; background-color: var(--warning); color: #ffffff;">보류</span>`;
+                                    } else {
+                                        badgeHtml = getPriorityBadge(task);
+                                    }
+ 
                                     let timeText = '';
                                     if (task.startAt) {
                                         timeText = formatTaskDateTimeRange(task.startAt, task.endAt);
                                     } else {
                                         timeText = formatTaskDateTime(task.dueAt);
                                     }
-
-                                    const todayBadge = isTodayTask(task) && !isDone
+ 
+                                    const todayBadge = isTodayTask(task) && !isRestorable
                                         ? `<span class="badge-today" style="display: inline-block; font-size: 0.58rem; background: var(--accent); color: #fff; padding: 2px 5px; border-radius: 3px; font-weight: 700; margin-bottom: 2px; text-align: center; white-space: nowrap; flex-shrink: 0; width: fit-content; margin-left: auto;">TODAY</span>`
                                         : '';
-
-                                    const timeTextHtml = isDone
-                                        ? `<div style="font-size: 0.8rem; font-weight: 600; color: var(--success);"><i class="fa-solid fa-circle-check" style="margin-right: 4px;"></i>${formatTaskDateTime(task.completedAt)} 완료</div>`
-                                        : `<div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
+ 
+                                    let timeTextHtml = '';
+                                    if (isDone) {
+                                        timeTextHtml = `<div style="font-size: 0.8rem; font-weight: 600; color: var(--success);"><i class="fa-solid fa-circle-check" style="margin-right: 4px;"></i>${formatTaskDateTime(task.completedAt)} 완료</div>`;
+                                    } else if (task.status === 'dismissed') {
+                                        timeTextHtml = `<div style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);"><i class="fa-solid fa-eye-slash" style="margin-right: 4px;"></i>숨김 처리됨</div>`;
+                                    } else if (task.status === 'snoozed' && new Date(task.snoozedUntil).getTime() > Date.now()) {
+                                        timeTextHtml = `<div style="font-size: 0.8rem; font-weight: 600; color: var(--accent);"><i class="fa-solid fa-hourglass" style="margin-right: 4px;"></i>${formatTaskDateTime(task.snoozedUntil)}까지 보류</div>`;
+                                    } else {
+                                        timeTextHtml = `<div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
                                             ${todayBadge}
                                             <div style="font-size: 0.8rem; font-weight: 600; color: var(--accent); white-space: nowrap;"><i class="fa-regular fa-clock" style="margin-right: 4px;"></i>${timeText}</div>
                                            </div>`;
-
+                                    }
+ 
+                                    let actionsHtml = '';
+                                    if (isRestorable) {
+                                        actionsHtml = `
+                                            <button type="button" class="btn btn-sm" data-action="reopen" data-id="${safeId}" style="padding: 6px 10px; font-size: 0.75rem; margin: 0; background: var(--primary); color: #fff; justify-content: center; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;" title="대기로 복원">
+                                                <i class="fa-solid fa-rotate-left"></i> 복원
+                                            </button>
+                                        `;
+                                    } else {
+                                        actionsHtml = `
+                                            <button type="button" class="btn btn-sm" data-action="done" data-id="${safeId}" style="padding: 6px 10px; font-size: 0.75rem; margin: 0; background: var(--success); color: #fff; justify-content: center; border-radius: 4px;" title="완료 처리">
+                                                <i class="fa-solid fa-check"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-sm" data-action="snooze" data-id="${safeId}" style="padding: 6px 10px; font-size: 0.75rem; margin: 0; background: var(--secondary); color: var(--text-main); justify-content: center; border-radius: 4px;" title="1시간 보류">
+                                                <i class="fa-solid fa-hourglass"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-sm" data-action="dismiss" data-id="${safeId}" style="padding: 6px 10px; font-size: 0.75rem; margin: 0; background: var(--danger); color: #fff; justify-content: center; border-radius: 4px;" title="제외 및 숨김">
+                                                <i class="fa-solid fa-eye-slash"></i>
+                                            </button>
+                                        `;
+                                    }
+ 
                                     return `
-                                        <div class="glass-card" style="${cardStyle}" ${!isDone ? `onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='rgba(255,255,255,0.01)'"` : ''}>
+                                        <div class="glass-card" style="${cardStyle}" ${!isRestorable ? `onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='rgba(255,255,255,0.01)'"` : ''}>
                                             <div style="display: flex; align-items: center; gap: 16px; flex-grow: 1; cursor: pointer;" class="task-card-click-zone" data-id="${safeId}">
                                                 <div style="flex-shrink: 0;">
                                                     ${badgeHtml}
@@ -980,16 +1077,8 @@ export function renderTodayConsole(container) {
                                                     <div style="font-size: 0.72rem; color: var(--text-muted);">${safeType}</div>
                                                 </div>
                                                 
-                                                <div style="display: flex; gap: 6px; ${isDone ? 'visibility: hidden; pointer-events: none;' : ''}">
-                                                    <button type="button" class="btn btn-sm" data-action="done" data-id="${safeId}" style="padding: 6px 10px; font-size: 0.75rem; margin: 0; background: var(--success); color: #fff; justify-content: center; border-radius: 4px;" title="완료 처리">
-                                                        <i class="fa-solid fa-check"></i>
-                                                    </button>
-                                                    <button type="button" class="btn btn-sm" data-action="snooze" data-id="${safeId}" style="padding: 6px 10px; font-size: 0.75rem; margin: 0; background: var(--secondary); color: var(--text-main); justify-content: center; border-radius: 4px;" title="1시간 보류">
-                                                        <i class="fa-solid fa-hourglass"></i>
-                                                    </button>
-                                                    <button type="button" class="btn btn-sm" data-action="dismiss" data-id="${safeId}" style="padding: 6px 10px; font-size: 0.75rem; margin: 0; background: var(--danger); color: #fff; justify-content: center; border-radius: 4px;" title="제외 및 숨김">
-                                                        <i class="fa-solid fa-eye-slash"></i>
-                                                    </button>
+                                                <div style="display: flex; gap: 6px;">
+                                                    ${actionsHtml}
                                                 </div>
                                             </div>
                                         </div>
@@ -1020,6 +1109,17 @@ export function renderTodayConsole(container) {
 
         if (popoverOpen && popoverDate) {
             showDayEventsPopover(popoverDate);
+        }
+
+        // Restore scroll position and release height lock (Phase 8C-5B-Repair-A)
+        if (typeof window !== 'undefined') {
+            window.scrollTo(0, savedScrollY);
+            requestAnimationFrame(() => {
+                window.scrollTo(0, savedScrollY);
+                if (container) {
+                    container.style.minHeight = '';
+                }
+            });
         }
     };
 
@@ -1350,6 +1450,22 @@ export function renderTodayConsole(container) {
             if (btnDone) {
                 const taskId = btnDone.dataset.id;
                 stateStore.markTodayTaskDone(taskId);
+                return;
+            }
+
+            // Reopen Action
+            const btnReopen = e.target.closest('[data-action="reopen"]');
+            if (btnReopen) {
+                const taskId = btnReopen.dataset.id;
+                stateStore.reopenTodayTask(taskId);
+                return;
+            }
+
+            // Tab Switch Action
+            const tabBtn = e.target.closest('.tab-btn');
+            if (tabBtn) {
+                activeTab = tabBtn.dataset.tab;
+                render();
                 return;
             }
 

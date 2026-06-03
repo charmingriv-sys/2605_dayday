@@ -258,6 +258,10 @@ export const todayTaskMethods = {
         return this.updateTodayTask(taskId, { status: 'dismissed' });
     },
 
+    reopenTodayTask(taskId) {
+        return this.updateTodayTask(taskId, { status: 'open' });
+    },
+
     // --- MOCK CALENDAR EVENTS ---
     getMockCalendarEvents() {
         return [...(this.db.mockCalendarEvents || [])];
