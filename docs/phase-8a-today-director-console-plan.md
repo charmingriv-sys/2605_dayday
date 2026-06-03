@@ -228,32 +228,34 @@ MVP 릴리즈 완료 후 점진적으로 추가할 고도화 기능 목록입니
 
 ## 11. 구현 Phase 제안
 
-본 기획 문서를 토대로 Phase 8을 다음과 같이 점진적으로 나누어 안전하게 수행할 것을 제안합니다.
+본 기획 문서를 토대로 Phase 8을 다음과 같이 점진적으로 나누어 안전하게 수행합니다.
 
 ```mermaid
 gantt
-    title Phase 8 오늘 원장 콘솔 개발 로드맵
+    title Phase 8 오늘 원장 콘솔 개발 로드맵 (Google Calendar 보류 반영)
     dateFormat  YYYY-MM-DD
     section 기획 및 모델링
     Phase 8A: 기획 문서 확정           :active, p8a, 2026-06-02, 1d
     Phase 8B: 데이터 모델 및 스토어 설계  : p8b, after p8a, 2d
     section MVP 구현
-    Phase 8C: 오늘 원장 콘솔 화면 구현    : p8c, after p8b, 4d
-    Phase 8D: Google Calendar 연동     : p8d, after p8c, 3d
-    Phase 8E: 시스템 자동 경고 연계      : p8e, after p8d, 3d
+    Phase 8C: 오늘 원장 콘솔 MVP 화면 구현 : p8c, after p8b, 4d
+    Phase 8D: Google Calendar 연동 (보류) : p8d, after p8c, 3d
+    Phase 8E: 시스템 추천확인 및 자동경고 : p8e, after p8d, 3d
     section 고도화
     Phase 8F: 후순위 확장 기능 적용      : p8f, after p8e, 5d
 ```
 
-*   **Phase 8A: 기획 문서 확정 (현재 단계)**
+*   **Phase 8A: 기획 문서 확정 (완료)**
     - 전체 설계 사양과 스키마 구조에 대해 정렬 및 확정합니다.
-*   **Phase 8B: TodayTask 및 메모/알람 데이터 모델링**
-    - `stateStore` 내에 `TodayTask`를 관리할 수 있는 컬렉션 추가 및 LocalStorageAdapter 기반 CRUD 로직을 설계합니다.
-*   **Phase 8C: 오늘 원장 콘솔 MVP 화면 구현**
-    - 사이드바 신규 메뉴 바인딩, 오늘 할 일 큐(TodayTask Queue) 리스트, 수동 알람 등록 컴포넌트, 운영 타임라인 스레드 레이아웃을 기존 UI 디자인 시스템의 아이덴티티를 살려 구현합니다.
-*   **Phase 8D: Google Calendar 읽기 연동**
-    - Google API 및 OAuth 연동을 실제 구체화하여 오늘 일정을 가져와 타임라인에 안전하게 오버레이 및 TodayTask 연계를 수행합니다.
-*   **Phase 8E: 시스템 자동 경고 연계**
-    - 수업 시작 시각과 출결 마킹 상태를 백그라운드에서 추적하여, Segment Config에 정의된 `attendanceLateThresholdMinutes` 기준 지연 시간 도달 시 `urgent` 등원 경고 태스크가 큐에 실시간 생성되도록 연계합니다.
-*   **Phase 8F: 후순위 확장 기능 적용**
-    - 수납 고도화, 양방향 싱크, 마케팅 및 리스폰스 칭찬 루프(Delight Loop)를 점진적으로 얹어 나갑니다.
+*   **Phase 8B: TodayTask 및 메모/알람 데이터 모델링 (완료)**
+    - `stateStore` 내에 `TodayTask`를 관리할 수 있는 컬렉션 추가 및 LocalStorageAdapter 기반 CRUD 로직을 설계하고 마이그레이션 및 유닛 테스트를 구현했습니다.
+*   **Phase 8C: 오늘 원장 콘솔 MVP 화면 구현 (완료)**
+    - 사이드바 신규 메뉴 바인딩, 오늘 할 일 큐(TodayTask Queue) 리스트, 수동 알람 등록 컴포넌트, 콤팩트 월간 그리드 캘린더(`mockCalendarEvents` 및 `TodayTask` 오버레이)를 구현 완료했습니다.
+    - 시간 정렬 및 완료 업무 취소선/회색톤 표시, 시간 선택 UX 보정 등 백로그 미세 조정을 수행했습니다.
+    - **[추천확인]** 자동 생성 엔진(`syncSystemRecommendations`)과 뷰(보라색 뱃지/칩) 연결을 마쳤으며, 수동 QA를 위한 opt-in 데모 데이터 적재 훅을 E2E 환경과 완벽 격리하여 적용했습니다.
+*   **Phase 8D: Google Calendar 읽기 연동 (보류 / Deferred)**
+    - 구글 API 및 OAuth 연동은 현재 로드맵에서 **Deferred(보류)** 처리되었습니다. 단, `StateStore`와 View 사이의 `Provider Layer` 구조적 분리는 미래 도입을 고려하여 그대로 유지하고 백로그에 보관합니다.
+*   **Phase 8E: 시스템 자동 경고 연계 및 추천확인 룰 확장 (대기 / Next Priority)**
+    - 당월 수강료 미납 및 오늘 출결 입력 지연 추천 룰에 더해, 교재 청구 누락 알림, 장기 미등원 경고 등의 신규 비즈니스 추천 룰로 확장합니다.
+*   **Phase 8F: 후순위 확장 기능 적용 (대기)**
+    - 수납 고도화, 양방향 싱크, 마케팅 및 리스폰스 칭찬 루프(Delight Loop)를 점진적으로 적용해 나갑니다.
