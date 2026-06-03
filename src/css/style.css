@@ -740,6 +740,7 @@ select.form-control option {
     justify-content: space-between;
     transition: var(--transition);
     position: relative;
+    overflow: hidden !important;
 }
 
 .calendar-day-cell.other-month {

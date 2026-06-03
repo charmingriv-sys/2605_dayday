@@ -14,6 +14,13 @@ export function renderTodayConsole(container) {
     const segmentId = 'academy_director_console'; // Segment-First Architecture Token
     let lastAutoEndTime = '';
 
+    const isSystemCheck = (item) => {
+        if (!item) return false;
+        const src = item.taskSource || item.source;
+        const cat = item.category;
+        return src === 'system' || src === 'auto' || cat === 'system_check';
+    };
+
     // Datetime default offset helper (Local ISO formatting)
     const getLocalISOString = (date) => {
         const offset = date.getTimezoneOffset();
@@ -122,7 +129,9 @@ export function renderTodayConsole(container) {
                 const endDecomp = decomposeDate(new Date(foundEvent.endsAt));
 
                 if (contentInput) contentInput.value = foundEvent.rawContent || '';
-                if (categoryInput) categoryInput.value = foundEvent.category || 'memo';
+                let catVal = foundEvent.category || 'memo';
+                if (catVal === 'closing') catVal = 'check';
+                if (categoryInput) categoryInput.value = catVal;
 
                 if (startDateInput) startDateInput.value = startDecomp.dateStr;
                 if (startAmpmInput) startAmpmInput.value = startDecomp.ampm;
@@ -171,37 +180,60 @@ export function renderTodayConsole(container) {
             let accentColor = 'var(--primary)';
             let prefix = '';
             let sourceBadge = '';
+            let categoryLabel = '운영업무';
 
-            if (isDone) {
-                chipBg = 'rgba(100, 116, 139, 0.06)';
-                chipBorder = '1px solid rgba(100, 116, 139, 0.15)';
-                accentColor = 'var(--text-muted)';
-            } else if (event.source === 'mockCalendar') {
+            if (event.source === 'mockCalendar') {
                 chipBg = 'rgba(241, 196, 15, 0.08)';
                 chipBorder = '1px solid rgba(241, 196, 15, 0.25)';
                 accentColor = '#f1c40f';
-                const providerLabel = event.provider === 'google' ? 'Google' : (event.provider || 'mock');
+                const providerLabel = event.provider === 'google' ? 'Google' : '캘린더';
                 prefix = `<span style="font-size: 0.58rem; color: #f1c40f; font-weight: 700; margin-right: 3px; background: rgba(241, 196, 15, 0.15); padding: 1px 3px; border-radius: 2px;">${providerLabel}</span>`;
-                sourceBadge = `<span style="font-size: 0.65rem; background: rgba(241,196,15,0.15); color: #f1c40f; padding: 2px 6px; border-radius: 4px; font-weight: 700;">로컬 캘린더</span>`;
+                sourceBadge = `<span style="font-size: 0.65rem; background: rgba(241, 196, 15, 0.15); color: #f1c40f; padding: 2px 6px; border-radius: 4px; font-weight: 700;">${providerLabel === 'Google' ? 'Google 캘린더' : '로컬 캘린더'}</span>`;
             } else {
-                sourceBadge = `<span style="font-size: 0.65rem; background: rgba(9,132,227,0.12); color: var(--primary); padding: 2px 6px; border-radius: 4px; font-weight: 700;">운영 업무</span>`;
-                if (event.category === 'check' || event.category === 'urgent') {
-                    chipBg = 'rgba(214, 48, 49, 0.08)';
-                    chipBorder = '1px solid rgba(214, 48, 49, 0.25)';
-                    accentColor = 'var(--danger)';
-                } else if (event.category === 'consult' || event.category === 'today') {
-                    chipBg = 'rgba(0, 184, 148, 0.08)';
-                    chipBorder = '1px solid rgba(0, 184, 148, 0.25)';
-                    accentColor = 'var(--success)';
-                } else if (event.category === 'closing') {
+                const cat = event.category;
+                const isSys = isSystemCheck(event);
+                let badgeBg = 'rgba(9, 132, 227, 0.12)';
+                let badgeColor = 'var(--primary)';
+
+                if (isSys) {
+                    categoryLabel = '추천확인';
                     chipBg = 'rgba(165, 94, 234, 0.08)';
                     chipBorder = '1px solid rgba(165, 94, 234, 0.25)';
                     accentColor = '#a55eea';
-                } else {
+                    badgeBg = 'rgba(165, 94, 234, 0.12)';
+                    badgeColor = '#a55eea';
+                } else if (cat === 'check' || cat === 'urgent' || cat === 'closing' || event.priority === 'urgent' || event.priority === 'closing') {
+                    categoryLabel = '확인필요';
+                    chipBg = 'rgba(214, 48, 49, 0.08)';
+                    chipBorder = '1px solid rgba(214, 48, 49, 0.25)';
+                    accentColor = 'var(--danger)';
+                    badgeBg = 'rgba(214, 48, 49, 0.12)';
+                    badgeColor = 'var(--danger)';
+                } else if (cat === 'consult' || cat === 'today' || event.priority === 'today') {
+                    categoryLabel = '상담예약';
+                    chipBg = 'rgba(0, 184, 148, 0.08)';
+                    chipBorder = '1px solid rgba(0, 184, 148, 0.25)';
+                    accentColor = 'var(--success)';
+                    badgeBg = 'rgba(0, 184, 148, 0.12)';
+                    badgeColor = 'var(--success)';
+                } else if (cat === 'memo' || cat === 'info' || event.priority === 'info') {
+                    categoryLabel = '메모';
                     chipBg = 'rgba(9, 132, 227, 0.06)';
                     chipBorder = '1px solid rgba(9, 132, 227, 0.2)';
                     accentColor = 'var(--primary)';
+                    badgeBg = 'rgba(9, 132, 227, 0.12)';
+                    badgeColor = 'var(--primary)';
+                } else {
+                    categoryLabel = '운영업무';
+                    chipBg = 'rgba(9, 132, 227, 0.06)';
+                    chipBorder = '1px solid rgba(9, 132, 227, 0.2)';
+                    accentColor = 'var(--primary)';
+                    badgeBg = 'rgba(9, 132, 227, 0.12)';
+                    badgeColor = 'var(--primary)';
                 }
+
+                prefix = `<span style="font-size: 0.58rem; color: ${badgeColor}; font-weight: 700; margin-right: 3px; background: ${badgeBg}; padding: 1px 3px; border-radius: 2px;">${categoryLabel}</span>`;
+                sourceBadge = `<span style="font-size: 0.65rem; background: ${badgeBg}; color: ${badgeColor}; padding: 2px 6px; border-radius: 4px; font-weight: 700;">${categoryLabel}</span>`;
             }
 
             const formatHM = (isoStr) => {
@@ -218,12 +250,20 @@ export function renderTodayConsole(container) {
 
             const timeRange = `${formatHM(event.startsAt)} ~ ${formatHM(event.endsAt)}`;
             const textStyle = isDone ? 'text-decoration: line-through; color: var(--text-muted); opacity: 0.6;' : 'color: var(--text-main);';
+            const doneIcon = isDone ? '<i class="fa-solid fa-check" style="color: var(--success); margin-right: 2px; font-weight: 900;"></i>' : '';
+
+            // Adjust styles if completed (styles only)
+            if (isDone) {
+                chipBg = 'rgba(100, 116, 139, 0.06)';
+                chipBorder = '1px solid rgba(100, 116, 139, 0.15)';
+                accentColor = 'var(--text-muted)';
+            }
 
             return `
                 <div class="popover-event-item" data-id="${escapeHtml(event.id)}" data-source="${escapeHtml(event.source)}" style="padding: 10px; border-radius: 6px; background: ${chipBg}; border: ${chipBorder}; border-left: 4px solid ${accentColor}; cursor: pointer; user-select: none; display: flex; flex-direction: column; gap: 4px;">
                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                         <div style="font-weight: 700; font-size: 0.82rem; ${textStyle} overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                            ${prefix}${escapeHtml(event.title)}
+                            ${prefix}${doneIcon}${escapeHtml(event.title)}
                         </div>
                         ${sourceBadge}
                     </div>
@@ -241,8 +281,30 @@ export function renderTodayConsole(container) {
 
     const render = () => {
         // Fetch active tasks using store public API
-        const activeTasks = stateStore.getActiveTodayTasks(new Date());
+        let activeTasks = stateStore.getActiveTodayTasks(new Date());
         const doneTasks = stateStore.getDoneTodayTasks ? stateStore.getDoneTodayTasks(new Date()) : [];
+
+        // Apply startAt/dueAt time-based sorting policy for Phase 8C-3E
+        const getTaskSortTime = (task) => {
+            if (task.startAt) {
+                const t = new Date(task.startAt).getTime();
+                if (!isNaN(t)) return t;
+            }
+            if (task.dueAt) {
+                const t = new Date(task.dueAt).getTime();
+                if (!isNaN(t)) return t;
+            }
+            return Number.POSITIVE_INFINITY;
+        };
+
+        activeTasks = [...activeTasks].sort((a, b) => {
+            const timeA = getTaskSortTime(a);
+            const timeB = getTaskSortTime(b);
+            if (timeA !== timeB) return timeA - timeB;
+            const createA = a.createdAt ? new Date(a.createdAt).getTime() : Number.POSITIVE_INFINITY;
+            const createB = b.createdAt ? new Date(b.createdAt).getTime() : Number.POSITIVE_INFINITY;
+            return createA - createB;
+        });
 
         const urgentCount = activeTasks.filter(t => t.priority === 'urgent').length;
         const totalCount = activeTasks.length + doneTasks.length;
@@ -315,31 +377,57 @@ export function renderTodayConsole(container) {
                 let chipBorder = '1px solid rgba(9, 132, 227, 0.35)';
                 let accentColor = 'var(--primary)';
                 let prefix = '';
+                let categoryLabel = '운영업무';
 
-                if (isDone) {
-                    chipBg = 'rgba(255, 255, 255, 0.02)';
-                    chipBorder = '1px solid rgba(255, 255, 255, 0.08)';
-                    accentColor = 'var(--text-muted)';
-                } else if (event.source === 'mockCalendar') {
+                if (event.source === 'mockCalendar') {
                     chipBg = 'rgba(241, 196, 15, 0.12)';
                     chipBorder = '1px solid rgba(241, 196, 15, 0.35)';
                     accentColor = '#f1c40f';
-                    const providerLabel = event.provider === 'google' ? 'Google' : (event.provider || 'mock');
+                    const providerLabel = event.provider === 'google' ? 'Google' : '캘린더';
                     prefix = `<span style="font-size: 0.58rem; color: #f1c40f; font-weight: 700; margin-right: 3px; background: rgba(241, 196, 15, 0.15); padding: 1px 3px; border-radius: 2px;">${providerLabel}</span>`;
                 } else {
-                    if (event.category === 'check' || event.category === 'urgent') {
-                        chipBg = 'rgba(235, 94, 85, 0.12)';
-                        chipBorder = '1px solid rgba(235, 94, 85, 0.35)';
-                        accentColor = 'var(--danger)';
-                    } else if (event.category === 'consult' || event.category === 'today') {
-                        chipBg = 'rgba(46, 204, 113, 0.12)';
-                        chipBorder = '1px solid rgba(46, 204, 113, 0.35)';
-                        accentColor = 'var(--success)';
-                    } else if (event.category === 'closing') {
+                    const cat = event.category;
+                    const isSys = isSystemCheck(event);
+                    let badgeBg = 'rgba(9, 132, 227, 0.12)';
+                    let badgeColor = 'var(--primary)';
+
+                    if (isSys) {
+                        categoryLabel = '추천확인';
                         chipBg = 'rgba(165, 94, 234, 0.12)';
                         chipBorder = '1px solid rgba(165, 94, 234, 0.35)';
                         accentColor = '#a55eea';
+                        badgeBg = 'rgba(165, 94, 234, 0.15)';
+                        badgeColor = '#a55eea';
+                    } else if (cat === 'check' || cat === 'urgent' || cat === 'closing' || event.priority === 'urgent' || event.priority === 'closing') {
+                        categoryLabel = '확인필요';
+                        chipBg = 'rgba(214, 48, 49, 0.12)';
+                        chipBorder = '1px solid rgba(214, 48, 49, 0.35)';
+                        accentColor = 'var(--danger)';
+                        badgeBg = 'rgba(214, 48, 49, 0.15)';
+                        badgeColor = 'var(--danger)';
+                    } else if (cat === 'consult' || cat === 'today' || event.priority === 'today') {
+                        categoryLabel = '상담예약';
+                        chipBg = 'rgba(46, 204, 113, 0.12)';
+                        chipBorder = '1px solid rgba(46, 204, 113, 0.35)';
+                        accentColor = 'var(--success)';
+                        badgeBg = 'rgba(46, 204, 113, 0.15)';
+                        badgeColor = 'var(--success)';
+                    } else if (cat === 'memo' || cat === 'info' || event.priority === 'info') {
+                        categoryLabel = '메모';
+                        chipBg = 'rgba(9, 132, 227, 0.12)';
+                        chipBorder = '1px solid rgba(9, 132, 227, 0.35)';
+                        accentColor = 'var(--primary)';
+                        badgeBg = 'rgba(9, 132, 227, 0.15)';
+                        badgeColor = 'var(--primary)';
+                    } else {
+                        categoryLabel = '운영업무';
+                        chipBg = 'rgba(9, 132, 227, 0.12)';
+                        chipBorder = '1px solid rgba(9, 132, 227, 0.35)';
+                        accentColor = 'var(--primary)';
+                        badgeBg = 'rgba(9, 132, 227, 0.15)';
+                        badgeColor = 'var(--primary)';
                     }
+                    prefix = `<span style="flex-shrink: 0; font-size: 0.58rem; color: ${badgeColor}; font-weight: 700; margin-right: 3px; background: ${badgeBg}; padding: 1px 3px; border-radius: 2px;">${categoryLabel}</span>`;
                 }
 
                 // Determine multi-day connection styles
@@ -368,11 +456,20 @@ export function renderTodayConsole(container) {
                 }
 
                 const textStyle = isDone ? 'text-decoration: line-through; color: var(--text-muted); opacity: 0.6;' : 'color: var(--text-main);';
+                const doneIcon = isDone ? '<i class="fa-solid fa-check" style="color: var(--success); margin-right: 2px; font-size: 0.58rem; font-weight: 900;"></i>' : '';
+
+                // Overwrite background/border if completed (keep badge prefix label)
+                if (isDone) {
+                    chipBg = 'rgba(255, 255, 255, 0.02)';
+                    chipBorder = '1px solid rgba(255, 255, 255, 0.08)';
+                    accentColor = 'var(--text-muted)';
+                    borderLeftStyle = `2px solid ${accentColor}`;
+                }
 
                 return `
-                    <div class="calendar-event-chip" data-id="${escapeHtml(event.id)}" data-source="${escapeHtml(event.source)}" style="margin-top: 3px; padding: 2px 4px; border-radius: ${borderRadius}; background: ${chipBg}; border: ${chipBorder}; border-left: ${borderLeftStyle}; font-size: 0.65rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; user-select: none; display: flex; align-items: center; justify-content: flex-start; max-width: 100%;" title="${escapeHtml(event.title)} (${escapeHtml(event.description || '상세 없음')})">
+                    <div class="calendar-event-chip" data-id="${escapeHtml(event.id)}" data-source="${escapeHtml(event.source)}" style="box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; margin-top: 3px; padding: 2px 4px; border-radius: ${borderRadius}; background: ${chipBg}; border: ${chipBorder}; border-left: ${borderLeftStyle}; font-size: 0.65rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; user-select: none; display: flex; align-items: center; justify-content: flex-start;" title="${escapeHtml(event.title)} (${escapeHtml(event.description || '상세 없음')})">
                         ${prefix}
-                        <span style="${textStyle} cursor: pointer; user-select: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(event.title)}</span>
+                        <span style="${textStyle} flex: 1 1 auto; min-width: 0; cursor: pointer; user-select: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${doneIcon}${escapeHtml(event.title)}</span>
                     </div>
                 `;
             }).join('');
@@ -381,7 +478,7 @@ export function renderTodayConsole(container) {
                 ? `<div style="font-size: 0.58rem; color: var(--text-muted); font-weight: 700; margin-top: 2px; padding-left: 4px;">+${hiddenCount}개</div>` 
                 : '';
 
-            let cellStyle = 'min-height: 70px; padding: 4px; display: flex; flex-direction: column; justify-content: flex-start; position: relative; border-bottom: 1px solid rgba(255,255,255,0.03); border-right: 1px solid rgba(255,255,255,0.03); overflow: hidden; cursor: pointer; user-select: none;';
+            let cellStyle = 'min-height: 70px; padding: 4px; display: flex; flex-direction: column; justify-content: flex-start; position: relative; border-bottom: 1px solid rgba(255,255,255,0.03); border-right: 1px solid rgba(255,255,255,0.03); overflow: hidden !important; cursor: pointer; user-select: none; box-sizing: border-box;';
             let dayNumStyle = 'font-size: 0.72rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%;';
 
             if (!isCurrentMonth) {
@@ -401,7 +498,7 @@ export function renderTodayConsole(container) {
                     <div>
                         <span style="${dayNumStyle}">${cellD}</span>
                     </div>
-                    <div style="flex-grow: 1; overflow: hidden; display: flex; flex-direction: column;">
+                    <div style="flex-grow: 1; min-width: 0; width: 100%; overflow: hidden; display: flex; flex-direction: column; box-sizing: border-box;">
                         ${eventsHtml}
                         ${moreHtml}
                     </div>
@@ -410,15 +507,22 @@ export function renderTodayConsole(container) {
         }
 
         // Custom Priority badge helper (mapped to Categories for Phase 8C-3A)
-        const getPriorityBadge = (priority) => {
+
+        // Custom Priority badge helper (mapped to Categories for Phase 8C-3A)
+        const getPriorityBadge = (task) => {
+            if (isSystemCheck(task)) {
+                return '<span class="badge" style="padding: 4px 10px; font-weight: 700; background-color: #a55eea; color: #ffffff;">추천확인</span>';
+            }
+            const priority = task.priority;
+            const category = task.category;
             const safePriority = escapeHtml(priority);
+            
+            if (priority === 'urgent' || priority === 'closing' || category === 'check' || category === 'closing' || category === 'urgent') {
+                return '<span class="badge badge-danger" style="padding: 4px 10px; font-weight: 700;">확인필요</span>';
+            }
             switch (priority) {
-                case 'urgent':
-                    return '<span class="badge badge-danger" style="padding: 4px 10px; font-weight: 700;">확인필요</span>';
                 case 'today':
                     return '<span class="badge badge-info" style="padding: 4px 10px; font-weight: 700; background-color: var(--primary); color: #ffffff;">상담예약</span>';
-                case 'closing':
-                    return '<span class="badge" style="padding: 4px 10px; font-weight: 700; background-color: #a55eea; color: #ffffff;">마감체크</span>';
                 case 'info':
                     return '<span class="badge badge-success" style="padding: 4px 10px; font-weight: 700;">메모</span>';
                 default:
@@ -434,6 +538,75 @@ export function renderTodayConsole(container) {
                 return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
             } catch (e) {
                 return escapeHtml(isoString);
+            }
+        };
+
+        const formatTaskDateTime = (isoString) => {
+            if (!isoString) return '';
+            try {
+                const date = new Date(isoString);
+                const now = new Date();
+                const isSameDay = date.getFullYear() === now.getFullYear() &&
+                                  date.getMonth() === now.getMonth() &&
+                                  date.getDate() === now.getDate();
+                
+                const timeStr = date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                if (isSameDay) {
+                    return timeStr;
+                } else {
+                    const mm = String(date.getMonth() + 1).padStart(2, '0');
+                    const dd = String(date.getDate()).padStart(2, '0');
+                    return `${mm}-${dd} ${timeStr}`;
+                }
+            } catch (e) {
+                return escapeHtml(isoString);
+            }
+        };
+
+        const formatTaskDateTimeRange = (startISO, endISO) => {
+            if (!startISO) return '';
+            try {
+                const startDate = new Date(startISO);
+                const now = new Date();
+                const isStartToday = startDate.getFullYear() === now.getFullYear() &&
+                                     startDate.getMonth() === now.getMonth() &&
+                                     startDate.getDate() === now.getDate();
+                
+                const startTimeStr = startDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                
+                if (!endISO) {
+                    if (isStartToday) {
+                        return startTimeStr;
+                    } else {
+                        const mm = String(startDate.getMonth() + 1).padStart(2, '0');
+                        const dd = String(startDate.getDate()).padStart(2, '0');
+                        return `${mm}-${dd} ${startTimeStr}`;
+                    }
+                }
+
+                const endDate = new Date(endISO);
+                const endTimeStr = endDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                
+                if (isStartToday) {
+                    return `${startTimeStr} ~ ${endTimeStr}`;
+                } else {
+                    const mm = String(startDate.getMonth() + 1).padStart(2, '0');
+                    const dd = String(startDate.getDate()).padStart(2, '0');
+                    
+                    const isSameDay = startDate.getFullYear() === endDate.getFullYear() &&
+                                      startDate.getMonth() === endDate.getMonth() &&
+                                      startDate.getDate() === endDate.getDate();
+                    
+                    if (isSameDay) {
+                        return `${mm}-${dd} ${startTimeStr} ~ ${endTimeStr}`;
+                    } else {
+                        const endMm = String(endDate.getMonth() + 1).padStart(2, '0');
+                        const endDd = String(endDate.getDate()).padStart(2, '0');
+                        return `${mm}-${dd} ${startTimeStr} ~ ${endMm}-${endDd} ${endTimeStr}`;
+                    }
+                }
+            } catch (e) {
+                return '';
             }
         };
 
@@ -455,6 +628,16 @@ export function renderTodayConsole(container) {
                     filter: brightness(0.96) contrast(1.02);
                     transform: translateY(-1px);
                     box-shadow: 0 4px 12px rgba(9, 132, 227, 0.08);
+                }
+                @media (max-width: 768px) {
+                    .calendar-event-chip {
+                        font-size: 0.55rem !important;
+                        padding: 1px 2px !important;
+                        margin-top: 2px !important;
+                    }
+                    .calendar-event-chip span {
+                        font-size: 0.55rem !important;
+                    }
                 }
             </style>
             <!-- Header Summary Card (Rich Glassmorphism UI) -->
@@ -505,7 +688,6 @@ export function renderTodayConsole(container) {
                                     <option value="memo" selected>메모</option>
                                     <option value="consult">상담예약</option>
                                     <option value="check">확인필요</option>
-                                    <option value="closing">마감체크</option>
                                 </select>
                             </div>
                             <button type="submit" class="btn btn-primary" style="height: 38px; padding: 0 24px; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; margin: 0;">추가</button>
@@ -574,7 +756,7 @@ export function renderTodayConsole(container) {
                         </div>
 
                         <!-- Days Dates Grid -->
-                        <div style="display: grid; grid-template-columns: repeat(7, 1fr); grid-template-rows: repeat(${numWeeks}, 1fr); gap: 0; flex-grow: 1; border-top: 1px solid rgba(255,255,255,0.03); border-left: 1px solid rgba(255,255,255,0.03);" id="calendar-days-grid">
+                        <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-template-rows: repeat(${numWeeks}, 1fr); gap: 0; flex-grow: 1; min-width: 0; overflow: hidden; border-top: 1px solid rgba(255,255,255,0.03); border-left: 1px solid rgba(255,255,255,0.03);" id="calendar-days-grid">
                             ${cellsHtml.join('')}
                         </div>
 
@@ -660,11 +842,18 @@ export function renderTodayConsole(container) {
 
                                     const badgeHtml = isDone
                                         ? `<span class="badge badge-success" style="padding: 4px 10px; font-weight: 700; background-color: var(--success); color: #ffffff;">완료</span>`
-                                        : getPriorityBadge(task.priority);
+                                        : getPriorityBadge(task);
+
+                                    let timeText = '';
+                                    if (task.startAt) {
+                                        timeText = formatTaskDateTimeRange(task.startAt, task.endAt);
+                                    } else {
+                                        timeText = formatTaskDateTime(task.dueAt);
+                                    }
 
                                     const timeTextHtml = isDone
-                                        ? `<div style="font-size: 0.8rem; font-weight: 600; color: var(--success);"><i class="fa-solid fa-circle-check" style="margin-right: 4px;"></i>${formatTime(task.completedAt)} 완료</div>`
-                                        : `<div style="font-size: 0.8rem; font-weight: 600; color: var(--accent);"><i class="fa-regular fa-clock" style="margin-right: 4px;"></i>${formatTime(task.dueAt)}</div>`;
+                                        ? `<div style="font-size: 0.8rem; font-weight: 600; color: var(--success);"><i class="fa-solid fa-circle-check" style="margin-right: 4px;"></i>${formatTaskDateTime(task.completedAt)} 완료</div>`
+                                        : `<div style="font-size: 0.8rem; font-weight: 600; color: var(--accent);"><i class="fa-regular fa-clock" style="margin-right: 4px;"></i>${timeText}</div>`;
 
                                     return `
                                         <div class="glass-card" style="${cardStyle}" ${!isDone ? `onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='rgba(255,255,255,0.01)'"` : ''}>

@@ -580,5 +580,402 @@ test.describe('Director Today Console Flow Checks', () => {
     await expect(popover).toBeVisible();
     await expect(page.locator('#task-content-input')).toHaveValue('');
   });
+
+  test('should sort active tasks queue by startAt -> dueAt -> createdAt policy', async ({ page }) => {
+    // 1. Clear database tasks
+    await page.evaluate(() => {
+      window.stateStore.clearMockCalendarEvents();
+      window.stateStore.db.todayTasks = [];
+    });
+
+    // 2. Add tasks with specific times to test the sorting order
+    await page.evaluate(() => {
+      const now = new Date();
+      
+      // Task 1: startAt at 14:00 today (Should be second)
+      window.stateStore.db.todayTasks.push({
+        id: 'T_start_14',
+        title: '시작 14시 업무',
+        priority: 'info',
+        category: 'memo',
+        status: 'open',
+        startAt: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 14, 0, 0).toISOString(),
+        endAt: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 15, 0, 0).toISOString(),
+        dueAt: null,
+        createdAt: new Date(now.getTime() - 1000).toISOString(),
+        source: 'manual',
+        type: 'memo',
+        segment: 'academy_director_console',
+        visibilityRoles: ['director']
+      });
+
+      // Task 2: startAt at 10:00 today (Should be first)
+      window.stateStore.db.todayTasks.push({
+        id: 'T_start_10',
+        title: '시작 10시 업무',
+        priority: 'urgent', // urgent priority but should be sorted strictly by time first!
+        category: 'check',
+        status: 'open',
+        startAt: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 0, 0).toISOString(),
+        endAt: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 11, 0, 0).toISOString(),
+        dueAt: null,
+        createdAt: new Date(now.getTime() - 2000).toISOString(),
+        source: 'manual',
+        type: 'memo',
+        segment: 'academy_director_console',
+        visibilityRoles: ['director']
+      });
+
+      // Task 3: no startAt, dueAt at 16:00 today (Should be third)
+      window.stateStore.db.todayTasks.push({
+        id: 'T_due_16',
+        title: '마감 16시 업무',
+        priority: 'today',
+        category: 'consult',
+        status: 'open',
+        startAt: null,
+        dueAt: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 16, 0, 0).toISOString(),
+        createdAt: new Date(now.getTime() - 3000).toISOString(),
+        source: 'manual',
+        type: 'memo',
+        segment: 'academy_director_console',
+        visibilityRoles: ['director']
+      });
+
+      // Task 4: no startAt, no dueAt (Should be last/fifth)
+      window.stateStore.db.todayTasks.push({
+        id: 'T_no_time',
+        title: '시간 없는 업무',
+        priority: 'info',
+        category: 'memo',
+        status: 'open',
+        startAt: null,
+        dueAt: null,
+        createdAt: new Date(now.getTime() - 4000).toISOString(),
+        source: 'manual',
+        type: 'memo',
+        segment: 'academy_director_console',
+        visibilityRoles: ['director']
+      });
+
+      // Task 5: startAt at 10:00 tomorrow (Should be fourth)
+      const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      window.stateStore.db.todayTasks.push({
+        id: 'T_start_tomorrow_10',
+        title: '내일 시작 10시 업무',
+        priority: 'info',
+        category: 'memo',
+        status: 'open',
+        startAt: new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), 10, 0, 0).toISOString(),
+        endAt: new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), 11, 0, 0).toISOString(),
+        dueAt: null,
+        createdAt: new Date(now.getTime() - 500).toISOString(),
+        source: 'manual',
+        type: 'memo',
+        segment: 'academy_director_console',
+        visibilityRoles: ['director']
+      });
+
+      // Save database changes
+      window.stateStore.saveDB();
+      window.stateStore.notify('TODAY_TASKS_CHANGED', window.stateStore.db.todayTasks);
+    });
+
+    // Wait for the tasks list to be populated and rendered
+    await expect(page.locator('#tasks-list-container').getByText('시작 10시 업무', { exact: true })).toBeVisible();
+
+    // 4. Assert the rendered order in #tasks-list-container
+    const cardTitles = await page.locator('#tasks-list-container .glass-card').evaluateAll(cards => {
+      return cards.map(card => {
+        const flexWrapper = card.firstElementChild;
+        if (flexWrapper && flexWrapper.children.length > 1) {
+          const contentWrapper = flexWrapper.children[1];
+          if (contentWrapper && contentWrapper.firstElementChild) {
+            return contentWrapper.firstElementChild.textContent.trim();
+          }
+        }
+        return '';
+      });
+    });
+
+    expect(cardTitles[0]).toBe('시작 10시 업무');
+    expect(cardTitles[1]).toBe('시작 14시 업무');
+    expect(cardTitles[2]).toBe('마감 16시 업무');
+    expect(cardTitles[3]).toBe('내일 시작 10시 업무');
+    expect(cardTitles[4]).toBe('시간 없는 업무');
+
+    // 5. Assert that the tomorrow task card shows the date prefix in card metadata
+    const tomDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const mm = String(tomDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(tomDate.getDate()).padStart(2, '0');
+    const expectedTomorrowTimeText = `${mm}-${dd} 10:00 ~ 11:00`;
+    const tomorrowCard = page.locator('#tasks-list-container .glass-card:has-text("내일 시작 10시 업무")');
+    await expect(tomorrowCard).toContainText(expectedTomorrowTimeText);
+
+    // 6. Assert that the urgent task badge is still displayed correctly
+    const urgentBadge = page.locator('#tasks-list-container .glass-card').filter({ hasText: '시작 10시 업무' }).filter({ hasNotText: '내일' }).locator('.badge');
+    await expect(urgentBadge).toContainText('확인필요');
+  });
+
+  test('should correctly render category and provider badges in calendar chips and popover including done status', async ({ page }) => {
+    // 1. Clear database tasks and events
+    await page.evaluate(() => {
+      window.stateStore.clearMockCalendarEvents();
+      window.stateStore.db.todayTasks = [];
+    });
+
+    // 2. Add tasks with various categories, done task, system task, and a google calendar event
+    await page.evaluate(() => {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = now.getMonth();
+      const d = now.getDate();
+
+      const makeIso = (hour) => new Date(y, m, d, hour, 0, 0, 0).toISOString();
+
+      // TodayTask: Memo
+      window.stateStore.db.todayTasks.push({
+        id: 'E2E_T_memo',
+        title: 'E2E 메모 일정',
+        priority: 'info',
+        category: 'memo',
+        status: 'open',
+        startAt: makeIso(10),
+        endAt: makeIso(11),
+        dueAt: null,
+        createdAt: new Date().toISOString(),
+        source: 'manual',
+        type: 'memo',
+        segment: 'academy_director_console',
+        visibilityRoles: ['director']
+      });
+
+      // TodayTask: Consult
+      window.stateStore.db.todayTasks.push({
+        id: 'E2E_T_consult',
+        title: 'E2E 상담 일정',
+        priority: 'today',
+        category: 'consult',
+        status: 'open',
+        startAt: makeIso(11),
+        endAt: makeIso(12),
+        dueAt: null,
+        createdAt: new Date().toISOString(),
+        source: 'manual',
+        type: 'memo',
+        segment: 'academy_director_console',
+        visibilityRoles: ['director']
+      });
+
+      // TodayTask: Check/Urgent (manual check -> 확인필요)
+      window.stateStore.db.todayTasks.push({
+        id: 'E2E_T_check',
+        title: 'E2E 확인 일정',
+        priority: 'urgent',
+        category: 'check',
+        status: 'open',
+        startAt: makeIso(12),
+        endAt: makeIso(13),
+        dueAt: null,
+        createdAt: new Date().toISOString(),
+        source: 'manual',
+        type: 'memo',
+        segment: 'academy_director_console',
+        visibilityRoles: ['director']
+      });
+
+      // TodayTask: Closing (manual closing -> 확인필요 fallback)
+      window.stateStore.db.todayTasks.push({
+        id: 'E2E_T_closing',
+        title: 'E2E 마감 일정',
+        priority: 'closing',
+        category: 'closing',
+        status: 'open',
+        startAt: makeIso(13),
+        endAt: makeIso(14),
+        dueAt: null,
+        createdAt: new Date().toISOString(),
+        source: 'manual',
+        type: 'memo',
+        segment: 'academy_director_console',
+        visibilityRoles: ['director']
+      });
+
+      // TodayTask: Done Consult
+      window.stateStore.db.todayTasks.push({
+        id: 'E2E_T_done_consult',
+        title: '완료 상담 일정',
+        priority: 'today',
+        category: 'consult',
+        status: 'done',
+        completedAt: new Date().toISOString(),
+        startAt: makeIso(14),
+        endAt: makeIso(15),
+        dueAt: null,
+        createdAt: new Date().toISOString(),
+        source: 'manual',
+        type: 'memo',
+        segment: 'academy_director_console',
+        visibilityRoles: ['director']
+      });
+
+      // Mock Calendar Event: Google provider
+      window.stateStore.db.mockCalendarEvents = [{
+        id: 'E2E_E_google',
+        externalId: 'ext_g_1',
+        provider: 'google',
+        calendarId: 'google_primary',
+        title: '구글 외부 일정',
+        description: 'Google Calendar Event',
+        startsAt: makeIso(15),
+        endsAt: makeIso(16)
+      }];
+
+      // TodayTask: System Check / Auto Recommendation (system source -> 추천확인)
+      window.stateStore.db.todayTasks.push({
+        id: 'E2E_T_system_check',
+        title: 'E2E 시스템 추천 일정',
+        priority: 'urgent',
+        category: 'check',
+        status: 'open',
+        startAt: makeIso(16),
+        endAt: makeIso(17),
+        dueAt: null,
+        createdAt: new Date().toISOString(),
+        source: 'system',
+        type: 'memo',
+        segment: 'academy_director_console',
+        visibilityRoles: ['director']
+      });
+
+      // Save database changes and notify view
+      window.stateStore.saveDB();
+      window.stateStore.notify('TODAY_TASKS_CHANGED', window.stateStore.db.todayTasks);
+    });
+
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const dayCellSelector = `.calendar-day-cell[data-date="${dateStr}"]`;
+
+    // Wait for the cell and event count indicator
+    await expect(page.locator(dayCellSelector)).toBeVisible();
+
+    // The cell should display "+N개" as there are 7 events in total (limit is 2 visible chips)
+    await expect(page.locator(`${dayCellSelector} :text("+5개")`)).toBeVisible();
+
+    // Verify the visible event chips labels
+    const firstChip = page.locator(`${dayCellSelector} .calendar-event-chip`).nth(0);
+    const secondChip = page.locator(`${dayCellSelector} .calendar-event-chip`).nth(1);
+
+    await expect(firstChip).toContainText('메모');
+    await expect(firstChip).toContainText('E2E 메모 일정');
+    await expect(secondChip).toContainText('상담예약');
+    await expect(secondChip).toContainText('E2E 상담 일정');
+
+    // Verify chip style constraints to avoid overflow
+    const chipStyle = await firstChip.getAttribute('style');
+    expect(chipStyle).toContain('box-sizing: border-box');
+    expect(chipStyle).toContain('width: 100%');
+
+    // Click the day cell to open the popover list of all 7 events
+    await page.locator(dayCellSelector).click();
+    const popover = page.locator('#calendar-popover-container');
+    await expect(popover).toBeVisible();
+
+    // Verify popover items titles and category/provider labels
+    const popoverItems = page.locator('#calendar-popover-body .popover-event-item');
+    await expect(popoverItems).toHaveCount(7);
+
+    // E2E 메모 일정
+    const item0 = popoverItems.nth(0);
+    await expect(item0).toContainText('메모');
+    await expect(item0).toContainText('E2E 메모 일정');
+
+    // E2E 상담 일정
+    const item1 = popoverItems.nth(1);
+    await expect(item1).toContainText('상담예약');
+    await expect(item1).toContainText('E2E 상담 일정');
+
+    // E2E 확인 일정
+    const item2 = popoverItems.nth(2);
+    await expect(item2).toContainText('확인필요');
+    await expect(item2).toContainText('E2E 확인 일정');
+
+    // E2E 마감 일정 (closing maps to 확인필요)
+    const item3 = popoverItems.nth(3);
+    await expect(item3).toContainText('확인필요');
+    await expect(item3).toContainText('E2E 마감 일정');
+
+    // 완료 상담 일정
+    const item4 = popoverItems.nth(4);
+    await expect(item4).toContainText('상담예약');
+    await expect(item4).toContainText('완료 상담 일정');
+    await expect(item4.locator('.fa-check')).toBeVisible(); // Done check icon should be present
+
+    // 구글 외부 일정
+    const item5 = popoverItems.nth(5);
+    await expect(item5).toContainText('Google');
+    await expect(item5).toContainText('구글 외부 일정');
+    await expect(item5).toContainText('Google 캘린더'); // sourceBadge label
+
+    // E2E 시스템 추천 일정 (system source -> 추천확인)
+    const item6 = popoverItems.nth(6);
+    await expect(item6).toContainText('추천확인');
+    await expect(item6).toContainText('E2E 시스템 추천 일정');
+  });
+
+  test('should not overflow calendar event chip on small viewport', async ({ page }) => {
+    // 1. Set viewport to small size (e.g. 390x844)
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    // 2. Clear and add a single task with an extremely long title for today
+    await page.evaluate(() => {
+      window.stateStore.clearMockCalendarEvents();
+      window.stateStore.db.todayTasks = [];
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 0, 0).toISOString();
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 11, 30, 0).toISOString();
+      
+      window.stateStore.addTodayTask({
+        title: '엄청나게매우매우아주긴제목의일정을테스트하여작은화면에서오버플로우가발생하는지강제적으로검증하는더미데이터',
+        description: '설명글',
+        status: 'open',
+        priority: 'today',
+        category: 'consult',
+        startAt: start,
+        endAt: end,
+        dueAt: start,
+        source: 'manual',
+        type: 'memo',
+        segment: 'academy_director_console',
+        domain: 'academy',
+        visibilityRoles: ['director']
+      });
+    });
+
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const dayCellSelector = `.calendar-day-cell[data-date="${dateStr}"]`;
+
+    // Wait for the cell and chip to be visible
+    const cell = page.locator(dayCellSelector);
+    await expect(cell).toBeVisible();
+    
+    const chip = cell.locator('.calendar-event-chip').first();
+    await expect(chip).toBeVisible();
+
+    // 3. Compare bounding boxes to verify chip does not overflow parent cell horizontally
+    const cellBox = await cell.boundingBox();
+    const chipBox = await chip.boundingBox();
+
+    expect(cellBox).not.toBeNull();
+    expect(chipBox).not.toBeNull();
+
+    // The right edge of the chip must be less than or equal to the right edge of the cell.
+    const cellRight = cellBox.x + cellBox.width;
+    const chipRight = chipBox.x + chipBox.width;
+
+    expect(chipRight).toBeLessThanOrEqual(cellRight + 1);
+  });
 });
 

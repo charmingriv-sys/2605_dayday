@@ -333,7 +333,9 @@ export const todayTaskMethods = {
                 endsAt: task.endAt,
                 status: task.status,
                 category: task.category || '',
-                provider: 'app'
+                priority: task.priority || '',
+                provider: 'app',
+                taskSource: task.source || 'manual'
             }));
 
         // 2. Map and filter mockCalendarEvents
