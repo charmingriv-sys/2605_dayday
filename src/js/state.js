@@ -245,6 +245,90 @@ class StateStore {
         this.loadDB();
         this.seedInitialBookPayments(); // Seed payments for default student books
     }
+
+    seedDemoRecommendationsData() {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = now.getMonth();
+        const d = now.getDate();
+        const currentMonth = `${y}-${String(m + 1).padStart(2, '0')}`;
+        
+        // 1. Seed demo student
+        if (!this.db.students) {
+            this.db.students = [];
+        }
+        let demoStudent = this.db.students.find(s => s.id === 'S_DEMO_REC');
+        if (!demoStudent) {
+            demoStudent = {
+                id: 'S_DEMO_REC',
+                name: '김추천(데모)',
+                phone: '010-9999-9999',
+                parentPhone: '010-8888-8888',
+                teacherId: 'T8',
+                instrument: '피아노',
+                fee: 150000,
+                dueDay: 1, // Invoice due date has passed (current day is at least 3)
+                enrollDate: '2026-05-01',
+                age: 10,
+                school: '데모초등학교',
+                scheduleNotes: '',
+                studentMemberNo: 9999,
+                paymentStatus: 'unpaid'
+            };
+            this.db.students.push(demoStudent);
+        }
+
+        // 2. Seed unpaid payment for demo student
+        if (!this.db.payments) {
+            this.db.payments = [];
+        }
+        let demoPayment = this.db.payments.find(p => p.studentId === 'S_DEMO_REC' && p.month === currentMonth && p.type === 'education');
+        if (!demoPayment) {
+            demoPayment = {
+                id: 'P_DEMO_REC',
+                studentId: 'S_DEMO_REC',
+                amount: 150000,
+                month: currentMonth,
+                type: 'education',
+                status: 'unpaid',
+                invoiceDate: `${currentMonth}-01`,
+                paidDate: null,
+                method: null
+            };
+            this.db.payments.push(demoPayment);
+        }
+
+        // 3. Seed delayed attendance class for today
+        const days = ['일', '월', '화', '수', '목', '금', '토'];
+        const dayOfWeekKo = days[now.getDay()]; // 오늘 요일 (일~토)
+        
+        // Calculate a time 30 minutes prior to now (e.g. 13:06 -> 12:36)
+        const classTime = new Date(now.getTime() - 30 * 60 * 1000);
+        const classHour = classTime.getHours();
+        const classMin = classTime.getMinutes();
+        const classTimeStr = `${String(classHour).padStart(2, '0')}:${String(classMin).padStart(2, '0')}`;
+
+        if (!this.db.classes) {
+            this.db.classes = [];
+        }
+
+        let demoClass = this.db.classes.find(c => c.id === 'C_DEMO_REC');
+        if (!demoClass) {
+            demoClass = {
+                id: 'C_DEMO_REC',
+                studentId: 'S_DEMO_REC',
+                dayOfWeek: dayOfWeekKo,
+                time: classTimeStr
+            };
+            this.db.classes.push(demoClass);
+        } else {
+            // Update class time and day dynamically to keep it "30 minutes prior to now" for testing
+            demoClass.dayOfWeek = dayOfWeekKo;
+            demoClass.time = classTimeStr;
+        }
+
+        this.saveDB();
+    }
  
     // Load from local storage via adapter wrapper
     loadDB() {

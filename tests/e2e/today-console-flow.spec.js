@@ -977,5 +977,90 @@ test.describe('Director Today Console Flow Checks', () => {
 
     expect(chipRight).toBeLessThanOrEqual(cellRight + 1);
   });
+
+  test('should display system recommendations on console load, prevent duplicate generation, and support auto-resolution', async ({ page }) => {
+    // 1. Seed base data to trigger recommendations
+    await page.evaluate(() => {
+      window.stateStore.clearMockCalendarEvents();
+      window.stateStore.db.todayTasks = [];
+      window.stateStore.db.scheduleSnapshots = [];
+      window.stateStore.db.scheduleOverrides = [];
+      
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = now.getMonth();
+      const d = now.getDate();
+      const currentMonth = `${y}-${String(m + 1).padStart(2, '0')}`;
+
+      // Set test student with dueDay today/past (1st)
+      window.stateStore.db.students = [
+        { id: 'S_E2E_REC', name: '김추천', dueDay: 1, fee: 150000, academyId: 'AC1', teacherId: 'T8', instrument: '피아노' }
+      ];
+
+      // Set classes for all operational days so today matches regardless of actual day
+      const days = ['월', '화', '수', '목', '금', '토'];
+      const classHour = (now.getHours() - 2 + 24) % 24;
+      const classMin = now.getMinutes();
+      const classTimeStr = `${String(classHour).padStart(2, '0')}:${String(classMin).padStart(2, '0')}`;
+
+      window.stateStore.db.classes = days.map((day, index) => ({
+        id: `C_E2E_REC_${index}`,
+        studentId: 'S_E2E_REC',
+        dayOfWeek: day,
+        time: classTimeStr
+      }));
+
+      // Set unpaid billing
+      window.stateStore.db.payments = [
+        { id: 'P_E2E_REC', studentId: 'S_E2E_REC', amount: 150000, month: currentMonth, type: 'education', status: 'unpaid', invoiceDate: `${currentMonth}-01` }
+      ];
+
+      window.stateStore.db.attendance = [];
+      window.stateStore.saveDB();
+    });
+
+    // 2. Reload console to trigger sync recommendations in view
+    await page.reload();
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+    await expect(page.locator('#page-title')).toContainText('오늘 원장 콘솔');
+
+    // 3. Verify recommendations are displayed in tasks list
+    const billingTitle = '김추천 원생 수강료 미납 확인 필요';
+    const attendanceTitle = '김추천 원생 출결 입력 지연';
+
+    await expect(page.locator(`#tasks-list-container :text("${billingTitle}")`)).toBeVisible();
+    await expect(page.locator(`#tasks-list-container :text("${attendanceTitle}")`)).toBeVisible();
+
+    // Verify recommendations have "추천확인" badge
+    const billingCard = page.locator(`#tasks-list-container .glass-card:has-text("${billingTitle}")`);
+    await expect(billingCard.locator('.badge')).toContainText('추천확인');
+
+    const attendanceCard = page.locator(`#tasks-list-container .glass-card:has-text("${attendanceTitle}")`);
+    await expect(attendanceCard.locator('.badge')).toContainText('추천확인');
+
+    // 4. Verify no duplicates exist in state store after page reload (re-render)
+    const taskCountInStore = await page.evaluate(() => {
+      return window.stateStore.getTodayTasks().length;
+    });
+    expect(taskCountInStore).toBe(2);
+
+    // 5. Verify auto-resolution of billing recommendation when paid
+    await page.evaluate(() => {
+      // Pay invoice via public API
+      window.stateStore.payInvoice('P_E2E_REC', 'card');
+    });
+
+    // Reload again to sync status
+    await page.reload();
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+
+    // Verify billing task is now resolved and shows "완료" badge
+    const resolvedBillingCard = page.locator(`#tasks-list-container .glass-card:has-text("${billingTitle}")`);
+    await expect(resolvedBillingCard.locator('.badge')).toContainText('완료');
+    
+    // Verify actions are hidden on this card
+    const cardActions = resolvedBillingCard.locator('.task-action-wrapper > div').nth(1);
+    await expect(cardActions).toHaveCSS('visibility', 'hidden');
+  });
 });
 

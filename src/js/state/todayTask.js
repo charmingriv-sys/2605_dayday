@@ -458,6 +458,21 @@ export const todayTaskMethods = {
 
         // Apply dedupe/upsert check
         newRecommendations.forEach(rec => {
+            if (rec.dedupeKey) {
+                const existing = this.db.todayTasks.find(t => t.dedupeKey === rec.dedupeKey);
+                if (existing) {
+                    const isChanged = 
+                        existing.title !== rec.title ||
+                        existing.description !== rec.description ||
+                        existing.status !== rec.status ||
+                        existing.dueAt !== rec.dueAt ||
+                        existing.startAt !== rec.startAt ||
+                        existing.endAt !== rec.endAt;
+                    if (!isChanged) {
+                        return; // Skip upsert if identical to avoid infinite notify loop
+                    }
+                }
+            }
             this.addTodayTask(rec);
         });
 

@@ -280,6 +280,34 @@ export function renderTodayConsole(container) {
     };
 
     const render = () => {
+        // Opt-in check for manual recommendations verification
+        let enableDemo = false;
+        if (typeof window !== 'undefined') {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('demoRecommendations') === '1') {
+                enableDemo = true;
+                if (typeof localStorage !== 'undefined') {
+                    localStorage.setItem('DAYDAY_ENABLE_DEMO_RECOMMENDATIONS', 'true');
+                }
+            } else if (typeof localStorage !== 'undefined' && localStorage.getItem('DAYDAY_ENABLE_DEMO_RECOMMENDATIONS') === 'true') {
+                enableDemo = true;
+            }
+        }
+
+        // Seed demo data for manual verification only in non-automated user browsers
+        const isAutomation = typeof navigator !== 'undefined' && navigator.webdriver;
+        const isE2E = typeof window !== 'undefined' && window.__DAYDAY_E2E__ === true;
+        if (enableDemo && !isAutomation && !isE2E && typeof stateStore.seedDemoRecommendationsData === 'function') {
+            stateStore.seedDemoRecommendationsData();
+        }
+
+        const demoModeBadge = (enableDemo && !isAutomation && !isE2E)
+            ? `<span class="badge" id="demo-badge" style="font-size: 0.72rem; padding: 4px 8px; font-weight: 700; background-color: rgba(165, 94, 234, 0.15); color: #a55eea; border: 1px solid rgba(165, 94, 234, 0.25); margin-left: 10px; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-flask"></i> 추천확인 데모 데이터 활성화됨</span>`
+            : '';
+
+        // Sync system recommendations before retrieving active tasks
+        stateStore.syncSystemRecommendations(new Date());
+
         // Fetch active tasks using store public API
         let activeTasks = stateStore.getActiveTodayTasks(new Date());
         const doneTasks = stateStore.getDoneTodayTasks ? stateStore.getDoneTodayTasks(new Date()) : [];
@@ -646,6 +674,7 @@ export function renderTodayConsole(container) {
                     <h2 style="margin: 0; font-size: 1.45rem; font-weight: 800; display: flex; align-items: center; gap: 10px;">
                         <i class="fa-solid fa-list-check" style="color: var(--primary);"></i>
                         오늘 원장 콘솔
+                        ${demoModeBadge}
                     </h2>
                     <p style="margin: 0; color: var(--text-muted); font-size: 0.88rem;">오늘 처리할 운영 업무를 확인합니다.</p>
                 </div>
