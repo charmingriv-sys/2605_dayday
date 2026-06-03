@@ -12,13 +12,29 @@ const escapeHtml = (value) => {
 
 export function renderTodayConsole(container) {
     const segmentId = 'academy_director_console'; // Segment-First Architecture Token
-    let lastAutoEndTime = '';
+    let isEndTimeManuallyChanged = false; // Track manual override of end time
+    let editingTaskId = null; // Track editing task ID
+    let selectedDateStr = null; // Track clicked calendar date
 
     const isSystemCheck = (item) => {
         if (!item) return false;
         const src = item.taskSource || item.source;
         const cat = item.category;
         return src === 'system' || src === 'auto' || cat === 'system_check';
+    };
+
+    const isTodayTask = (task) => {
+        const dateStr = task.startAt || task.dueAt;
+        if (!dateStr) return false;
+        try {
+            const date = new Date(dateStr);
+            const now = new Date();
+            return date.getFullYear() === now.getFullYear() &&
+                   date.getMonth() === now.getMonth() &&
+                   date.getDate() === now.getDate();
+        } catch (e) {
+            return false;
+        }
     };
 
     // Datetime default offset helper (Local ISO formatting)
@@ -143,8 +159,8 @@ export function renderTodayConsole(container) {
                 if (endHourInput) endHourInput.value = endDecomp.hourStr;
                 if (endMinInput) endMinInput.value = endDecomp.minStr;
 
-                // Align lastAutoEndTime to loaded endsAt so subsequent start time changes auto-synchronize
-                lastAutoEndTime = new Date(foundEvent.endsAt).toISOString();
+                // Reset isEndTimeManuallyChanged when form values are freshly loaded
+                isEndTimeManuallyChanged = false;
             } catch (err) {
                 // ignore invalid dates in event
             }
@@ -156,6 +172,8 @@ export function renderTodayConsole(container) {
         const title = container.querySelector('#calendar-popover-title');
         const body = container.querySelector('#calendar-popover-body');
         if (!popover || !body || !title) return;
+
+        popover.dataset.date = dateStr;
 
         const [y, m, d] = dateStr.split('-').map(Number);
         const cellStart = new Date(y, m - 1, d, 0, 0, 0, 0);
@@ -187,8 +205,8 @@ export function renderTodayConsole(container) {
                 chipBorder = '1px solid rgba(241, 196, 15, 0.25)';
                 accentColor = '#f1c40f';
                 const providerLabel = event.provider === 'google' ? 'Google' : '캘린더';
-                prefix = `<span style="font-size: 0.58rem; color: #f1c40f; font-weight: 700; margin-right: 3px; background: rgba(241, 196, 15, 0.15); padding: 1px 3px; border-radius: 2px;">${providerLabel}</span>`;
-                sourceBadge = `<span style="font-size: 0.65rem; background: rgba(241, 196, 15, 0.15); color: #f1c40f; padding: 2px 6px; border-radius: 4px; font-weight: 700;">${providerLabel === 'Google' ? 'Google 캘린더' : '로컬 캘린더'}</span>`;
+                prefix = `<span style="font-size: 0.58rem; color: #f1c40f; font-weight: 700; margin-right: 3px; background: rgba(241, 196, 15, 0.15); padding: 1px 3px; border-radius: 2px; white-space: nowrap; flex-shrink: 0;">${providerLabel}</span>`;
+                sourceBadge = `<span style="font-size: 0.65rem; background: rgba(241, 196, 15, 0.15); color: #f1c40f; padding: 2px 6px; border-radius: 4px; font-weight: 700; white-space: nowrap; flex-shrink: 0;">${providerLabel === 'Google' ? 'Google 캘린더' : '로컬 캘린더'}</span>`;
             } else {
                 const cat = event.category;
                 const isSys = isSystemCheck(event);
@@ -232,8 +250,8 @@ export function renderTodayConsole(container) {
                     badgeColor = 'var(--primary)';
                 }
 
-                prefix = `<span style="font-size: 0.58rem; color: ${badgeColor}; font-weight: 700; margin-right: 3px; background: ${badgeBg}; padding: 1px 3px; border-radius: 2px;">${categoryLabel}</span>`;
-                sourceBadge = `<span style="font-size: 0.65rem; background: ${badgeBg}; color: ${badgeColor}; padding: 2px 6px; border-radius: 4px; font-weight: 700;">${categoryLabel}</span>`;
+                prefix = `<span style="font-size: 0.58rem; color: ${badgeColor}; font-weight: 700; margin-right: 3px; background: ${badgeBg}; padding: 1px 3px; border-radius: 2px; white-space: nowrap; flex-shrink: 0;">${categoryLabel}</span>`;
+                sourceBadge = `<span style="font-size: 0.65rem; background: ${badgeBg}; color: ${badgeColor}; padding: 2px 6px; border-radius: 4px; font-weight: 700; white-space: nowrap; flex-shrink: 0;">${categoryLabel}</span>`;
             }
 
             const formatHM = (isoStr) => {
@@ -262,8 +280,9 @@ export function renderTodayConsole(container) {
             return `
                 <div class="popover-event-item" data-id="${escapeHtml(event.id)}" data-source="${escapeHtml(event.source)}" style="padding: 10px; border-radius: 6px; background: ${chipBg}; border: ${chipBorder}; border-left: 4px solid ${accentColor}; cursor: pointer; user-select: none; display: flex; flex-direction: column; gap: 4px;">
                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                        <div style="font-weight: 700; font-size: 0.82rem; ${textStyle} overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                            ${prefix}${doneIcon}${escapeHtml(event.title)}
+                        <div style="font-weight: 700; font-size: 0.82rem; ${textStyle} overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 4px; min-width: 0; flex: 1;">
+                            ${prefix}
+                            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">${doneIcon}${escapeHtml(event.title)}</span>
                         </div>
                         ${sourceBadge}
                     </div>
@@ -455,7 +474,7 @@ export function renderTodayConsole(container) {
                         badgeBg = 'rgba(9, 132, 227, 0.15)';
                         badgeColor = 'var(--primary)';
                     }
-                    prefix = `<span style="flex-shrink: 0; font-size: 0.58rem; color: ${badgeColor}; font-weight: 700; margin-right: 3px; background: ${badgeBg}; padding: 1px 3px; border-radius: 2px;">${categoryLabel}</span>`;
+                    prefix = `<span style="flex-shrink: 0; font-size: 0.58rem; color: ${badgeColor}; font-weight: 700; margin-right: 3px; background: ${badgeBg}; padding: 1px 3px; border-radius: 2px; white-space: nowrap;">${categoryLabel}</span>`;
                 }
 
                 // Determine multi-day connection styles
@@ -580,7 +599,7 @@ export function renderTodayConsole(container) {
                 
                 const timeStr = date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
                 if (isSameDay) {
-                    return timeStr;
+                    return `오늘 ${timeStr}`;
                 } else {
                     const mm = String(date.getMonth() + 1).padStart(2, '0');
                     const dd = String(date.getDate()).padStart(2, '0');
@@ -604,7 +623,7 @@ export function renderTodayConsole(container) {
                 
                 if (!endISO) {
                     if (isStartToday) {
-                        return startTimeStr;
+                        return `오늘 ${startTimeStr}`;
                     } else {
                         const mm = String(startDate.getMonth() + 1).padStart(2, '0');
                         const dd = String(startDate.getDate()).padStart(2, '0');
@@ -616,7 +635,7 @@ export function renderTodayConsole(container) {
                 const endTimeStr = endDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
                 
                 if (isStartToday) {
-                    return `${startTimeStr} ~ ${endTimeStr}`;
+                    return `오늘 ${startTimeStr} ~ ${endTimeStr}`;
                 } else {
                     const mm = String(startDate.getMonth() + 1).padStart(2, '0');
                     const dd = String(startDate.getDate()).padStart(2, '0');
@@ -639,13 +658,58 @@ export function renderTodayConsole(container) {
         };
 
         const nextHourDate = getNextHourDate();
-        const startComponents = decomposeDate(nextHourDate);
-        const endComponents = decomposeDate(new Date(nextHourDate.getTime() + 60 * 60 * 1000));
-        
-        const defaultEndValISO = composeISOString(endComponents.dateStr, endComponents.ampm, endComponents.hourStr, endComponents.minStr);
-        if (!lastAutoEndTime) {
-            lastAutoEndTime = defaultEndValISO;
+        let startComponents = decomposeDate(nextHourDate);
+        let endComponents = decomposeDate(new Date(nextHourDate.getTime() + 60 * 60 * 1000));
+        let taskContent = '';
+        let taskCategory = 'memo';
+
+        if (editingTaskId) {
+            const allTasks = stateStore.getTodayTasks();
+            const editingTask = allTasks.find(t => t.id === editingTaskId);
+            if (editingTask) {
+                let reconstructedContent = editingTask.rawContent;
+                if (!reconstructedContent) {
+                    if (editingTask.description) {
+                        const firstLine = editingTask.description.split('\n')[0].trim();
+                        if (firstLine === editingTask.title.trim()) {
+                            reconstructedContent = editingTask.description;
+                        } else {
+                            reconstructedContent = `${editingTask.title}\n${editingTask.description}`;
+                        }
+                    } else {
+                        reconstructedContent = editingTask.title;
+                    }
+                }
+                taskContent = reconstructedContent;
+                taskCategory = editingTask.category || 'memo';
+                if (editingTask.startAt) {
+                    try {
+                        startComponents = decomposeDate(new Date(editingTask.startAt));
+                    } catch (e) {}
+                }
+                if (editingTask.endAt) {
+                    try {
+                        endComponents = decomposeDate(new Date(editingTask.endAt));
+                        isEndTimeManuallyChanged = false;
+                    } catch (e) {}
+                }
+            } else {
+                editingTaskId = null;
+            }
         }
+        
+        if (!editingTaskId) {
+            if (selectedDateStr) {
+                startComponents.dateStr = selectedDateStr;
+                endComponents.dateStr = selectedDateStr;
+            }
+            isEndTimeManuallyChanged = false;
+        }
+
+        // Capture popover state before setting container.innerHTML
+        const oldPopover = container.querySelector('#calendar-popover-container');
+        const popoverOpen = oldPopover && oldPopover.style.display !== 'none';
+        const popoverDate = oldPopover ? oldPopover.dataset.date : null;
 
         container.innerHTML = `
             <style>
@@ -698,15 +762,16 @@ export function renderTodayConsole(container) {
             <div class="today-console-workspace" style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 24px; align-items: start; margin-bottom: 24px;">
                 <!-- Left Column: Manual Task Form Card -->
                 <div class="glass-card" style="padding: 1.5rem; display: flex; flex-direction: column; height: 100%;">
-                    <h3 style="font-size: 1.05rem; font-weight: 700; margin: 0 0 1.2rem 0; display: flex; align-items: center; gap: 8px;">
-                        <i class="fa-solid fa-circle-plus" style="color: var(--primary);"></i>
-                        새로운 운영 메모 / 할 일 추가
+                    <h3 id="form-add-task-title" style="font-size: 1.05rem; font-weight: 700; margin: 0 0 1.2rem 0; display: flex; align-items: center; gap: 8px;">
+                        <i id="form-title-icon" class="fa-solid ${editingTaskId ? 'fa-pen-to-square' : 'fa-circle-plus'}" style="color: ${editingTaskId ? 'var(--accent)' : 'var(--primary)'};"></i>
+                        <span id="form-title-text">${editingTaskId ? '운영 메모 수정' : '새로운 운영 메모 / 할 일 추가'}</span>
+                        ${editingTaskId ? '<span class="badge badge-accent form-edit-indicator" style="margin-left: auto; font-size: 0.65rem; background: var(--accent); color: #fff;">수정 중</span>' : ''}
                     </h3>
                     <form id="form-add-task" style="display: flex; flex-direction: column; gap: 16px;">
                         <!-- Row 1: Quick Memo Textarea -->
                         <div style="display: flex; flex-direction: column; gap: 6px;">
                             <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">운영 메모 (첫 줄은 제목, 이후 줄은 설명)</label>
-                            <textarea id="task-content-input" placeholder="오늘 메모할 내용을 입력하세요.&#10;예:&#10;신규 회원 상담 예약&#10;오후 3시에 방문하여 수강 일정 및 악기 대여 문의 예정" rows="4" required style="width: 100%; padding: 12px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; resize: vertical; line-height: 1.5; outline: none;"></textarea>
+                            <textarea id="task-content-input" placeholder="오늘 메모할 내용을 입력하세요.&#10;예:&#10;신규 회원 상담 예약&#10;오후 3시에 방문하여 수강 일정 및 악기 대여 문의 예정" rows="4" required style="width: 100%; padding: 12px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; resize: vertical; line-height: 1.5; outline: none;">${escapeHtml(taskContent)}</textarea>
                         </div>
                         
                         <!-- Row 2: Category & Submit Button -->
@@ -714,12 +779,17 @@ export function renderTodayConsole(container) {
                             <div style="display: flex; flex-direction: column; gap: 6px;">
                                 <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">구분</label>
                                 <select id="task-category-input" style="width: 100%; height: 38px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-main); font-size: 0.85rem; margin: 0; cursor: pointer; outline: none;">
-                                    <option value="memo" selected>메모</option>
-                                    <option value="consult">상담예약</option>
-                                    <option value="check">확인필요</option>
+                                    <option value="memo" ${taskCategory === 'memo' ? 'selected' : ''}>메모</option>
+                                    <option value="consult" ${taskCategory === 'consult' ? 'selected' : ''}>상담예약</option>
+                                    <option value="check" ${taskCategory === 'check' ? 'selected' : ''}>확인필요</option>
                                 </select>
                             </div>
-                            <button type="submit" class="btn btn-primary" style="height: 38px; padding: 0 24px; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; margin: 0;">추가</button>
+                            <div style="display: flex; gap: 6px; align-items: end;">
+                                <button type="submit" id="btn-add-task" class="btn btn-primary" style="height: 38px; padding: 0 24px; font-size: 0.85rem; display: ${editingTaskId ? 'none' : 'flex'}; align-items: center; justify-content: center; margin: 0;">추가</button>
+                                <button type="button" id="btn-save-task" class="btn btn-accent" style="height: 38px; padding: 0 16px; font-size: 0.85rem; display: ${editingTaskId ? 'flex' : 'none'}; align-items: center; justify-content: center; margin: 0; background: var(--accent); color: #fff;">수정 완료</button>
+                                <button type="button" id="btn-cancel-edit" class="btn btn-secondary" style="height: 38px; padding: 0 16px; font-size: 0.85rem; display: ${editingTaskId ? 'flex' : 'none'}; align-items: center; justify-content: center; margin: 0; background: var(--secondary); color: var(--text-main);">수정 취소</button>
+                                <button type="button" id="btn-delete-task" class="btn btn-danger" style="height: 38px; padding: 0 16px; font-size: 0.85rem; display: ${editingTaskId ? 'flex' : 'none'}; align-items: center; justify-content: center; margin: 0; background: var(--danger); color: #fff;">삭제</button>
+                            </div>
                         </div>
 
                         <!-- Row 3: Start and End Times -->
@@ -870,7 +940,7 @@ export function renderTodayConsole(container) {
                                         : `font-weight: 700; color: var(--text-main); font-size: 0.95rem;`;
 
                                     const badgeHtml = isDone
-                                        ? `<span class="badge badge-success" style="padding: 4px 10px; font-weight: 700; background-color: var(--success); color: #ffffff;">완료</span>`
+                        ? `<span class="badge badge-success" style="padding: 4px 10px; font-weight: 700; background-color: var(--success); color: #ffffff;">완료</span>`
                                         : getPriorityBadge(task);
 
                                     let timeText = '';
@@ -880,18 +950,25 @@ export function renderTodayConsole(container) {
                                         timeText = formatTaskDateTime(task.dueAt);
                                     }
 
+                                    const todayBadge = isTodayTask(task) && !isDone
+                                        ? `<span class="badge-today" style="display: inline-block; font-size: 0.58rem; background: var(--accent); color: #fff; padding: 2px 5px; border-radius: 3px; font-weight: 700; margin-bottom: 2px; text-align: center; white-space: nowrap; flex-shrink: 0; width: fit-content; margin-left: auto;">TODAY</span>`
+                                        : '';
+
                                     const timeTextHtml = isDone
                                         ? `<div style="font-size: 0.8rem; font-weight: 600; color: var(--success);"><i class="fa-solid fa-circle-check" style="margin-right: 4px;"></i>${formatTaskDateTime(task.completedAt)} 완료</div>`
-                                        : `<div style="font-size: 0.8rem; font-weight: 600; color: var(--accent);"><i class="fa-regular fa-clock" style="margin-right: 4px;"></i>${timeText}</div>`;
+                                        : `<div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
+                                            ${todayBadge}
+                                            <div style="font-size: 0.8rem; font-weight: 600; color: var(--accent); white-space: nowrap;"><i class="fa-regular fa-clock" style="margin-right: 4px;"></i>${timeText}</div>
+                                           </div>`;
 
                                     return `
                                         <div class="glass-card" style="${cardStyle}" ${!isDone ? `onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='rgba(255,255,255,0.01)'"` : ''}>
-                                            <div style="display: flex; align-items: center; gap: 16px; flex-grow: 1;">
+                                            <div style="display: flex; align-items: center; gap: 16px; flex-grow: 1; cursor: pointer;" class="task-card-click-zone" data-id="${safeId}">
                                                 <div style="flex-shrink: 0;">
                                                     ${badgeHtml}
                                                 </div>
                                                 <div style="display: flex; flex-direction: column; gap: 4px;">
-                                                    <div style="${titleStyle}">${safeTitle}</div>
+                                                    <div style="${titleStyle}" class="card-title-text">${safeTitle}</div>
                                                     ${previewDescription ? `<div style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.4; white-space: pre-wrap;">${safeDescription}</div>` : ''}
                                                 </div>
                                             </div>
@@ -940,10 +1017,25 @@ export function renderTodayConsole(container) {
                 }
             </style>
         `;
+
+        if (popoverOpen && popoverDate) {
+            showDayEventsPopover(popoverDate);
+        }
     };
 
     // Shared Event Handler for event delegation
     const handleEvents = (e) => {
+        // Monitor user manual override of the end time
+        if (e.type === 'change' && e.target && (
+            e.target.id === 'task-end-date-input' ||
+            e.target.id === 'task-end-ampm-input' ||
+            e.target.id === 'task-end-hour-input' ||
+            e.target.id === 'task-end-minute-input'
+        )) {
+            isEndTimeManuallyChanged = true;
+            return;
+        }
+
         // Automatic end-time synchronization when start time is updated
         if (e.type === 'change' && e.target && (
             e.target.id === 'task-start-date-input' ||
@@ -961,53 +1053,31 @@ export function renderTodayConsole(container) {
             const endHourInput = container.querySelector('#task-end-hour-input');
             const endMinInput = container.querySelector('#task-end-minute-input');
 
-            if (startDateInput && endDateInput) {
-                const currentEndISO = composeISOString(
-                    endDateInput.value,
-                    endAmpmInput ? endAmpmInput.value : 'AM',
-                    endHourInput ? endHourInput.value : '12',
-                    endMinInput ? endMinInput.value : '00'
-                );
-
-                if (!lastAutoEndTime || currentEndISO === lastAutoEndTime) {
-                    if (e.target.id === 'task-start-date-input') {
-                        // Start Date updated manually: copy same date to end date, keep select times
-                        endDateInput.value = startDateInput.value;
-                        lastAutoEndTime = composeISOString(
-                            endDateInput.value,
-                            endAmpmInput ? endAmpmInput.value : 'AM',
-                            endHourInput ? endHourInput.value : '12',
-                            endMinInput ? endMinInput.value : '00'
+            if (startDateInput && endDateInput && !isEndTimeManuallyChanged) {
+                if (e.target.id === 'task-start-date-input') {
+                    // Start Date updated manually: copy same date to end date
+                    endDateInput.value = startDateInput.value;
+                } else {
+                    // Start Time selectors updated manually: apply +1 hour policy
+                    try {
+                        const startISO = composeISOString(
+                            startDateInput.value,
+                            startAmpmInput ? startAmpmInput.value : 'AM',
+                            startHourInput ? startHourInput.value : '12',
+                            startMinInput ? startMinInput.value : '00'
                         );
-                    } else {
-                        // Start Time selectors updated manually: apply +1 hour policy
-                        try {
-                            const startISO = composeISOString(
-                                startDateInput.value,
-                                startAmpmInput ? startAmpmInput.value : 'AM',
-                                startHourInput ? startHourInput.value : '12',
-                                startMinInput ? startMinInput.value : '00'
-                            );
-                            const startDate = new Date(startISO);
-                            if (!isNaN(startDate.getTime())) {
-                                const newEndDate = new Date(startDate.getTime() + 60 * 60 * 1000);
-                                const newEndComponents = decomposeDate(newEndDate);
-                                
-                                if (endDateInput) endDateInput.value = newEndComponents.dateStr;
-                                if (endAmpmInput) endAmpmInput.value = newEndComponents.ampm;
-                                if (endHourInput) endHourInput.value = newEndComponents.hourStr;
-                                if (endMinInput) endMinInput.value = newEndComponents.minStr;
-
-                                lastAutoEndTime = composeISOString(
-                                    newEndComponents.dateStr,
-                                    newEndComponents.ampm,
-                                    newEndComponents.hourStr,
-                                    newEndComponents.minStr
-                                );
-                            }
-                        } catch (err) {
-                            // ignore invalid dates
+                        const startDate = new Date(startISO);
+                        if (!isNaN(startDate.getTime())) {
+                            const newEndDate = new Date(startDate.getTime() + 60 * 60 * 1000);
+                            const newEndComponents = decomposeDate(newEndDate);
+                            
+                            if (endDateInput) endDateInput.value = newEndComponents.dateStr;
+                            if (endAmpmInput) endAmpmInput.value = newEndComponents.ampm;
+                            if (endHourInput) endHourInput.value = newEndComponents.hourStr;
+                            if (endMinInput) endMinInput.value = newEndComponents.minStr;
                         }
+                    } catch (err) {
+                        // ignore invalid dates
                     }
                 }
             }
@@ -1061,27 +1131,91 @@ export function renderTodayConsole(container) {
             );
             const dueAt = startAt; // For sorting and selector backward compatibility
 
-            stateStore.addTodayTask({
-                title,
-                description,
-                rawContent: content,
-                priority,
-                category,
-                startAt,
-                endAt,
-                dueAt,
-                source: 'manual',
-                type: 'memo',
-                segment: segmentId,
-                domain: 'academy',
-                visibilityRoles: ['director']
-            });
+            if (editingTaskId) {
+                stateStore.updateTodayTask(editingTaskId, {
+                    title,
+                    description,
+                    rawContent: content,
+                    priority,
+                    category,
+                    startAt,
+                    endAt,
+                    dueAt
+                });
+                editingTaskId = null;
+                render();
+            } else {
+                stateStore.addTodayTask({
+                    title,
+                    description,
+                    rawContent: content,
+                    priority,
+                    category,
+                    startAt,
+                    endAt,
+                    dueAt,
+                    source: 'manual',
+                    type: 'memo',
+                    segment: segmentId,
+                    domain: 'academy',
+                    visibilityRoles: ['director']
+                });
+            }
             contentInput.value = '';
+            selectedDateStr = null;
             return;
         }
 
         // Click actions
         if (e.type === 'click') {
+            // Intercept task card click zone to trigger Edit mode
+            const clickZone = e.target.closest('.task-card-click-zone');
+            if (clickZone) {
+                const taskId = clickZone.dataset.id;
+                const task = stateStore.getTodayTasks().find(t => t.id === taskId);
+                if (task && !isSystemCheck(task)) {
+                    editingTaskId = taskId;
+                    render();
+                    return;
+                }
+            }
+
+            // Intercept save button click to trigger submit
+            const btnSave = e.target.closest('#btn-save-task');
+            if (btnSave) {
+                e.stopPropagation();
+                e.preventDefault();
+                const form = container.querySelector('#form-add-task');
+                if (form) {
+                    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                }
+                return;
+            }
+
+            // Intercept cancel edit button click
+            const btnCancel = e.target.closest('#btn-cancel-edit');
+            if (btnCancel) {
+                e.stopPropagation();
+                e.preventDefault();
+                editingTaskId = null;
+                selectedDateStr = null;
+                render();
+                return;
+            }
+
+            // Intercept delete task button click
+            const btnDelete = e.target.closest('#btn-delete-task');
+            if (btnDelete) {
+                e.stopPropagation();
+                e.preventDefault();
+                if (confirm('이 운영 메모를 삭제할까요?')) {
+                    stateStore.deleteTodayTask(editingTaskId);
+                    editingTaskId = null;
+                    render();
+                }
+                return;
+            }
+
             // Intercept calendar event chip click first to open its day's popover (Phase 8C-3D-Repair-F)
             const chip = e.target.closest('.calendar-event-chip');
             if (chip) {
@@ -1090,19 +1224,26 @@ export function renderTodayConsole(container) {
                 const cell = chip.closest('.calendar-day-cell');
                 if (cell) {
                     const clickedDateStr = cell.dataset.date;
-                    const startDateInput = container.querySelector('#task-start-date-input');
-                    const endDateInput = container.querySelector('#task-end-date-input');
-                    if (startDateInput && clickedDateStr) {
-                        const oldStartVal = startDateInput.value;
-                        startDateInput.value = clickedDateStr;
-                        
-                        // Dispatch change event to let start time listener trigger auto end time calculations
-                        startDateInput.dispatchEvent(new Event('change', { bubbles: true }));
-                        
-                        // Also if the end date was same as old start date, update end date to clicked date
-                        if (endDateInput && endDateInput.value === oldStartVal) {
-                            endDateInput.value = clickedDateStr;
-                            endDateInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    selectedDateStr = clickedDateStr;
+                    
+                    if (editingTaskId) {
+                        editingTaskId = null;
+                        render();
+                    } else {
+                        const startDateInput = container.querySelector('#task-start-date-input');
+                        const endDateInput = container.querySelector('#task-end-date-input');
+                        if (startDateInput && clickedDateStr) {
+                            const oldStartVal = startDateInput.value;
+                            startDateInput.value = clickedDateStr;
+                            
+                            // Dispatch change event to let start time listener trigger auto end time calculations
+                            startDateInput.dispatchEvent(new Event('change', { bubbles: true }));
+                            
+                            // Also if the end date was same as old start date, update end date to clicked date
+                            if (endDateInput && endDateInput.value === oldStartVal) {
+                                endDateInput.value = clickedDateStr;
+                                endDateInput.dispatchEvent(new Event('change', { bubbles: true }));
+                            }
                         }
                     }
                     // Since a chip exists, dayEvents.length is guaranteed to be > 0. Open the popover.
@@ -1111,12 +1252,28 @@ export function renderTodayConsole(container) {
                 return;
             }
 
-            // Intercept popover event item click to load its values
+            // Intercept popover event item click to load its values or edit task
             const popoverItem = e.target.closest('.popover-event-item');
             if (popoverItem) {
                 e.stopPropagation();
                 e.preventDefault();
-                loadEventToForm(popoverItem.dataset.id, popoverItem.dataset.source);
+                const eventId = popoverItem.dataset.id;
+                const eventSource = popoverItem.dataset.source;
+                if (eventSource === 'todayTask') {
+                    const task = stateStore.getTodayTasks().find(t => t.id === eventId);
+                    if (task) {
+                        if (!isSystemCheck(task)) {
+                            editingTaskId = eventId;
+                            render();
+                        } else {
+                            // System recommendations cannot be edited
+                        }
+                    }
+                } else {
+                    editingTaskId = null;
+                    render();
+                    loadEventToForm(eventId, eventSource);
+                }
                 return;
             }
 
@@ -1125,8 +1282,10 @@ export function renderTodayConsole(container) {
             if (btnClose) {
                 e.stopPropagation();
                 e.preventDefault();
+                editingTaskId = null;
                 const popover = container.querySelector('#calendar-popover-container');
                 if (popover) popover.style.display = 'none';
+                render();
                 return;
             }
 
@@ -1134,7 +1293,9 @@ export function renderTodayConsole(container) {
             if (e.target && e.target.id === 'calendar-popover-container') {
                 e.stopPropagation();
                 e.preventDefault();
+                editingTaskId = null;
                 e.target.style.display = 'none';
+                render();
                 return;
             }
 
@@ -1142,6 +1303,13 @@ export function renderTodayConsole(container) {
             const cell = e.target.closest('.calendar-day-cell');
             if (cell) {
                 const clickedDateStr = cell.dataset.date;
+                selectedDateStr = clickedDateStr;
+
+                if (editingTaskId) {
+                    editingTaskId = null;
+                    render();
+                }
+
                 const startDateInput = container.querySelector('#task-start-date-input');
                 const endDateInput = container.querySelector('#task-end-date-input');
                 if (startDateInput && clickedDateStr) {
@@ -1154,7 +1322,6 @@ export function renderTodayConsole(container) {
                     // Also if the end date was same as old start date, update end date to clicked date
                     if (endDateInput && endDateInput.value === oldStartVal) {
                         endDateInput.value = clickedDateStr;
-                        // Dispatch change event on end date to update lastAutoEndTime
                         endDateInput.dispatchEvent(new Event('change', { bubbles: true }));
                     }
                 }

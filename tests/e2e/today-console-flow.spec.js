@@ -2,6 +2,26 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Director Today Console Flow Checks', () => {
   test.beforeEach(async ({ page }) => {
+    // Mock the date to 2026-06-03 09:00:00 KST (morning) to avoid automatic recommendation generation
+    await page.addInitScript(() => {
+      const mockTime = new Date('2026-06-03T09:00:00+09:00').getTime();
+      const OriginalDate = Date;
+      class MockDate extends OriginalDate {
+        constructor(...args) {
+          if (args.length === 0) {
+            super(mockTime);
+          } else {
+            super(...args);
+          }
+        }
+        static now() {
+          return mockTime;
+        }
+      }
+      window.Date = MockDate;
+      window.__DAYDAY_E2E__ = true;
+    });
+
     // Navigate and enter as director
     await page.goto('/');
     await page.locator('.role-btn.director').click();
@@ -1061,6 +1081,317 @@ test.describe('Director Today Console Flow Checks', () => {
     // Verify actions are hidden on this card
     const cardActions = resolvedBillingCard.locator('.task-action-wrapper > div').nth(1);
     await expect(cardActions).toHaveCSS('visibility', 'hidden');
+  });
+
+  test('should support editing and deleting manual tasks but prevent editing system recommendations', async ({ page }) => {
+    // 1. Seed one manual task and one system task
+    const manualTitle = '수동 메모 수정전 제목';
+    const manualDesc = '수동 메모 수정전 설명';
+    const systemTitle = '시스템 권장 업무';
+
+    await page.evaluate(({ mTitle, mDesc, sTitle }) => {
+      window.stateStore.clearMockCalendarEvents();
+      window.stateStore.db.todayTasks = [];
+      
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 0, 0).toISOString();
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 11, 0, 0).toISOString();
+
+      // Manual Task
+      window.stateStore.addTodayTask({
+        id: 'task-manual-edit-e2e',
+        title: mTitle,
+        description: mDesc,
+        status: 'open',
+        priority: 'today',
+        category: 'memo',
+        startAt: start,
+        endAt: end,
+        dueAt: start,
+        source: 'manual',
+        type: 'memo',
+        segment: 'academy_director_console',
+        domain: 'academy',
+        visibilityRoles: ['director']
+      });
+
+      // System Task
+      window.stateStore.addTodayTask({
+        id: 'task-system-edit-e2e',
+        title: sTitle,
+        description: '시스템이 생성한 업무 설명',
+        status: 'open',
+        priority: 'today',
+        category: 'system_check',
+        startAt: start,
+        endAt: end,
+        dueAt: start,
+        source: 'system',
+        type: 'memo',
+        segment: 'academy_director_console',
+        domain: 'academy',
+        visibilityRoles: ['director']
+      });
+    }, { mTitle: manualTitle, mDesc: manualDesc, sTitle: systemTitle });
+
+    // Reload page to reflect changes
+    await page.reload();
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+
+    const tasksList = page.locator('#tasks-list-container');
+    const manualCard = tasksList.locator(`.glass-card:has-text("${manualTitle}")`);
+    const systemCard = tasksList.locator(`.glass-card:has-text("${systemTitle}")`);
+
+    // Verify initial layout is "Add Mode"
+    const formTitle = page.locator('#form-add-task-title');
+    await expect(formTitle).toContainText('새로운 운영 메모 / 할 일 추가');
+    const addBtn = page.locator('#form-add-task button[type="submit"]');
+    await expect(addBtn).toContainText('추가');
+    await expect(page.locator('#btn-save-task')).toBeHidden();
+    await expect(page.locator('#btn-cancel-edit')).toBeHidden();
+    await expect(page.locator('#btn-delete-task')).toBeHidden();
+
+    // 2. Click manual task card (specifically its title or click zone) to trigger Edit Mode
+    await manualCard.locator('.card-title-text').click();
+
+    // Form title switches to Edit Mode
+    await expect(formTitle).toContainText('운영 메모 수정');
+    await expect(page.locator('.form-edit-indicator')).toBeVisible(); // "수정 중" indicator
+
+    // Form buttons switch
+    await expect(addBtn).toBeHidden();
+    const saveBtn = page.locator('#btn-save-task');
+    const cancelBtn = page.locator('#btn-cancel-edit');
+    const deleteBtn = page.locator('#btn-delete-task');
+    
+    await expect(saveBtn).toBeVisible();
+    await expect(cancelBtn).toBeVisible();
+    await expect(deleteBtn).toBeVisible();
+
+    // Form inputs should be pre-populated
+    await expect(page.locator('#task-content-input')).toHaveValue(`${manualTitle}\n${manualDesc}`);
+    await expect(page.locator('#task-category-input')).toHaveValue('memo');
+
+    // 3. Edit input values and submit (Save Edit)
+    const updatedTitle = '수동 메모 수정후 제목';
+    const updatedDesc = '수동 메모 수정후 설명';
+    await page.fill('#task-content-input', `${updatedTitle}\n${updatedDesc}`);
+    await page.selectOption('#task-category-input', 'consult'); // 상담예약
+    await page.selectOption('#task-start-hour-input', '12'); // Change start hour to 12 (PM)
+    await page.selectOption('#task-start-ampm-input', 'PM');
+
+    await saveBtn.click();
+
+    // Form switches back to Add Mode
+    await expect(formTitle).toContainText('새로운 운영 메모 / 할 일 추가');
+    await expect(addBtn).toBeVisible();
+    await expect(saveBtn).toBeHidden();
+
+    // Verify task card reflects modifications
+    await expect(tasksList.locator(`.glass-card:has-text("${updatedTitle}")`)).toBeVisible();
+    await expect(tasksList.locator(`.glass-card:has-text("${updatedDesc}")`)).toBeVisible();
+    await expect(tasksList.locator(`.glass-card:has-text("${updatedTitle}") .badge`)).toContainText('상담예약');
+
+    // Verify calendar event chip is still visible on the calendar
+    const calendarSection = page.locator('#calendar-timeline-section');
+    await expect(calendarSection.locator(`.calendar-event-chip:has-text("${updatedTitle}")`)).toBeVisible();
+
+    // 4. Click manual card again to enter edit mode, then click Cancel
+    await tasksList.locator(`.glass-card:has-text("${updatedTitle}") .card-title-text`).click();
+    await expect(formTitle).toContainText('운영 메모 수정');
+
+    // Modify text but cancel it
+    await page.fill('#task-content-input', '변경을 취소할 제목\n설명');
+    await cancelBtn.click();
+
+    // Verify form resets to Add Mode and values are empty
+    await expect(formTitle).toContainText('새로운 운영 메모 / 할 일 추가');
+    await expect(page.locator('#task-content-input')).toHaveValue('');
+    // Task title remains as updatedTitle
+    await expect(tasksList.locator(`.glass-card:has-text("${updatedTitle}")`)).toBeVisible();
+
+    // 5. Click manual card to edit mode, then click Delete (with confirmation)
+    await tasksList.locator(`.glass-card:has-text("${updatedTitle}") .card-title-text`).click();
+    await expect(formTitle).toContainText('운영 메모 수정');
+
+    let dialogMessage = '';
+    page.once('dialog', dialog => {
+      dialogMessage = dialog.message();
+      dialog.accept(); // confirms the deletion
+    });
+
+    await deleteBtn.click();
+
+    // Verify confirm message matches exactly "이 운영 메모를 삭제할까요?"
+    expect(dialogMessage).toBe('이 운영 메모를 삭제할까요?');
+
+    // Verify form resets to Add Mode and task is deleted
+    await expect(formTitle).toContainText('새로운 운영 메모 / 할 일 추가');
+    await expect(tasksList.locator(`.glass-card:has-text("${updatedTitle}")`)).toBeHidden();
+
+    // 6. Click on system check recommendation task card
+    // It must NOT enter Edit Mode
+    await systemCard.locator('.card-title-text').click();
+    await expect(formTitle).toContainText('새로운 운영 메모 / 할 일 추가');
+    await expect(addBtn).toBeVisible();
+    await expect(saveBtn).toBeHidden();
+  });
+
+  test('should support editing manual task by clicking calendar chip and verify it remains on the calendar', async ({ page }) => {
+    // 1. Seed a manual task for today (2026-06-03)
+    const taskTitle = '캘린더칩 클릭 수정 테스트';
+    await page.evaluate((title) => {
+      window.stateStore.clearMockCalendarEvents();
+      window.stateStore.db.todayTasks = [];
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 0, 0).toISOString();
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 11, 0, 0).toISOString();
+      
+      window.stateStore.addTodayTask({
+        id: 'task-calendar-chip-edit-e2e',
+        title: title,
+        description: '설명',
+        status: 'open',
+        priority: 'today',
+        category: 'memo',
+        startAt: start,
+        endAt: end,
+        dueAt: start,
+        source: 'manual',
+        type: 'memo',
+        segment: 'academy_director_console',
+        domain: 'academy',
+        visibilityRoles: ['director']
+      });
+    }, taskTitle);
+
+    await page.reload();
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+
+    // 2. Click calendar event chip
+    const calendarSection = page.locator('#calendar-timeline-section');
+    const chip = calendarSection.locator(`.calendar-event-chip:has-text("${taskTitle}")`);
+    await expect(chip).toBeVisible();
+    await chip.click();
+
+    // Verify popover is visible
+    const popover = page.locator('#calendar-popover-container');
+    await expect(popover).toBeVisible();
+
+    // 3. Click the popover event item to enter Edit mode
+    const popoverItem = popover.locator(`.popover-event-item:has-text("${taskTitle}")`);
+    await popoverItem.click();
+
+    // Form title switches to Edit Mode
+    const formTitle = page.locator('#form-add-task-title');
+    await expect(formTitle).toContainText('운영 메모 수정');
+
+    // 4. Edit title and click 수정 완료
+    const updatedTitle = '캘린더칩 클릭 수정 완료제목';
+    await page.fill('#task-content-input', `${updatedTitle}\n설명 수정됨`);
+    await page.click('#btn-save-task');
+
+    // Form switches back to Add Mode
+    await expect(formTitle).toContainText('새로운 운영 메모 / 할 일 추가');
+
+    // 5. Verify the edited task card in queue and chip in calendar are visible
+    const tasksList = page.locator('#tasks-list-container');
+    await expect(tasksList.locator(`.glass-card:has-text("${updatedTitle}")`)).toBeVisible();
+    
+    // Log the actual task values from the store
+    const debugTask = await page.evaluate((title) => {
+      return window.stateStore.getTodayTasks().find(t => t.title === title);
+    }, updatedTitle);
+    console.log('DEBUG_TASK_AFTER_EDIT:', JSON.stringify(debugTask, null, 2));
+
+    await expect(calendarSection.locator(`.calendar-event-chip:has-text("${updatedTitle}")`)).toBeVisible();
+  });
+
+  test('should verify Repair-A requirements: auto-sync in edit mode, today prefix in queue, cell click cancels edit mode, and popover badge wrapping', async ({ page }) => {
+    // 1. Seed manual task for today
+    const taskTitle = 'Repair-A 수동업무';
+    await page.evaluate((title) => {
+      window.stateStore.clearMockCalendarEvents();
+      window.stateStore.db.todayTasks = [];
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 0, 0).toISOString();
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 11, 0, 0).toISOString();
+      
+      window.stateStore.addTodayTask({
+        id: 'task-repair-a-e2e',
+        title: title,
+        description: '설명',
+        status: 'open',
+        priority: 'today',
+        category: 'memo',
+        startAt: start,
+        endAt: end,
+        dueAt: start,
+        source: 'manual',
+        type: 'memo',
+        segment: 'academy_director_console',
+        domain: 'academy',
+        visibilityRoles: ['director']
+      });
+    }, taskTitle);
+
+    await page.reload();
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+
+    const tasksList = page.locator('#tasks-list-container');
+    const manualCard = tasksList.locator(`.glass-card:has-text("${taskTitle}")`);
+
+    // Verification 2. Today's task date prefix should be "오늘" in the list queue
+    await expect(manualCard).toContainText('오늘 10:00 ~ 11:00');
+    // Verify TODAY badge is visible in the task queue card
+    await expect(manualCard.locator('.badge-today:has-text("TODAY")')).toBeVisible();
+
+    // 2. Click manual card to enter Edit Mode
+    await manualCard.locator('.card-title-text').click();
+    const formTitle = page.locator('#form-add-task-title');
+    await expect(formTitle).toContainText('운영 메모 수정');
+
+    // Verification 1. Auto-sync end time works in Edit Mode
+    // Change start hour to 12 (PM) and AM/PM to PM
+    await page.selectOption('#task-start-hour-input', '12');
+    await page.selectOption('#task-start-ampm-input', 'PM');
+    await page.dispatchEvent('#task-start-hour-input', 'change');
+
+    // Verify end time is auto-updated to PM 1:00 (+1 hour)
+    await expect(page.locator('#task-end-hour-input')).toHaveValue('1');
+    await expect(page.locator('#task-end-ampm-input')).toHaveValue('PM');
+
+    // Verification 3. Clicking another calendar cell cancels Edit Mode and switches to Add Mode
+    const calendarSection = page.locator('#calendar-timeline-section');
+    const now = new Date();
+    const clickedDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-15`;
+    const cell15 = calendarSection.locator(`.calendar-day-cell[data-date="${clickedDateStr}"]`);
+    
+    // Click date 15 cell
+    await cell15.click();
+
+    // Verify Edit Mode is cancelled, returns to Add Mode
+    await expect(formTitle).toContainText('새로운 운영 메모 / 할 일 추가');
+    await expect(page.locator('#task-start-date-input')).toHaveValue(clickedDateStr);
+    await expect(page.locator('#task-end-date-input')).toHaveValue(clickedDateStr);
+
+    // Verify the original task in the database is NOT modified (retains original title and times)
+    const taskInStore = await page.evaluate(() => {
+      return window.stateStore.getTodayTasks().find(t => t.id === 'task-repair-a-e2e');
+    });
+    expect(taskInStore.title).toBe(taskTitle);
+
+    // Verification 4. Popover badge wrapping prevention style check
+    // We already have task seeded for today. Let's click the chip for 'Repair-A 수동업무' to open popover.
+    const chip = calendarSection.locator(`.calendar-event-chip:has-text("${taskTitle}")`);
+    await chip.click();
+    const popover = page.locator('#calendar-popover-container');
+    await expect(popover).toBeVisible();
+
+    const popoverBadge = popover.locator('.popover-event-item span').first();
+    const badgeStyle = await popoverBadge.getAttribute('style');
+    expect(badgeStyle).toContain('white-space: nowrap');
+    expect(badgeStyle).toContain('flex-shrink: 0');
   });
 });
 
