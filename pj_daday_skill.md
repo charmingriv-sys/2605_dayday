@@ -240,3 +240,43 @@ DayDay의 지속 가능한 확장과 다중 업종 지원을 위해, 사이드�
 *   **Provider 직접 주입 금지**: 특정 연동 API(예: Google API, 알림톡 API 등)를 View 소스코드 내에 직접 작성하지 않습니다.
 *   **화면 단위 중복 구현 금지**: 공통 엔진(예: 큐 관리, 알림 처리 등)으로 추상화할 수 있는 비즈니스 로직을 화면 단위로 복사-붙여넣기하여 중복 개발하지 않습니다.
 *   **점진적 분리 준수**: 현재의 어플리케이션 흐름을 깨뜨리는 과도한 사전 추상화는 지양하며, 각 Phase의 릴리즈 단위에 맞춰 점진적으로 분리해 나갑니다.
+
+---
+
+## 9. Development Policy: Superpowers + CLAUDE.md Base
+
+This project uses the following baseline policy for all future development work.
+
+### 9.1 using-superpowers as the default development process
+
+- For development, debugging, planning, implementation, review, and repair work, the running LLM must treat `using-superpowers` as the default process layer.
+- Skill reference: `C:\Users\charm\.codex\plugins\cache\openai-curated\superpowers\5e86d584\skills\using-superpowers\SKILL.md`.
+- Before starting a development task, the agent must check whether any available skill applies. If a relevant skill applies, invoke or load it before acting.
+- If the current tool environment does not provide a direct Skill invocation tool, the agent must still follow the same intent: read the relevant skill guidance when available and apply its workflow.
+- The agent must explicitly mention which process/skill guidance is being used when it affects the work.
+
+### 9.2 CLAUDE.md as the behavioral base
+
+- The project root `CLAUDE.md` is the baseline behavioral guideline for reducing LLM coding mistakes.
+- Source baseline path: `C:\Users\charm\Dropbox\01. Project\100. Skill\CLAUDE.MD`.
+- The key rules are:
+  - Think before coding: state assumptions, surface uncertainty, and ask when the task is ambiguous.
+  - Simplicity first: implement the minimum code that solves the requested problem.
+  - Surgical changes: touch only files and lines that directly support the request.
+  - Goal-driven execution: define success criteria and verify with tests or browser checks as appropriate.
+
+### 9.3 Priority and conflict handling
+
+- Direct user instructions and this project-specific `pj_daday_skill.md` remain the highest priority.
+- `CLAUDE.md` and `using-superpowers` guide how work should be performed, but they must not override explicit user constraints such as no push, scope limits, 정본 폴더 usage, StateStore Public API rules, or manual browser verification requirements.
+- If rules appear to conflict, choose the more specific and safer instruction, then report the assumption.
+
+### 9.4 Required behavior for running LLM prompts
+
+- Before code changes, the running LLM should confirm:
+  1. 정본 폴더 and git status.
+  2. Active Phase/Repair scope.
+  3. Applicable skill/process guidance.
+  4. Success criteria and verification commands.
+- The running LLM must avoid speculative features, broad refactors, and unrelated cleanup.
+- Documentation/policy changes must be committed separately from feature code whenever possible.
