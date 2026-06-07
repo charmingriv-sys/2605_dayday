@@ -128,7 +128,6 @@ export function renderDirectorAttendanceControl(container) {
 
         const students = stateStore.getStudents();
         const teachers = stateStore.getTeachers();
-        const classes = stateStore.getClasses();
         const attendance = stateStore.getAttendance();
 
         // 1. Process attendance lists for the selected date
@@ -136,12 +135,12 @@ export function renderDirectorAttendanceControl(container) {
         const targetDateObj = new Date(selectedDate);
         const dayOfWeekKo = daysKo[targetDateObj.getDay()];
 
-        // Generate base rows from classes assigned to this day of the week
-        const dailyClasses = classes
-            .filter(c => c.dayOfWeek === dayOfWeekKo)
-            .map(c => {
-                const s = students.find(stud => stud.id === c.studentId);
-                const t = s ? teachers.find(teach => teach.id === s.teacherId) : null;
+        // Generate base rows from schedule snapshots / overrides using the unified API
+        const dailySchedule = stateStore.getTeacherStudentScheduleForDate(selectedDate) || [];
+        const dailyClasses = dailySchedule
+            .map(entry => {
+                const s = students.find(stud => stud.id === entry.studentId);
+                const t = teachers.find(teach => teach.id === entry.teacherId) || (s ? teachers.find(teach => teach.id === s.teacherId) : null);
                 const att = s ? attendance.find(a => a.studentId === s.id && a.date === selectedDate) : null;
                 
                 // Determine display status based on class time and attendance record
@@ -151,27 +150,32 @@ export function renderDirectorAttendanceControl(container) {
                 let note = '';
                 
                 if (att) {
-                    if (att.status === 'present') status = '출석';
-                    else if (att.status === 'late') status = '지각';
-                    else if (att.status === 'absent') status = '결석';
                     checkTime = att.time || '';
                     leavingTime = att.leavingTime || '';
                     note = att.note || '';
+                    
+                    if (att.status === 'present') status = '출석';
+                    else if (att.status === 'late') status = '지각';
+                    else if (att.status === 'absent') status = '결석';
                 } else {
-                    // Check if class time has passed (simulate warning status)
-                    const [classHour, classMin] = c.time.split(':').map(Number);
+                    // Check if class time has passed today (default 지연 기준: 15분)
+                    const [classHour, classMin] = entry.time.split(':').map(Number);
                     const now = new Date();
                     const classTimeToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), classHour, classMin);
-                    
                     const diffMins = (now - classTimeToday) / (1000 * 60);
-                    if (selectedDate === now.toISOString().slice(0, 10) && diffMins > 20) {
-                        status = '미확인'; // Overdue class
+                    
+                    if (selectedDate < now.toISOString().slice(0, 10)) {
+                        status = '결석'; // Past date defaults to absent
+                    } else if (selectedDate === now.toISOString().slice(0, 10)) {
+                        if (diffMins > 15) {
+                            status = '지각'; // Overdue class today is mapped to late (지각)
+                        }
                     }
                 }
 
                 return {
-                    classId: c.id,
-                    time: c.time,
+                    classId: entry.id,
+                    time: entry.time,
                     student: s,
                     teacher: t,
                     status: status,
@@ -190,11 +194,7 @@ export function renderDirectorAttendanceControl(container) {
         let filteredRows = dailyClasses.filter(row => {
             // Status filter
             if (selectedStatus !== '전체') {
-                if (selectedStatus === '미확인' && row.status !== '미확인') return false;
-                if (selectedStatus === '출석' && row.status !== '출석') return false;
-                if (selectedStatus === '지각' && row.status !== '지각') return false;
-                if (selectedStatus === '결석' && row.status !== '결석') return false;
-                if (selectedStatus === '하원누락' && (!row.checkTime || row.leavingTime)) return false; // has checkin but no checkout
+                if (row.status !== selectedStatus) return false;
             }
             // Instrument filter
             if (selectedInstrument !== '전체' && row.instrument !== selectedInstrument) return false;
@@ -209,7 +209,20 @@ export function renderDirectorAttendanceControl(container) {
                                        (row.student.parentPhone && row.student.parentPhone.replace(/[^0-9]/g, '').includes(query));
                     if (!nameMatch && !phoneMatch) return false;
                 } else if (searchType === 'id') {
-                    const idMatch = row.student.id.toLowerCase().replace(/\s+/g, '').includes(query);
+                    const studentMemberNo = row.student.studentMemberNo !== undefined && row.student.studentMemberNo !== null ? String(row.student.studentMemberNo) : null;
+                    const memberNo = row.student.memberNo !== undefined && row.student.memberNo !== null ? String(row.student.memberNo) : null;
+                    
+                    let idMatch = false;
+                    if (studentMemberNo !== null) {
+                        const cleanMemberNo = studentMemberNo.toLowerCase().replace(/\s+/g, '');
+                        idMatch = cleanMemberNo === query || cleanMemberNo.includes(query);
+                    } else if (memberNo !== null) {
+                        const cleanMemberNo = memberNo.toLowerCase().replace(/\s+/g, '');
+                        idMatch = cleanMemberNo === query || cleanMemberNo.includes(query);
+                    } else {
+                        const cleanId = row.student.id.toLowerCase().replace(/\s+/g, '');
+                        idMatch = cleanId === query;
+                    }
                     if (!idMatch) return false;
                 }
             }
@@ -222,9 +235,9 @@ export function renderDirectorAttendanceControl(container) {
         // Calculate KPI metrics
         const kpi = {
             total: dailyClasses.length,
-            present: dailyClasses.filter(r => r.status === '출석' || r.status === '지각').length,
+            present: dailyClasses.filter(r => r.status === '출석').length,
             late: dailyClasses.filter(r => r.status === '지각').length,
-            pending: dailyClasses.filter(r => r.status === '결석' || r.status === '미확인').length
+            pending: dailyClasses.filter(r => r.status === '결석').length
         };
 
         // Operating hours config for compact-board
@@ -906,11 +919,10 @@ export function renderDirectorAttendanceControl(container) {
                     
                     <select id="ac-status-select" class="form-control" style="width: 130px; height:36px;">
                         <option value="전체" ${selectedStatus === '전체' ? 'selected' : ''}>전체 상태</option>
+                        <option value="예정" ${selectedStatus === '예정' ? 'selected' : ''}>예정</option>
                         <option value="출석" ${selectedStatus === '출석' ? 'selected' : ''}>출석</option>
                         <option value="지각" ${selectedStatus === '지각' ? 'selected' : ''}>지각</option>
                         <option value="결석" ${selectedStatus === '결석' ? 'selected' : ''}>결석</option>
-                        <option value="미확인" ${selectedStatus === '미확인' ? 'selected' : ''}>미확인 (지연)</option>
-                        <option value="하원누락" ${selectedStatus === '하원누락' ? 'selected' : ''}>하원 누락</option>
                     </select>
 
                     <select id="ac-instrument-select" class="form-control" style="width: 130px; height:36px;">
@@ -996,7 +1008,7 @@ export function renderDirectorAttendanceControl(container) {
                                     const list = hourGroups[time] || [];
                                     const pres = list.filter(r => r.status === '출석').length;
                                     const l = list.filter(r => r.status === '지각').length;
-                                    const abs = list.filter(r => r.status === '결석' || r.status === '미확인').length;
+                                    const abs = list.filter(r => r.status === '결석').length;
                                     
                                     const exceptions = list.filter(r => r.status !== '출석' && r.status !== '예정');
                                     
@@ -1004,13 +1016,18 @@ export function renderDirectorAttendanceControl(container) {
                                     if (list.length === 0) {
                                         noteMarkup = '<div class="mini-row none"><span>-</span><span class="mini-name">수업 없음</span><span class="mini-meta"></span></div>';
                                     } else if (exceptions.length > 0) {
-                                        noteMarkup = exceptions.map(row => `
-                                            <div class="mini-row ${row.status === '지각' ? 'late' : 'absent'}" data-student-id="${row.student.id}">
-                                                <span>${row.status === '지각' ? '!' : '×'}</span>
-                                                <span class="mini-name">${row.student.name}</span>
-                                                <span class="mini-meta">${row.checkTime || row.time}</span>
-                                            </div>
-                                        `).join('');
+                                        noteMarkup = exceptions.map(row => {
+                                            const isLate = row.status === '지각';
+                                            const classTone = isLate ? 'late' : 'absent';
+                                            const mark = isLate ? '!' : '×';
+                                            return `
+                                                <div class="mini-row ${classTone}" data-student-id="${row.student.id}">
+                                                    <span>${mark}</span>
+                                                    <span class="mini-name">${row.student.name}</span>
+                                                    <span class="mini-meta">${row.checkTime || row.time}</span>
+                                                </div>
+                                            `;
+                                        }).join('');
                                     } else {
                                         noteMarkup = '<div class="mini-row pending"><span>✓</span><span class="mini-name">주의 없음</span><span class="mini-meta">정상</span></div>';
                                     }
@@ -1056,14 +1073,13 @@ export function renderDirectorAttendanceControl(container) {
                                         if (row.status === '출석') statusBadge = `<span class="badge good">✓ 출석</span>`;
                                         else if (row.status === '지각') statusBadge = `<span class="badge warn">! 지각</span>`;
                                         else if (row.status === '결석') statusBadge = `<span class="badge danger">× 결석</span>`;
-                                        else if (row.status === '미확인') statusBadge = `<span class="badge danger">× 미등원</span>`;
 
                                         const timeText = row.checkTime ? `${row.checkTime}${row.leavingTime ? ' ~ ' + row.leavingTime : ''}` : '-';
                                         
                                         // Mock messaging status based on class status
                                         let msgText = '<span style="opacity:0.5;">-</span>';
-                                        if (row.status === '출석' || row.status === '지각') msgText = '<span style="color:#27ae60; font-weight:700;">발송완료</span>';
-                                        else if (row.status === '미확인' || row.status === '결석') msgText = '<span style="color:#e74c3c; font-weight:700;">발송대기</span>';
+                                         if (row.status === '출석' || row.status === '지각') msgText = '<span style="color:#27ae60; font-weight:700;">발송완료</span>';
+                                         else if (row.status === '결석') msgText = '<span style="color:#e74c3c; font-weight:700;">발송대기</span>';
 
                                         return `
                                             <tr class="ac-student-row ${row.student.id === selectedStudentId ? 'selected' : ''}" data-student-id="${row.student.id}">

@@ -211,4 +211,134 @@ test.describe('Director Attendance Control Console Flow', () => {
     await expect(searchInput).toHaveValue('김민준');
     await expect(searchInput).toBeFocused();
   });
+
+  test('should filter table and compact board by date, status, instrument, teacher, name and member ID', async ({ page }) => {
+    // Go to attendance control view
+    await page.locator('.menu-item[data-view="dir-attendance-control"]').click();
+    await expect(page.locator('#page-title')).toContainText('출결 관제');
+
+    // 1. Assert Daily Tab is active by default
+    const dailyTab = page.locator('.ac-tab[data-tab="daily"]');
+    await expect(dailyTab).toHaveClass(/active/);
+
+    // 2. Assert status filter option cleanliness (no '미확인' or '하원누락')
+    const statusSelect = page.locator('#ac-status-select');
+    await expect(statusSelect).toBeVisible();
+    const options = await statusSelect.locator('option').allInnerTexts();
+    expect(options).not.toContain('미확인 (지연)');
+    expect(options).not.toContain('하원 누락');
+    expect(options).toContain('예정');
+    expect(options).toContain('출석');
+    expect(options).toContain('지각');
+    expect(options).toContain('결석');
+
+    // 3. Verify that overdue class today default to "지각" (lateness integration)
+    // Datepicker value defaults to today (2026-06-03).
+    // Let's mock 최다은's Wednesday class time to 08:00 (which is overdue by 09:00 mockTime)
+    await page.evaluate(() => {
+      const date = '2026-06-03';
+      const snapshot = window.stateStore.ensureScheduleSnapshotForDate(date);
+      const entry = snapshot.entries.find(e => e.studentId === 'S1');
+      if (entry) {
+        entry.startTime = '08:00';
+        window.stateStore.saveDB();
+      }
+    });
+
+    // Go to attendance control view again / refresh to load the mocked state
+    await page.locator('.menu-item[data-view="dir-attendance-control"]').click();
+    await page.waitForTimeout(300);
+
+    const searchType = page.locator('#ac-search-type');
+    const searchInput = page.locator('#ac-search-input');
+    await searchType.selectOption('name');
+    await searchInput.fill('최다은');
+    await page.waitForTimeout(300);
+    
+    const demoRow = page.locator('table.custom-table tbody tr').first();
+    await expect(demoRow).toBeVisible();
+    await expect(demoRow).toContainText('최다은');
+    await expect(demoRow.locator('.badge')).toContainText('지각');
+
+    // Reset search
+    await searchInput.fill('');
+    await page.waitForTimeout(300);
+
+    // 4. Filter by Date (e.g. 2026-06-01 which is Monday)
+    const datePicker = page.locator('#ac-date-picker');
+    await datePicker.fill('2026-06-01');
+    await page.waitForTimeout(300);
+
+    // Get initial table row count for Monday
+    const initialRowsCount = await page.locator('table.custom-table tbody tr').count();
+    expect(initialRowsCount).toBeGreaterThan(0);
+
+    // 5. Filter by Status (e.g. "출석")
+    await statusSelect.selectOption('출석');
+    await page.waitForTimeout(300);
+    const presentRowsCount = await page.locator('table.custom-table tbody tr').count();
+    for (let i = 0; i < presentRowsCount; i++) {
+      const badgeText = await page.locator('table.custom-table tbody tr').nth(i).locator('.badge').innerText();
+      expect(badgeText).toContain('출석');
+    }
+
+    // Reset status filter
+    await statusSelect.selectOption('전체');
+    await page.waitForTimeout(300);
+
+    // 6. Filter by Instrument (e.g. "피아노")
+    const instrumentSelect = page.locator('#ac-instrument-select');
+    await instrumentSelect.selectOption('피아노');
+    await page.waitForTimeout(300);
+    const pianoRowsCount = await page.locator('table.custom-table tbody tr').count();
+    expect(pianoRowsCount).toBeLessThan(initialRowsCount);
+
+    // Reset instrument filter
+    await instrumentSelect.selectOption('전체');
+    await page.waitForTimeout(300);
+
+    // 7. Filter by Teacher (e.g. "정은비" -> T8)
+    const teacherSelect = page.locator('#ac-teacher-select');
+    await teacherSelect.selectOption('T8');
+    await page.waitForTimeout(300);
+    const teacherRowsCount = await page.locator('table.custom-table tbody tr').count();
+    expect(teacherRowsCount).toBeLessThan(initialRowsCount);
+
+    // Reset teacher filter
+    await teacherSelect.selectOption('전체');
+    await page.waitForTimeout(300);
+
+    // 8. Search by Name (triggers instant filtering without Enter)
+    await searchType.selectOption('name');
+    await searchInput.fill('최다은');
+    await page.waitForTimeout(300);
+    const nameSearchedCount = await page.locator('table.custom-table tbody tr').count();
+    expect(nameSearchedCount).toBe(1);
+    await expect(page.locator('table.custom-table tbody tr').first()).toContainText('최다은');
+
+    // 9. Search by Member ID (exact match S1, should not mix S10/S11)
+    await searchInput.fill('S1');
+    await searchType.selectOption('id');
+    await page.waitForTimeout(300);
+    const idSearchedCount = await page.locator('table.custom-table tbody tr').count();
+    expect(idSearchedCount).toBe(1);
+    await expect(page.locator('table.custom-table tbody tr').first()).toContainText('최다은');
+
+    // 10. Search non-existent Member ID
+    await searchInput.fill('S999');
+    await page.waitForTimeout(300);
+    const emptyCount = await page.locator('table.custom-table tbody tr').count();
+    expect(emptyCount).toBe(0);
+
+    // 11. Search type toggling immediately re-filters without Enter
+    await searchInput.fill('최다은');
+    await searchType.selectOption('name');
+    await page.waitForTimeout(300);
+    const toggleCount = await page.locator('table.custom-table tbody tr').count();
+    expect(toggleCount).toBe(1);
+
+    // Reset search
+    await searchInput.fill('');
+    await page.waitForTimeout(300);
+  });
 });
