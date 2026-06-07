@@ -1,5 +1,22 @@
 import { test, expect } from '@playwright/test';
 
+// NodeJS runner Date mocking to match browser mockTime
+const mockTime = new Date('2026-06-03T09:00:00+09:00').getTime();
+const OriginalDate = Date;
+class MockDate extends OriginalDate {
+  constructor(...args) {
+    if (args.length === 0) {
+      super(mockTime);
+    } else {
+      super(...args);
+    }
+  }
+  static now() {
+    return mockTime;
+  }
+}
+global.Date = MockDate;
+
 test.describe('Director Today Console Flow Checks', () => {
   test.beforeEach(async ({ page }) => {
     // Mock the date to 2026-06-03 09:00:00 KST (morning) to avoid automatic recommendation generation

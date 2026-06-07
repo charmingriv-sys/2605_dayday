@@ -6,6 +6,7 @@ export {
     renderPayments,
     renderDirectorAttendance,
     renderKioskAttendance,
+    renderDirectorAttendanceControl,
     renderBooks,
     renderBooksElapsed,
     renderSubjects,

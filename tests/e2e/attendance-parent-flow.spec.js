@@ -1,9 +1,46 @@
 import { test, expect } from '@playwright/test';
 
+// NodeJS runner Date mocking to match browser mockTime
+const mockTime = new Date('2026-06-03T09:00:00+09:00').getTime();
+const OriginalDate = Date;
+class MockDate extends OriginalDate {
+  constructor(...args) {
+    if (args.length === 0) {
+      super(mockTime);
+    } else {
+      super(...args);
+    }
+  }
+  static now() {
+    return mockTime;
+  }
+}
+global.Date = MockDate;
+
 test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
   let consoleErrors = [];
 
   test.beforeEach(async ({ page }) => {
+    // Mock the date to 2026-06-03 09:00:00 KST
+    await page.addInitScript(() => {
+      const mockTime = new Date('2026-06-03T09:00:00+09:00').getTime();
+      const OriginalDate = Date;
+      class MockDate extends OriginalDate {
+        constructor(...args) {
+          if (args.length === 0) {
+            super(mockTime);
+          } else {
+            super(...args);
+          }
+        }
+        static now() {
+          return mockTime;
+        }
+      }
+      window.Date = MockDate;
+      window.__DAYDAY_E2E__ = true;
+    });
+
     consoleErrors = [];
     page.on('console', msg => {
       if (msg.type() === 'error') {
