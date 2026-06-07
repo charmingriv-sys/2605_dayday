@@ -232,6 +232,386 @@ export function renderDirectorAttendanceControl(container) {
         // Sort rows by time
         filteredRows.sort((a, b) => a.time.localeCompare(b.time));
 
+        // 30-day range and attendance stats calculation helpers
+        const get30DaysRange = (dateStr) => {
+            const end = new Date(dateStr);
+            const start = new Date(dateStr);
+            start.setDate(start.getDate() - 29);
+            
+            const dates = [];
+            let current = new Date(start);
+            while (current <= end) {
+                dates.push(current.toISOString().slice(0, 10));
+                current.setDate(current.getDate() + 1);
+            }
+            return dates;
+        };
+
+        const get30DaysAttendanceStats = (dateStr) => {
+            const dates = get30DaysRange(dateStr);
+            const statsMap = {};
+            students.forEach(s => {
+                statsMap[s.id] = {
+                    student: s,
+                    total: 0,
+                    present: 0,
+                    late: 0,
+                    absent: 0,
+                    scheduled: 0,
+                    history: [],
+                    lastStatus: '예정',
+                    lastTimeText: '-'
+                };
+            });
+
+            const now = new Date();
+            const todayStr = now.toISOString().slice(0, 10);
+
+            dates.forEach(date => {
+                const dailySchedule = stateStore.getTeacherStudentScheduleForDate(date) || [];
+                dailySchedule.forEach(entry => {
+                    const sId = entry.studentId;
+                    if (!statsMap[sId]) return;
+
+                    const att = attendance.find(a => a.studentId === sId && a.date === date);
+                    let status = '예정';
+                    let checkTime = '';
+                    let leavingTime = '';
+
+                    if (att) {
+                        checkTime = att.time || '';
+                        leavingTime = att.leavingTime || '';
+                        if (att.status === 'present') status = '출석';
+                        else if (att.status === 'late') status = '지각';
+                        else if (att.status === 'absent') status = '결석';
+                    } else {
+                        const [classHour, classMin] = entry.time.split(':').map(Number);
+                        const classTimeToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), classHour, classMin);
+                        const diffMins = (now - classTimeToday) / (1000 * 60);
+
+                        if (date < todayStr) {
+                            status = '결석';
+                        } else if (date === todayStr) {
+                            if (diffMins > 15) {
+                                status = '지각';
+                            }
+                        }
+                    }
+
+                    statsMap[sId].total++;
+                    if (status === '출석') statsMap[sId].present++;
+                    else if (status === '지각') statsMap[sId].late++;
+                    else if (status === '결석') statsMap[sId].absent++;
+                    else statsMap[sId].scheduled++;
+
+                    statsMap[sId].history.push({ date, time: entry.time, status, checkTime, leavingTime });
+                });
+            });
+
+            Object.keys(statsMap).forEach(sId => {
+                const item = statsMap[sId];
+                const plannedCount = item.total;
+                item.attendanceRate = plannedCount > 0 ? Math.round(((item.present + item.late) / plannedCount) * 100) : null;
+                
+                if (item.history.length > 0) {
+                    item.history.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+                    const lastActive = item.history.find(h => h.status !== '예정') || item.history[0];
+                    item.lastStatus = lastActive.status;
+                    item.lastTimeText = lastActive.checkTime ? `${lastActive.checkTime}${lastActive.leavingTime ? ' ~ ' + lastActive.leavingTime : ''}` : '-';
+                }
+            });
+
+            return statsMap;
+        };
+
+        const statsMap = get30DaysAttendanceStats(selectedDate);
+
+        // Filter student list based on selected filters and search
+        let filteredStudents = students.map(s => {
+            const stats = statsMap[s.id] || {
+                student: s,
+                total: 0,
+                present: 0,
+                late: 0,
+                absent: 0,
+                scheduled: 0,
+                attendanceRate: null,
+                lastStatus: '예정',
+                lastTimeText: '-'
+            };
+            const teacherObj = teachers.find(t => t.id === s.teacherId);
+            return {
+                student: s,
+                stats,
+                teacher: teacherObj
+            };
+        }).filter(item => {
+            // Status filter
+            if (selectedStatus !== '전체' && item.stats.lastStatus !== selectedStatus) return false;
+            
+            // Instrument filter
+            if (selectedInstrument !== '전체' && item.student.instrument !== selectedInstrument) return false;
+            
+            // Teacher filter
+            if (selectedTeacherId !== '전체' && item.student.teacherId !== selectedTeacherId) return false;
+            
+            // Search query filter
+            if (searchQuery) {
+                const query = searchQuery.toLowerCase().replace(/\s+/g, '');
+                if (searchType === 'name') {
+                    const nameMatch = item.student.name.toLowerCase().replace(/\s+/g, '').includes(query);
+                    const phoneMatch = (item.student.phone && item.student.phone.replace(/[^0-9]/g, '').includes(query)) ||
+                                       (item.student.parentPhone && item.student.parentPhone.replace(/[^0-9]/g, '').includes(query));
+                    if (!nameMatch && !phoneMatch) return false;
+                } else if (searchType === 'id') {
+                    const studentMemberNo = item.student.studentMemberNo !== undefined && item.student.studentMemberNo !== null ? String(item.student.studentMemberNo) : null;
+                    const memberNo = item.student.memberNo !== undefined && item.student.memberNo !== null ? String(item.student.memberNo) : null;
+                    
+                    let idMatch = false;
+                    if (studentMemberNo !== null) {
+                        const cleanMemberNo = studentMemberNo.toLowerCase().replace(/\s+/g, '');
+                        idMatch = cleanMemberNo === query || cleanMemberNo.includes(query);
+                    } else if (memberNo !== null) {
+                        const cleanMemberNo = memberNo.toLowerCase().replace(/\s+/g, '');
+                        idMatch = cleanMemberNo === query || cleanMemberNo.includes(query);
+                    } else {
+                        const cleanId = item.student.id.toLowerCase().replace(/\s+/g, '');
+                        idMatch = cleanId === query;
+                    }
+                    if (!idMatch) return false;
+                }
+            }
+            return true;
+        });
+
+        // Helper: Render Student-wise view table
+        const renderStudentTable = () => {
+            const sorted = [...filteredStudents].sort((a, b) => a.student.name.localeCompare(b.student.name));
+            return `
+                <table class="custom-table">
+                    <thead>
+                        <tr>
+                            <th>회원번호</th>
+                            <th>원생이름</th>
+                            <th>악기/반</th>
+                            <th>담당강사</th>
+                            <th>예정 수업</th>
+                            <th>출석</th>
+                            <th>지각</th>
+                            <th>결석</th>
+                            <th>출석률</th>
+                            <th>오늘/최근 상태</th>
+                            <th>특이사항</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${sorted.map(item => {
+                            const memberNoText = item.student.studentMemberNo || item.student.memberNo || item.student.id;
+                            let statusBadge = `<span class="badge gray">예정</span>`;
+                            if (item.stats.lastStatus === '출석') statusBadge = `<span class="badge good">✓ 출석</span>`;
+                            else if (item.stats.lastStatus === '지각') statusBadge = `<span class="badge warn">! 지각</span>`;
+                            else if (item.stats.lastStatus === '결석') statusBadge = `<span class="badge danger">× 결석</span>`;
+
+                            return `
+                                <tr class="ac-student-row ${item.student.id === selectedStudentId ? 'selected' : ''}" data-student-id="${item.student.id}">
+                                    <td>${memberNoText}</td>
+                                    <td>
+                                        <div class="student-cell">
+                                            <button class="student-link" style="font-weight:900;">${item.student.name}</button>
+                                        </div>
+                                    </td>
+                                    <td>${item.student.instrument || '미지정'}</td>
+                                    <td>${item.teacher ? item.teacher.name : '미배정'}</td>
+                                    <td>${item.stats.total}회</td>
+                                    <td>${item.stats.present}회</td>
+                                    <td>${item.stats.late}회</td>
+                                    <td>${item.stats.absent}회</td>
+                                    <td><b>${item.stats.attendanceRate !== null ? `${item.stats.attendanceRate}%` : '-'}</b></td>
+                                    <td>${statusBadge}</td>
+                                    <td style="font-size:0.75rem; color:var(--text-muted); font-style:italic;">
+                                        ${item.student.scheduleNotes || '-'}
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+        };
+
+        // Helper: Render Instrument/Class-wise groups
+        const renderClassGroups = () => {
+            const classGroups = {};
+            filteredStudents.forEach(item => {
+                const inst = item.student.instrument || '미지정';
+                if (!classGroups[inst]) {
+                    classGroups[inst] = [];
+                }
+                classGroups[inst].push(item);
+            });
+
+            const sortedInstruments = Object.keys(classGroups).sort();
+            if (sortedInstruments.length === 0) {
+                return '<div style="padding: 20px; text-align: center; color: var(--text-muted);">조건에 맞는 악기/반 데이터가 없습니다.</div>';
+            }
+
+            return `
+                <div class="class-groups-container">
+                    <div class="group-grid">
+                        ${sortedInstruments.map(inst => {
+                            const list = classGroups[inst];
+                            list.sort((a, b) => a.student.name.localeCompare(b.student.name));
+                            
+                            let total = 0, present = 0, late = 0, absent = 0;
+                            list.forEach(item => {
+                                total += item.stats.total;
+                                present += item.stats.present;
+                                late += item.stats.late;
+                                absent += item.stats.absent;
+                            });
+                            const groupRate = total > 0 ? Math.round(((present + late) / total) * 100) : null;
+
+                            return `
+                                <div class="group-card">
+                                    <div class="group-top">
+                                        <div class="group-title">
+                                            <b>${inst}</b>
+                                            <span>오늘 ${list.length}명</span>
+                                        </div>
+                                        <div class="group-rate">
+                                            <strong>${groupRate !== null ? `${groupRate}%` : '-'}</strong>
+                                            <span>출석률</span>
+                                        </div>
+                                    </div>
+                                    <div class="count-row">
+                                        <span class="count-chip">예정 ${total}</span>
+                                        <span class="count-chip good">출석 ${present}</span>
+                                        <span class="count-chip warn">지각 ${late}</span>
+                                        <span class="count-chip danger">결석 ${absent}</span>
+                                    </div>
+                                    <button class="btn btn-none mini-btn toggle-group-btn" style="width:100%; margin-top:8px; border-color:var(--border-color); color:var(--text-muted); font-size:0.75rem;">명단 펼치기</button>
+                                    <div class="group-list">
+                                        ${list.map(item => {
+                                            const memberNoText = item.student.studentMemberNo || item.student.memberNo || item.student.id;
+                                            let statusBadge = `<span class="badge gray">예정</span>`;
+                                            if (item.stats.lastStatus === '출석') statusBadge = `<span class="badge good">✓ 출석</span>`;
+                                            else if (item.stats.lastStatus === '지각') statusBadge = `<span class="badge warn">! 지각</span>`;
+                                            else if (item.stats.lastStatus === '결석') statusBadge = `<span class="badge danger">× 결석</span>`;
+
+                                            const teacherName = item.teacher ? item.teacher.name : '미배정';
+
+                                            return `
+                                                <div class="group-student ac-student-row ${item.student.id === selectedStudentId ? 'selected' : ''}" data-student-id="${item.student.id}">
+                                                    <div class="student-main">
+                                                        <span class="student-meta" style="font-size:0.68rem; color:var(--text-muted);">#${memberNoText}</span>
+                                                        <span class="student-name"><b>${item.student.name}</b></span>
+                                                        <span class="student-meta" style="font-size:0.7rem; color:var(--text-muted);">담당: ${teacherName}</span>
+                                                    </div>
+                                                    <span class="student-rate" style="margin-left:auto; margin-right:12px; font-size:0.75rem; color:var(--text-muted);">
+                                                        출석률: <b>${item.stats.attendanceRate !== null ? `${item.stats.attendanceRate}%` : '-'}</b>
+                                                    </span>
+                                                    ${statusBadge}
+                                                </div>
+                                            `;
+                                        }).join('')}
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        };
+
+        // Helper: Render Teacher-wise groups
+        const renderTeacherGroups = () => {
+            const teacherGroups = {};
+            filteredStudents.forEach(item => {
+                const tName = item.teacher ? item.teacher.name : '미배정';
+                const tId = item.teacher ? item.teacher.id : 'unassigned';
+                if (!teacherGroups[tId]) {
+                    teacherGroups[tId] = {
+                        teacherName: tName,
+                        teacher: item.teacher,
+                        list: []
+                    };
+                }
+                teacherGroups[tId].list.push(item);
+            });
+
+            const sortedTeachers = Object.values(teacherGroups).sort((a, b) => a.teacherName.localeCompare(b.teacherName));
+            if (sortedTeachers.length === 0) {
+                return '<div style="padding: 20px; text-align: center; color: var(--text-muted);">조건에 맞는 강사 데이터가 없습니다.</div>';
+            }
+
+            return `
+                <div class="teacher-groups-container">
+                    <div class="group-grid">
+                        ${sortedTeachers.map(group => {
+                            const list = group.list;
+                            list.sort((a, b) => a.student.name.localeCompare(b.student.name));
+                            
+                            let total = 0, present = 0, late = 0, absent = 0;
+                            list.forEach(item => {
+                                total += item.stats.total;
+                                present += item.stats.present;
+                                late += item.stats.late;
+                                absent += item.stats.absent;
+                            });
+                            const groupRate = total > 0 ? Math.round(((present + late) / total) * 100) : null;
+
+                            return `
+                                <div class="group-card">
+                                    <div class="group-top">
+                                        <div class="group-title">
+                                            <b>${group.teacherName} 강사</b>
+                                            <span>오늘 ${list.length}명</span>
+                                        </div>
+                                        <div class="group-rate">
+                                            <strong>${groupRate !== null ? `${groupRate}%` : '-'}</strong>
+                                            <span>출석률</span>
+                                        </div>
+                                    </div>
+                                    <div class="count-row">
+                                        <span class="count-chip">예정 ${total}</span>
+                                        <span class="count-chip good">출석 ${present}</span>
+                                        <span class="count-chip warn">지각 ${late}</span>
+                                        <span class="count-chip danger">결석 ${absent}</span>
+                                    </div>
+                                    <button class="btn btn-none mini-btn toggle-group-btn" style="width:100%; margin-top:8px; border-color:var(--border-color); color:var(--text-muted); font-size:0.75rem;">명단 펼치기</button>
+                                    <div class="group-list">
+                                        ${list.map(item => {
+                                            const memberNoText = item.student.studentMemberNo || item.student.memberNo || item.student.id;
+                                            let statusBadge = `<span class="badge gray">예정</span>`;
+                                            if (item.stats.lastStatus === '출석') statusBadge = `<span class="badge good">✓ 출석</span>`;
+                                            else if (item.stats.lastStatus === '지각') statusBadge = `<span class="badge warn">! 지각</span>`;
+                                            else if (item.stats.lastStatus === '결석') statusBadge = `<span class="badge danger">× 결석</span>`;
+
+                                            const instrument = item.student.instrument || '미지정';
+
+                                            return `
+                                                <div class="group-student ac-student-row ${item.student.id === selectedStudentId ? 'selected' : ''}" data-student-id="${item.student.id}">
+                                                    <div class="student-main">
+                                                        <span class="student-meta" style="font-size:0.68rem; color:var(--text-muted);">#${memberNoText}</span>
+                                                        <span class="student-name"><b>${item.student.name}</b></span>
+                                                        <span class="student-meta" style="font-size:0.7rem; color:var(--text-muted);">악기: ${instrument}</span>
+                                                    </div>
+                                                    <span class="student-rate" style="margin-left:auto; margin-right:12px; font-size:0.75rem; color:var(--text-muted);">
+                                                        출석률: <b>${item.stats.attendanceRate !== null ? `${item.stats.attendanceRate}%` : '-'}</b>
+                                                    </span>
+                                                    ${statusBadge}
+                                                </div>
+                                            `;
+                                        }).join('')}
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        };
+
         // Calculate KPI metrics
         const kpi = {
             total: dailyClasses.length,
@@ -892,9 +1272,121 @@ export function renderDirectorAttendanceControl(container) {
                     justify-content: space-between;
                     font-weight: 700;
                 }
-                .log-item-body {
+                
+                /* Group Inquiry Cards CSS */
+                .group-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+                    gap: 16px;
+                    padding: 12px;
+                }
+                .group-card {
+                    display: flex;
+                    flex-direction: column;
+                    padding: 16px;
+                    border: 1px solid var(--border-color);
+                    border-radius: var(--radius-md);
+                    background: var(--bg-card);
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+                }
+                .group-top {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 12px;
+                    gap: 12px;
+                }
+                .group-title {
+                    display: flex;
+                    flex-direction: column;
+                }
+                .group-title b {
+                    font-size: 0.95rem;
+                    color: var(--primary);
+                    font-weight: 800;
+                }
+                .group-title span {
+                    font-size: 0.75rem;
                     color: var(--text-muted);
-                    margin-top: 4px;
+                    margin-top: 2px;
+                }
+                .group-rate {
+                    text-align: right;
+                }
+                .group-rate strong {
+                    display: block;
+                    font-size: 1.25rem;
+                    font-weight: 900;
+                    color: var(--text-color);
+                }
+                .group-rate span {
+                    font-size: 0.68rem;
+                    color: var(--text-muted);
+                }
+                .count-row {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 6px;
+                    margin-bottom: 12px;
+                }
+                .count-chip {
+                    display: inline-flex;
+                    align-items: center;
+                    padding: 3px 8px;
+                    border-radius: 999px;
+                    background: rgba(0,0,0,0.05);
+                    color: var(--text-color);
+                    font-size: 0.72rem;
+                    font-weight: 700;
+                }
+                .count-chip.good { background: rgba(46,204,113,0.15); color: #2ecc71; }
+                .count-chip.warn { background: rgba(241,196,15,0.15); color: #f1c40f; }
+                .count-chip.danger { background: rgba(231,76,60,0.15); color: #e74c3c; }
+
+                .group-list {
+                    display: none;
+                    flex-direction: column;
+                    gap: 6px;
+                    margin-top: 6px;
+                }
+                .group-card.open .group-list {
+                    display: flex;
+                }
+                .group-student {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 8px 10px;
+                    border-radius: 6px;
+                    border: 1px solid var(--border-color);
+                    background: var(--bg-body);
+                    cursor: pointer;
+                    font-size: 0.8rem;
+                    transition: background 0.15s, border-color 0.15s;
+                }
+                .group-student:hover {
+                    background: rgba(9, 132, 227, 0.05);
+                    border-color: var(--primary);
+                }
+                .group-student.selected {
+                    background: rgba(9, 132, 227, 0.08);
+                    border-color: var(--primary);
+                }
+                .group-student .student-main {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 2px;
+                }
+                .group-student .student-name {
+                    font-weight: 700;
+                }
+                .group-student .student-meta {
+                    font-size: 0.7rem;
+                    color: var(--text-muted);
+                }
+                .group-student .student-rate {
+                    font-size: 0.75rem;
+                    color: var(--text-muted);
                 }
             </style>
 
@@ -998,115 +1490,117 @@ export function renderDirectorAttendanceControl(container) {
                 <div class="main-grid">
                     <div class="left-panel">
                         <div class="table-container">
-                            <div class="board-note">
-                                <span><b>시간별 출결 요약</b></span>
-                            </div>
-                            
-                            <!-- Compact Board -->
-                            <div class="compact-board" id="compactBoard">
-                                ${operatingHours.map(time => {
-                                    const list = hourGroups[time] || [];
-                                    const pres = list.filter(r => r.status === '출석').length;
-                                    const l = list.filter(r => r.status === '지각').length;
-                                    const abs = list.filter(r => r.status === '결석').length;
-                                    
-                                    const exceptions = list.filter(r => r.status !== '출석' && r.status !== '예정');
-                                    
-                                    let noteMarkup = '';
-                                    if (list.length === 0) {
-                                        noteMarkup = '<div class="mini-row none"><span>-</span><span class="mini-name">수업 없음</span><span class="mini-meta"></span></div>';
-                                    } else if (exceptions.length > 0) {
-                                        noteMarkup = exceptions.map(row => {
-                                            const isLate = row.status === '지각';
-                                            const classTone = isLate ? 'late' : 'absent';
-                                            const mark = isLate ? '!' : '×';
-                                            return `
-                                                <div class="mini-row ${classTone}" data-student-id="${row.student.id}">
-                                                    <span>${mark}</span>
-                                                    <span class="mini-name">${row.student.name}</span>
-                                                    <span class="mini-meta">${row.checkTime || row.time}</span>
-                                                </div>
-                                            `;
-                                        }).join('');
-                                    } else {
-                                        noteMarkup = '<div class="mini-row pending"><span>✓</span><span class="mini-name">주의 없음</span><span class="mini-meta">정상</span></div>';
-                                    }
-
-                                    return `
-                                        <div class="time-tile ${list.length === 0 ? 'empty' : ''}">
-                                            <div class="tile-head">
-                                                <div class="tile-time">${time}</div>
-                                                <div class="tile-count">${list.length}명</div>
-                                            </div>
-                                            <div class="tile-stats">
-                                                <div class="tile-stat">전체<br>${list.length}</div>
-                                                <div class="tile-stat good">출석<br>${pres}</div>
-                                                <div class="tile-stat danger">결석<br>${abs}</div>
-                                                <div class="tile-stat warn">지각<br>${l}</div>
-                                            </div>
-                                            <div class="mini-students">
-                                                ${noteMarkup}
-                                            </div>
-                                        </div>
-                                    `;
-                                }).join('')}
-                            </div>
-
-                            <!-- Real Table -->
-                            <table class="custom-table">
-                                <thead>
-                                    <tr>
-                                        <th>요일</th>
-                                        <th>수업시간</th>
-                                        <th>원생이름</th>
-                                        <th>담당강사</th>
-                                        <th>출결상태</th>
-                                        <th>등원시각</th>
-                                        <th>특이사항/사유</th>
-                                        <th>메세지</th>
-                                        <th>확인</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${filteredRows.map(row => {
-                                        let statusBadge = `<span class="badge gray">수업 예정</span>`;
-                                        if (row.status === '출석') statusBadge = `<span class="badge good">✓ 출석</span>`;
-                                        else if (row.status === '지각') statusBadge = `<span class="badge warn">! 지각</span>`;
-                                        else if (row.status === '결석') statusBadge = `<span class="badge danger">× 결석</span>`;
-
-                                        const timeText = row.checkTime ? `${row.checkTime}${row.leavingTime ? ' ~ ' + row.leavingTime : ''}` : '-';
+                            ${activeTab === 'daily' ? `
+                                <div class="board-note">
+                                    <span><b>시간별 출결 요약</b></span>
+                                </div>
+                                
+                                <!-- Compact Board -->
+                                <div class="compact-board" id="compactBoard">
+                                    ${operatingHours.map(time => {
+                                        const list = hourGroups[time] || [];
+                                        const pres = list.filter(r => r.status === '출석').length;
+                                        const l = list.filter(r => r.status === '지각').length;
+                                        const abs = list.filter(r => r.status === '결석').length;
                                         
-                                        // Mock messaging status based on class status
-                                        let msgText = '<span style="opacity:0.5;">-</span>';
-                                         if (row.status === '출석' || row.status === '지각') msgText = '<span style="color:#27ae60; font-weight:700;">발송완료</span>';
-                                         else if (row.status === '결석') msgText = '<span style="color:#e74c3c; font-weight:700;">발송대기</span>';
+                                        const exceptions = list.filter(r => r.status !== '출석' && r.status !== '예정');
+                                        
+                                        let noteMarkup = '';
+                                        if (list.length === 0) {
+                                            noteMarkup = '<div class="mini-row none"><span>-</span><span class="mini-name">수업 없음</span><span class="mini-meta"></span></div>';
+                                        } else if (exceptions.length > 0) {
+                                            noteMarkup = exceptions.map(row => {
+                                                const isLate = row.status === '지각';
+                                                const classTone = isLate ? 'late' : 'absent';
+                                                const mark = isLate ? '!' : '×';
+                                                return `
+                                                    <div class="mini-row ${classTone}" data-student-id="${row.student.id}">
+                                                        <span>${mark}</span>
+                                                        <span class="mini-name">${row.student.name}</span>
+                                                        <span class="mini-meta">${row.checkTime || row.time}</span>
+                                                    </div>
+                                                `;
+                                            }).join('');
+                                        } else {
+                                            noteMarkup = '<div class="mini-row pending"><span>✓</span><span class="mini-name">주의 없음</span><span class="mini-meta">정상</span></div>';
+                                        }
 
                                         return `
-                                            <tr class="ac-student-row ${row.student.id === selectedStudentId ? 'selected' : ''}" data-student-id="${row.student.id}">
-                                                <td>${dayOfWeekKo}</td>
-                                                <td><b>${row.time}</b></td>
-                                                <td>
-                                                    <div class="student-cell">
-                                                        <button class="student-link" style="font-weight:900;">${row.student.name}</button>
-                                                    </div>
-                                                </td>
-                                                <td>${row.teacher ? row.teacher.name : '미배정'}</td>
-                                                <td>${statusBadge}</td>
-                                                <td style="font-weight: 600; font-size: 0.8rem;">${timeText}</td>
-                                                <td style="font-size: 0.78rem; color: var(--text-muted); font-style: italic;">
-                                                    ${row.note || '-'}
-                                                </td>
-                                                <td style="font-size: 0.78rem;">${msgText}</td>
-                                                <td>
-                                                    <button class="btn btn-none mini-btn ac-action-check-btn" style="padding: 2px 8px; font-size:0.75rem; border-color:var(--border-color); color:var(--primary);">
-                                                        ${row.status === '출석' ? '완료' : '확인'}
-                                                    </button>
-                                                </td>
-                                            </tr>
+                                            <div class="time-tile ${list.length === 0 ? 'empty' : ''}">
+                                                <div class="tile-head">
+                                                    <div class="tile-time">${time}</div>
+                                                    <div class="tile-count">${list.length}명</div>
+                                                </div>
+                                                <div class="tile-stats">
+                                                    <div class="tile-stat">전체<br>${list.length}</div>
+                                                    <div class="tile-stat good">출석<br>${pres}</div>
+                                                    <div class="tile-stat danger">결석<br>${abs}</div>
+                                                    <div class="tile-stat warn">지각<br>${l}</div>
+                                                </div>
+                                                <div class="mini-students">
+                                                    ${noteMarkup}
+                                                </div>
+                                            </div>
                                         `;
                                     }).join('')}
-                                </tbody>
-                            </table>
+                                </div>
+
+                                <!-- Real Table -->
+                                <table class="custom-table">
+                                    <thead>
+                                        <tr>
+                                            <th>요일</th>
+                                            <th>수업시간</th>
+                                            <th>원생이름</th>
+                                            <th>담당강사</th>
+                                            <th>출결상태</th>
+                                            <th>등원시각</th>
+                                            <th>특이사항/사유</th>
+                                            <th>메세지</th>
+                                            <th>확인</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${filteredRows.map(row => {
+                                            let statusBadge = `<span class="badge gray">수업 예정</span>`;
+                                            if (row.status === '출석') statusBadge = `<span class="badge good">✓ 출석</span>`;
+                                            else if (row.status === '지각') statusBadge = `<span class="badge warn">! 지각</span>`;
+                                            else if (row.status === '결석') statusBadge = `<span class="badge danger">× 결석</span>`;
+
+                                            const timeText = row.checkTime ? `${row.checkTime}${row.leavingTime ? ' ~ ' + row.leavingTime : ''}` : '-';
+                                            
+                                            // Mock messaging status based on class status
+                                            let msgText = '<span style="opacity:0.5;">-</span>';
+                                             if (row.status === '출석' || row.status === '지각') msgText = '<span style="color:#27ae60; font-weight:700;">발송완료</span>';
+                                             else if (row.status === '결석') msgText = '<span style="color:#e74c3c; font-weight:700;">발송대기</span>';
+
+                                            return `
+                                                <tr class="ac-student-row ${row.student.id === selectedStudentId ? 'selected' : ''}" data-student-id="${row.student.id}">
+                                                    <td>${dayOfWeekKo}</td>
+                                                    <td><b>${row.time}</b></td>
+                                                    <td>
+                                                        <div class="student-cell">
+                                                            <button class="student-link" style="font-weight:900;">${row.student.name}</button>
+                                                        </div>
+                                                    </td>
+                                                    <td>${row.teacher ? row.teacher.name : '미배정'}</td>
+                                                    <td>${statusBadge}</td>
+                                                    <td style="font-weight: 600; font-size: 0.8rem;">${timeText}</td>
+                                                    <td style="font-size: 0.78rem; color: var(--text-muted); font-style: italic;">
+                                                        ${row.note || '-'}
+                                                    </td>
+                                                    <td style="font-size: 0.78rem;">${msgText}</td>
+                                                    <td>
+                                                        <button class="btn btn-none mini-btn ac-action-check-btn" style="padding: 2px 8px; font-size:0.75rem; border-color:var(--border-color); color:var(--primary);">
+                                                            ${row.status === '출석' ? '완료' : '확인'}
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            `;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                            ` : activeTab === 'student' ? renderStudentTable() : activeTab === 'class' ? renderClassGroups() : renderTeacherGroups()}
                         </div>
                     </div>
 
@@ -1352,6 +1846,19 @@ export function renderDirectorAttendanceControl(container) {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 showKakaoTalkToast('출결 확인 상태 변경은 실제 DB와 다음 Phase에 연계 구현됩니다.');
+            });
+        });
+
+        // Toggle class / teacher group list open/close
+        const toggleBtns = container.querySelectorAll('.toggle-group-btn');
+        toggleBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const card = btn.closest('.group-card');
+                if (card) {
+                    const isOpen = card.classList.toggle('open');
+                    btn.textContent = isOpen ? '명단 접기' : '명단 펼치기';
+                }
             });
         });
 

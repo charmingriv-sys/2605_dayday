@@ -341,4 +341,170 @@ test.describe('Director Attendance Control Console Flow', () => {
     await searchInput.fill('');
     await page.waitForTimeout(300);
   });
+
+  test('should support student-wise, instrument-wise, and teacher-wise attendance inquiry tabs with active filters', async ({ page }) => {
+    // Go to attendance control view
+    await page.locator('.menu-item[data-view="dir-attendance-control"]').click();
+    await expect(page.locator('#page-title')).toContainText('출결 관제');
+
+    // 1. Click "원생별 조회" tab
+    const studentTab = page.locator('.ac-tab[data-tab="student"]');
+    await studentTab.click();
+    await page.waitForTimeout(300);
+    
+    // Assert student table container is rendered
+    const tableHeader = page.locator('table.custom-table thead');
+    await expect(tableHeader).toContainText('예정 수업');
+    await expect(tableHeader).toContainText('출석률');
+
+    // 2. Test auto name filtering in student tab (without Enter)
+    const searchInput = page.locator('#ac-search-input');
+    const searchType = page.locator('#ac-search-type');
+    await searchType.selectOption('name');
+    await searchInput.fill('최다은');
+    await page.waitForTimeout(300);
+    
+    let rowsCount = await page.locator('table.custom-table tbody tr').count();
+    expect(rowsCount).toBe(1);
+    await expect(page.locator('table.custom-table tbody tr').first()).toContainText('최다은');
+
+    // Verify that the attendance rate is calculated based on plannedCount (9) which is greater than present+late+absent (3+1+4 = 8)
+    // present (3) + late (1) = 4. 4 / 9 = 44.44% -> 44%. (Using 3+1+4 = 8 as denominator would yield 50%)
+    const firstRow = page.locator('table.custom-table tbody tr').first();
+    const cells = firstRow.locator('td');
+    await expect(cells.nth(4)).toContainText('9회');       // 예정 수업 (plannedCount)
+    await expect(cells.nth(5)).toContainText('3회');       // 출석 (presentCount)
+    await expect(cells.nth(6)).toContainText('1회');       // 지각 (lateCount)
+    await expect(cells.nth(7)).toContainText('4회');       // 결석 (absentCount)
+    await expect(cells.nth(8)).toContainText('44%');       // 출석률 (attendanceRate)
+
+    // 3. Test Member ID exact match filtering in student tab
+    await searchInput.fill('S1');
+    await searchType.selectOption('id');
+    await page.waitForTimeout(300);
+    rowsCount = await page.locator('table.custom-table tbody tr').count();
+    expect(rowsCount).toBe(1);
+    await expect(page.locator('table.custom-table tbody tr').first()).toContainText('최다은');
+
+    // Reset search
+    await searchInput.fill('');
+    await searchType.selectOption('name');
+    await page.waitForTimeout(300);
+
+    // 4. Click "악기/반 별 조회" tab
+    const classTab = page.locator('.ac-tab[data-tab="class"]');
+    await classTab.click();
+    await page.waitForTimeout(300);
+
+    // Assert class group cards are rendered
+    const classContainer = page.locator('.class-groups-container');
+    await expect(classContainer).toBeVisible();
+    const groupCards = page.locator('.class-groups-container .group-card');
+    await expect(groupCards.first()).toBeVisible();
+
+    // 5. Test Instrument filter in class tab
+    const instrumentSelect = page.locator('#ac-instrument-select');
+    await instrumentSelect.selectOption('피아노');
+    await page.waitForTimeout(300);
+    const pianoGroupCount = await page.locator('.class-groups-container .group-card').count();
+    expect(pianoGroupCount).toBe(1);
+    await expect(page.locator('.class-groups-container .group-card').first()).toContainText('피아노');
+
+    // Verify piano group stats and structural restoration of card UI
+    const pianoCard = page.locator('.class-groups-container .group-card').first();
+    await expect(pianoCard).toContainText('피아노');
+    await expect(pianoCard).toContainText('출석률');
+    await expect(pianoCard).toContainText('예정 102');
+    await expect(pianoCard).toContainText('출석 10');
+    await expect(pianoCard).toContainText('지각 2');
+    await expect(pianoCard).toContainText('결석 82');
+    await expect(pianoCard).toContainText('12%');
+
+    const pianoTableCount = await pianoCard.locator('table.custom-table').count();
+    expect(pianoTableCount).toBe(0);
+    const pianoGroupList = pianoCard.locator('.group-list');
+    
+    // 1) Verify initially collapsed
+    await expect(pianoGroupList).not.toBeVisible();
+    const pianoToggleBtn = pianoCard.locator('.toggle-group-btn');
+    await expect(pianoToggleBtn).toBeVisible();
+    await expect(pianoToggleBtn).toHaveText('명단 펼치기');
+
+    // 2) Expand and verify
+    await pianoToggleBtn.click();
+    await expect(pianoGroupList).toBeVisible();
+    await expect(pianoToggleBtn).toHaveText('명단 접기');
+    const pianoGroupStudents = pianoGroupList.locator('.group-student');
+    const pianoGroupStudentsCount = await pianoGroupStudents.count();
+    expect(pianoGroupStudentsCount).toBeGreaterThanOrEqual(1);
+
+    // 3) Collapse and verify
+    await pianoToggleBtn.click();
+    await expect(pianoGroupList).not.toBeVisible();
+    await expect(pianoToggleBtn).toHaveText('명단 펼치기');
+
+    // Reset instrument filter
+    await instrumentSelect.selectOption('전체');
+    await page.waitForTimeout(300);
+
+    // 6. Click "강사별 조회" tab
+    const teacherTab = page.locator('.ac-tab[data-tab="teacher"]');
+    await teacherTab.click();
+    await page.waitForTimeout(300);
+
+    // Assert teacher group cards are rendered
+    const teacherContainer = page.locator('.teacher-groups-container');
+    await expect(teacherContainer).toBeVisible();
+
+    // 7. Test Teacher filter in teacher tab
+    const teacherSelect = page.locator('#ac-teacher-select');
+    await teacherSelect.selectOption('T8');
+    await page.waitForTimeout(300);
+    const teacherGroupCount = await page.locator('.teacher-groups-container .group-card').count();
+    expect(teacherGroupCount).toBe(1);
+    await expect(page.locator('.teacher-groups-container .group-card').first()).toContainText('정은비');
+
+    // Verify teacher group stats and structural restoration of card UI
+    const teacherCard = page.locator('.teacher-groups-container .group-card').first();
+    await expect(teacherCard).toContainText('정은비');
+    await expect(teacherCard).toContainText('출석률');
+    await expect(teacherCard).toContainText('예정 61');
+    await expect(teacherCard).toContainText('출석 9');
+    await expect(teacherCard).toContainText('지각 1');
+    await expect(teacherCard).toContainText('결석 46');
+    await expect(teacherCard).toContainText('16%');
+
+    const teacherTableCount = await teacherCard.locator('table.custom-table').count();
+    expect(teacherTableCount).toBe(0);
+    const teacherGroupList = teacherCard.locator('.group-list');
+
+    // 1) Verify initially collapsed
+    await expect(teacherGroupList).not.toBeVisible();
+    const teacherToggleBtn = teacherCard.locator('.toggle-group-btn');
+    await expect(teacherToggleBtn).toBeVisible();
+    await expect(teacherToggleBtn).toHaveText('명단 펼치기');
+
+    // 2) Expand and verify
+    await teacherToggleBtn.click();
+    await expect(teacherGroupList).toBeVisible();
+    await expect(teacherToggleBtn).toHaveText('명단 접기');
+    const teacherGroupStudents = teacherGroupList.locator('.group-student');
+    const teacherGroupStudentsCount = await teacherGroupStudents.count();
+    expect(teacherGroupStudentsCount).toBeGreaterThanOrEqual(1);
+
+    // 3) Collapse and verify
+    await teacherToggleBtn.click();
+    await expect(teacherGroupList).not.toBeVisible();
+    await expect(teacherToggleBtn).toHaveText('명단 펼치기');
+
+    // Reset teacher filter
+    await teacherSelect.selectOption('전체');
+    await page.waitForTimeout(300);
+
+    // 8. Verify status select options in teacher tab (cleanliness check)
+    const statusSelect = page.locator('#ac-status-select');
+    const options = await statusSelect.locator('option').allInnerTexts();
+    expect(options).not.toContain('미확인 (지연)');
+    expect(options).not.toContain('하원 누락');
+  });
 });
