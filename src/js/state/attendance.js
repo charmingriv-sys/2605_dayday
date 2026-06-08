@@ -79,5 +79,187 @@ export const attendanceMethods = {
             const event = new CustomEvent('kakaotalk-alert', { detail: { message: alertMessage } });
             window.dispatchEvent(event);
         }
+    },
+
+    getAttendanceWarnings(options = {}) {
+        const {
+            endDate = new Date().toISOString().slice(0, 10),
+            windowDays = 28,
+            lateThresholdMinutes = 15
+        } = options;
+
+        const students = this.db.students || [];
+        const teachers = this.db.teachers || [];
+        const attendance = this.db.attendance || [];
+
+        const getRangeDates = (endStr, days) => {
+            const end = new Date(endStr);
+            const dates = [];
+            for (let i = days - 1; i >= 0; i--) {
+                const d = new Date(end);
+                d.setDate(d.getDate() - i);
+                dates.push(d.toISOString().slice(0, 10));
+            }
+            return dates;
+        };
+        const rangeDates = getRangeDates(endDate, windowDays);
+
+        const studentSchedules = {};
+        students.forEach(s => {
+            studentSchedules[s.id] = [];
+        });
+
+        const now = new Date();
+        const todayStr = now.toISOString().slice(0, 10);
+
+        rangeDates.forEach(date => {
+            const dailySchedule = this.getTeacherStudentScheduleForDate(date) || [];
+            dailySchedule.forEach(entry => {
+                const sId = entry.studentId;
+                if (!studentSchedules[sId]) return;
+
+                const att = attendance.find(a => a.studentId === sId && a.date === date);
+                let status = '예정';
+                let checkTime = '';
+                let leavingTime = '';
+                let isTodayNoTagOverdue = false;
+
+                if (att) {
+                    checkTime = att.time || '';
+                    leavingTime = att.leavingTime || '';
+                    if (att.status === 'present') status = '출석';
+                    else if (att.status === 'late') status = '지각';
+                    else if (att.status === 'absent') status = '결석';
+                } else {
+                    const [classHour, classMin] = entry.time.split(':').map(Number);
+                    const classTimeToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), classHour, classMin);
+                    const diffMins = (now - classTimeToday) / (1000 * 60);
+
+                    if (date < todayStr) {
+                        status = '결석';
+                    } else if (date === todayStr) {
+                        if (diffMins > lateThresholdMinutes) {
+                            status = '지각';
+                            isTodayNoTagOverdue = true;
+                        }
+                    }
+                }
+
+                studentSchedules[sId].push({
+                    date,
+                    time: entry.time,
+                    status,
+                    checkTime,
+                    leavingTime,
+                    isTodayNoTagOverdue
+                });
+            });
+        });
+
+        const warnings = [];
+
+        students.forEach(student => {
+            const list = studentSchedules[student.id] || [];
+            if (list.length === 0) return;
+
+            const plannedCount = list.length;
+            const presentCount = list.filter(c => c.status === '출석').length;
+            const lateCount = list.filter(c => c.status === '지각').length;
+            const absentCount = list.filter(c => c.status === '결석').length;
+
+            const attendanceRate = Math.round(((presentCount + lateCount) / plannedCount) * 100);
+            const absentRate = Math.round((absentCount / plannedCount) * 100);
+            const lateRate = Math.round((lateCount / plannedCount) * 100);
+
+            const isMinor = student.isAdult === false || 
+                            student.isAdult === 'minor' || 
+                            (student.age !== undefined && student.age < 19) || 
+                            (student.parentPhone && student.parentPhone.trim() !== '');
+
+            const sortedClasses = [...list].sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+            const activeClasses = sortedClasses.filter(c => c.status !== '예정');
+
+            let severity = null;
+            let warningType = null;
+            let title = '';
+            let reason = '';
+            let evidenceText = '';
+
+            if (isMinor && activeClasses.length >= 2 && activeClasses[0].status === '결석' && activeClasses[1].status === '결석') {
+                severity = 'critical';
+                warningType = 'consecutive_absences';
+                title = '연속 결석';
+                reason = '비성인 원생 최근 2회 연속 결석';
+                evidenceText = `최근 2회 연속 결석 (비성인)`;
+            }
+            else if (list.some(c => c.isTodayNoTagOverdue)) {
+                severity = 'critical';
+                warningType = 'today_no_tag_overdue';
+                title = '미태그 지각';
+                reason = '수업 시작 후 15분 경과 미태그';
+                evidenceText = `오늘 수업 시작 15분 경과 미태그`;
+            }
+            else if (absentRate >= 30) {
+                severity = 'red';
+                warningType = 'high_absent_rate';
+                title = '출결 위험';
+                reason = '최근 4주 결석률 30% 이상';
+                evidenceText = `최근 4주 예정 ${plannedCount}회 중 결석 ${absentCount}회, 결석률 ${absentRate}%`;
+            }
+            else if (attendanceRate < 75) {
+                severity = 'amber';
+                warningType = 'low_attendance_rate';
+                title = '출결 저조';
+                reason = '최근 4주 출석률 75% 미만';
+                evidenceText = `최근 4주 예정 ${plannedCount}회 중 출석/지각 ${presentCount + lateCount}회, 출석률 ${attendanceRate}%`;
+            }
+            else if (lateRate >= 25) {
+                severity = 'amber';
+                warningType = 'high_late_rate';
+                title = '지각 반복';
+                reason = '최근 4주 지각률 25% 이상';
+                evidenceText = `최근 4주 예정 ${plannedCount}회 중 지각 ${lateCount}회, 지각률 ${lateRate}%`;
+            }
+
+            if (severity) {
+                const teacherObj = teachers.find(t => t.id === student.teacherId);
+                warnings.push({
+                    id: `W_${student.id}`,
+                    studentId: student.id,
+                    studentName: student.name,
+                    memberNo: student.studentMemberNo || student.memberNo || student.id,
+                    instrument: student.instrument || '미지정',
+                    teacherName: teacherObj ? teacherObj.name : '미배정',
+                    severity,
+                    warningType,
+                    title,
+                    reason,
+                    plannedCount,
+                    presentCount,
+                    lateCount,
+                    absentCount,
+                    attendanceRate,
+                    absentRate,
+                    lateRate,
+                    evidenceText
+                });
+            }
+        });
+
+        const severityOrder = { critical: 3, red: 2, amber: 1 };
+        warnings.sort((a, b) => {
+            const sevDiff = severityOrder[b.severity] - severityOrder[a.severity];
+            if (sevDiff !== 0) return sevDiff;
+
+            const absentDiff = b.absentRate - a.absentRate;
+            if (absentDiff !== 0) return absentDiff;
+
+            const attendDiff = a.attendanceRate - b.attendanceRate;
+            if (attendDiff !== 0) return attendDiff;
+
+            return a.studentName.localeCompare(b.studentName);
+        });
+
+        return warnings;
     }
 };

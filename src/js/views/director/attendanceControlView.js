@@ -33,7 +33,7 @@ export function renderDirectorAttendanceControl(container) {
     // Tab and filter states
     let activeTab = 'daily'; // 'daily' | 'student' | 'class' | 'teacher'
     let selectedDate = new Date().toISOString().slice(0, 10);
-    let selectedStatus = '전체'; // '전체', '출석', '지각', '결석', '미확인', '하원누락'
+    let selectedStatus = '전체'; // '전체', '출석', '지각', '결석'
     let selectedInstrument = '전체';
     let selectedTeacherId = '전체';
     let searchQuery = '';
@@ -76,8 +76,8 @@ export function renderDirectorAttendanceControl(container) {
             className: stud ? stud.instrument : '피아노',
             teacher: stud ? (teachersList.find(t => t.id === stud.teacherId)?.name || '미배정') : '미배정',
             status: stud ? (absentCount > 1 ? '결석' : '출석') : '예정',
-            reason: absentCount > 1 ? '미등원 (사유 확인필요)' : '정상 수업',
-            warningLabel: absentCount > 1 ? '미등원 연속' : '',
+            reason: absentCount > 1 ? '결석 (사유 확인필요)' : '정상 수업',
+            warningLabel: absentCount > 1 ? '연속 결석' : '',
             cal: Array.from({ length: 30 }, (_, i) => {
                 if (i === 2) return 'present'; // 06-03 today
                 if (i % 7 === 0) return 'absent';
@@ -652,12 +652,8 @@ export function renderDirectorAttendanceControl(container) {
             }
         });
 
-        // Warning students calculation
-        const warningStudentsList = students.map(student => {
-            const metrics = getStudentMetrics(student.id);
-            const hasWarning = metrics.absentCount >= 2 || metrics.monthRate < 80 || metrics.lateCount >= 3 || metrics.status === '결석';
-            return { student, metrics, hasWarning };
-        }).filter(item => item.hasWarning);
+        // Retrieve real warnings from stateStore
+        const warnings = stateStore.getAttendanceWarnings({ endDate: selectedDate });
 
         container.innerHTML = `
             <style>
@@ -1559,7 +1555,7 @@ export function renderDirectorAttendanceControl(container) {
                         <div>
                             <h3>결석</h3>
                             <div class="value">${kpi.pending}명</div>
-                            <div class="desc">미등원 확인 필요</div>
+                            <div class="desc">결석 확인 필요</div>
                         </div>
                         <div class="metric-icon absent">×</div>
                     </div>
@@ -1568,7 +1564,7 @@ export function renderDirectorAttendanceControl(container) {
                 <!-- 5. Urgent Queue Banner -->
                 <section class="radar-banner">
                     <div>
-                        <p id="urgentBannerText">오늘 발생한 미등원, 하원 누락, 지각 처리 큐입니다.</p>
+                        <p id="urgentBannerText">오늘 발생한 결석, 지각 처리 큐입니다.</p>
                     </div>
                     <div>
                         <button class="btn btn-none mini-btn" id="ac-urgent-btn" style="background:#fff;">전체 보기</button>
@@ -1698,35 +1694,41 @@ export function renderDirectorAttendanceControl(container) {
                         <div class="warning-console-head">
                             <div>
                                 <div class="warning-title"><span class="warn-mark">△</span> 출결 워닝</div>
-                                <p>최근 2주 결석 3회↑ · 월 출석률 70%↓ · 미등원 연속 등 누적 패턴 감지</p>
+                                <p>최근 4주 기준 예정 수업 대비 결석률 30%↑ · 출석률 75%↓ · 지각률 25%↑ · 연속 결석 패턴 감지</p>
                             </div>
-                            <div class="warning-total" id="attendanceWarningTotal">상담/관리 필요 ${warningStudentsList.length}</div>
+                            <div class="warning-total" id="attendanceWarningTotal">상담/관리 필요 ${warnings.length}</div>
                         </div>
                         <div class="warning-list" id="attendanceWarningList">
-                            ${warningStudentsList.map(({ student, metrics }) => {
-                                const avatarTone = metrics.monthRate < 70 ? 'red' : metrics.lateCount >= 3 ? 'amber' : 'green';
+                            ${warnings.length > 0 ? warnings.map(w => {
+                                let avatarTone = 'green';
+                                if (w.severity === 'critical') avatarTone = 'red';
+                                else if (w.severity === 'red') avatarTone = 'red';
+                                else if (w.severity === 'amber') avatarTone = 'amber';
+
                                 return `
-                                    <div class="warning-row" data-student-id="${student.id}">
-                                        <div class="warning-avatar ${avatarTone}">${student.name.slice(-2)}</div>
+                                    <div class="warning-row" data-student-id="${w.studentId}">
+                                        <div class="warning-avatar ${avatarTone}">${w.studentName.slice(-2)}</div>
                                         <div class="warning-main">
                                             <div class="warning-student">
-                                                <b>${student.name}</b>
-                                                <span>${student.instrument} · ${metrics.teacher}</span>
+                                                <b>${w.studentName}</b>
+                                                <span>${w.instrument} · ${w.teacherName}</span>
                                             </div>
-                                            <div class="warning-tags">
-                                                ${metrics.absentCount >= 2 ? '<span class="warning-chip">△ 결석 잦음</span>' : ''}
-                                                ${metrics.monthRate < 80 ? '<span class="warning-chip">△ 출석률 저조</span>' : ''}
-                                                ${metrics.lateCount >= 3 ? '<span class="warning-chip amber">△ 지각 반복</span>' : ''}
-                                                ${metrics.status === '결석' ? '<span class="warning-chip">△ 미등원 연속</span>' : ''}
+                                            <div class="warning-tags" style="margin-top: 4px;">
+                                                <span class="warning-chip ${w.severity === 'amber' ? 'amber' : ''}">△ ${w.title}</span>
+                                                <span class="warning-evidence" style="font-size:13px; color:var(--text-muted); margin-left: 6px;">${w.evidenceText}</span>
                                             </div>
                                         </div>
                                         <div class="warning-rate">
-                                            <strong>${metrics.monthRate}%</strong>
-                                            <span>월 출석률</span>
+                                            <strong style="color: ${w.severity === 'amber' ? '#f1c40f' : '#e74c3c'};">${w.severity.toUpperCase()}</strong>
+                                            <span>${w.reason}</span>
                                         </div>
                                     </div>
                                 `;
-                            }).join('')}
+                            }).join('') : `
+                                <div style="text-align:center; padding:25px; color:var(--text-muted); font-size:14px;" class="warning-empty-state">
+                                    상태 이상 원생이 없습니다. (이상 없음)
+                                </div>
+                            `}
                         </div>
                     </aside>
                 </div>
@@ -1911,7 +1913,7 @@ export function renderDirectorAttendanceControl(container) {
         const urgentBtn = container.querySelector('#ac-urgent-btn');
         if (urgentBtn) {
             urgentBtn.addEventListener('click', () => {
-                showKakaoTalkToast('[가상 알림] 오늘 발생한 미등원/지각 등의 긴급 확인 필요 리스트 팝업은 다음 Phase에서 연계 지원 예정입니다.');
+                showKakaoTalkToast('[가상 알림] 오늘 발생한 결석/지각 등의 긴급 확인 필요 리스트 팝업은 다음 Phase에서 연계 지원 예정입니다.');
             });
         }
 

@@ -663,4 +663,108 @@ test.describe('Director Attendance Control Console Flow', () => {
     await page.locator('#ac-drawer-backdrop').click();
     await expect(inspectorPanel).not.toHaveClass(/open/);
   });
+
+  test('should render real warning cards, open inspector on click, and show empty state appropriately', async ({ page }) => {
+    page.on('console', msg => console.log('BROWSER LOG:', msg.text()));
+
+    // 1. Go to attendance control view
+    await page.locator('.menu-item[data-view="dir-attendance-control"]').click();
+    await expect(page.locator('#page-title')).toContainText('출결 관제');
+
+    // 2. We can seed some specific warning condition via page.evaluate
+    await page.evaluate(() => {
+      window.stateStore.db.attendance = [];
+      window.stateStore.db.scheduleSnapshots = [];
+      
+      const date = '2026-06-03';
+      const dates = [
+        '2026-06-03', '2026-06-01', '2026-05-29', '2026-05-27', '2026-05-25',
+        '2026-05-22', '2026-05-20', '2026-05-18'
+      ];
+      dates.forEach(d => {
+        let snap = window.stateStore.db.scheduleSnapshots.find(s => s.date === d);
+        if (!snap) {
+          snap = window.stateStore.ensureScheduleSnapshotForDate(d);
+        }
+        const hasEntry = snap.entries.some(e => e.studentId === 'S1');
+        if (!hasEntry) {
+          snap.entries.push({
+            id: `ENTRY_${d}_S1_99`,
+            studentId: 'S1',
+            teacherId: 'T8',
+            startTime: '14:00',
+            endTime: '14:30',
+            subjectId: '피아노',
+            source: 'default'
+          });
+        }
+      });
+
+      window.stateStore.db.attendance = window.stateStore.db.attendance.filter(a => a.studentId !== 'S1');
+      window.stateStore.db.attendance.push(
+        { id: 'AE1', studentId: 'S1', date: '2026-06-03', status: 'absent', time: '' },
+        { id: 'AE2', studentId: 'S1', date: '2026-06-01', status: 'absent', time: '' },
+        { id: 'AE3', studentId: 'S1', date: '2026-05-29', status: 'absent', time: '' },
+        { id: 'AE4', studentId: 'S1', date: '2026-05-27', status: 'present', time: '14:00' },
+        { id: 'AE5', studentId: 'S1', date: '2026-05-25', status: 'present', time: '14:00' },
+        { id: 'AE6', studentId: 'S1', date: '2026-05-22', status: 'present', time: '14:00' },
+        { id: 'AE7', studentId: 'S1', date: '2026-05-20', status: 'present', time: '14:00' },
+        { id: 'AE8', studentId: 'S1', date: '2026-05-18', status: 'present', time: '14:00' }
+      );
+      window.stateStore.saveDB();
+    });
+
+    await page.locator('.menu-item[data-view="dir-attendance-control"]').click();
+    await page.waitForTimeout(300);
+
+    const warningList = page.locator('#attendanceWarningList');
+    await expect(warningList).toBeVisible();
+    const s1WarningRow = page.locator('.warning-row[data-student-id="S1"]');
+    await expect(s1WarningRow).toBeVisible();
+
+    const firstWarningText = await s1WarningRow.innerText();
+    expect(firstWarningText).toContain('연속 결석');
+    expect(firstWarningText).toContain('최근 2회 연속 결석 (비성인)');
+
+    await page.evaluate(() => {
+      console.log('BEFORE MODIFY S1:', JSON.stringify(window.stateStore.db.students.find(s => s.id === 'S1')));
+      const s1 = window.stateStore.db.students.find(s => s.id === 'S1');
+      if (s1) {
+        s1.isAdult = true;
+        s1.age = 30;
+        s1.parentPhone = '';
+      }
+      window.stateStore.saveDB();
+      console.log('AFTER MODIFY S1:', JSON.stringify(window.stateStore.db.students.find(s => s.id === 'S1')));
+      console.log('WARNING CALCULATIONS FOR S1:', JSON.stringify(window.stateStore.getAttendanceWarnings({ endDate: '2026-06-03' }).find(w => w.studentId === 'S1')));
+    });
+
+    // Click refresh button to re-render the view with modified DB state
+    await page.locator('#ac-refresh-btn').click();
+    await page.waitForTimeout(300);
+
+    const redWarningText = await s1WarningRow.innerText();
+    expect(redWarningText).toContain('출결 위험');
+    expect(redWarningText).toContain('최근 4주 예정 10회 중 결석 5회, 결석률 50%');
+
+    await s1WarningRow.click();
+    const inspectorPanel = page.locator('#ac-inspector-panel');
+    await expect(inspectorPanel).toHaveClass(/open/);
+    await expect(page.locator('#ac-inspector-name')).toContainText('최다은');
+
+    await page.locator('#ac-drawer-backdrop').click();
+    await expect(inspectorPanel).not.toHaveClass(/open/);
+
+    await page.evaluate(() => {
+      window.stateStore.db.students = [];
+      window.stateStore.saveDB();
+    });
+
+    await page.locator('#ac-refresh-btn').click();
+    await page.waitForTimeout(300);
+
+    const emptyState = warningList.locator('.warning-empty-state');
+    await expect(emptyState).toBeVisible();
+    await expect(emptyState).toContainText('이상 없음');
+  });
 });
