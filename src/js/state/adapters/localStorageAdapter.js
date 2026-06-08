@@ -280,6 +280,10 @@ export class LocalStorageAdapter extends DataAdapter {
             db.mockCalendarEvents = [];
             migrated = true;
         }
+        if (!db.attendanceChangeLogs) {
+            db.attendanceChangeLogs = [];
+            migrated = true;
+        }
  
         return migrated;
     }

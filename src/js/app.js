@@ -1885,7 +1885,7 @@ async function switchView(viewName) {
             viewModules['dir-payments'] = module.renderPayments;
             viewModules['dir-teachers'] = module.renderTeachers;
             viewModules['dir-schedules'] = module.renderSchedules;
-            viewModules['dir-attendance'] = module.renderDirectorAttendance;
+            viewModules['dir-attendance'] = module.renderDirectorAttendanceControl; // Deprecated: reroute to unified attendance control
             viewModules['dir-attendance-control'] = module.renderDirectorAttendanceControl;
             viewModules['dir-kiosk-attendance'] = module.renderKioskAttendance;
             viewModules['dir-books'] = module.renderBooks;

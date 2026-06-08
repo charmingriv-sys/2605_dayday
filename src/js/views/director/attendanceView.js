@@ -22,6 +22,10 @@ const getChosungStr = (str) => {
     return res;
 };
 
+/**
+ * @deprecated Rerouted to renderDirectorAttendanceControl inside app.js.
+ * Preserved only for reference and legacy exports.
+ */
 export function renderDirectorAttendance(container) {
     let activeSubTab = 'daily'; // 'daily' or 'student'
     

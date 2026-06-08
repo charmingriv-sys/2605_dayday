@@ -231,7 +231,8 @@ const DEFAULT_DB = {
     scheduleOperationLogs: [],
     todayTasks: [],
     todayTaskRoutines: [],
-    mockCalendarEvents: []
+    mockCalendarEvents: [],
+    attendanceChangeLogs: []
 };
 
 const adapter = new LocalStorageAdapter({

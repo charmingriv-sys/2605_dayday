@@ -124,6 +124,10 @@ export const attendanceMethods = {
             (a.classTime === classTime || !a.classTime)
         );
 
+        // Capture previous and next status (Phase 9C-5E Audit Logging)
+        const previousStatus = existing ? existing.status : null;
+        const nextStatus = status;
+
         let time = '';
         if (status !== 'absent') {
             if (checkedAt) {
@@ -161,8 +165,38 @@ export const attendanceMethods = {
             });
         }
 
+        // Audit Logging Logic
+        if (previousStatus !== nextStatus) {
+            if (!this.db.attendanceChangeLogs) {
+                this.db.attendanceChangeLogs = [];
+            }
+            const logId = 'L' + (this.db.attendanceChangeLogs.length ? Math.max(...this.db.attendanceChangeLogs.map(l => parseInt(l.id.slice(1)) || 0)) + 1 : 1);
+            this.db.attendanceChangeLogs.push({
+                id: logId,
+                studentId,
+                date,
+                classTime: classTime || '',
+                previousStatus,
+                nextStatus,
+                changedAt: new Date().toISOString(),
+                source
+            });
+        }
+
         this.saveDB();
         this.notify('ATTENDANCE_CHANGED', this.db.attendance);
+    },
+
+    getAttendanceChangeLogs(options = {}) {
+        const { studentId, date } = options;
+        let logs = this.db.attendanceChangeLogs || [];
+        if (studentId) {
+            logs = logs.filter(log => log.studentId === studentId);
+        }
+        if (date) {
+            logs = logs.filter(log => log.date === date);
+        }
+        return logs;
     },
 
     getAttendanceWarnings(options = {}) {

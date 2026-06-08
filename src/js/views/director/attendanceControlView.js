@@ -1335,7 +1335,7 @@ export function renderDirectorAttendanceControl(container) {
                     grid-auto-columns: minmax(220px, 220px);
                     overflow-x: auto;
                     gap: 12px;
-                    padding: 16px;
+                    padding: 16px 16px 22px 16px;
                     background: var(--bg-card);
                     border-bottom: 1px solid var(--border-color);
                     scroll-behavior: smooth;
@@ -1346,7 +1346,7 @@ export function renderDirectorAttendanceControl(container) {
                     grid-auto-flow: column;
                     grid-auto-columns: minmax(160px, 160px);
                     gap: 8px;
-                    padding: 8px 16px;
+                    padding: 8px 16px 14px 16px;
                 }
                 .compact-board.collapsed .time-tile {
                     min-width: 160px;
@@ -2418,6 +2418,16 @@ export function renderDirectorAttendanceControl(container) {
 
                     <section class="drawer-section">
                         <div class="section-title">
+                            <h3>최근 수정 이력</h3>
+                            <span id="ac-inspector-audit-count">0건</span>
+                        </div>
+                        <div class="log-list" id="ac-inspector-audit-list" style="max-height: 150px; overflow-y: auto;">
+                            <!-- Filled dynamically -->
+                        </div>
+                    </section>
+
+                    <section class="drawer-section">
+                        <div class="section-title">
                             <h3>메시지 이력</h3>
                             <span id="ac-inspector-msg-count">0건</span>
                         </div>
@@ -3196,6 +3206,60 @@ export function renderDirectorAttendanceControl(container) {
                 }).join('');
             } else {
                 historyList.innerHTML = `<div style="text-align:center; padding:15px; color:var(--text-muted); font-size:0.75rem;">출결 이력이 없습니다.</div>`;
+            }
+        }
+
+        // 6b. Recent Audit Logs (Phase 9C-5E)
+        const auditList = container.querySelector('#ac-inspector-audit-list');
+        const auditCount = container.querySelector('#ac-inspector-audit-count');
+        const auditLogs = stateStore.getAttendanceChangeLogs({ studentId }).sort((a, b) => b.changedAt.localeCompare(a.changedAt));
+        
+        // Show only the 3~5 most recent logs
+        const recentAuditLogs = auditLogs.slice(0, 5);
+
+        if (auditCount) auditCount.textContent = `${auditLogs.length}건`;
+        if (auditList) {
+            if (recentAuditLogs.length > 0) {
+                auditList.innerHTML = recentAuditLogs.map(log => {
+                    const statusMapping = {
+                        present: '출석',
+                        late: '지각',
+                        absent: '결석',
+                        null: '예정'
+                    };
+                    const prevText = statusMapping[log.previousStatus] || '예정';
+                    const nextText = statusMapping[log.nextStatus] || '예정';
+                    const prevBadgeClass = log.previousStatus === 'present' ? 'good' : (log.previousStatus === 'late' ? 'warn' : (log.previousStatus === 'absent' ? 'danger' : 'gray'));
+                    const nextBadgeClass = log.nextStatus === 'present' ? 'good' : (log.nextStatus === 'late' ? 'warn' : (log.nextStatus === 'absent' ? 'danger' : 'gray'));
+                    
+                    const timeLabel = log.classTime ? ` (${log.classTime})` : '';
+                    const formatChangedAt = (isoStr) => {
+                        const d = new Date(isoStr);
+                        const m = String(d.getMonth() + 1).padStart(2, '0');
+                        const day = String(d.getDate()).padStart(2, '0');
+                        const hrs = String(d.getHours()).padStart(2, '0');
+                        const mins = String(d.getMinutes()).padStart(2, '0');
+                        return `${m}/${day} ${hrs}:${mins}`;
+                    };
+                    const dateDisplay = formatChangedAt(log.changedAt);
+
+                    return `
+                        <div class="log-item" style="margin-top: 6px; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 6px; background: rgba(0,0,0,0.01);">
+                            <div class="log-item-head" style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
+                                <span><b>${log.date}</b>${timeLabel}</span>
+                                <span style="font-size: 11px; color: var(--text-muted);">${dateDisplay}</span>
+                            </div>
+                            <div class="log-item-body" style="margin-top: 4px; display: flex; align-items: center; gap: 6px; font-size: 13px;">
+                                <span class="badge ${prevBadgeClass}" style="font-size:10px; padding: 2px 4px;">${prevText}</span>
+                                <span style="color: var(--text-muted); font-size: 11px;">→</span>
+                                <span class="badge ${nextBadgeClass}" style="font-size:10px; padding: 2px 4px;">${nextText}</span>
+                                <span style="margin-left: auto; font-size: 11px; color: var(--text-muted);">수동변경</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                auditList.innerHTML = `<div style="text-align:center; padding:15px; color:var(--text-muted); font-size:0.75rem;">변경 이력이 없습니다.</div>`;
             }
         }
 

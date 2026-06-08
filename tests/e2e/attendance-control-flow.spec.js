@@ -1549,4 +1549,61 @@ test.describe('Director Attendance Control Console Flow', () => {
       await expect(miniStudents).not.toBeVisible();
     }
   });
+
+  test('should verify Phase 9C-5E: legacy menu hiding and attendance change audit logging in inspector drawer', async ({ page }) => {
+    // 1. Verify "출결 관리" sidebar item is hidden and "출결 관제" is visible
+    const legacyMenu = page.locator('.menu-item[data-view="dir-attendance"]');
+    await expect(legacyMenu).not.toBeVisible();
+    
+    const controlMenu = page.locator('.menu-item[data-view="dir-attendance-control"]');
+    await expect(controlMenu).toBeVisible();
+
+    // Go to attendance control view
+    await controlMenu.click();
+    await expect(page.locator('#page-title')).toContainText('출결 관제');
+
+    // 2. Select student S21 (유하진) by clicking row in daily table
+    const s21Row = page.locator('tr[data-student-id="S21"]');
+    await s21Row.first().click();
+
+    // Verify inspector drawer is open
+    const inspector = page.locator('#ac-inspector-panel');
+    await expect(inspector).toHaveClass(/open/);
+
+    // Verify "최근 수정 이력" is present (should display placeholder first)
+    const auditList = page.locator('#ac-inspector-audit-list');
+    await expect(auditList).toContainText('변경 이력이 없습니다.');
+
+    // Close inspector drawer to avoid pointer click intercept
+    await page.locator('#ac-drawer-backdrop').click();
+    await expect(inspector).not.toHaveClass(/open/);
+
+    // 3. Open edit modal via row edit button
+    const editBtn = page.locator('tr[data-student-id="S21"] .ac-edit-btn').first();
+    await editBtn.click();
+
+    const modal = page.locator('#common-modal');
+    await expect(modal).toHaveClass(/show/);
+
+    // 4. Change status from '출석' (default/current) to '결석'
+    const segmentBtns = modal.locator('.segment-btn');
+    await segmentBtns.locator('text="결석"').click();
+
+    page.once('dialog', dialog => {
+      dialog.accept();
+    });
+    await modal.locator('#btn-submit-attendance-edit').click();
+    await page.waitForTimeout(500);
+
+    // 5. Drawer remains open or we re-click to open
+    await s21Row.first().click();
+    await page.waitForTimeout(200);
+
+    // 6. Verify Recent Audit Logs displays the change
+    await expect(auditList).not.toContainText('변경 이력이 없습니다.');
+    await expect(auditList).toContainText('예정');
+    await expect(auditList).toContainText('→');
+    await expect(auditList).toContainText('결석');
+    await expect(auditList).toContainText('수동변경');
+  });
 });

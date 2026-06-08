@@ -211,6 +211,64 @@ try {
     assert.strictEqual(stateStore.db.attendance.length, 1, 'Attendance record count should be 1');
     assert.strictEqual(stateStore.db.attendance[0].status, 'present', 'Status should be present when lateDetectionEnabled is false');
 
+    // 9. Verify Phase 9C-5E Audit Logging (Repair-C / TDD requirements)
+    console.log('--- Verifying Phase 9C-5E Audit Logging ---');
+    stateStore.db.attendance = [];
+    stateStore.db.attendanceChangeLogs = [];
+    stateStore.db.messages = [];
+
+    // A. Verify logging on new registration (previousStatus is null)
+    const payloadLog1 = {
+        studentId: 'S10',
+        date: '2026-06-08',
+        classTime: '14:00',
+        status: 'present',
+        checkedAt: '2026-06-08T14:00:00.000Z',
+        source: 'director_manual'
+    };
+    stateStore.markAttendanceStatus(payloadLog1);
+
+    const logs1 = stateStore.getAttendanceChangeLogs({ studentId: 'S10' });
+    assert.strictEqual(logs1.length, 1, 'Should record one audit log');
+    assert.strictEqual(logs1[0].previousStatus, null, 'Previous status for new registration should be null');
+    assert.strictEqual(logs1[0].nextStatus, 'present', 'Next status should be present');
+    assert.strictEqual(logs1[0].classTime, '14:00');
+    assert.strictEqual(logs1[0].source, 'director_manual');
+
+    // B. Verify logging on state change (present -> late)
+    const payloadLog2 = {
+        studentId: 'S10',
+        date: '2026-06-08',
+        classTime: '14:00',
+        status: 'late',
+        checkedAt: '2026-06-08T14:15:00.000Z',
+        source: 'director_manual'
+    };
+    stateStore.markAttendanceStatus(payloadLog2);
+
+    const logs2 = stateStore.getAttendanceChangeLogs({ studentId: 'S10' });
+    assert.strictEqual(logs2.length, 2, 'Should record a second audit log');
+    assert.strictEqual(logs2[1].previousStatus, 'present', 'Previous status should be present');
+    assert.strictEqual(logs2[1].nextStatus, 'late', 'Next status should be late');
+
+    // C. Verify duplication prevention (saving same status again does not append logs)
+    const payloadLog3 = {
+        studentId: 'S10',
+        date: '2026-06-08',
+        classTime: '14:00',
+        status: 'late',
+        checkedAt: '2026-06-08T14:15:00.000Z',
+        source: 'director_manual'
+    };
+    stateStore.markAttendanceStatus(payloadLog3);
+
+    const logs3 = stateStore.getAttendanceChangeLogs({ studentId: 'S10' });
+    assert.strictEqual(logs3.length, 2, 'Should not add duplicate log for same status');
+
+    // D. Verify message log remains unchanged
+    assert.strictEqual(stateStore.db.messages.length, 0, 'Messages list must remain empty');
+    console.log('✓ Phase 9C-5E Audit Logging unit tests passed.');
+
 } catch (err) {
     console.error('❌ Attendance Quick Action API Verification FAILED:', err.message);
     hasError = true;
