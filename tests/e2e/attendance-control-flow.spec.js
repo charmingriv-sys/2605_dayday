@@ -123,10 +123,15 @@ test.describe('Director Attendance Control Console Flow', () => {
     await page.locator('.menu-item[data-view="dir-attendance-control"]').click();
     await expect(page.locator('#page-title')).toContainText('출결 관제');
 
-    // Click a student row in the table
-    const firstStudentLink = page.locator('table.custom-table tbody tr .student-link').first();
-    await expect(firstStudentLink).toBeVisible();
-    await firstStudentLink.click();
+    // Click a student row in the table (최다은 is seeded by default)
+    const firstStudentNameText = page.locator('table.custom-table tbody tr .student-name-text').first();
+    await expect(firstStudentNameText).toBeVisible();
+    
+    // Verify name label is rendered as a plain bold text tag (e.g. B tag) and not a button or link
+    const tagName = await firstStudentNameText.evaluate(el => el.tagName);
+    expect(tagName).toBe('B');
+
+    await firstStudentNameText.click();
 
     // Assert details inspector panel opens
     const inspectorPanel = page.locator('#ac-inspector-panel');
@@ -141,15 +146,73 @@ test.describe('Director Attendance Control Console Flow', () => {
     // Verify inspector panel background is opaque (not transparent)
     await expect(inspectorPanel).toHaveCSS('background-color', 'rgb(255, 255, 255)');
 
-    // Verify warning text is "이상 없음" (and NOT "누적 출결 워닝 없음")
+    // Verify warning text is correct based on real data for 최다은 (결석 잦음, 출결률 저조)
     const warningList = page.locator('#ac-inspector-warning-list');
-    await expect(warningList).toContainText('이상 없음');
-    await expect(warningList).not.toContainText('누적 출결 워닝 없음');
+    await expect(warningList).toContainText('결석 잦음');
+    await expect(warningList).toContainText('출결률 저조');
+    await expect(warningList).not.toContainText('이상 없음');
 
     // Verify calendar cell for the current mock day (3rd) is highlighted as today
     const todayCell = page.locator('#ac-inspector-calendar-mini .cal-cell.today');
     await expect(todayCell).toBeVisible();
     await expect(todayCell).toHaveText('3');
+
+    // Verify mini calendar contains present, late, absent classes
+    const miniCalendar = page.locator('#ac-inspector-calendar-mini');
+    await expect(miniCalendar.locator('.cal-cell.present').first()).toBeVisible();
+    await expect(miniCalendar.locator('.cal-cell.late').first()).toBeVisible();
+    await expect(miniCalendar.locator('.cal-cell.absent').first()).toBeVisible();
+
+    // Verify at least 1 message history row is rendered (real data for 최다은 MSG1)
+    const msgList = page.locator('#ac-inspector-msg-list');
+    await expect(msgList).toContainText('양손 프레이징 개별 안내');
+    await expect(msgList.locator('.log-item').first()).toBeVisible();
+
+    // Verify at least 1 payment history item is rendered (real data for 최다은 SB1/SB2)
+    const paymentBox = page.locator('#ac-inspector-tuition-box');
+    await expect(paymentBox).toContainText('꼬마바이엘');
+    await expect(paymentBox).toContainText('완납');
+    await expect(paymentBox).toContainText('결제요청');
+
+    // Verify badge text cleanliness (no symbols like ✓, !, ×)
+    const tableRow = page.locator('table.custom-table tbody tr').first();
+    const badgeElement = tableRow.locator('.badge');
+    if (await badgeElement.count() > 0) {
+      const badgeTextVal = await badgeElement.first().innerText();
+      expect(badgeTextVal).not.toContain('✓');
+      expect(badgeTextVal).not.toContain('!');
+      expect(badgeTextVal).not.toContain('×');
+    }
+
+    // Verify mouse cursor pointer on row/name elements
+    const firstRowCursor = await tableRow.evaluate(el => window.getComputedStyle(el).cursor);
+    expect(firstRowCursor).toBe('pointer');
+    const nameCursor = await firstStudentNameText.evaluate(el => window.getComputedStyle(el).cursor);
+    expect(nameCursor).toBe('pointer');
+
+    // Verify inspector key text font-sizes
+    const sectionTitleFontSize = await page.locator('.section-title h3').first().evaluate(el => window.getComputedStyle(el).fontSize);
+    expect(parseFloat(sectionTitleFontSize)).toBeGreaterThanOrEqual(15);
+    const tileTimeFontSize = await page.locator('.tile-time').first().evaluate(el => window.getComputedStyle(el).fontSize);
+    expect(parseFloat(tileTimeFontSize)).toBeGreaterThanOrEqual(16);
+    const tileCountFontSize = await page.locator('.tile-count').first().evaluate(el => window.getComputedStyle(el).fontSize);
+    expect(parseFloat(tileCountFontSize)).toBeGreaterThanOrEqual(14);
+    const tileStatFontSize = await page.locator('.tile-stat').first().evaluate(el => window.getComputedStyle(el).fontSize);
+    expect(parseFloat(tileStatFontSize)).toBeGreaterThanOrEqual(13);
+    const miniRowFontSize = await page.locator('.mini-row').first().evaluate(el => window.getComputedStyle(el).fontSize);
+    expect(parseFloat(miniRowFontSize)).toBeGreaterThanOrEqual(13);
+
+    // Verify compact board horizontal scroll setup
+    const compactBoard = page.locator('#compactBoard');
+    await expect(compactBoard).toHaveCSS('display', 'flex');
+    await expect(compactBoard).toHaveCSS('flex-direction', 'row');
+    await expect(compactBoard).toHaveCSS('flex-wrap', 'nowrap');
+    await expect(compactBoard).toHaveCSS('overflow-x', 'auto');
+
+    // Verify that "특이사항/사유" or "사유" text is NOT present in the history list of inspector
+    const historyList = page.locator('#ac-inspector-history-list');
+    await expect(historyList).not.toContainText('사유');
+    await expect(historyList).not.toContainText('특이사항');
 
     // Click backdrop to close
     await page.locator('#ac-drawer-backdrop').click();
@@ -260,6 +323,10 @@ test.describe('Director Attendance Control Console Flow', () => {
     await expect(demoRow).toContainText('최다은');
     await expect(demoRow.locator('.badge')).toContainText('지각');
 
+    // Verify that the status badge uses the common soft badge styling class (.badge.warn)
+    await expect(demoRow.locator('.badge')).toHaveClass(/badge/);
+    await expect(demoRow.locator('.badge')).toHaveClass(/warn/);
+
     // Reset search
     await searchInput.fill('');
     await page.waitForTimeout(300);
@@ -280,6 +347,7 @@ test.describe('Director Attendance Control Console Flow', () => {
     for (let i = 0; i < presentRowsCount; i++) {
       const badgeText = await page.locator('table.custom-table tbody tr').nth(i).locator('.badge').innerText();
       expect(badgeText).toContain('출석');
+      await expect(page.locator('table.custom-table tbody tr').nth(i).locator('.badge')).toHaveClass(/good/);
     }
 
     // Reset status filter
@@ -377,6 +445,11 @@ test.describe('Director Attendance Control Console Flow', () => {
     await expect(cells.nth(6)).toContainText('1회');       // 지각 (lateCount)
     await expect(cells.nth(7)).toContainText('4회');       // 결석 (absentCount)
     await expect(cells.nth(8)).toContainText('44%');       // 출석률 (attendanceRate)
+
+    // Test name text is plain bold text B element and NOT button
+    const studentNameEl = firstRow.locator('.student-name-text');
+    const tagName = await studentNameEl.evaluate(el => el.tagName);
+    expect(tagName).toBe('B');
 
     // 3. Test Member ID exact match filtering in student tab
     await searchInput.fill('S1');
@@ -506,5 +579,88 @@ test.describe('Director Attendance Control Console Flow', () => {
     const options = await statusSelect.locator('option').allInnerTexts();
     expect(options).not.toContain('미확인 (지연)');
     expect(options).not.toContain('하원 누락');
+  });
+
+  test('should support student inspector real data integration in all inquiry tabs', async ({ page }) => {
+    // Go to attendance control view
+    await page.locator('.menu-item[data-view="dir-attendance-control"]').click();
+    await expect(page.locator('#page-title')).toContainText('출결 관제');
+
+    const inspectorPanel = page.locator('#ac-inspector-panel');
+
+    // 1. Daily Tab row click
+    const firstRowStudent = page.locator('table.custom-table tbody tr .student-name-text').first();
+    const studentName = await firstRowStudent.innerText();
+    await firstRowStudent.click();
+    await expect(inspectorPanel).toHaveClass(/open/);
+    await expect(page.locator('#ac-inspector-name')).toHaveText(studentName);
+    
+    // Verify 30-day mini calendar is rendered and NOT hardcoded (should have 30 cells)
+    const calCells = page.locator('#ac-inspector-calendar-mini .cal-cell');
+    await expect(calCells).toHaveCount(30);
+
+    // Verify 4-status policy (예정 / 출석 / 지각 / 결석) in stats grid
+    const statGrid = page.locator('.ac-stat-grid');
+    await expect(statGrid).toContainText('예정 수업');
+    await expect(statGrid).toContainText('출석');
+    await expect(statGrid).toContainText('지각');
+    await expect(statGrid).toContainText('결석');
+    await expect(statGrid).toContainText('출석률');
+
+    // Verify history list and messages/payments
+    await expect(page.locator('#ac-inspector-history-list')).toBeVisible();
+    await expect(page.locator('#ac-inspector-msg-list')).toBeVisible();
+    await expect(page.locator('#ac-inspector-tuition-box')).toBeVisible();
+
+    // Close inspector
+    await page.locator('#ac-drawer-backdrop').click();
+    await expect(inspectorPanel).not.toHaveClass(/open/);
+
+    // 2. Student Tab row click
+    await page.locator('.ac-tab[data-tab="student"]').click();
+    await page.waitForTimeout(300);
+    const studentTabRow = page.locator('table.custom-table tbody tr .student-name-text').first();
+    const studentNameFromTab = await studentTabRow.innerText();
+    await studentTabRow.click();
+    await expect(inspectorPanel).toHaveClass(/open/);
+    await expect(page.locator('#ac-inspector-name')).toHaveText(studentNameFromTab);
+    
+    // Close inspector
+    await page.locator('#ac-drawer-backdrop').click();
+    await expect(inspectorPanel).not.toHaveClass(/open/);
+
+    // 3. Class Tab student click
+    await page.locator('.ac-tab[data-tab="class"]').click();
+    await page.waitForTimeout(300);
+    // Expand first card group list
+    const classCard = page.locator('.class-groups-container .group-card').first();
+    await classCard.locator('.toggle-group-btn').click();
+    await page.waitForTimeout(100);
+    const classStudentLink = classCard.locator('.group-student').first();
+    const classStudentName = await classStudentLink.locator('.student-name').innerText();
+    await classStudentLink.click();
+    await expect(inspectorPanel).toHaveClass(/open/);
+    await expect(page.locator('#ac-inspector-name')).toHaveText(classStudentName.trim());
+
+    // Close inspector
+    await page.locator('#ac-drawer-backdrop').click();
+    await expect(inspectorPanel).not.toHaveClass(/open/);
+
+    // 4. Teacher Tab student click
+    await page.locator('.ac-tab[data-tab="teacher"]').click();
+    await page.waitForTimeout(300);
+    // Expand first card group list
+    const teacherCard = page.locator('.teacher-groups-container .group-card').first();
+    await teacherCard.locator('.toggle-group-btn').click();
+    await page.waitForTimeout(100);
+    const teacherStudentLink = teacherCard.locator('.group-student').first();
+    const teacherStudentName = await teacherStudentLink.locator('.student-name').innerText();
+    await teacherStudentLink.click();
+    await expect(inspectorPanel).toHaveClass(/open/);
+    await expect(page.locator('#ac-inspector-name')).toHaveText(teacherStudentName.trim());
+
+    // Close inspector
+    await page.locator('#ac-drawer-backdrop').click();
+    await expect(inspectorPanel).not.toHaveClass(/open/);
   });
 });

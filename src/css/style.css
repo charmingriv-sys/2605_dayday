@@ -95,6 +95,7 @@ body {
     justify-content: space-between;
     transition: var(--transition);
     z-index: 100;
+    overflow-y: auto;
 }
 
 .logo-container {
