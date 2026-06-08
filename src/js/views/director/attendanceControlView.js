@@ -1,6 +1,20 @@
 import { stateStore } from '../../state.js';
-import { formatPhoneNumber, showKakaoTalkToast } from './shared.js';
+import { formatPhoneNumber, showKakaoTalkToast, openStudentDetailModalRef } from './shared.js';
 import { openModal, closeModal } from '../../app.js';
+
+const chosung = ["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+const getChosungStr = (str) => {
+    let res = "";
+    for (let i = 0; i < str.length; i++) {
+        const code = str.charCodeAt(i) - 44032;
+        if (code > -1 && code < 11172) {
+            res += chosung[Math.floor(code / 588)];
+        } else {
+            res += str.charAt(i);
+        }
+    }
+    return res;
+};
 
 /**
  * Phase 9B-Repair-C: 출결관제 정합성 보정 (renderDirectorAttendanceControl)
@@ -33,6 +47,7 @@ export function renderDirectorAttendanceControl(container) {
 
     // Tab and filter states
     let activeTab = 'daily'; // 'daily' | 'student' | 'class' | 'teacher'
+    let isBoardExpanded = false; // Phase 9C-5D-Repair-B: 시간별 출결요약 펼침/접힘 상태
     let selectedDate = new Date().toISOString().slice(0, 10);
     let selectedStatus = '전체'; // '전체', '출석', '지각', '결석'
     let selectedInstrument = '전체';
@@ -273,6 +288,7 @@ export function renderDirectorAttendanceControl(container) {
                 customRangeEnd = null;
                 const popover = container.querySelector('#ac-period-popover');
                 if (popover) popover.style.display = 'none';
+                isBoardExpanded = false;
                 render();
             });
         });
@@ -539,6 +555,21 @@ export function renderDirectorAttendanceControl(container) {
             attendance.push({ id: 'V_A3', studentId: 'S1', date: pastS1ClassDates[len - 2], status: 'present', time: '14:00', note: '스케일 연습 진행함' });
             attendance.push({ id: 'V_A4', studentId: 'S1', date: pastS1ClassDates[len - 1], status: 'late', time: '14:15', note: '교통 체증으로 지각' });
         }
+
+        // Phase 9C-5D-Repair-A: Synthesize a "late check-in" demo sample for today (S2)
+        // This sample should show '지각' when lateDetectionEnabled is true, and '출석' when false,
+        // without polluting the database.
+        const lateDetectionEnabled = typeof stateStore.getLateDetectionEnabled === 'function' ? stateStore.getLateDetectionEnabled() : true;
+        attendance = attendance.filter(a => !(a.studentId === 'S2' && a.date === selectedDate));
+        attendance.push({
+            id: 'V_A_S2_LATE_DEMO',
+            studentId: 'S2',
+            date: selectedDate,
+            time: '14:15',
+            status: lateDetectionEnabled ? 'late' : 'present',
+            note: '지각 판정 테스트용 모의 등원'
+        });
+
         currentAttendance = attendance;
 
         // 1. Process attendance lists for the selected range of dates
@@ -581,7 +612,8 @@ export function renderDirectorAttendanceControl(container) {
                         if (date < now.toISOString().slice(0, 10)) {
                             status = '결석';
                         } else if (date === now.toISOString().slice(0, 10)) {
-                            if (diffMins > lateThresholdMinutes) {
+                            const lateDetectionEnabled = typeof stateStore.getLateDetectionEnabled === 'function' ? stateStore.getLateDetectionEnabled() : true;
+                            if (lateDetectionEnabled && diffMins > lateThresholdMinutes) {
                                 status = '지각';
                             }
                         }
@@ -622,24 +654,31 @@ export function renderDirectorAttendanceControl(container) {
             if (searchQuery) {
                 const query = searchQuery.toLowerCase().replace(/\s+/g, '');
                 if (searchType === 'name') {
-                    const nameMatch = row.student.name.toLowerCase().replace(/\s+/g, '').includes(query);
+                    const cleanName = row.student.name.toLowerCase().replace(/\s+/g, '');
+                    const isChosungOnly = /^[ㄱ-ㅎ]+$/.test(query);
+                    let nameMatch = false;
+                    if (isChosungOnly) {
+                        nameMatch = getChosungStr(cleanName).includes(query);
+                    } else {
+                        nameMatch = cleanName.includes(query);
+                    }
                     const phoneMatch = (row.student.phone && row.student.phone.replace(/[^0-9]/g, '').includes(query)) ||
                                        (row.student.parentPhone && row.student.parentPhone.replace(/[^0-9]/g, '').includes(query));
                     if (!nameMatch && !phoneMatch) return false;
                 } else if (searchType === 'id') {
                     const studentMemberNo = row.student.studentMemberNo !== undefined && row.student.studentMemberNo !== null ? String(row.student.studentMemberNo) : null;
                     const memberNo = row.student.memberNo !== undefined && row.student.memberNo !== null ? String(row.student.memberNo) : null;
+                    const cleanId = row.student.id.toLowerCase().replace(/\s+/g, '');
                     
-                    let idMatch = false;
-                    if (studentMemberNo !== null) {
-                        const cleanMemberNo = studentMemberNo.toLowerCase().replace(/\s+/g, '');
-                        idMatch = cleanMemberNo === query || cleanMemberNo.includes(query);
-                    } else if (memberNo !== null) {
-                        const cleanMemberNo = memberNo.toLowerCase().replace(/\s+/g, '');
-                        idMatch = cleanMemberNo === query || cleanMemberNo.includes(query);
-                    } else {
-                        const cleanId = row.student.id.toLowerCase().replace(/\s+/g, '');
-                        idMatch = cleanId === query;
+                    let idMatch = (cleanId === query);
+                    if (!idMatch) {
+                        if (studentMemberNo !== null) {
+                            const cleanMemberNo = studentMemberNo.toLowerCase().replace(/\s+/g, '');
+                            idMatch = cleanMemberNo === query;
+                        } else if (memberNo !== null) {
+                            const cleanMemberNo = memberNo.toLowerCase().replace(/\s+/g, '');
+                            idMatch = cleanMemberNo === query;
+                        }
                     }
                     if (!idMatch) return false;
                 }
@@ -686,24 +725,31 @@ export function renderDirectorAttendanceControl(container) {
             if (searchQuery) {
                 const query = searchQuery.toLowerCase().replace(/\s+/g, '');
                 if (searchType === 'name') {
-                    const nameMatch = item.student.name.toLowerCase().replace(/\s+/g, '').includes(query);
+                    const cleanName = item.student.name.toLowerCase().replace(/\s+/g, '');
+                    const isChosungOnly = /^[ㄱ-ㅎ]+$/.test(query);
+                    let nameMatch = false;
+                    if (isChosungOnly) {
+                        nameMatch = getChosungStr(cleanName).includes(query);
+                    } else {
+                        nameMatch = cleanName.includes(query);
+                    }
                     const phoneMatch = (item.student.phone && item.student.phone.replace(/[^0-9]/g, '').includes(query)) ||
                                        (item.student.parentPhone && item.student.parentPhone.replace(/[^0-9]/g, '').includes(query));
                     if (!nameMatch && !phoneMatch) return false;
                 } else if (searchType === 'id') {
                     const studentMemberNo = item.student.studentMemberNo !== undefined && item.student.studentMemberNo !== null ? String(item.student.studentMemberNo) : null;
                     const memberNo = item.student.memberNo !== undefined && item.student.memberNo !== null ? String(item.student.memberNo) : null;
+                    const cleanId = item.student.id.toLowerCase().replace(/\s+/g, '');
                     
-                    let idMatch = false;
-                    if (studentMemberNo !== null) {
-                        const cleanMemberNo = studentMemberNo.toLowerCase().replace(/\s+/g, '');
-                        idMatch = cleanMemberNo === query || cleanMemberNo.includes(query);
-                    } else if (memberNo !== null) {
-                        const cleanMemberNo = memberNo.toLowerCase().replace(/\s+/g, '');
-                        idMatch = cleanMemberNo === query || cleanMemberNo.includes(query);
-                    } else {
-                        const cleanId = item.student.id.toLowerCase().replace(/\s+/g, '');
-                        idMatch = cleanId === query;
+                    let idMatch = (cleanId === query);
+                    if (!idMatch) {
+                        if (studentMemberNo !== null) {
+                            const cleanMemberNo = studentMemberNo.toLowerCase().replace(/\s+/g, '');
+                            idMatch = cleanMemberNo === query;
+                        } else if (memberNo !== null) {
+                            const cleanMemberNo = memberNo.toLowerCase().replace(/\s+/g, '');
+                            idMatch = cleanMemberNo === query;
+                        }
                     }
                     if (!idMatch) return false;
                 }
@@ -722,7 +768,7 @@ export function renderDirectorAttendanceControl(container) {
                             <th>원생이름</th>
                             <th>악기/반</th>
                             <th>담당강사</th>
-                            <th>예정 수업</th>
+                            <th>총수업일수</th>
                             <th>출석</th>
                             <th>지각</th>
                             <th>결석</th>
@@ -957,13 +1003,51 @@ export function renderDirectorAttendanceControl(container) {
         const urgentLateCount = urgentList.filter(x => x.status === '지각').length;
 
         // Operating hours config for compact-board
-        const operatingHours = ['13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00'];
+        const settings = stateStore.getSettings() || {};
+        const startTimeSetting = settings.scheduleStartTime || '14:00';
+        const endTimeSetting = settings.scheduleEndTime || '21:00';
+        const slotMinutesSetting = settings.scheduleSlotMinutes || 30;
+
+        const generateOperatingHours = (start, end, interval) => {
+            const slots = [];
+            const [startH, startM] = start.split(':').map(Number);
+            const [endH, endM] = end.split(':').map(Number);
+            let cur = startH * 60 + startM;
+            const limit = endH * 60 + endM;
+            while (cur <= limit) {
+                const h = Math.floor(cur / 60);
+                const m = cur % 60;
+                slots.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+                cur += interval;
+            }
+            return slots;
+        };
+
+        const operatingHours = generateOperatingHours(startTimeSetting, endTimeSetting, slotMinutesSetting);
         const hourGroups = {};
         operatingHours.forEach(t => hourGroups[t] = []);
+
+        const findClosestSlot = (classTimeStr, slots) => {
+            if (!slots || slots.length === 0) return null;
+            const [cH, cM] = classTimeStr.split(':').map(Number);
+            const classMins = cH * 60 + cM;
+            let closestSlot = slots[0];
+            let minDiff = Infinity;
+            slots.forEach(slot => {
+                const [sH, sM] = slot.split(':').map(Number);
+                const slotMins = sH * 60 + sM;
+                const diff = Math.abs(classMins - slotMins);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closestSlot = slot;
+                }
+            });
+            return closestSlot;
+        };
+
         dailyClasses.forEach(row => {
-            const [h] = row.time.split(':');
-            const key = `${h.padStart(2, '0')}:00`;
-            if (hourGroups[key]) {
+            const key = findClosestSlot(row.time, operatingHours);
+            if (key && hourGroups[key]) {
                 hourGroups[key].push(row);
             }
         });
@@ -994,26 +1078,34 @@ export function renderDirectorAttendanceControl(container) {
                 
                 .ac-tabs {
                     display: flex;
-                    border: 1px solid var(--border-color);
+                    border: 1px solid rgba(9, 132, 227, 0.25);
                     border-radius: var(--radius-md);
                     overflow: hidden;
                     background: var(--bg-card);
+                    padding: 4px;
+                    gap: 6px;
                 }
                 .ac-tab {
                     flex: 1;
-                    padding: 12px;
-                    border: none;
+                    padding: 10px 16px;
+                    border: 1px solid transparent;
+                    border-radius: 8px;
                     background: transparent;
                     color: var(--text-muted);
                     font-weight: 700;
                     cursor: pointer;
                     text-align: center;
-                    border-bottom: 2px solid transparent;
+                    transition: all 0.2s ease;
+                }
+                .ac-tab:hover {
+                    background: rgba(9, 132, 227, 0.08);
+                    color: var(--text-main);
                 }
                 .ac-tab.active {
                     color: var(--primary);
-                    border-bottom-color: var(--primary);
-                    background: rgba(9, 132, 227, 0.05);
+                    background: rgba(9, 132, 227, 0.12);
+                    border-color: rgba(9, 132, 227, 0.2);
+                    box-shadow: 0 2px 6px rgba(9, 132, 227, 0.08);
                 }
                 
                 .ac-filters-card {
@@ -1237,22 +1329,66 @@ export function renderDirectorAttendanceControl(container) {
                 }
 
                 .compact-board {
-                    display: flex;
-                    flex-direction: row;
-                    flex-wrap: nowrap;
+                    display: grid;
+                    grid-template-rows: repeat(2, minmax(130px, auto));
+                    grid-auto-flow: column;
+                    grid-auto-columns: minmax(220px, 220px);
                     overflow-x: auto;
-                    gap: 10px;
+                    gap: 12px;
                     padding: 16px;
                     background: var(--bg-card);
                     border-bottom: 1px solid var(--border-color);
                     scroll-behavior: smooth;
                     -webkit-overflow-scrolling: touch;
                 }
+                .compact-board.collapsed {
+                    grid-template-rows: repeat(2, minmax(52px, auto));
+                    grid-auto-flow: column;
+                    grid-auto-columns: minmax(160px, 160px);
+                    gap: 8px;
+                    padding: 8px 16px;
+                }
+                .compact-board.collapsed .time-tile {
+                    min-width: 160px;
+                    min-height: 52px;
+                    height: 52px;
+                    padding: 6px 10px;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                }
+                .compact-board.collapsed .time-tile .tile-head,
+                .compact-board.collapsed .time-tile .tile-stats,
+                .compact-board.collapsed .time-tile .mini-students {
+                    display: none !important;
+                }
+                .compact-board.collapsed .time-tile .tile-stats-compact {
+                    display: flex !important;
+                    flex-direction: column;
+                    justify-content: center;
+                    width: 100%;
+                }
+                .tile-stats-compact {
+                    display: none;
+                }
+                .compact-board::-webkit-scrollbar {
+                    height: 10px;
+                }
+                .compact-board::-webkit-scrollbar-track {
+                    background: rgba(0, 0, 0, 0.05);
+                    border-radius: 5px;
+                }
+                .compact-board::-webkit-scrollbar-thumb {
+                    background: rgba(0, 0, 0, 0.3);
+                    border-radius: 5px;
+                }
+                .compact-board::-webkit-scrollbar-thumb:hover {
+                    background: rgba(0, 0, 0, 0.5);
+                }
                 .time-tile {
-                    flex: 0 0 220px;
                     min-width: 220px;
-                    min-height: 150px;
-                    padding: 18px;
+                    min-height: 130px;
+                    padding: 12px;
                     border: 1px solid var(--border-color);
                     border-radius: 8px;
                     background: var(--bg-body);
@@ -1969,7 +2105,7 @@ export function renderDirectorAttendanceControl(container) {
 
                     <div class="ac-late-policy-info" style="margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(9, 132, 227, 0.08); border: 1px solid rgba(9, 132, 227, 0.2); border-radius: 999px; font-size: 11px; color: var(--primary); font-weight: 700; height: 26px; box-sizing: border-box;">
                         <i class="fa-solid fa-clock-rotate-left"></i>
-                        <span>현재 지각 기준: 수업 시작 후 ${String(stateStore.getLateThresholdMinutes()).padStart(2, '0')}분</span>
+                        <span>현재 지각 기준: ${stateStore.getLateDetectionEnabled() ? `수업 시작 후 ${String(stateStore.getLateThresholdMinutes()).padStart(2, '0')}분` : '미사용'}</span>
                     </div>
                 </div>
 
@@ -2025,12 +2161,13 @@ export function renderDirectorAttendanceControl(container) {
                     <div class="left-panel">
                         <div class="table-container">
                             ${activeTab === 'daily' ? `
-                                <div class="board-note">
+                                <div class="board-note" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px 6px;">
                                     <span><b>시간별 출결 요약</b></span>
+                                    <button type="button" class="btn btn-secondary mini-btn" id="ac-toggle-board-btn" style="padding: 2px 8px; font-size: 11px; height: 24px; line-height: 18px; font-weight: 700; margin-bottom: 0; width: 100px; display: inline-flex; justify-content: center; align-items: center; box-sizing: border-box;">${isBoardExpanded ? '출결요약 접기' : '출결요약 펼치기'}</button>
                                 </div>
                                 
                                 <!-- Compact Board -->
-                                <div class="compact-board" id="compactBoard">
+                                <div class="compact-board ${isBoardExpanded ? '' : 'collapsed'}" id="compactBoard">
                                     ${operatingHours.map(time => {
                                         const list = hourGroups[time] || [];
                                         const pres = list.filter(r => r.status === '출석').length;
@@ -2074,6 +2211,17 @@ export function renderDirectorAttendanceControl(container) {
                                                 <div class="mini-students">
                                                     ${noteMarkup}
                                                 </div>
+                                                <!-- Compact Mode Slot Contents -->
+                                                <div class="tile-stats-compact">
+                                                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                                                        <span style="font-size: 14px; font-weight: 800; color: var(--text-main);">${time}</span>
+                                                        <span style="font-size: 12px; color: var(--text-muted); font-weight: 700;">${list.length}명</span>
+                                                    </div>
+                                                    <div style="display: flex; gap: 8px; font-size: 11px; font-weight: 700; margin-top: 2px;">
+                                                        <span style="color: #e74c3c;">결석 ${abs}</span>
+                                                        <span style="color: #f1c40f;">지각 ${l}</span>
+                                                    </div>
+                                                </div>
                                             </div>
                                         `;
                                     }).join('')}
@@ -2085,13 +2233,13 @@ export function renderDirectorAttendanceControl(container) {
                                         <tr>
                                             <th>요일</th>
                                             <th>수업시간</th>
-                                            <th>원생이름</th>
+                                            <th>이름</th>
+                                            <th>악기/반</th>
                                             <th>담당강사</th>
                                             <th>출결상태</th>
                                             <th>등원시각</th>
-                                            <th>특이사항/사유</th>
-                                            <th>메세지</th>
-                                            <th>확인</th>
+                                            <th>메시지</th>
+                                            <th>확인/관리</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -2117,12 +2265,10 @@ export function renderDirectorAttendanceControl(container) {
                                                             <b class="student-name-text" style="font-weight:800; color:var(--text-main);">${row.student.name}</b>
                                                         </div>
                                                     </td>
+                                                    <td>${row.student.instrument || '-'}</td>
                                                     <td>${row.teacher ? row.teacher.name : '미배정'}</td>
                                                     <td>${statusBadge}</td>
                                                     <td style="font-weight: 600; font-size: 0.8rem;">${timeText}</td>
-                                                    <td style="font-size: 0.78rem; color: var(--text-muted); font-style: italic;">
-                                                        ${row.note || '-'}
-                                                    </td>
                                                     <td style="font-size: 0.78rem;">${msgText}</td>
                                                     <td>
                                                         <div class="ac-quick-actions" style="display: flex; gap: 4px; align-items: center; justify-content: center;">
@@ -2203,7 +2349,7 @@ export function renderDirectorAttendanceControl(container) {
                 <div class="inspector-body">
                     <section class="drawer-section">
                         <div class="section-title">
-                            <h3>출결 정보</h3>
+                            <h3 id="ac-inspector-history-section-title">출결 정보</h3>
                             <span id="ac-inspector-warning-count">정상</span>
                         </div>
                         <div class="ac-stat-grid" style="grid-template-columns: repeat(5, 1fr); gap: 6px;">
@@ -2272,7 +2418,7 @@ export function renderDirectorAttendanceControl(container) {
 
                     <section class="drawer-section">
                         <div class="section-title">
-                            <h3>최근 전송 메시지</h3>
+                            <h3>메시지 이력</h3>
                             <span id="ac-inspector-msg-count">0건</span>
                         </div>
                         <div class="log-list" id="ac-inspector-msg-list">
@@ -2280,10 +2426,23 @@ export function renderDirectorAttendanceControl(container) {
                         </div>
                     </section>
                 </div>
+                <div class="inspector-footer" style="padding: 1rem 1.5rem; border-top: 1px solid var(--border-color); display: flex; gap: 10px; background: #ffffff;">
+                    <button type="button" class="btn btn-secondary" id="ac-inspector-btn-message" style="flex: 1; justify-content: center; height: 38px; font-weight: 600; margin-bottom: 0;">메시지 보내기</button>
+                    <button type="button" class="btn btn-primary" id="ac-inspector-btn-detail" style="flex: 1; justify-content: center; height: 38px; font-weight: 600; margin-bottom: 0;">상세정보</button>
+                </div>
             </aside>
         `;
 
         // Bind event listeners
+        const toggleBoardBtn = container.querySelector('#ac-toggle-board-btn');
+        if (toggleBoardBtn) {
+            toggleBoardBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                isBoardExpanded = !isBoardExpanded;
+                render();
+            });
+        }
+
         const applyBtn = container.querySelector('#ac-custom-range-apply-btn');
         if (applyBtn) {
             applyBtn.addEventListener('click', (e) => {
@@ -2322,6 +2481,7 @@ export function renderDirectorAttendanceControl(container) {
         if (statusSelect) {
             statusSelect.addEventListener('change', (e) => {
                 selectedStatus = e.target.value;
+                isBoardExpanded = false;
                 render();
             });
         }
@@ -2330,6 +2490,7 @@ export function renderDirectorAttendanceControl(container) {
         if (instrumentSelect) {
             instrumentSelect.addEventListener('change', (e) => {
                 selectedInstrument = e.target.value;
+                isBoardExpanded = false;
                 render();
             });
         }
@@ -2338,6 +2499,7 @@ export function renderDirectorAttendanceControl(container) {
         if (teacherSelect) {
             teacherSelect.addEventListener('change', (e) => {
                 selectedTeacherId = e.target.value;
+                isBoardExpanded = false;
                 render();
             });
         }
@@ -2346,9 +2508,58 @@ export function renderDirectorAttendanceControl(container) {
         if (searchTypeSelect) {
             searchTypeSelect.addEventListener('change', (e) => {
                 searchType = e.target.value;
+                isBoardExpanded = false;
                 render();
             });
         }
+
+        const filterDOMRows = (q, type) => {
+            const query = q.toLowerCase().replace(/\s+/g, '');
+            const isChosungOnly = /^[ㄱ-ㅎ]+$/.test(query);
+
+            const rows = container.querySelectorAll('.ac-student-row');
+            rows.forEach(row => {
+                const studentId = row.dataset.studentId;
+                const student = stateStore.getStudent(studentId);
+                if (!student) return;
+
+                let match = false;
+                if (!query) {
+                    match = true;
+                } else if (type === 'name') {
+                    const cleanName = student.name.toLowerCase().replace(/\s+/g, '');
+                    let nameMatch = false;
+                    if (isChosungOnly) {
+                        nameMatch = getChosungStr(cleanName).includes(query);
+                    } else {
+                        nameMatch = cleanName.includes(query);
+                    }
+                    const phoneMatch = (student.phone && student.phone.replace(/[^0-9]/g, '').includes(query)) ||
+                                       (student.parentPhone && student.parentPhone.replace(/[^0-9]/g, '').includes(query));
+                    match = nameMatch || phoneMatch;
+                } else if (type === 'id') {
+                    const studentMemberNo = student.studentMemberNo !== undefined && student.studentMemberNo !== null ? String(student.studentMemberNo) : null;
+                    const memberNo = student.memberNo !== undefined && student.memberNo !== null ? String(student.memberNo) : null;
+                    const cleanId = student.id.toLowerCase().replace(/\s+/g, '');
+                    
+                    let idMatch = (cleanId === query);
+                    if (!idMatch) {
+                        if (studentMemberNo !== null) {
+                            idMatch = studentMemberNo.toLowerCase().replace(/\s+/g, '') === query;
+                        } else if (memberNo !== null) {
+                            idMatch = memberNo.toLowerCase().replace(/\s+/g, '') === query;
+                        }
+                    }
+                    match = idMatch;
+                }
+
+                if (match) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        };
 
         const searchInput = container.querySelector('#ac-search-input');
         if (searchInput) {
@@ -2359,11 +2570,13 @@ export function renderDirectorAttendanceControl(container) {
             searchInput.addEventListener('compositionend', (e) => {
                 isComposing = false;
                 searchInput.dataset.composing = 'false';
-                searchQuery = e.target.value.trim();
+                searchQuery = e.target.value;
+                filterDOMRows(searchQuery, searchType);
                 debounceRender(150);
             });
             searchInput.addEventListener('input', (e) => {
-                searchQuery = e.target.value.trim();
+                searchQuery = e.target.value;
+                filterDOMRows(searchQuery, searchType);
                 if (!isComposing) {
                     debounceRender(150);
                 }
@@ -2379,6 +2592,7 @@ export function renderDirectorAttendanceControl(container) {
                 customRangeEnd = null;
                 const popover = container.querySelector('#ac-period-popover');
                 if (popover) popover.style.display = 'none';
+                isBoardExpanded = false;
                 render();
             });
         });
@@ -2388,6 +2602,7 @@ export function renderDirectorAttendanceControl(container) {
         tabBtns.forEach(btn => {
             btn.addEventListener('click', () => {
                 activeTab = btn.dataset.tab;
+                isBoardExpanded = false;
                 render();
             });
         });
@@ -2397,6 +2612,7 @@ export function renderDirectorAttendanceControl(container) {
         kpiCards.forEach(card => {
             card.addEventListener('click', () => {
                 selectedStatus = card.dataset.status;
+                isBoardExpanded = false;
                 render();
             });
         });
@@ -2997,9 +3213,9 @@ export function renderDirectorAttendanceControl(container) {
                     const statusText = '발송완료';
                     return `
                         <div class="log-item" style="margin-top: 6px;">
-                            <div class="log-item-head">
-                                <span>■ 제목: ${msg.title} (알림톡)</span>
-                                <span style="color:#2ecc71;">${statusText}</span>
+                            <div class="log-item-head" style="align-items: flex-start; gap: 8px;">
+                                <span style="flex: 1; min-width: 0; word-break: break-all;">■ 제목: ${msg.title} (알림톡)</span>
+                                <span style="color:#2ecc71; white-space: nowrap; flex-shrink: 0; display: inline-flex; align-items: center;">${statusText}</span>
                             </div>
                             <div class="log-item-body" style="margin-top:4px; font-size:14px; line-height:1.5;">
                                 ${msg.content || ''}
@@ -3011,6 +3227,53 @@ export function renderDirectorAttendanceControl(container) {
             } else {
                 msgList.innerHTML = `<div style="text-align:center; padding:15px; color:var(--text-muted); font-size:0.75rem;">메시지 전송 이력이 없습니다.</div>`;
             }
+        }
+
+        // 8. Dynamic Date range for recent 4 weeks in history title
+        const historyTitle = container.querySelector('#ac-inspector-history-section-title');
+        if (historyTitle) {
+            const end = new Date(selectedDate);
+            const start = new Date(selectedDate);
+            start.setDate(start.getDate() - 27);
+            const formatLocalDate = (d) => {
+                const year = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const date = String(d.getDate()).padStart(2, '0');
+                return `${year}-${month}-${date}`;
+            };
+            historyTitle.textContent = `최근 4주 출결 요약 (${formatLocalDate(start)} ~ ${formatLocalDate(end)})`;
+        }
+
+        // 9. Bind Drawer Footer Buttons (using cloneNode to prevent duplicate listeners)
+        const btnMessage = container.querySelector('#ac-inspector-btn-message');
+        const btnDetail = container.querySelector('#ac-inspector-btn-detail');
+        if (btnMessage) {
+            const newBtnMessage = btnMessage.cloneNode(true);
+            btnMessage.parentNode.replaceChild(newBtnMessage, btnMessage);
+            newBtnMessage.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const commMenuItem = document.querySelector('.menu-item[data-view="dir-communication"]');
+                if (commMenuItem) {
+                    closeInspector();
+                    commMenuItem.click();
+                } else {
+                    alert('메시지 보내기 기능은 다음 단계에서 구현됩니다.');
+                }
+            });
+        }
+        if (btnDetail) {
+            const newBtnDetail = btnDetail.cloneNode(true);
+            btnDetail.parentNode.replaceChild(newBtnDetail, btnDetail);
+            newBtnDetail.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                if (!openStudentDetailModalRef) {
+                    await import('./membersView.js');
+                }
+                if (openStudentDetailModalRef) {
+                    closeInspector();
+                    openStudentDetailModalRef(studentId);
+                }
+            });
         }
 
         // Slide open panel

@@ -159,8 +159,8 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
     // Wait for kiosk-mode to exit and sidebar/normal dashboard to become visible
     await expect(page.locator('.sidebar')).toBeVisible({ timeout: 5000 });
 
-    // 8. Go to "원생 출결 종합 관리" View and Verify check-in row status
-    const dirAttendanceMenu = page.locator('.menu-item[data-view="dir-attendance"]');
+    // 8. Go to "출결 관제" View and Verify check-in row status
+    const dirAttendanceMenu = page.locator('.menu-item[data-view="dir-attendance-control"]');
     await expect(dirAttendanceMenu).toBeVisible();
     await dirAttendanceMenu.scrollIntoViewIfNeeded();
     await dirAttendanceMenu.evaluate(el => el.click());
@@ -168,25 +168,23 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
 
     // Get today's ISO date string
     const todayStr = new Date().toISOString().slice(0, 10);
-    // Since c.time is matched and today's day of week must match the schedule:
-    // S1 has classes on Mon/Wed. If today is not Mon/Wed, the Daily tab might show "no classes scheduled".
-    // Therefore, let's switch to the "원생별 출결 조회" (Student Attendance) tab to find the specific student S1's attendance history.
-    await page.locator('#tab-btn-student').click();
     
-    // Select student S1 (최다은) from dropdown trigger
-    const dropdownTrigger = page.locator('#student-selector-dropdown .custom-dropdown-trigger');
-    await expect(dropdownTrigger).toBeVisible();
-    await dropdownTrigger.click();
+    // Switch to the student-wise inquiry tab
+    await page.locator('.ac-tab[data-tab="student"]').click();
+    await page.waitForTimeout(450);
 
-    const studentOption = page.locator('#student-options-list .student-option-item[data-id="S1"]');
-    await expect(studentOption).toBeVisible();
-    await studentOption.click();
+    // Open student inspector by clicking table row of S1 (최다은)
+    await page.locator('tr[data-student-id="S1"] .student-name-text').first().click();
+    const inspectorPanel = page.locator('#ac-inspector-panel');
+    await expect(inspectorPanel).toHaveClass(/open/);
 
-    // Verify today's date row has state present (등원) using non-Korean attributes
-    const attendanceRow = page.locator(`[data-testid="attendance-history-row"][data-date="${todayStr}"]`);
-    await expect(attendanceRow).toBeVisible();
-    const statusBadge = attendanceRow.locator('[data-testid="attendance-history-status"]');
-    await expect(statusBadge).toHaveAttribute('data-status', 'present');
+    // Verify today's date in mini-calendar is marked 'present'
+    const todayCell = page.locator('#ac-inspector-calendar-mini .cal-cell.today');
+    await expect(todayCell).toHaveClass(/present/);
+
+    // Close inspector
+    await page.locator('#ac-drawer-backdrop').click();
+    await expect(inspectorPanel).not.toHaveClass(/open/);
 
     // 9. Logout and Login as Parent (USR_PAR_DEMO)
     const logoutBtn = page.locator('#btn-logout');

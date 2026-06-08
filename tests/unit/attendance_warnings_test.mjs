@@ -305,6 +305,42 @@ assert(sW2Prio === undefined || sW2Prio.warningType !== 'today_no_tag_overdue', 
 // Restore original Date
 global.Date = TestOriginalDate;
 
+// 9. Verify lateDetectionEnabled unit behavior (Phase 9C-5D TDD)
+console.log('--- Verifying lateDetectionEnabled unit behavior ---');
+
+// A. Default value check
+assert(stateStore.getLateDetectionEnabled() === true, 'lateDetectionEnabled default is true');
+
+// B. Save and restore check
+stateStore.setLateDetectionEnabled(false);
+assert(stateStore.getLateDetectionEnabled() === false, 'lateDetectionEnabled is successfully set to false');
+assert(stateStore.db.settings.lateDetectionEnabled === false, 'lateDetectionEnabled is saved in db.settings');
+
+// C. Verify lateThresholdMinutes value preservation
+stateStore.setLateThresholdMinutes(15);
+assert(stateStore.getLateThresholdMinutes() === 15, 'lateThresholdMinutes is 15');
+stateStore.setLateDetectionEnabled(true);
+assert(stateStore.getLateDetectionEnabled() === true, 'lateDetectionEnabled toggle does not corrupt lateThresholdMinutes');
+assert(stateStore.getLateThresholdMinutes() === 15, 'lateThresholdMinutes remains 15');
+
+// D. Verify warnings behavior when lateDetectionEnabled is false
+stateStore.setLateDetectionEnabled(false);
+global.Date = TestMockDate; // today is 2026-06-03, time is 14:12 KST
+stateStore.db.attendance = [];
+let disabledWarnings = stateStore.getAttendanceWarnings({ endDate: '2026-06-03' });
+let sW2Disabled = disabledWarnings.find(w => w.studentId === 'S_W2');
+assert(sW2Disabled === undefined || sW2Disabled.warningType !== 'today_no_tag_overdue', 'When lateDetectionEnabled is false, today_no_tag_overdue warning is not generated');
+
+// E. Verify warnings behavior when lateDetectionEnabled is true
+stateStore.setLateDetectionEnabled(true);
+stateStore.setLateThresholdMinutes(10);
+let enabledWarnings = stateStore.getAttendanceWarnings({ endDate: '2026-06-03' });
+let sW2Enabled = enabledWarnings.find(w => w.studentId === 'S_W2');
+assert(sW2Enabled !== undefined && sW2Enabled.warningType === 'today_no_tag_overdue', 'When lateDetectionEnabled is true, today_no_tag_overdue warning is generated');
+
+// Restore original Date again
+global.Date = TestOriginalDate;
+
 if (hasError) {
     console.error('--- Unit Test: Attendance Warnings Algorithms Verification FAILED ---');
     process.exit(1);
@@ -312,3 +348,4 @@ if (hasError) {
     console.log('--- Unit Test: Attendance Warnings Algorithms Verification PASSED successfully ---');
     process.exit(0);
 }
+

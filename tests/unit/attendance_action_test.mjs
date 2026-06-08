@@ -172,6 +172,45 @@ try {
     assert.strictEqual(stateStore.db.messages.length, initialMsgCount, 'Message list count should not change');
     console.log('✓ Message log/notification side-effect prevention check passed.');
 
+    // 8. Verify Kiosk check-in auto-lateness behavior under lateDetectionEnabled (Phase 9C-5D TDD)
+    console.log('--- Verifying Kiosk check-in auto-lateness under lateDetectionEnabled ---');
+    
+    // Setup clean state
+    stateStore.db.attendance = [];
+    stateStore.db.classes = [
+        { id: 'C_TEST_K', studentId: 'S_TEST_K', dayOfWeek: '월', time: '14:00' }
+    ];
+    stateStore.db.students = [
+        { id: 'S_TEST_K', name: '김태블릿', teacherId: 'T1', instrument: '피아노' }
+    ];
+    stateStore.db.scheduleSnapshots = [];
+    stateStore.db.settings = {
+        ...stateStore.db.settings,
+        sendKakaoAlert: false
+    };
+
+    // Helper to run check-in on Monday (June 8, 2026 is Monday)
+    // A. When lateDetectionEnabled = true, check-in at 14:15 (15 mins late) with 10 min threshold -> status is 'late'
+    stateStore.setLateDetectionEnabled(true);
+    stateStore.setLateThresholdMinutes(10);
+    stateStore.db.attendance = [];
+    stateStore.markAttendance('S_TEST_K', '2026-06-08', 'present', '14:15', '태블릿 등원 자동 입력');
+    assert.strictEqual(stateStore.db.attendance.length, 1, 'Attendance record count should be 1');
+    assert.strictEqual(stateStore.db.attendance[0].status, 'late', 'Status should be late when enabled and past threshold');
+
+    // B. When lateDetectionEnabled = true, check-in at 14:05 (5 mins late) with 10 min threshold -> status is 'present'
+    stateStore.db.attendance = [];
+    stateStore.markAttendance('S_TEST_K', '2026-06-08', 'present', '14:05', '태블릿 등원 자동 입력');
+    assert.strictEqual(stateStore.db.attendance.length, 1, 'Attendance record count should be 1');
+    assert.strictEqual(stateStore.db.attendance[0].status, 'present', 'Status should be present when within threshold');
+
+    // C. When lateDetectionEnabled = false, check-in at 14:15 (15 mins late) with 10 min threshold -> status remains 'present'
+    stateStore.setLateDetectionEnabled(false);
+    stateStore.db.attendance = [];
+    stateStore.markAttendance('S_TEST_K', '2026-06-08', 'present', '14:15', '태블릿 등원 자동 입력');
+    assert.strictEqual(stateStore.db.attendance.length, 1, 'Attendance record count should be 1');
+    assert.strictEqual(stateStore.db.attendance[0].status, 'present', 'Status should be present when lateDetectionEnabled is false');
+
 } catch (err) {
     console.error('❌ Attendance Quick Action API Verification FAILED:', err.message);
     hasError = true;

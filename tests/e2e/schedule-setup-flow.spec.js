@@ -35,35 +35,31 @@ test.describe('Director Schedule Settings and Notes Flow Checks', () => {
     const authBtn = page.locator('#btn-submit-academy-auth');
     await authBtn.click();
 
-    // 3.5 Verify Phase 9C-5B-1 & Repair-A & B: Lateness Policy Setup (including 00 and 05 mins)
+    // 3.5 Verify Phase 9C-5D: Lateness Policy Setup & Late Detection Toggle Check
     const lateThresholdSelect = page.locator('#acad-late-threshold');
     const lateThresholdText = page.locator('#acad-late-threshold-text');
+    const lateDetectionCheckbox = page.locator('#acad-late-detection-enabled');
     await expect(lateThresholdSelect).toBeVisible();
     await expect(lateThresholdText).toBeVisible();
+    await expect(lateDetectionCheckbox).toBeVisible();
 
-    // Default value check (10 mins)
+    // Default value check: checkbox checked, threshold enabled and 10 mins
+    await expect(lateDetectionCheckbox).toBeChecked();
+    await expect(lateThresholdSelect).toBeEnabled();
     await expect(lateThresholdSelect).toHaveValue('10');
     await expect(lateThresholdText).toContainText('수업 시작 후 10분 초과 시 지각 처리');
 
-    // Change value to 00 mins (Repair-A)
-    await lateThresholdSelect.selectOption('0');
-    await expect(lateThresholdText).toContainText('수업 시작 후 00분 초과 시 지각 처리');
+    // Uncheck late detection: threshold should be disabled, text changes to 미사용
+    await lateDetectionCheckbox.uncheck();
+    await expect(lateThresholdSelect).toBeDisabled();
+    await expect(lateThresholdText).toContainText('지각판정을 사용하지 않음');
 
-    // Change value to 05 mins (Repair-B)
-    await lateThresholdSelect.selectOption('5');
-    await expect(lateThresholdText).toContainText('수업 시작 후 05분 초과 시 지각 처리');
-
-    // Change value to 20 mins
-    await lateThresholdSelect.selectOption('20');
-    // Verify text updates dynamically on select change
-    await expect(lateThresholdText).toContainText('수업 시작 후 20분 초과 시 지각 처리');
-
-    // Submit form to save settings
+    // Submit form with unchecked late detection
     const saveAcademyBtn = page.locator('#academy-info-form button[type="submit"]');
     await expect(saveAcademyBtn).toBeVisible();
     await saveAcademyBtn.click();
 
-    // Reload page to verify persistence
+    // Reload page to verify persistence of late detection disabled
     await page.reload();
     await page.waitForLoadState('domcontentloaded');
     await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
@@ -74,8 +70,34 @@ test.describe('Director Schedule Settings and Notes Flow Checks', () => {
     await pwInput.fill('0000');
     await authBtn.click();
 
-    // Verify value is preserved as 20 mins
-    await expect(lateThresholdSelect).toBeVisible();
+    // Verify late detection is still disabled
+    await expect(lateDetectionCheckbox).not.toBeChecked();
+    await expect(lateThresholdSelect).toBeDisabled();
+    await expect(lateThresholdText).toContainText('지각판정을 사용하지 않음');
+    // Threshold select value should still be preserved as 10
+    await expect(lateThresholdSelect).toHaveValue('10');
+
+    // Turn late detection back ON, change threshold to 20 mins, and submit
+    await lateDetectionCheckbox.check();
+    await expect(lateThresholdSelect).toBeEnabled();
+    await lateThresholdSelect.selectOption('20');
+    await expect(lateThresholdText).toContainText('수업 시작 후 20분 초과 시 지각 처리');
+    await saveAcademyBtn.click();
+
+    // Reload page to verify persistence
+    await page.reload();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // Re-navigate and re-authenticate
+    await settingsMenu.click();
+    await expect(pwInput).toBeVisible();
+    await pwInput.fill('0000');
+    await authBtn.click();
+
+    // Verify values are preserved (checked, enabled, 20 mins)
+    await expect(lateDetectionCheckbox).toBeChecked();
+    await expect(lateThresholdSelect).toBeEnabled();
     await expect(lateThresholdSelect).toHaveValue('20');
     await expect(lateThresholdText).toContainText('수업 시작 후 20분 초과 시 지각 처리');
 

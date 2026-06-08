@@ -88,7 +88,11 @@ export function renderAcademyInfo(container) {
 
                     <div class="form-group" style="margin-bottom: 0;">
                         <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 6px; color: var(--text-main);">지각 판정 기준</label>
-                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                            <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                <input type="checkbox" id="acad-late-detection-enabled" ${stateStore.getLateDetectionEnabled() ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                지각판정 사용
+                            </label>
                             <select id="acad-late-threshold" class="form-control" style="width: 100px; margin-bottom: 0; display: inline-block;">
                                 ${[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60].map(m => `
                                     <option value="${m}" ${stateStore.getLateThresholdMinutes() === m ? 'selected' : ''}>${String(m).padStart(2, '0')}분</option>
@@ -145,15 +149,23 @@ export function renderAcademyInfo(container) {
         const tabPwError = container.querySelector('#acad-tab-pw-error');
         const form = container.querySelector('#academy-info-form');
 
+        const lateDetectionCheckbox = container.querySelector('#acad-late-detection-enabled');
         const lateThresholdSelect = container.querySelector('#acad-late-threshold');
         const lateThresholdText = container.querySelector('#acad-late-threshold-text');
-        if (lateThresholdSelect && lateThresholdText) {
+        if (lateThresholdSelect && lateThresholdText && lateDetectionCheckbox) {
             const updateText = () => {
-                const val = lateThresholdSelect.value;
-                const displayVal = String(val).padStart(2, '0');
-                lateThresholdText.textContent = `수업 시작 후 ${displayVal}분 초과 시 지각 처리`;
+                if (lateDetectionCheckbox.checked) {
+                    lateThresholdSelect.disabled = false;
+                    const val = lateThresholdSelect.value;
+                    const displayVal = String(val).padStart(2, '0');
+                    lateThresholdText.textContent = `수업 시작 후 ${displayVal}분 초과 시 지각 처리`;
+                } else {
+                    lateThresholdSelect.disabled = true;
+                    lateThresholdText.textContent = '지각판정을 사용하지 않음';
+                }
             };
             lateThresholdSelect.addEventListener('change', updateText);
+            lateDetectionCheckbox.addEventListener('change', updateText);
             updateText();
         }
 
@@ -291,6 +303,9 @@ export function renderAcademyInfo(container) {
             }
 
             try {
+                const lateDetectionEnabled = container.querySelector('#acad-late-detection-enabled').checked;
+                stateStore.setLateDetectionEnabled(lateDetectionEnabled);
+
                 const lateThresholdVal = parseInt(container.querySelector('#acad-late-threshold').value);
                 stateStore.setLateThresholdMinutes(lateThresholdVal);
 

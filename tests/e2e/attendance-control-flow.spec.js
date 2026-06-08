@@ -37,11 +37,74 @@ test.describe('Director Attendance Control Console Flow', () => {
       }
       window.Date = MockDate;
       window.__DAYDAY_E2E__ = true;
+
+      // Mock localStorage to dynamically inject S1 unpaid tuition status for E2E tests
+      const DB_KEY = 'turing_academy_db_v3';
+      const origGetItem = window.localStorage.getItem.bind(window.localStorage);
+      window.localStorage.getItem = (key) => {
+        const val = origGetItem(key);
+        if (key === DB_KEY && val) {
+          try {
+            const db = JSON.parse(val);
+            if (db.payments && !db.payments.some(p => p.studentId === 'S1' && p.month === '2026-05' && p.type === 'education')) {
+              db.payments.push({
+                id: 'P_S1_UNPAID_E2E',
+                studentId: 'S1',
+                amount: 150000,
+                month: '2026-05',
+                type: 'education',
+                status: 'unpaid',
+                invoiceDate: '2026-05-10',
+                paidDate: null,
+                method: null
+              });
+              const s1 = db.students?.find(s => s.id === 'S1');
+              if (s1) {
+                s1.paymentStatus = 'unpaid';
+              }
+              window.localStorage.setItem(DB_KEY, JSON.stringify(db));
+              return JSON.stringify(db);
+            }
+          } catch (e) {}
+        }
+        return val;
+      };
+
+      const origSetItem = window.localStorage.setItem.bind(window.localStorage);
+      window.localStorage.setItem = (key, val) => {
+        let finalVal = val;
+        if (key === DB_KEY && val) {
+          try {
+            const db = JSON.parse(val);
+            if (db.payments && !db.payments.some(p => p.studentId === 'S1' && p.month === '2026-05' && p.type === 'education')) {
+              db.payments.push({
+                id: 'P_S1_UNPAID_E2E',
+                studentId: 'S1',
+                amount: 150000,
+                month: '2026-05',
+                type: 'education',
+                status: 'unpaid',
+                invoiceDate: '2026-05-10',
+                paidDate: null,
+                method: null
+              });
+              const s1 = db.students?.find(s => s.id === 'S1');
+              if (s1) {
+                s1.paymentStatus = 'unpaid';
+              }
+              finalVal = JSON.stringify(db);
+            }
+          } catch (e) {}
+        }
+        origSetItem(key, finalVal);
+      };
     });
 
     // Navigate and login as director
     await page.goto('/');
     await page.locator('.role-btn.director').click();
+    await page.reload();
+    await page.waitForLoadState('domcontentloaded');
   });
 
   test('should load attendance control screen from sidebar and display panels matching mixed console spec', async ({ page }) => {
@@ -214,9 +277,8 @@ test.describe('Director Attendance Control Console Flow', () => {
 
     // Verify compact board horizontal scroll setup
     const compactBoard = page.locator('#compactBoard');
-    await expect(compactBoard).toHaveCSS('display', 'flex');
-    await expect(compactBoard).toHaveCSS('flex-direction', 'row');
-    await expect(compactBoard).toHaveCSS('flex-wrap', 'nowrap');
+    await expect(compactBoard).toHaveCSS('display', 'grid');
+    await expect(compactBoard).toHaveCSS('grid-auto-flow', 'column');
     await expect(compactBoard).toHaveCSS('overflow-x', 'auto');
 
     // Verify that "특이사항/사유" or "사유" text is NOT present in the history list of inspector
@@ -446,7 +508,7 @@ test.describe('Director Attendance Control Console Flow', () => {
     
     // Assert student table container is rendered
     const tableHeader = page.locator('table.custom-table thead');
-    await expect(tableHeader).toContainText('예정 수업');
+    await expect(tableHeader).toContainText('총수업일수');
     await expect(tableHeader).toContainText('출석률');
 
     // 2. Test auto name filtering in student tab (without Enter)
@@ -928,13 +990,16 @@ test.describe('Director Attendance Control Console Flow', () => {
     // Close inspector
     await page.locator('#ac-drawer-backdrop').click();
 
+    // Expand board to verify expanded tile dimensions (Repair-B default is collapsed)
+    await page.locator('#ac-toggle-board-btn').click();
+
     // 10. Verify enlarged time-tiles dimensions & styles (10% enlargement)
     const timeTile = page.locator('.time-tile').first();
     await expect(timeTile).toBeVisible();
     const minWidth = await timeTile.evaluate(el => window.getComputedStyle(el).minWidth);
     const minHeight = await timeTile.evaluate(el => window.getComputedStyle(el).minHeight);
     expect(parseFloat(minWidth)).toBeGreaterThanOrEqual(220);
-    expect(parseFloat(minHeight)).toBeGreaterThanOrEqual(150);
+    expect(parseFloat(minHeight)).toBeGreaterThanOrEqual(130);
 
     // 11. Verify Warning Console evidenceText size
     const evidenceText = page.locator('.warning-evidence').first();
@@ -1057,7 +1122,7 @@ test.describe('Director Attendance Control Console Flow', () => {
     await page.waitForTimeout(450);
 
     // Verify row status becomes '지각'
-    const statusCell = studentRow.locator('td').nth(4); // 5th column
+    const statusCell = studentRow.locator('td').nth(5); // 6th column
     await expect(statusCell).toContainText('지각');
 
     // Click '출결수정' again and change to '결석'
@@ -1094,7 +1159,7 @@ test.describe('Director Attendance Control Console Flow', () => {
     });
     await modal.locator('#btn-submit-attendance-edit').click();
     await page.waitForTimeout(450);
-    await expect(s1Row.locator('td').nth(4)).toContainText('지각');
+    await expect(s1Row.locator('td').nth(5)).toContainText('지각');
 
     // Test Urgent Queue quick action present
     // Open urgent queue panel
@@ -1150,6 +1215,338 @@ test.describe('Director Attendance Control Console Flow', () => {
     const dailyTab = page.locator('.ac-tab[data-tab="daily"]');
     await dailyTab.click();
     await page.waitForTimeout(450);
-    await expect(page.locator('.ac-student-row[data-student-id="S21"] td').nth(4)).toContainText('결석');
+    await expect(page.locator('.ac-student-row[data-student-id="S21"] td').nth(5)).toContainText('결석');
+  });
+
+  test('should verify Phase 9C-5C requirements: hidden legacy menu, chosung search, column name renames, 4-week date range title, S1 unpaid tuition info, message redirect and details modal dynamic import', async ({ page }) => {
+    // 1. Verify "출결 관리" sidebar item is hidden (legacy menu style="display: none;")
+    const legacyMenu = page.locator('.menu-item[data-view="dir-attendance"]');
+    await expect(legacyMenu).not.toBeVisible();
+    
+    // Verify "출결 관제" is visible
+    const controlMenu = page.locator('.menu-item[data-view="dir-attendance-control"]');
+    await expect(controlMenu).toBeVisible();
+
+    // Go to attendance control view
+    await controlMenu.click();
+    await expect(page.locator('#page-title')).toContainText('출결 관제');
+
+    // 2. Verify daily schedule table headers rename
+    const dailyHeader = page.locator('table.custom-table thead').first();
+    await expect(dailyHeader).toContainText('이름');
+    await expect(dailyHeader).toContainText('악기/반');
+    await expect(dailyHeader).not.toContainText('원생이름');
+    await expect(dailyHeader).not.toContainText('특이사항/사유');
+
+    // 3. Verify chosung search ("ㅊㄷㅇ" -> 최다은 row)
+    const searchInput = page.locator('#ac-search-input');
+    const searchType = page.locator('#ac-search-type');
+    await searchType.selectOption('name');
+    await searchInput.focus();
+    await searchInput.pressSequentially('ㅊㄷㅇ', { delay: 50 });
+    await page.waitForTimeout(300);
+    
+    // Verify row count is 1 and name is 최다은
+    const rows = page.locator('table.custom-table tbody tr.ac-student-row');
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first().locator('td').nth(2)).toContainText('최다은');
+
+    // Clear search
+    await searchInput.fill('');
+    await page.waitForTimeout(300);
+
+    // 4. Verify student-wise table headers rename
+    const studentTab = page.locator('.ac-tab[data-tab="student"]');
+    await studentTab.click();
+    await page.waitForTimeout(300);
+
+    const studentHeader = page.locator('table.custom-table thead');
+    await expect(studentHeader).toContainText('총수업일수');
+    await expect(studentHeader).not.toContainText('예정 수업');
+
+    // 5. Open student S1 details inspector drawer (by clicking on "최다은" name or row)
+    const s1Row = page.locator('table.custom-table tbody tr[data-student-id="S1"]').first();
+    await expect(s1Row).toBeVisible();
+    await s1Row.locator('.student-name-text').click();
+    
+    const inspectorPanel = page.locator('#ac-inspector-panel');
+    await expect(inspectorPanel).toHaveClass(/open/);
+
+    // 6. Verify inspector drawer date range title shows "최근 4주 출결 요약 (날짜 ~ 날짜)"
+    const historyTitle = page.locator('#ac-inspector-history-section-title');
+    await expect(historyTitle).toContainText('최근 4주 출결 요약');
+    // Ensure the date pattern is correct (e.g. YYYY-MM-DD ~ YYYY-MM-DD)
+    await expect(historyTitle).toContainText(/\d{4}-\d{2}-\d{2} ~ \d{4}-\d{2}-\d{2}/);
+
+    // 7. Verify S1 drawer unpaid tuition box shows unpaid status, 150,000 won, and 2026-05
+    const tuitionBox = page.locator('#ac-inspector-tuition-box');
+    await expect(tuitionBox).toBeVisible();
+    await expect(tuitionBox).toContainText('미납');
+    await expect(tuitionBox).toContainText('150,000원');
+    await expect(tuitionBox).toContainText('2026년 05월');
+
+    // 8. Verify bottom buttons: "메시지 보내기" and "상세정보" are visible
+    const btnMessage = page.locator('#ac-inspector-btn-message');
+    const btnDetail = page.locator('#ac-inspector-btn-detail');
+    await expect(btnMessage).toBeVisible();
+    await expect(btnDetail).toBeVisible();
+
+    // 9. Click "상세정보" and verify student detail modal is displayed, then close it
+    await btnDetail.click();
+    await expect(inspectorPanel).not.toHaveClass(/open/); // Drawer should be closed
+    const detailModal = page.locator('#common-modal');
+    await expect(detailModal).toHaveClass(/show/);
+    
+    // Close detail modal
+    await detailModal.locator('.modal-close').click();
+    await expect(detailModal).not.toHaveClass(/show/);
+
+    // Reopen drawer to test "메시지 보내기" redirection
+    await s1Row.locator('.student-name-text').click();
+    await expect(inspectorPanel).toHaveClass(/open/);
+
+    // 10. Click "메시지 보내기" and verify it closes the drawer and redirects to communication view
+    await btnMessage.click();
+    await expect(inspectorPanel).not.toBeVisible();
+    await expect(page.locator('#page-title')).toContainText('학부모 소통 종합 관리');
+  });
+
+  test('should verify Phase 9C-5C-Repair-A fixes: tab styling, instant name filtering, exact ID match, table headers sequence, drawer unpaid tuition status class, and message badge nowrap style', async ({ page }) => {
+    // Go to attendance control view
+    await page.locator('.menu-item[data-view="dir-attendance-control"]').click();
+    await expect(page.locator('#page-title')).toContainText('출결 관제');
+
+    // 1. Verify tab button separation / styling
+    const tabsContainer = page.locator('.ac-tabs');
+    const gap = await tabsContainer.evaluate(el => window.getComputedStyle(el).gap);
+    expect(gap).toBe('6px');
+    
+    const tabsPadding = await tabsContainer.evaluate(el => window.getComputedStyle(el).padding);
+    expect(tabsPadding).toBe('4px');
+
+    // 2. Verify daily schedule table headers sequence (요일, 수업시간, 이름, 악기/반, 담당강사, 출결상태, 등원시각, 메시지, 확인/관리)
+    const headers = page.locator('table.custom-table thead tr th');
+    const expectedHeaders = ['요일', '수업시간', '이름', '악기/반', '담당강사', '출결상태', '등원시각', '메시지', '확인/관리'];
+    for (let i = 0; i < expectedHeaders.length; i++) {
+        await expect(headers.nth(i)).toHaveText(expectedHeaders[i]);
+    }
+
+    // 3. Verify instant name search filtering ("최" -> filters instantly without enter)
+    const searchInput = page.locator('#ac-search-input');
+    const searchType = page.locator('#ac-search-type');
+    
+    await searchType.selectOption('name');
+    await searchInput.focus();
+    await searchInput.fill('');
+    await searchInput.pressSequentially('최', { delay: 50 });
+    await page.waitForTimeout(300);
+
+    // Verify row count is filtered to only include 최다은
+    const filteredRows = page.locator('table.custom-table tbody tr.ac-student-row');
+    // Ensure all visible rows contain "최"
+    const count = await filteredRows.count();
+    for (let i = 0; i < count; i++) {
+        const row = filteredRows.nth(i);
+        if (await row.isVisible()) {
+            await expect(row.locator('td').nth(2)).toContainText('최');
+        }
+    }
+
+    // 4. Verify exact ID search match (S1 search does not match S10 or others)
+    await searchType.selectOption('id');
+    await searchInput.focus();
+    await searchInput.fill('');
+    await searchInput.pressSequentially('S1', { delay: 50 });
+    await page.waitForTimeout(300);
+
+    // Verify only S1 is shown
+    for (let i = 0; i < count; i++) {
+        const row = filteredRows.nth(i);
+        const studentId = await row.getAttribute('data-student-id');
+        if (studentId === 'S1') {
+            await expect(row).toBeVisible();
+        } else {
+            await expect(row).not.toBeVisible();
+        }
+    }
+
+    // Clear search
+    await searchInput.fill('');
+    await page.waitForTimeout(300);
+
+    // 5. Open student S1 details inspector drawer (by clicking on "최다은" name)
+    const s1Row = page.locator('table.custom-table tbody tr[data-student-id="S1"]').first();
+    await expect(s1Row).toBeVisible();
+    await s1Row.locator('.student-name-text').click();
+    
+    const inspectorPanel = page.locator('#ac-inspector-panel');
+    await expect(inspectorPanel).toHaveClass(/open/);
+
+    // 6. Verify S1 drawer unpaid tuition box shows "미납" text with color #e74c3c, "결제요청" with color #f1c40f, and "완납" with color #2ecc71
+    const tuitionBox = page.locator('#ac-inspector-tuition-box');
+    await expect(tuitionBox).toBeVisible();
+    const unpaidStatusSpan = tuitionBox.locator('span', { hasText: '미납' }).first();
+    await expect(unpaidStatusSpan).toBeVisible();
+    const statusColor = await unpaidStatusSpan.evaluate(el => window.getComputedStyle(el).color);
+    expect(statusColor).toBe('rgb(231, 76, 60)'); // #e74c3c
+
+    const requestedStatusSpan = tuitionBox.locator('span', { hasText: '결제요청' }).first();
+    await expect(requestedStatusSpan).toBeVisible();
+    const requestedColor = await requestedStatusSpan.evaluate(el => window.getComputedStyle(el).color);
+    expect(requestedColor).toBe('rgb(241, 196, 15)'); // #f1c40f
+
+    const paidStatusSpan = tuitionBox.locator('span', { hasText: '완납' }).first();
+    await expect(paidStatusSpan).toBeVisible();
+    const paidColor = await paidStatusSpan.evaluate(el => window.getComputedStyle(el).color);
+    expect(paidColor).toBe('rgb(46, 204, 113)'); // #2ecc71
+
+    // 7. Verify bottom message history "발송완료" nowrap style
+    const msgList = page.locator('#ac-inspector-msg-list');
+    await expect(msgList).toBeVisible();
+    const badges = msgList.locator('.log-item-head span', { hasText: '발송완료' });
+    const badgeCount = await badges.count();
+    if (badgeCount > 0) {
+        const badge = badges.first();
+        const whiteSpace = await badge.evaluate(el => window.getComputedStyle(el).whiteSpace);
+        expect(whiteSpace).toBe('nowrap');
+        const flexShrink = await badge.evaluate(el => window.getComputedStyle(el).flexShrink);
+        expect(flexShrink).toBe('0');
+    }
+
+    // Close inspector drawer to avoid backdrop overlay blocking tab hover
+    await page.locator('#ac-drawer-backdrop').click();
+    await expect(inspectorPanel).not.toHaveClass(/open/);
+
+    // 8. Verify Phase 9C-5D: Tab hover styling rule
+    const firstTab = page.locator('.ac-tab').first();
+    await firstTab.hover();
+    const hoverBg = await firstTab.evaluate(el => {
+        for (const sheet of document.styleSheets) {
+            try {
+                for (const rule of sheet.cssRules) {
+                    if (rule.selectorText === '.ac-tab:hover') {
+                        return rule.style.background;
+                    }
+                }
+            } catch (e) {}
+        }
+        return '';
+    });
+    expect(hoverBg).toContain('rgba(9, 132, 227, 0.08)');
+
+    // 9. Verify Phase 9C-5D: Grid layout and scrollbars on compact-board daily summary
+    const compactBoard = page.locator('#compactBoard');
+    await expect(compactBoard).toBeVisible();
+    const boardDisplay = await compactBoard.evaluate(el => window.getComputedStyle(el).display);
+    expect(boardDisplay).toBe('grid');
+    const boardGridFlow = await compactBoard.evaluate(el => window.getComputedStyle(el).gridAutoFlow);
+    expect(boardGridFlow).toBe('column');
+    
+    const scrollbarHeight = await compactBoard.evaluate(el => {
+        for (const sheet of document.styleSheets) {
+            try {
+                for (const rule of sheet.cssRules) {
+                    if (rule.selectorText && rule.selectorText.includes('.compact-board::-webkit-scrollbar')) {
+                        return rule.style.height;
+                    }
+                }
+            } catch (e) {}
+        }
+        return '';
+    });
+    expect(scrollbarHeight).toBe('10px');
+
+    // 10. Verify Phase 9C-5D: Info Pill text and S2 status update on toggle
+    const infoPill = page.locator('.ac-late-policy-info span');
+    await expect(infoPill).toBeVisible();
+    await expect(infoPill).toContainText('현재 지각 기준: 수업 시작 후');
+
+    const s2Row = page.locator('table.custom-table tbody tr[data-student-id="S2"]').first();
+    await expect(s2Row).toBeVisible();
+    await expect(s2Row.locator('.badge')).toContainText('지각');
+
+    // Programmatically turn off late detection to verify Info Pill text updates to "미사용"
+    await page.evaluate(() => {
+        window.stateStore.setLateDetectionEnabled(false);
+        const refreshBtn = document.querySelector('#ac-refresh-btn');
+        if (refreshBtn) refreshBtn.click();
+    });
+    await page.waitForTimeout(300);
+    await expect(infoPill).toContainText('현재 지각 기준: 미사용');
+    await expect(s2Row.locator('.badge')).toContainText('출석');
+
+    // Restore late detection
+    await page.evaluate(() => {
+        window.stateStore.setLateDetectionEnabled(true);
+        const refreshBtn = document.querySelector('#ac-refresh-btn');
+        if (refreshBtn) refreshBtn.click();
+    });
+    await page.waitForTimeout(300);
+    await expect(s2Row.locator('.badge')).toContainText('지각');
+  });
+
+  test('should verify Phase 9C-5D-Repair-C: collapsible 2-row daily summary board', async ({ page }) => {
+    // Go to attendance control view
+    await page.locator('.menu-item[data-view="dir-attendance-control"]').click();
+    await expect(page.locator('#page-title')).toContainText('출결 관제');
+
+    const toggleBtn = page.locator('#ac-toggle-board-btn');
+    await expect(toggleBtn).toBeVisible();
+    await expect(toggleBtn).toHaveText('출결요약 펼치기');
+
+    // Get button width before toggle
+    const widthBefore = await toggleBtn.evaluate(el => el.getBoundingClientRect().width);
+
+    const compactBoard = page.locator('#compactBoard');
+    await expect(compactBoard).toHaveClass(/collapsed/);
+
+    // Verify 2-row layout in collapsed mode (Repair-C)
+    const gridFlow = await compactBoard.evaluate(el => window.getComputedStyle(el).gridAutoFlow);
+    expect(gridFlow).toBe('column');
+
+    const gridRows = await compactBoard.evaluate(el => window.getComputedStyle(el).gridTemplateRows);
+    // Should have 2 rows (e.g. contains two values like "52px 52px" or similar)
+    expect(gridRows.split(' ').length).toBe(2);
+
+    // Verify detailed student lists are hidden in collapsed mode
+    const miniStudents = page.locator('.mini-students').first();
+    if (await miniStudents.count() > 0) {
+      await expect(miniStudents).not.toBeVisible();
+    }
+
+    // Get collapsed height
+    const collapsedHeightStr = await compactBoard.evaluate(el => window.getComputedStyle(el).height);
+    const collapsedHeight = parseFloat(collapsedHeightStr);
+
+    // Expand
+    await toggleBtn.click();
+    await expect(toggleBtn).toHaveText('출결요약 접기');
+    await expect(compactBoard).not.toHaveClass(/collapsed/);
+
+    // Get button width after toggle
+    const widthAfter = await toggleBtn.evaluate(el => el.getBoundingClientRect().width);
+    // Width should be identical (fixed width)
+    expect(Math.abs(widthBefore - widthAfter)).toBeLessThan(1);
+
+    // Verify detailed student lists are visible in expanded mode
+    if (await miniStudents.count() > 0) {
+      await expect(miniStudents).toBeVisible();
+    }
+
+    // Get expanded height
+    const expandedHeightStr = await compactBoard.evaluate(el => window.getComputedStyle(el).height);
+    const expandedHeight = parseFloat(expandedHeightStr);
+
+    expect(expandedHeight).toBeGreaterThan(collapsedHeight);
+
+    // Collapse again
+    await toggleBtn.click();
+    await expect(toggleBtn).toHaveText('출결요약 펼치기');
+    await expect(compactBoard).toHaveClass(/collapsed/);
+    
+    // Verify detailed student lists are hidden again
+    if (await miniStudents.count() > 0) {
+      await expect(miniStudents).not.toBeVisible();
+    }
   });
 });

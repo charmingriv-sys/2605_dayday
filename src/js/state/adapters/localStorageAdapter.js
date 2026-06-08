@@ -204,6 +204,8 @@ export class LocalStorageAdapter extends DataAdapter {
             }
         });
 
+
+
         // Migrate default settings if missing
         db.settings = {
             sendKakaoAlert: true,

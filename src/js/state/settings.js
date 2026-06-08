@@ -24,6 +24,20 @@ export const settingsMethods = {
         this.notify('SETTINGS_CHANGED', this.db.settings);
     },
 
+    getLateDetectionEnabled() {
+        const settings = this.db.settings || {};
+        return settings.lateDetectionEnabled !== false;
+    },
+
+    setLateDetectionEnabled(enabled) {
+        this.db.settings = {
+            ...this.db.settings,
+            lateDetectionEnabled: !!enabled
+        };
+        this.saveDB();
+        this.notify('SETTINGS_CHANGED', this.db.settings);
+    },
+
     getSettings() {
         const base = this.db.settings || { sendKakaoAlert: true };
         const currentUser = this.getCurrentUser();

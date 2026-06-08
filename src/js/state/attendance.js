@@ -16,6 +16,28 @@ export const attendanceMethods = {
         let alertTriggered = false;
         let alertMessage = '';
 
+        let classTimeVal = '';
+        const dailySchedule = typeof this.getTeacherStudentScheduleForDate === 'function' ? this.getTeacherStudentScheduleForDate(date) : [];
+        const studentClass = dailySchedule.find(c => c.studentId === studentId);
+        if (studentClass && studentClass.time) {
+            classTimeVal = studentClass.time;
+        }
+
+        if (status === 'present' && time && studentClass && studentClass.time) {
+            const lateDetectionEnabled = typeof this.getLateDetectionEnabled === 'function' ? this.getLateDetectionEnabled() : true;
+            if (lateDetectionEnabled) {
+                const [actH, actM] = time.split(':').map(Number);
+                const [schH, schM] = studentClass.time.split(':').map(Number);
+                if (!isNaN(actH) && !isNaN(actM) && !isNaN(schH) && !isNaN(schM)) {
+                    const diffMins = (actH * 60 + actM) - (schH * 60 + schM);
+                    const threshold = typeof this.getLateThresholdMinutes === 'function' ? this.getLateThresholdMinutes() : 10;
+                    if (diffMins > threshold) {
+                        status = 'late';
+                    }
+                }
+            }
+        }
+
         if (existing) {
             if (status === 'none') {
                 // Remove record
@@ -26,10 +48,13 @@ export const attendanceMethods = {
                 existing.note = note;
                 existing.videoUrl = videoUrl;
                 existing.images = images;
+                if (classTimeVal) {
+                    existing.classTime = classTimeVal;
+                }
             }
         } else if (status !== 'none') {
             const id = 'A' + (this.db.attendance.length ? Math.max(...this.db.attendance.map(a => parseInt(a.id.slice(1)) || 0)) + 1 : 1);
-            this.db.attendance.push({ id, studentId, date, status, time, note, videoUrl, images });
+            this.db.attendance.push({ id, studentId, date, status, time, classTime: classTimeVal || '', note, videoUrl, images });
             
             // Set up simulated KakaoTalk notification
             if (this.db.settings.sendKakaoAlert) {
@@ -205,7 +230,8 @@ export const attendanceMethods = {
                     if (date < todayStr) {
                         status = '결석';
                     } else if (date === todayStr) {
-                        if (diffMins > lateThresholdMinutes) {
+                        const lateDetectionEnabled = typeof this.getLateDetectionEnabled === 'function' ? this.getLateDetectionEnabled() : true;
+                        if (lateDetectionEnabled && diffMins > lateThresholdMinutes) {
                             status = '지각';
                             isTodayNoTagOverdue = true;
                         }
@@ -224,6 +250,8 @@ export const attendanceMethods = {
         });
 
         const warnings = [];
+
+        const lateDetectionEnabled = typeof this.getLateDetectionEnabled === 'function' ? this.getLateDetectionEnabled() : true;
 
         students.forEach(student => {
             const list = studentSchedules[student.id] || [];
@@ -259,7 +287,7 @@ export const attendanceMethods = {
                 reason = '비성인 원생 최근 2회 연속 결석';
                 evidenceText = `최근 2회 연속 결석 (비성인)`;
             }
-            else if (list.some(c => c.isTodayNoTagOverdue)) {
+            else if (lateDetectionEnabled && list.some(c => c.isTodayNoTagOverdue)) {
                 severity = 'critical';
                 warningType = 'today_no_tag_overdue';
                 title = '미태그 지각';
@@ -280,7 +308,7 @@ export const attendanceMethods = {
                 reason = '최근 4주 출석률 75% 미만';
                 evidenceText = `최근 4주 예정 ${plannedCount}회 중 출석/지각 ${presentCount + lateCount}회, 출석률 ${attendanceRate}%`;
             }
-            else if (lateRate >= 25) {
+            else if (lateDetectionEnabled && lateRate >= 25) {
                 severity = 'amber';
                 warningType = 'high_late_rate';
                 title = '지각 반복';
