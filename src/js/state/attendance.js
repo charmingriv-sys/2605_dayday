@@ -84,9 +84,17 @@ export const attendanceMethods = {
     getAttendanceWarnings(options = {}) {
         const {
             endDate = new Date().toISOString().slice(0, 10),
-            windowDays = 28,
-            lateThresholdMinutes = 15
+            windowDays = 28
         } = options;
+
+        let lateThresholdMinutes = options.lateThresholdMinutes;
+        if (lateThresholdMinutes === undefined || lateThresholdMinutes === null) {
+            if (typeof this.getLateThresholdMinutes === 'function') {
+                lateThresholdMinutes = this.getLateThresholdMinutes();
+            } else {
+                lateThresholdMinutes = 10;
+            }
+        }
 
         const students = this.db.students || [];
         const teachers = this.db.teachers || [];

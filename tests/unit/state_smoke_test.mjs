@@ -120,8 +120,27 @@ if (val60 === 60) {
     hasError = true;
 }
 
+stateStore.setLateThresholdMinutes(0);
+const val0 = stateStore.getLateThresholdMinutes();
+if (val0 === 0) {
+    console.log('✓ setLateThresholdMinutes(0) successfully saved and retrieved.');
+} else {
+    console.error(`❌ Expected 0, got ${val0}`);
+    hasError = true;
+}
+
 // 3. Verify invalid values fallback to 10
-// Value less than 5
+// Value less than 0
+stateStore.setLateThresholdMinutes(-5);
+const valNeg5 = stateStore.getLateThresholdMinutes();
+if (valNeg5 === 10) {
+    console.log('✓ setLateThresholdMinutes(-5) normalized to 10.');
+} else {
+    console.error(`❌ Expected 10, got ${valNeg5}`);
+    hasError = true;
+}
+
+// Value not divisible by 5 (e.g. 4)
 stateStore.setLateThresholdMinutes(4);
 const val4 = stateStore.getLateThresholdMinutes();
 if (val4 === 10) {

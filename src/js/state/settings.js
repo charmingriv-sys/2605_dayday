@@ -5,7 +5,7 @@ export const settingsMethods = {
     getLateThresholdMinutes() {
         const settings = this.db.settings || {};
         const val = settings.lateThresholdMinutes;
-        if (typeof val === 'number' && val >= 5 && val <= 60 && val % 5 === 0) {
+        if (typeof val === 'number' && val >= 0 && val <= 60 && val % 5 === 0) {
             return val;
         }
         return 10;
@@ -13,7 +13,7 @@ export const settingsMethods = {
 
     setLateThresholdMinutes(minutes) {
         let val = Number(minutes);
-        if (isNaN(val) || val < 5 || val > 60 || val % 5 !== 0) {
+        if (isNaN(val) || val < 0 || val > 60 || val % 5 !== 0) {
             val = 10;
         }
         this.db.settings = {

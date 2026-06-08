@@ -191,10 +191,11 @@ export function renderDirectorAttendanceControl(container) {
                     const classTimeToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), classHour, classMin);
                     const diffMins = (now - classTimeToday) / (1000 * 60);
                     
+                    const lateThresholdMinutes = stateStore.getLateThresholdMinutes();
                     if (date < todayStr) {
                         status = '결석';
                     } else if (date === todayStr) {
-                        if (diffMins > 15) {
+                        if (diffMins > lateThresholdMinutes) {
                             status = '지각';
                         }
                     }
@@ -319,10 +320,11 @@ export function renderDirectorAttendanceControl(container) {
                     const classTimeToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), classHour, classMin);
                     const diffMins = (now - classTimeToday) / (1000 * 60);
 
+                    const lateThresholdMinutes = stateStore.getLateThresholdMinutes();
                     if (date < todayStr) {
                         status = '결석';
                     } else if (date === todayStr) {
-                        if (diffMins > 15) {
+                        if (diffMins > lateThresholdMinutes) {
                             status = '지각';
                         }
                     }
@@ -396,10 +398,11 @@ export function renderDirectorAttendanceControl(container) {
                     const classTimeToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), classHour, classMin);
                     const diffMins = (now - classTimeToday) / (1000 * 60);
 
+                    const lateThresholdMinutes = stateStore.getLateThresholdMinutes();
                     if (date < todayStr) {
                         status = '결석';
                     } else if (date === todayStr) {
-                        if (diffMins > 15) {
+                        if (diffMins > lateThresholdMinutes) {
                             status = '지각';
                         }
                     }
@@ -572,10 +575,11 @@ export function renderDirectorAttendanceControl(container) {
                         const classTimeToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), classHour, classMin);
                         const diffMins = (now - classTimeToday) / (1000 * 60);
                         
+                        const lateThresholdMinutes = stateStore.getLateThresholdMinutes();
                         if (date < now.toISOString().slice(0, 10)) {
                             status = '결석';
                         } else if (date === now.toISOString().slice(0, 10)) {
-                            if (diffMins > 15) {
+                            if (diffMins > lateThresholdMinutes) {
                                 status = '지각';
                             }
                         }
@@ -1955,6 +1959,11 @@ export function renderDirectorAttendanceControl(container) {
                             <option value="id" ${searchType === 'id' ? 'selected' : ''}>회원번호</option>
                         </select>
                         <input type="text" id="ac-search-input" value="${searchQuery}" placeholder="원생 검색">
+                    </div>
+
+                    <div class="ac-late-policy-info" style="margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(9, 132, 227, 0.08); border: 1px solid rgba(9, 132, 227, 0.2); border-radius: 999px; font-size: 11px; color: var(--primary); font-weight: 700; height: 26px; box-sizing: border-box;">
+                        <i class="fa-solid fa-clock-rotate-left"></i>
+                        <span>현재 지각 기준: 수업 시작 후 ${String(stateStore.getLateThresholdMinutes()).padStart(2, '0')}분</span>
                     </div>
                 </div>
 

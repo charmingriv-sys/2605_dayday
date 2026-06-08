@@ -90,8 +90,8 @@ export function renderAcademyInfo(container) {
                         <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 6px; color: var(--text-main);">지각 판정 기준</label>
                         <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                             <select id="acad-late-threshold" class="form-control" style="width: 100px; margin-bottom: 0; display: inline-block;">
-                                ${[5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60].map(m => `
-                                    <option value="${m}" ${stateStore.getLateThresholdMinutes() === m ? 'selected' : ''}>${m}분</option>
+                                ${[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60].map(m => `
+                                    <option value="${m}" ${stateStore.getLateThresholdMinutes() === m ? 'selected' : ''}>${String(m).padStart(2, '0')}분</option>
                                 `).join('')}
                             </select>
                             <span id="acad-late-threshold-text" style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">수업 시작 후 10분 초과 시 지각 처리</span>
@@ -149,7 +149,9 @@ export function renderAcademyInfo(container) {
         const lateThresholdText = container.querySelector('#acad-late-threshold-text');
         if (lateThresholdSelect && lateThresholdText) {
             const updateText = () => {
-                lateThresholdText.textContent = `수업 시작 후 ${lateThresholdSelect.value}분 초과 시 지각 처리`;
+                const val = lateThresholdSelect.value;
+                const displayVal = String(val).padStart(2, '0');
+                lateThresholdText.textContent = `수업 시작 후 ${displayVal}분 초과 시 지각 처리`;
             };
             lateThresholdSelect.addEventListener('change', updateText);
             updateText();

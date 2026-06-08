@@ -217,6 +217,94 @@ assert(warnings.length === 2, `Two warnings generated. Found: ${warnings.length}
 assert(warnings[0].studentId === 'S_W1', `S_W1 (CRITICAL) is sorted first. Found: ${warnings[0].studentName}`);
 assert(warnings[1].studentId === 'S_W2', `S_W2 (AMBER) is sorted second. Found: ${warnings[1].studentName}`);
 
+// 8. Verify getAttendanceWarnings lateThresholdMinutes prioritization (Repair-B)
+console.log('--- Verifying getAttendanceWarnings lateThresholdMinutes prioritization ---');
+
+// MockDate: today is 2026-06-03, time is 14:12 (12 minutes past 14:00 class)
+const testMockTime = new Date('2026-06-03T14:12:00+09:00').getTime();
+const TestOriginalDate = Date;
+class TestMockDate extends TestOriginalDate {
+  constructor(...args) {
+    if (args.length === 0) {
+      super(testMockTime);
+    } else {
+      super(...args);
+    }
+  }
+  static now() {
+    return testMockTime;
+  }
+}
+global.Date = TestMockDate;
+
+// S_W2 has class today (2026-06-03) at 14:00.
+// Attendance list is empty (no tags)
+stateStore.db.attendance = [];
+
+// A. Check options.lateThresholdMinutes priority:
+// A-1) options.lateThresholdMinutes = 10 -> 12 mins > 10 mins -> triggers critical warning
+let prioWarnings = stateStore.getAttendanceWarnings({ endDate: '2026-06-03', lateThresholdMinutes: 10 });
+let sW2Prio = prioWarnings.find(w => w.studentId === 'S_W2');
+assert(sW2Prio !== undefined && sW2Prio.warningType === 'today_no_tag_overdue', 'Priority 1: options = 10 successfully triggers warning at 12 mins');
+
+// A-2) options.lateThresholdMinutes = 15 -> 12 mins < 15 mins -> no warning
+prioWarnings = stateStore.getAttendanceWarnings({ endDate: '2026-06-03', lateThresholdMinutes: 15 });
+sW2Prio = prioWarnings.find(w => w.studentId === 'S_W2');
+assert(sW2Prio === undefined || sW2Prio.warningType !== 'today_no_tag_overdue', 'Priority 1: options = 15 successfully ignores warning at 12 mins');
+
+// B. Check stateStore.getLateThresholdMinutes() fallback:
+// B-1) stateStore.setLateThresholdMinutes(10) -> triggers warning
+stateStore.setLateThresholdMinutes(10);
+prioWarnings = stateStore.getAttendanceWarnings({ endDate: '2026-06-03' }); // no options.lateThresholdMinutes
+sW2Prio = prioWarnings.find(w => w.studentId === 'S_W2');
+assert(sW2Prio !== undefined && sW2Prio.warningType === 'today_no_tag_overdue', 'Priority 2: stateStore config = 10 successfully triggers warning at 12 mins');
+
+// B-2) stateStore.setLateThresholdMinutes(15) -> no warning
+stateStore.setLateThresholdMinutes(15);
+prioWarnings = stateStore.getAttendanceWarnings({ endDate: '2026-06-03' }); // no options.lateThresholdMinutes
+sW2Prio = prioWarnings.find(w => w.studentId === 'S_W2');
+assert(sW2Prio === undefined || sW2Prio.warningType !== 'today_no_tag_overdue', 'Priority 2: stateStore config = 15 successfully ignores warning at 12 mins');
+
+// C. Check default fallback to 10 when config is absent/invalid:
+stateStore.db.settings = { lateThresholdMinutes: 'invalid' }; // invalid config
+prioWarnings = stateStore.getAttendanceWarnings({ endDate: '2026-06-03' }); // should fallback to 10 -> triggers warning
+sW2Prio = prioWarnings.find(w => w.studentId === 'S_W2');
+assert(sW2Prio !== undefined && sW2Prio.warningType === 'today_no_tag_overdue', 'Priority 3: fallback to 10 successfully triggers warning at 12 mins');
+
+// D. Check 0-minute threshold behavior:
+// D-1) options.lateThresholdMinutes = 0 -> 12 mins > 0 mins -> triggers warning
+prioWarnings = stateStore.getAttendanceWarnings({ endDate: '2026-06-03', lateThresholdMinutes: 0 });
+sW2Prio = prioWarnings.find(w => w.studentId === 'S_W2');
+assert(sW2Prio !== undefined && sW2Prio.warningType === 'today_no_tag_overdue', '0-minute threshold: options = 0 successfully triggers warning');
+
+// D-2) stateStore.setLateThresholdMinutes(0) -> triggers warning when time is past 14:00
+stateStore.setLateThresholdMinutes(0);
+prioWarnings = stateStore.getAttendanceWarnings({ endDate: '2026-06-03' });
+sW2Prio = prioWarnings.find(w => w.studentId === 'S_W2');
+assert(sW2Prio !== undefined && sW2Prio.warningType === 'today_no_tag_overdue', '0-minute threshold: config = 0 successfully triggers warning');
+
+// D-3) verify that when time is exactly 14:00 (0 mins passed), no warning is triggered
+const testMockTimeExact = new Date('2026-06-03T14:00:00+09:00').getTime();
+class TestMockDateExact extends TestOriginalDate {
+  constructor(...args) {
+    if (args.length === 0) {
+      super(testMockTimeExact);
+    } else {
+      super(...args);
+    }
+  }
+  static now() {
+    return testMockTimeExact;
+  }
+}
+global.Date = TestMockDateExact;
+prioWarnings = stateStore.getAttendanceWarnings({ endDate: '2026-06-03' });
+sW2Prio = prioWarnings.find(w => w.studentId === 'S_W2');
+assert(sW2Prio === undefined || sW2Prio.warningType !== 'today_no_tag_overdue', '0-minute threshold: config = 0 does not trigger warning at exactly class time');
+
+// Restore original Date
+global.Date = TestOriginalDate;
+
 if (hasError) {
     console.error('--- Unit Test: Attendance Warnings Algorithms Verification FAILED ---');
     process.exit(1);
