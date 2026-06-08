@@ -90,6 +90,77 @@ students.forEach(s => {
     }
 });
 
+console.log('--- Verifying getLateThresholdMinutes and setLateThresholdMinutes API ---');
+// 1. Verify default value is 10
+stateStore.db.settings = {}; // clear settings for isolated test
+const defaultVal = stateStore.getLateThresholdMinutes();
+if (defaultVal === 10) {
+    console.log('✓ getLateThresholdMinutes returns default 10 when empty.');
+} else {
+    console.error(`❌ Expected default 10, got ${defaultVal}`);
+    hasError = true;
+}
+
+// 2. Verify setting 5~60 min (with 5 min step) is saved and read correctly
+stateStore.setLateThresholdMinutes(15);
+const val15 = stateStore.getLateThresholdMinutes();
+if (val15 === 15) {
+    console.log('✓ setLateThresholdMinutes(15) successfully saved and retrieved.');
+} else {
+    console.error(`❌ Expected 15, got ${val15}`);
+    hasError = true;
+}
+
+stateStore.setLateThresholdMinutes(60);
+const val60 = stateStore.getLateThresholdMinutes();
+if (val60 === 60) {
+    console.log('✓ setLateThresholdMinutes(60) successfully saved and retrieved.');
+} else {
+    console.error(`❌ Expected 60, got ${val60}`);
+    hasError = true;
+}
+
+// 3. Verify invalid values fallback to 10
+// Value less than 5
+stateStore.setLateThresholdMinutes(4);
+const val4 = stateStore.getLateThresholdMinutes();
+if (val4 === 10) {
+    console.log('✓ setLateThresholdMinutes(4) normalized to 10.');
+} else {
+    console.error(`❌ Expected 10, got ${val4}`);
+    hasError = true;
+}
+
+// Value greater than 60
+stateStore.setLateThresholdMinutes(65);
+const val65 = stateStore.getLateThresholdMinutes();
+if (val65 === 10) {
+    console.log('✓ setLateThresholdMinutes(65) normalized to 10.');
+} else {
+    console.error(`❌ Expected 10, got ${val65}`);
+    hasError = true;
+}
+
+// Value not divisible by 5
+stateStore.setLateThresholdMinutes(12);
+const val12 = stateStore.getLateThresholdMinutes();
+if (val12 === 10) {
+    console.log('✓ setLateThresholdMinutes(12) normalized to 10.');
+} else {
+    console.error(`❌ Expected 10, got ${val12}`);
+    hasError = true;
+}
+
+// Value is NaN/string non-number
+stateStore.setLateThresholdMinutes('invalid');
+const valInvalid = stateStore.getLateThresholdMinutes();
+if (valInvalid === 10) {
+    console.log('✓ setLateThresholdMinutes("invalid") normalized to 10.');
+} else {
+    console.error(`❌ Expected 10, got ${valInvalid}`);
+    hasError = true;
+}
+
 if (hasError) {
     console.error('Smoke test FAILED.');
     process.exit(1);

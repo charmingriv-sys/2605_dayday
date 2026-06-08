@@ -86,7 +86,17 @@ export function renderAcademyInfo(container) {
                         </div>
                     </div>
 
-
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 6px; color: var(--text-main);">지각 판정 기준</label>
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <select id="acad-late-threshold" class="form-control" style="width: 100px; margin-bottom: 0; display: inline-block;">
+                                ${[5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60].map(m => `
+                                    <option value="${m}" ${stateStore.getLateThresholdMinutes() === m ? 'selected' : ''}>${m}분</option>
+                                `).join('')}
+                            </select>
+                            <span id="acad-late-threshold-text" style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">수업 시작 후 10분 초과 시 지각 처리</span>
+                        </div>
+                    </div>
 
                     <div class="form-group" style="margin-bottom: 0;">
                         <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 6px; color: var(--text-main);">학원장 서명 이미지 업로드</label>
@@ -134,6 +144,16 @@ export function renderAcademyInfo(container) {
         const tabPwInput = container.querySelector('#acad-tab-pw');
         const tabPwError = container.querySelector('#acad-tab-pw-error');
         const form = container.querySelector('#academy-info-form');
+
+        const lateThresholdSelect = container.querySelector('#acad-late-threshold');
+        const lateThresholdText = container.querySelector('#acad-late-threshold-text');
+        if (lateThresholdSelect && lateThresholdText) {
+            const updateText = () => {
+                lateThresholdText.textContent = `수업 시작 후 ${lateThresholdSelect.value}분 초과 시 지각 처리`;
+            };
+            lateThresholdSelect.addEventListener('change', updateText);
+            updateText();
+        }
 
         let uploadedSignatureDataUrl = academy.directorSignature || '';
 
@@ -269,6 +289,9 @@ export function renderAcademyInfo(container) {
             }
 
             try {
+                const lateThresholdVal = parseInt(container.querySelector('#acad-late-threshold').value);
+                stateStore.setLateThresholdMinutes(lateThresholdVal);
+
                 stateStore.updateAcademy(academy.id, {
                     name: nameInput.value.trim(),
                     ownerName: ownerInput.value.trim(),
@@ -281,8 +304,6 @@ export function renderAcademyInfo(container) {
                     tabletPassword: tabPw,
                     directorSignature: uploadedSignatureDataUrl
                 });
-
-
 
                 showKakaoTalkToast("학원 정보 및 시간표 설정이 성공적으로 저장되었습니다.");
             } catch (err) {

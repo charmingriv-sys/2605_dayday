@@ -35,6 +35,47 @@ test.describe('Director Schedule Settings and Notes Flow Checks', () => {
     const authBtn = page.locator('#btn-submit-academy-auth');
     await authBtn.click();
 
+    // 3.5 Verify Phase 9C-5B-1: Lateness Policy Setup
+    const lateThresholdSelect = page.locator('#acad-late-threshold');
+    const lateThresholdText = page.locator('#acad-late-threshold-text');
+    await expect(lateThresholdSelect).toBeVisible();
+    await expect(lateThresholdText).toBeVisible();
+
+    // Default value check (10 mins)
+    await expect(lateThresholdSelect).toHaveValue('10');
+    await expect(lateThresholdText).toContainText('수업 시작 후 10분 초과 시 지각 처리');
+
+    // Change value to 20 mins
+    await lateThresholdSelect.selectOption('20');
+    // Verify text updates dynamically on select change
+    await expect(lateThresholdText).toContainText('수업 시작 후 20분 초과 시 지각 처리');
+
+    // Submit form to save settings
+    const saveAcademyBtn = page.locator('#academy-info-form button[type="submit"]');
+    await expect(saveAcademyBtn).toBeVisible();
+    await saveAcademyBtn.click();
+
+    // Reload page to verify persistence
+    await page.reload();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // Re-navigate and re-authenticate to view the saved value
+    await settingsMenu.click();
+    await expect(pwInput).toBeVisible();
+    await pwInput.fill('0000');
+    await authBtn.click();
+
+    // Verify value is preserved as 20 mins
+    await expect(lateThresholdSelect).toBeVisible();
+    await expect(lateThresholdSelect).toHaveValue('20');
+    await expect(lateThresholdText).toContainText('수업 시작 후 20분 초과 시 지각 처리');
+
+    // Restore to default 10 mins and save to clean up
+    await lateThresholdSelect.selectOption('10');
+    await expect(lateThresholdText).toContainText('수업 시작 후 10분 초과 시 지각 처리');
+    await saveAcademyBtn.click();
+
     // 4. Change Schedule Settings via Schedules subtab settings modal
     // Navigate to Schedules first
     const schedulesMenu = page.locator('.menu-item[data-view="dir-schedules"]');

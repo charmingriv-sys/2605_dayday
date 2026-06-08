@@ -2,6 +2,28 @@
 
 export const settingsMethods = {
     // --- SETTINGS ---
+    getLateThresholdMinutes() {
+        const settings = this.db.settings || {};
+        const val = settings.lateThresholdMinutes;
+        if (typeof val === 'number' && val >= 5 && val <= 60 && val % 5 === 0) {
+            return val;
+        }
+        return 10;
+    },
+
+    setLateThresholdMinutes(minutes) {
+        let val = Number(minutes);
+        if (isNaN(val) || val < 5 || val > 60 || val % 5 !== 0) {
+            val = 10;
+        }
+        this.db.settings = {
+            ...this.db.settings,
+            lateThresholdMinutes: val
+        };
+        this.saveDB();
+        this.notify('SETTINGS_CHANGED', this.db.settings);
+    },
+
     getSettings() {
         const base = this.db.settings || { sendKakaoAlert: true };
         const currentUser = this.getCurrentUser();
