@@ -81,6 +81,65 @@ export const attendanceMethods = {
         }
     },
 
+    markAttendanceStatus(payload) {
+        const {
+            studentId,
+            date,
+            classTime,
+            teacherId,
+            status,
+            checkedAt,
+            source = 'director_manual',
+            note = ''
+        } = payload;
+
+        const existing = this.db.attendance.find(a => 
+            a.studentId === studentId && 
+            a.date === date && 
+            (a.classTime === classTime || !a.classTime)
+        );
+
+        let time = '';
+        if (status !== 'absent') {
+            if (checkedAt) {
+                const checkedDate = new Date(checkedAt);
+                const hrs = String(checkedDate.getHours()).padStart(2, '0');
+                const mins = String(checkedDate.getMinutes()).padStart(2, '0');
+                time = `${hrs}:${mins}`;
+            } else {
+                time = classTime || '';
+            }
+        }
+
+        if (existing) {
+            existing.status = status;
+            existing.classTime = classTime;
+            existing.time = time;
+            existing.source = source;
+            existing.checkedAt = checkedAt || null;
+            if (note) {
+                existing.note = note;
+            }
+        } else {
+            const id = 'A' + (this.db.attendance.length ? Math.max(...this.db.attendance.map(a => parseInt(a.id.slice(1)) || 0)) + 1 : 1);
+            this.db.attendance.push({
+                id,
+                studentId,
+                date,
+                status,
+                time,
+                classTime,
+                source,
+                checkedAt: checkedAt || null,
+                note,
+                leavingTime: ''
+            });
+        }
+
+        this.saveDB();
+        this.notify('ATTENDANCE_CHANGED', this.db.attendance);
+    },
+
     getAttendanceWarnings(options = {}) {
         const {
             endDate = new Date().toISOString().slice(0, 10),
@@ -126,7 +185,7 @@ export const attendanceMethods = {
                 const sId = entry.studentId;
                 if (!studentSchedules[sId]) return;
 
-                const att = attendance.find(a => a.studentId === sId && a.date === date);
+                const att = attendance.find(a => a.studentId === sId && a.date === date && (a.classTime === entry.time || !a.classTime));
                 let status = '예정';
                 let checkTime = '';
                 let leavingTime = '';

@@ -1030,5 +1030,126 @@ test.describe('Director Attendance Control Console Flow', () => {
     await page.locator('.menu-item[data-view="dir-attendance-control"]').click();
     await page.waitForTimeout(300);
     await expect(latePolicyInfo).toContainText('현재 지각 기준: 수업 시작 후 10분');
+
+    // 14. Verify Phase 9C-5B-3: Quick Actions (Present/Late/Absent) on Attendance Control View
+    const studentRow = page.locator('.ac-student-row[data-student-id="S21"]').first();
+    await expect(studentRow).toBeVisible();
+
+    const editBtn = studentRow.locator('.ac-edit-btn');
+    await expect(editBtn).toBeVisible();
+
+    // Click '출결수정' button to open modal
+    await editBtn.click();
+    
+    const modal = page.locator('#common-modal');
+    await expect(modal).toHaveClass(/show/);
+
+    // Click '지각' inside the modal
+    const segmentBtns = modal.locator('.segment-btn');
+    await segmentBtns.locator('text="지각"').click();
+
+    // Setup dialog listener and click '수정하기'
+    page.once('dialog', dialog => {
+      expect(dialog.message()).toContain('출결 상태를 수정하시겠습니까?');
+      dialog.accept();
+    });
+    await modal.locator('#btn-submit-attendance-edit').click();
+    await page.waitForTimeout(450);
+
+    // Verify row status becomes '지각'
+    const statusCell = studentRow.locator('td').nth(4); // 5th column
+    await expect(statusCell).toContainText('지각');
+
+    // Click '출결수정' again and change to '결석'
+    await editBtn.click();
+    await expect(modal).toHaveClass(/show/);
+    await segmentBtns.locator('text="결석"').click();
+    page.once('dialog', dialog => {
+      dialog.accept();
+    });
+    await modal.locator('#btn-submit-attendance-edit').click();
+    await page.waitForTimeout(450);
+    await expect(statusCell).toContainText('결석');
+
+    // Click '출결수정' again and change to '출석'
+    await editBtn.click();
+    await expect(modal).toHaveClass(/show/);
+    await segmentBtns.locator('text="출석"').click();
+    page.once('dialog', dialog => {
+      dialog.accept();
+    });
+    await modal.locator('#btn-submit-attendance-edit').click();
+    await page.waitForTimeout(450);
+    await expect(statusCell).toContainText('출석');
+
+    // Verify 최다은 (S1) row status change works (Repair-A 최다은 row bug fix)
+    const s1Row = page.locator('.ac-student-row[data-student-id="S1"]').first();
+    await expect(s1Row).toBeVisible();
+    const s1EditBtn = s1Row.locator('.ac-edit-btn');
+    await s1EditBtn.click();
+    await expect(modal).toHaveClass(/show/);
+    await segmentBtns.locator('text="지각"').click();
+    page.once('dialog', dialog => {
+      dialog.accept();
+    });
+    await modal.locator('#btn-submit-attendance-edit').click();
+    await page.waitForTimeout(450);
+    await expect(s1Row.locator('td').nth(4)).toContainText('지각');
+
+    // Test Urgent Queue quick action present
+    // Open urgent queue panel
+    const queueToggleBtn = page.locator('#ac-urgent-btn');
+    await expect(queueToggleBtn).toBeVisible();
+    await queueToggleBtn.click();
+    
+    const queuePanel = page.locator('#ac-urgent-queue-panel');
+    await expect(queuePanel).toBeVisible();
+
+    // If there is any item in the queue (e.g. delayed students), try to click '출결수정' button inside the queue
+    const queueActionBtn = queuePanel.locator('.ac-queue-edit-btn').first();
+    if (await queueActionBtn.count() > 0) {
+        // Click edit button in queue
+        await queueActionBtn.click();
+        await expect(modal).toHaveClass(/show/);
+        
+        // Select '출석' inside the modal and submit
+        await segmentBtns.locator('text="출석"').click();
+        page.once('dialog', dialog => {
+          dialog.accept();
+        });
+        await modal.locator('#btn-submit-attendance-edit').click();
+        await page.waitForTimeout(450);
+    }
+    // Close queue panel if still open
+    if (await queuePanel.isVisible()) {
+        await queueToggleBtn.click();
+    }
+
+    // Verify Student-wise view edit button
+    const studentTab = page.locator('.ac-tab[data-tab="student"]');
+    await studentTab.click();
+    await page.waitForTimeout(450);
+
+    const s21StudentRow = page.locator('table.custom-table tbody tr[data-student-id="S21"]').first();
+    await expect(s21StudentRow).toBeVisible();
+    
+    const s21StudentEditBtn = s21StudentRow.locator('.ac-student-edit-btn');
+    await expect(s21StudentEditBtn).toBeVisible();
+    await s21StudentEditBtn.click();
+    await expect(modal).toHaveClass(/show/);
+    
+    // Change S21 status to '결석' and verify
+    await segmentBtns.locator('text="결석"').click();
+    page.once('dialog', dialog => {
+      dialog.accept();
+    });
+    await modal.locator('#btn-submit-attendance-edit').click();
+    await page.waitForTimeout(450);
+
+    // Switch back to daily view to verify status has indeed been updated to '결석'
+    const dailyTab = page.locator('.ac-tab[data-tab="daily"]');
+    await dailyTab.click();
+    await page.waitForTimeout(450);
+    await expect(page.locator('.ac-student-row[data-student-id="S21"] td').nth(4)).toContainText('결석');
   });
 });

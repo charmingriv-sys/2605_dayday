@@ -1,5 +1,6 @@
 import { stateStore } from '../../state.js';
 import { formatPhoneNumber, showKakaoTalkToast } from './shared.js';
+import { openModal, closeModal } from '../../app.js';
 
 /**
  * Phase 9B-Repair-C: 출결관제 정합성 보정 (renderDirectorAttendanceControl)
@@ -50,6 +51,7 @@ export function renderDirectorAttendanceControl(container) {
     let searchDebounceTimer = null;
     let latestStatsMap = {};
     let currentAttendance = [];
+    let openAttendanceEditModal = null;
 
     const handleDocumentClick = (e) => {
         const popover = container.querySelector('#ac-period-popover');
@@ -179,7 +181,7 @@ export function renderDirectorAttendanceControl(container) {
                 const s = studentsList.find(stud => stud.id === entry.studentId);
                 if (!s) return;
                 
-                const att = attendanceList.find(a => a.studentId === s.id && a.date === date);
+                const att = attendanceList.find(a => a.studentId === s.id && a.date === date && (a.classTime === entry.time || !a.classTime));
                 let status = '예정';
                 
                 if (att) {
@@ -304,7 +306,7 @@ export function renderDirectorAttendanceControl(container) {
                 const sId = entry.studentId;
                 if (!statsMap[sId]) return;
 
-                const att = attendanceList.find(a => a.studentId === sId && a.date === date);
+                const att = attendanceList.find(a => a.studentId === sId && a.date === date && (a.classTime === entry.time || !a.classTime));
                 let status = '예정';
                 let checkTime = '';
                 let leavingTime = '';
@@ -382,7 +384,7 @@ export function renderDirectorAttendanceControl(container) {
                 const sId = entry.studentId;
                 if (!statsMap[sId]) return;
 
-                const att = attendance.find(a => a.studentId === sId && a.date === date);
+                const att = attendance.find(a => a.studentId === sId && a.date === date && (a.classTime === entry.time || !a.classTime));
                 let status = '예정';
                 let checkTime = '';
                 let leavingTime = '';
@@ -528,7 +530,7 @@ export function renderDirectorAttendanceControl(container) {
         });
         const pastS1ClassDates = s1ClassDates.filter(d => d < selectedDate);
         if (pastS1ClassDates.length >= 4) {
-            attendance = attendance.filter(a => a.studentId !== 'S1');
+            attendance = attendance.filter(a => !(a.studentId === 'S1' && pastS1ClassDates.includes(a.date)));
             const len = pastS1ClassDates.length;
             // 3 presents, 1 late assigned to the latest 4 past class dates.
             // Rest of the past class dates remain unrecorded (defaults to absent).
@@ -554,7 +556,7 @@ export function renderDirectorAttendanceControl(container) {
                 .map(entry => {
                     const s = students.find(stud => stud.id === entry.studentId);
                     const t = teachers.find(teach => teach.id === entry.teacherId) || (s ? teachers.find(teach => teach.id === s.teacherId) : null);
-                    const att = s ? attendance.find(a => a.studentId === s.id && a.date === date) : null;
+                    const att = s ? attendance.find(a => a.studentId === s.id && a.date === date && (a.classTime === entry.time || !a.classTime)) : null;
                     
                     let status = '예정';
                     let checkTime = '';
@@ -727,6 +729,7 @@ export function renderDirectorAttendanceControl(container) {
                             <th>출석률</th>
                             <th>오늘/최근 상태</th>
                             <th>특이사항</th>
+                            <th style="text-align: center;">관리</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -755,6 +758,9 @@ export function renderDirectorAttendanceControl(container) {
                                     <td>${statusBadge}</td>
                                     <td style="font-size:0.75rem; color:var(--text-muted); font-style:italic;">
                                         ${item.student.scheduleNotes || '-'}
+                                    </td>
+                                    <td style="text-align: center;">
+                                        <button class="btn mini-btn ac-student-edit-btn" data-student-id="${item.student.id}" data-student-name="${item.student.name}" style="padding: 4px 8px; font-size: 0.75rem; border: 1px solid var(--border-color); background: transparent; color: var(--text-main); border-radius: 4px; cursor: pointer; transition: all 0.2s ease; margin-bottom: 0;">출결수정</button>
                                     </td>
                                 </tr>
                             `;
@@ -2119,9 +2125,9 @@ export function renderDirectorAttendanceControl(container) {
                                                     </td>
                                                     <td style="font-size: 0.78rem;">${msgText}</td>
                                                     <td>
-                                                        <button class="btn btn-none mini-btn ac-action-check-btn" style="padding: 2px 8px; font-size:0.75rem; border-color:var(--border-color); color:var(--primary);">
-                                                            ${row.status === '출석' ? '완료' : '확인'}
-                                                        </button>
+                                                        <div class="ac-quick-actions" style="display: flex; gap: 4px; align-items: center; justify-content: center;">
+                                                            <button class="btn mini-btn ac-edit-btn" data-student-id="${row.student.id}" data-student-name="${row.student.name}" data-date="${row.date}" data-time="${row.time}" data-status="${row.status === '출석' ? 'present' : (row.status === '지각' ? 'late' : (row.status === '결석' ? 'absent' : ''))}" style="padding: 4px 8px; font-size: 0.75rem; border: 1px solid var(--border-color); background: transparent; color: var(--text-main); border-radius: 4px; cursor: pointer; transition: all 0.2s ease; margin-bottom: 0;">출결수정</button>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             `;
@@ -2435,12 +2441,168 @@ export function renderDirectorAttendanceControl(container) {
             }
         });
 
-        // Action check buttons click
-        const checkBtns = container.querySelectorAll('.ac-action-check-btn');
-        checkBtns.forEach(btn => {
+        // Helper to resolve target classTime for a student on a specific date
+        const resolveTargetClassTime = (studentId, date) => {
+            const dailySchedule = stateStore.getTeacherStudentScheduleForDate(date) || [];
+            const studentClasses = dailySchedule.filter(entry => entry.studentId === studentId);
+            if (studentClasses.length > 0) {
+                return studentClasses[0].time;
+            }
+            const existing = stateStore.getAttendance().find(a => a.studentId === studentId && a.date === date);
+            if (existing && existing.classTime) {
+                return existing.classTime;
+            }
+            const defaultClasses = stateStore.getClassesForStudent(studentId);
+            if (defaultClasses.length > 0) {
+                return defaultClasses[0].time;
+            }
+            return '14:00';
+        };
+
+        // Helper to get attendance status of student for specific date and classTime
+        const getAttendanceStatusForClass = (studentId, date, classTime) => {
+            const record = stateStore.getAttendance().find(a => 
+                a.studentId === studentId && 
+                a.date === date && 
+                (a.classTime === classTime || !a.classTime)
+            );
+            if (record) return record.status;
+            
+            const dailySchedule = stateStore.getTeacherStudentScheduleForDate(date) || [];
+            const entry = dailySchedule.find(e => e.studentId === studentId && e.time === classTime);
+            if (entry) {
+                const now = new Date();
+                const lateThresholdMinutes = stateStore.getLateThresholdMinutes();
+                const [classHour, classMin] = classTime.split(':').map(Number);
+                const classTimeToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), classHour, classMin);
+                const diffMins = (now - classTimeToday) / (1000 * 60);
+                
+                if (date < now.toISOString().slice(0, 10)) {
+                    return 'absent';
+                } else if (date === now.toISOString().slice(0, 10)) {
+                    if (diffMins > lateThresholdMinutes) {
+                        return 'late';
+                    }
+                }
+            }
+            return 'none';
+        };
+
+        // Common function to open attendance edit modal
+        openAttendanceEditModal = (studentId, studentName, date, classTime, currentStatus) => {
+            const currentStatusKo = currentStatus === 'present' ? '출석' : (currentStatus === 'late' ? '지각' : (currentStatus === 'absent' ? '결석' : '예정'));
+            
+            const modalHtml = `
+                <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                    <h3 style="margin: 0; font-weight: 700; font-size: 1.25rem;">출결 수정</h3>
+                    <div style="display: flex; flex-direction: column; gap: 0.8rem; background: rgba(255,255,255,0.03); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border-color); font-size: 0.9rem;">
+                        <div><strong>원생명:</strong> <span style="margin-left: 8px;">${studentName}</span></div>
+                        <div><strong>수업일:</strong> <span style="margin-left: 8px;">${date}</span></div>
+                        <div><strong>수업시간:</strong> <span style="margin-left: 8px;">${classTime}</span></div>
+                        <div><strong>현재 상태:</strong> <span style="margin-left: 8px; font-weight: bold;" class="modal-current-status-text">${currentStatusKo}</span></div>
+                    </div>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                        <label style="font-weight: 600; font-size: 0.85rem;">변경할 상태</label>
+                        <div class="segmented-control" style="display: flex; background: rgba(255,255,255,0.02); padding: 4px; border-radius: var(--radius-md); gap: 4px; border: 1px solid var(--border-color);">
+                            <button type="button" class="segment-btn ${currentStatus === 'present' ? 'active' : ''}" data-status="present" style="flex: 1; border: none; padding: 10px 0; border-radius: var(--radius-sm); font-weight: ${currentStatus === 'present' ? '700' : '500'}; cursor: pointer; transition: all 0.2s; background: ${currentStatus === 'present' ? '#27ae60' : 'transparent'}; color: ${currentStatus === 'present' ? '#fff' : 'var(--text-muted)'}; margin-bottom: 0;">출석</button>
+                            <button type="button" class="segment-btn ${currentStatus === 'late' ? 'active' : ''}" data-status="late" style="flex: 1; border: none; padding: 10px 0; border-radius: var(--radius-sm); font-weight: ${currentStatus === 'late' ? '700' : '500'}; cursor: pointer; transition: all 0.2s; background: ${currentStatus === 'late' ? '#f39c12' : 'transparent'}; color: ${currentStatus === 'late' ? '#fff' : 'var(--text-muted)'}; margin-bottom: 0;">지각</button>
+                            <button type="button" class="segment-btn ${currentStatus === 'absent' ? 'active' : ''}" data-status="absent" style="flex: 1; border: none; padding: 10px 0; border-radius: var(--radius-sm); font-weight: ${currentStatus === 'absent' ? '700' : '500'}; cursor: pointer; transition: all 0.2s; background: ${currentStatus === 'absent' ? '#c0392b' : 'transparent'}; color: ${currentStatus === 'absent' ? '#fff' : 'var(--text-muted)'}; margin-bottom: 0;">결석</button>
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 0.5rem;">
+                        <button type="button" class="btn btn-secondary" data-close-modal style="width: 100px; padding: 10px; justify-content: center; margin-bottom: 0;">취소</button>
+                        <button type="button" class="btn btn-primary" id="btn-submit-attendance-edit" style="width: 120px; padding: 10px; justify-content: center; margin-bottom: 0;">수정하기</button>
+                    </div>
+                </div>
+            `;
+            
+            openModal(modalHtml, (contentArea) => {
+                contentArea.style.maxWidth = '400px';
+                contentArea.style.padding = '1.8rem 2rem';
+                
+                let activeStatus = currentStatus;
+                const segmentBtns = contentArea.querySelectorAll('.segment-btn');
+                
+                segmentBtns.forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        segmentBtns.forEach(b => {
+                            b.classList.remove('active');
+                            b.style.background = 'transparent';
+                            b.style.color = 'var(--text-muted)';
+                            b.style.fontWeight = '500';
+                        });
+                        
+                        btn.classList.add('active');
+                        activeStatus = btn.dataset.status;
+                        btn.style.fontWeight = '700';
+                        btn.style.color = '#fff';
+                        
+                        if (activeStatus === 'present') {
+                            btn.style.background = '#27ae60';
+                        } else if (activeStatus === 'late') {
+                            btn.style.background = '#f39c12';
+                        } else if (activeStatus === 'absent') {
+                            btn.style.background = '#c0392b';
+                        }
+                    });
+                });
+                
+                const submitBtn = contentArea.querySelector('#btn-submit-attendance-edit');
+                submitBtn.addEventListener('click', () => {
+                    if (!activeStatus || activeStatus === 'none') {
+                        alert('변경할 출결 상태를 선택해주세요.');
+                        return;
+                    }
+                    if (confirm('출결 상태를 수정하시겠습니까?')) {
+                        const checkedAt = activeStatus === 'absent' ? null : new Date().toISOString();
+                        
+                        stateStore.markAttendanceStatus({
+                            studentId,
+                            date,
+                            classTime,
+                            status: activeStatus,
+                            checkedAt,
+                            source: 'director_manual'
+                        });
+                        
+                        closeModal();
+                        renderDirectorAttendanceControl(container);
+                    }
+                });
+            });
+        };
+
+        // Bind click event for Daily schedule table Edit button
+        const editBtns = container.querySelectorAll('.ac-edit-btn');
+        editBtns.forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                showKakaoTalkToast('출결 확인 상태 변경은 실제 DB와 다음 Phase에 연계 구현됩니다.');
+                const studentId = btn.dataset.studentId;
+                const studentName = btn.dataset.studentName;
+                const date = btn.dataset.date;
+                const classTime = btn.dataset.time;
+                const rawStatus = btn.dataset.status;
+                const currentStatus = rawStatus === '출석' ? 'present' : (rawStatus === '지각' ? 'late' : (rawStatus === '결석' ? 'absent' : ''));
+                
+                openAttendanceEditModal(studentId, studentName, date, classTime, currentStatus);
+            });
+        });
+
+        // Bind click event for Student-wise view Edit button
+        const studentEditBtns = container.querySelectorAll('.ac-student-edit-btn');
+        studentEditBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const studentId = btn.dataset.studentId;
+                const studentName = btn.dataset.studentName;
+                
+                const date = selectedDate;
+                const classTime = resolveTargetClassTime(studentId, date);
+                const currentStatus = getAttendanceStatusForClass(studentId, date, classTime);
+                
+                openAttendanceEditModal(studentId, studentName, date, classTime, currentStatus);
             });
         });
 
@@ -2519,6 +2681,70 @@ export function renderDirectorAttendanceControl(container) {
         if (selectedStudentId) {
             selectStudent(selectedStudentId, false);
         }
+
+        // Keep urgent queue panel updated on re-render if it was open
+        const panel = container.querySelector('#ac-urgent-queue-panel');
+        if (panel && panel.classList.contains('open')) {
+            panel.style.display = 'block';
+            drawUrgentQueueList();
+        }
+    };
+
+    const drawUrgentQueueList = () => {
+        const panel = container.querySelector('#ac-urgent-queue-panel');
+        if (!panel) return;
+
+        const rangeDates = getRangeDates(selectedDate, selectedRangeMode);
+        const urgent = getPeriodUrgentList(rangeDates);
+
+        if (urgent.length > 0) {
+            panel.innerHTML = `
+                <div class="action-list" style="display:grid; gap:8px; padding:12px;">
+                    ${urgent.map(row => {
+                        let badgeTone = row.status === '지각' ? 'warn' : 'danger';
+                        const reasonText = row.note || (row.status === '지각' ? '지각 등원' : '결석 확인 필요');
+                        const dateLabel = selectedRangeMode === 'today' ? '' : `${row.date} `;
+                        return `
+                            <div class="action-item ac-queue-item" data-student-id="${row.student.id}" style="display:flex; align-items:center; justify-content:space-between; padding:9px 10px; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-card); cursor:pointer; box-sizing:border-box;">
+                                <div class="ac-queue-info" style="flex: 1;">
+                                    <b style="font-size:13px; color:var(--text-main);">${row.student.name}</b>
+                                    <small style="display:block; font-size:11px; color:var(--text-muted); margin-top:2px;">${dateLabel}${row.time} · ${reasonText}</small>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 6px;">
+                                    <span class="badge ${badgeTone}">${row.status}</span>
+                                    <button class="btn mini-btn ac-queue-edit-btn" data-student-id="${row.student.id}" data-student-name="${row.student.name}" data-date="${row.date}" data-time="${row.time}" data-status="${row.status}" style="padding: 2px 6px; font-size: 10px; height: 20px; line-height: 14px; border: 1px solid var(--border-color); color: var(--text-main); background: transparent; border-radius: 4px; font-weight: 700; cursor: pointer; margin-bottom: 0;">출결수정</button>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+            
+            panel.querySelectorAll('.ac-queue-edit-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const studentId = btn.dataset.studentId;
+                    const studentName = btn.dataset.studentName;
+                    const date = btn.dataset.date;
+                    const classTime = btn.dataset.time;
+                    const rawStatus = btn.dataset.status;
+                    const currentStatus = rawStatus === '출석' ? 'present' : (rawStatus === '지각' ? 'late' : (rawStatus === '결석' ? 'absent' : ''));
+                    openAttendanceEditModal(studentId, studentName, date, classTime, currentStatus);
+                });
+            });
+
+            panel.querySelectorAll('.ac-queue-info').forEach(info => {
+                info.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const item = info.closest('.ac-queue-item');
+                    const sid = item.dataset.studentId;
+                    selectStudent(sid);
+                });
+            });
+        } else {
+            const noQueueText = selectedRangeMode === 'today' ? '오늘 처리할 결석/지각 큐가 없습니다.' : '선택 기간 처리할 결석/지각 큐가 없습니다.';
+            panel.innerHTML = `<div class="placeholder-panel" style="padding:16px; text-align:center; color:var(--text-muted); font-size:13px;">${noQueueText}</div>`;
+        }
     };
 
     const toggleUrgentQueue = () => {
@@ -2528,40 +2754,7 @@ export function renderDirectorAttendanceControl(container) {
         const isOpen = panel.classList.toggle('open');
         if (isOpen) {
             panel.style.display = 'block';
-            
-            const rangeDates = getRangeDates(selectedDate, selectedRangeMode);
-            const urgent = getPeriodUrgentList(rangeDates);
-
-            if (urgent.length > 0) {
-                panel.innerHTML = `
-                    <div class="action-list" style="display:grid; gap:8px; padding:12px;">
-                        ${urgent.map(row => {
-                            let badgeTone = row.status === '지각' ? 'warn' : 'danger';
-                            const reasonText = row.note || (row.status === '지각' ? '지각 등원' : '결석 확인 필요');
-                            const dateLabel = selectedRangeMode === 'today' ? '' : `${row.date} `;
-                            return `
-                                <div class="action-item ac-queue-item" data-student-id="${row.student.id}" style="display:flex; align-items:center; justify-content:space-between; padding:9px 10px; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-card); cursor:pointer; box-sizing:border-box;">
-                                    <div>
-                                        <b style="font-size:13px; color:var(--text-main);">${row.student.name}</b>
-                                        <small style="display:block; font-size:11px; color:var(--text-muted); margin-top:2px;">${dateLabel}${row.time} · ${reasonText}</small>
-                                    </div>
-                                    <span class="badge ${badgeTone}">${row.status}</span>
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
-                `;
-                
-                panel.querySelectorAll('.ac-queue-item').forEach(item => {
-                    item.addEventListener('click', () => {
-                        const sid = item.dataset.studentId;
-                        selectStudent(sid);
-                    });
-                });
-            } else {
-                const noQueueText = selectedRangeMode === 'today' ? '오늘 처리할 결석/지각 큐가 없습니다.' : '선택 기간 처리할 결석/지각 큐가 없습니다.';
-                panel.innerHTML = `<div class="placeholder-panel" style="padding:16px; text-align:center; color:var(--text-muted); font-size:13px;">${noQueueText}</div>`;
-            }
+            drawUrgentQueueList();
         } else {
             panel.style.display = 'none';
         }
