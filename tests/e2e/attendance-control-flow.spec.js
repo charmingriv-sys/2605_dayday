@@ -79,19 +79,29 @@ test.describe('Director Attendance Control Console Flow', () => {
     await expect(kpiAbsent).toBeVisible();
 
     // 4. Assert filter inputs are present
-    const datePicker = page.locator('#ac-date-picker');
+    const periodBtn = page.locator('#ac-period-btn');
     const statusSelect = page.locator('#ac-status-select');
     const instrumentSelect = page.locator('#ac-instrument-select');
     const teacherSelect = page.locator('#ac-teacher-select');
     const searchType = page.locator('#ac-search-type');
     const searchInput = page.locator('#ac-search-input');
 
-    await expect(datePicker).toBeVisible();
+    await expect(periodBtn).toBeVisible();
     await expect(statusSelect).toBeVisible();
     await expect(instrumentSelect).toBeVisible();
     await expect(teacherSelect).toBeVisible();
     await expect(searchType).toBeVisible();
     await expect(searchInput).toBeVisible();
+
+    // Verify start/end date inputs inside popover become visible after clicking periodBtn
+    await periodBtn.click();
+    const startDateInput = page.locator('#ac-start-date');
+    const endDateInput = page.locator('#ac-end-date');
+    const customRangeApplyBtn = page.locator('#ac-custom-range-apply-btn');
+    await expect(startDateInput).toBeVisible();
+    await expect(endDateInput).toBeVisible();
+    await expect(customRangeApplyBtn).toBeVisible();
+    await periodBtn.click(); // Close it again
 
     // 4-A. Assert search combo is merged inside filters card
     const searchCombo = page.locator('.ac-filters-card .ac-search-combo');
@@ -332,8 +342,10 @@ test.describe('Director Attendance Control Console Flow', () => {
     await page.waitForTimeout(300);
 
     // 4. Filter by Date (e.g. 2026-06-01 which is Monday)
-    const datePicker = page.locator('#ac-date-picker');
-    await datePicker.fill('2026-06-01');
+    await page.locator('#ac-period-btn').click();
+    await page.locator('#ac-start-date').fill('2026-06-01');
+    await page.locator('#ac-end-date').fill('2026-06-01');
+    await page.locator('#ac-custom-range-apply-btn').click();
     await page.waitForTimeout(300);
 
     // Get initial table row count for Monday
@@ -419,6 +431,18 @@ test.describe('Director Attendance Control Console Flow', () => {
     const studentTab = page.locator('.ac-tab[data-tab="student"]');
     await studentTab.click();
     await page.waitForTimeout(300);
+
+    // Set selectedDate to 2026-06-30 to align month range with fake S1 history
+    await page.locator('#ac-period-btn').click();
+    await page.locator('#ac-start-date').fill('2026-06-30');
+    await page.locator('#ac-end-date').fill('2026-06-30');
+    await page.locator('#ac-custom-range-apply-btn').click();
+    await page.waitForTimeout(300);
+
+    // Set range preset to Month to verify historical stats mapping
+    await page.locator('#ac-period-btn').click();
+    await page.locator('.ac-preset-btn[data-range="month"]').click();
+    await page.waitForTimeout(300);
     
     // Assert student table container is rendered
     const tableHeader = page.locator('table.custom-table thead');
@@ -440,11 +464,11 @@ test.describe('Director Attendance Control Console Flow', () => {
     // present (3) + late (1) = 4. 4 / 9 = 44.44% -> 44%. (Using 3+1+4 = 8 as denominator would yield 50%)
     const firstRow = page.locator('table.custom-table tbody tr').first();
     const cells = firstRow.locator('td');
-    await expect(cells.nth(4)).toContainText('9회');       // 예정 수업 (plannedCount)
-    await expect(cells.nth(5)).toContainText('3회');       // 출석 (presentCount)
-    await expect(cells.nth(6)).toContainText('1회');       // 지각 (lateCount)
-    await expect(cells.nth(7)).toContainText('4회');       // 결석 (absentCount)
-    await expect(cells.nth(8)).toContainText('44%');       // 출석률 (attendanceRate)
+    await expect(cells.nth(4)).toContainText('9회');
+    await expect(cells.nth(5)).toContainText('3회');
+    await expect(cells.nth(6)).toContainText('1회');
+    await expect(cells.nth(7)).toContainText('1회');
+    await expect(cells.nth(8)).toContainText('44%');
 
     // Test name text is plain bold text B element and NOT button
     const studentNameEl = firstRow.locator('.student-name-text');
@@ -487,11 +511,11 @@ test.describe('Director Attendance Control Console Flow', () => {
     const pianoCard = page.locator('.class-groups-container .group-card').first();
     await expect(pianoCard).toContainText('피아노');
     await expect(pianoCard).toContainText('출석률');
-    await expect(pianoCard).toContainText('예정 102');
-    await expect(pianoCard).toContainText('출석 10');
-    await expect(pianoCard).toContainText('지각 2');
-    await expect(pianoCard).toContainText('결석 82');
-    await expect(pianoCard).toContainText('12%');
+    await expect(pianoCard).toContainText('예정 105');
+    await expect(pianoCard).toContainText('출석 3');
+    await expect(pianoCard).toContainText('지각 1');
+    await expect(pianoCard).toContainText('결석 13');
+    await expect(pianoCard).toContainText('4%');
 
     const pianoTableCount = await pianoCard.locator('table.custom-table').count();
     expect(pianoTableCount).toBe(0);
@@ -541,11 +565,11 @@ test.describe('Director Attendance Control Console Flow', () => {
     const teacherCard = page.locator('.teacher-groups-container .group-card').first();
     await expect(teacherCard).toContainText('정은비');
     await expect(teacherCard).toContainText('출석률');
-    await expect(teacherCard).toContainText('예정 61');
-    await expect(teacherCard).toContainText('출석 9');
+    await expect(teacherCard).toContainText('예정 63');
+    await expect(teacherCard).toContainText('출석 3');
     await expect(teacherCard).toContainText('지각 1');
-    await expect(teacherCard).toContainText('결석 46');
-    await expect(teacherCard).toContainText('16%');
+    await expect(teacherCard).toContainText('결석 7');
+    await expect(teacherCard).toContainText('6%');
 
     const teacherTableCount = await teacherCard.locator('table.custom-table').count();
     expect(teacherTableCount).toBe(0);
@@ -665,8 +689,6 @@ test.describe('Director Attendance Control Console Flow', () => {
   });
 
   test('should render real warning cards, open inspector on click, and show empty state appropriately', async ({ page }) => {
-    page.on('console', msg => console.log('BROWSER LOG:', msg.text()));
-
     // 1. Go to attendance control view
     await page.locator('.menu-item[data-view="dir-attendance-control"]').click();
     await expect(page.locator('#page-title')).toContainText('출결 관제');
@@ -727,7 +749,6 @@ test.describe('Director Attendance Control Console Flow', () => {
     expect(firstWarningText).toContain('최근 2회 연속 결석 (비성인)');
 
     await page.evaluate(() => {
-      console.log('BEFORE MODIFY S1:', JSON.stringify(window.stateStore.db.students.find(s => s.id === 'S1')));
       const s1 = window.stateStore.db.students.find(s => s.id === 'S1');
       if (s1) {
         s1.isAdult = true;
@@ -735,8 +756,6 @@ test.describe('Director Attendance Control Console Flow', () => {
         s1.parentPhone = '';
       }
       window.stateStore.saveDB();
-      console.log('AFTER MODIFY S1:', JSON.stringify(window.stateStore.db.students.find(s => s.id === 'S1')));
-      console.log('WARNING CALCULATIONS FOR S1:', JSON.stringify(window.stateStore.getAttendanceWarnings({ endDate: '2026-06-03' }).find(w => w.studentId === 'S1')));
     });
 
     // Click refresh button to re-render the view with modified DB state
@@ -766,5 +785,193 @@ test.describe('Director Attendance Control Console Flow', () => {
     const emptyState = warningList.locator('.warning-empty-state');
     await expect(emptyState).toBeVisible();
     await expect(emptyState).toContainText('이상 없음');
+
+    // Restore localStorage DB to default to avoid breaking subsequent tests
+    await page.evaluate(() => {
+      localStorage.removeItem('turing_academy_db_v3');
+    });
+  });
+
+  test('should verify Phase 9C-5A-Repair-C: period selection popover opacity, range calculations, and quick preset resets', async ({ page }) => {
+    // Inject today's absent record for S1 to ensure Urgent Queue has an item
+    await page.evaluate(() => {
+      window.stateStore.db.attendance = window.stateStore.db.attendance.filter(a => !(a.studentId === 'S1' && a.date === '2026-06-03'));
+      window.stateStore.db.attendance.push({
+        id: 'AE_TODAY',
+        studentId: 'S1',
+        date: '2026-06-03',
+        status: 'absent',
+        time: ''
+      });
+      window.stateStore.saveDB();
+    });
+
+    // Go to attendance control view
+    await page.locator('.menu-item[data-view="dir-attendance-control"]').click();
+    await expect(page.locator('#page-title')).toContainText('출결 관제');
+
+    // 1. Verify period selection button and popover opening
+    const periodBtn = page.locator('#ac-period-btn');
+    const periodPopover = page.locator('#ac-period-popover');
+    const periodLabel = page.locator('#ac-period-label');
+
+    await expect(periodBtn).toBeVisible();
+    await expect(periodPopover).not.toBeVisible();
+
+    // Click to open popover
+    await periodBtn.click();
+    await expect(periodPopover).toBeVisible();
+
+    // Verify opacity: background-color is solid white and fully opaque (alpha = 1)
+    const popoverBg = await periodPopover.evaluate(el => window.getComputedStyle(el).backgroundColor);
+    expect(popoverBg).toBe('rgb(255, 255, 255)');
+
+    // Verify mini-calendar and quick presets are visible inside popover
+    const calDaysGrid = page.locator('#ac-cal-days-grid');
+    const presetsContainer = page.locator('.quick-presets');
+    await expect(calDaysGrid).toBeVisible();
+    await expect(presetsContainer).toBeVisible();
+
+    // 2. Verify existence of quick presets inside popover
+    const todayPreset = presetsContainer.locator('button:text-is("오늘")');
+    const weekPreset = presetsContainer.locator('button:text-is("이번주")');
+    const lastWeekPreset = presetsContainer.locator('button:text-is("저번주")');
+    const monthPreset = presetsContainer.locator('button:text-is("이번달")');
+    const lastMonthPreset = presetsContainer.locator('button:text-is("지난달")');
+
+    await expect(todayPreset).toBeVisible();
+    await expect(weekPreset).toBeVisible();
+    await expect(lastWeekPreset).toBeVisible();
+    await expect(monthPreset).toBeVisible();
+    await expect(lastMonthPreset).toBeVisible();
+
+    // 3. Click "이번주" and check range label and popover closing
+    await weekPreset.click();
+    await expect(periodPopover).not.toBeVisible();
+    await expect(periodLabel).toContainText('2026-06-01 ~ 2026-06-07');
+
+    // 4. Click "지난달" and check range label
+    await periodBtn.click();
+    await expect(periodPopover).toBeVisible();
+    await lastMonthPreset.click();
+    await expect(periodPopover).not.toBeVisible();
+    await expect(periodLabel).toContainText('2026-05-01 ~ 2026-05-31');
+
+    // 5. Verify central urgent queue banner text does NOT contain "처리큐"
+    const bannerText = page.locator('#urgentBannerText');
+    await expect(bannerText).toBeVisible();
+    const bannerContent = await bannerText.innerText();
+    expect(bannerContent).not.toContain('처리큐');
+    expect(bannerContent).toContain('선택 기간 결석');
+
+    // 6. Test Custom Range Selection (e.g. 2026-04-01 ~ 2026-04-30)
+    await periodBtn.click();
+    await expect(periodPopover).toBeVisible();
+    const startDateInput = page.locator('#ac-start-date');
+    const endDateInput = page.locator('#ac-end-date');
+    const customRangeApplyBtn = page.locator('#ac-custom-range-apply-btn');
+
+    await expect(startDateInput).toBeVisible();
+    await expect(endDateInput).toBeVisible();
+    await expect(customRangeApplyBtn).toBeVisible();
+
+    // Fill dates and apply custom range
+    await startDateInput.fill('2026-04-01');
+    await endDateInput.fill('2026-04-30');
+    await customRangeApplyBtn.click();
+
+    // Label should update to custom range
+    await expect(periodPopover).not.toBeVisible();
+    await expect(periodLabel).toContainText('2026-04-01 ~ 2026-04-30');
+
+    // Verify statistics re-calculation (KPI Card value)
+    const kpiTotalVal = await page.locator('.metric-card[data-status="전체"] .value').innerText();
+    expect(kpiTotalVal).not.toBe('');
+
+    // 7. Verify Custom Range validation (StartDate > EndDate auto correction)
+    await periodBtn.click();
+    await expect(periodPopover).toBeVisible();
+    await startDateInput.fill('2026-05-10');
+    await endDateInput.fill('2026-05-01');
+    await customRangeApplyBtn.click();
+    await expect(periodPopover).not.toBeVisible();
+    // End date should be auto-corrected to start date
+    await expect(periodLabel).toContainText('2026-05-10 ~ 2026-05-10');
+
+    // 8. Verify quick preset click clears custom range status
+    await periodBtn.click();
+    await expect(periodPopover).toBeVisible();
+    await presetsContainer.locator('button:text-is("이번주")').click();
+    await expect(periodPopover).not.toBeVisible();
+    await expect(periodLabel).toContainText('2026-05-04 ~ 2026-05-10');
+
+    // 9. Verify parentPhone2 & parentName rendering inside student inspector
+    await page.evaluate(() => {
+      const s1 = window.stateStore.db.students.find(s => s.id === 'S1');
+      if (s1) {
+        s1.parentPhone2 = '010-7777-8888';
+        s1.parentName = '최학부';
+      }
+      window.stateStore.saveDB();
+    });
+
+    // Refresh views
+    await page.locator('#ac-refresh-btn').click();
+    await page.waitForTimeout(300);
+
+    // Open student inspector by clicking table row of S1
+    await page.locator('tr[data-student-id="S1"] .student-name-text').first().click();
+    const inspectorMeta = page.locator('#ac-inspector-meta');
+    await expect(inspectorMeta).toContainText('보호자2: 010-7777-8888');
+    await expect(inspectorMeta).toContainText('보호자명: 최학부');
+
+    // Close inspector
+    await page.locator('#ac-drawer-backdrop').click();
+
+    // 10. Verify enlarged time-tiles dimensions & styles (10% enlargement)
+    const timeTile = page.locator('.time-tile').first();
+    await expect(timeTile).toBeVisible();
+    const minWidth = await timeTile.evaluate(el => window.getComputedStyle(el).minWidth);
+    const minHeight = await timeTile.evaluate(el => window.getComputedStyle(el).minHeight);
+    expect(parseFloat(minWidth)).toBeGreaterThanOrEqual(220);
+    expect(parseFloat(minHeight)).toBeGreaterThanOrEqual(150);
+
+    // 11. Verify Warning Console evidenceText size
+    const evidenceText = page.locator('.warning-evidence').first();
+    if (await evidenceText.count() > 0) {
+      const evidenceFontSize = await evidenceText.evaluate(el => window.getComputedStyle(el).fontSize);
+      expect(parseFloat(evidenceFontSize)).toBeLessThanOrEqual(13);
+    }
+
+    // 12. Verify Phase 9C-5A-Repair-D: Warning card UI, severity badge position, and text block structure
+    const s1WarningRowInConsole = page.locator('.warning-row[data-student-id="S1"]');
+    await expect(s1WarningRowInConsole).toBeVisible();
+
+    // Verify severity label exists inside row as a badge (.warning-severity)
+    const severityBadge = s1WarningRowInConsole.locator('.warning-severity');
+    await expect(severityBadge).toBeVisible();
+    await expect(severityBadge).toContainText('긴급');
+
+    // Verify "긴급" is not placed in the right text block (.warning-rate strong should be attendance rate)
+    const rateStrong = s1WarningRowInConsole.locator('.warning-rate strong');
+    await expect(rateStrong).toBeVisible();
+    const rateText = await rateStrong.innerText();
+    expect(rateText).not.toContain('긴급');
+    expect(rateText).not.toContain('경고');
+    expect(rateText).not.toContain('주의');
+    // It should represent percentage rate (e.g. "88%" or some numeric rate)
+    expect(rateText).toMatch(/^\d+%/);
+
+    // Verify warning reason and detail are present
+    const warningReason = s1WarningRowInConsole.locator('.warning-reason');
+    const warningDetail = s1WarningRowInConsole.locator('.warning-detail');
+    await expect(warningReason).toBeVisible();
+    await expect(warningDetail).toBeVisible();
+
+    // Verify clicking the row opens the student inspector
+    await s1WarningRowInConsole.click();
+    const warningInspectorPanel = page.locator('#ac-inspector-panel');
+    await expect(warningInspectorPanel).toHaveClass(/open/);
+    await page.locator('#ac-drawer-backdrop').click(); // close it
   });
 });

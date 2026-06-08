@@ -38,25 +38,397 @@ export function renderDirectorAttendanceControl(container) {
     let selectedTeacherId = '전체';
     let searchQuery = '';
     let searchType = 'name'; // 'name' | 'id'
+    let selectedRangeMode = 'today'; // 'today' | 'week' | 'month' | 'last_week' | 'last_month'
+    let calYear = new Date().getFullYear();
+    let calMonth = new Date().getMonth() + 1;
+    let customRangeStart = null;
+    let customRangeEnd = null;
     
     // UI state
     let selectedStudentId = null;
     let isComposing = false;
     let searchDebounceTimer = null;
     let latestStatsMap = {};
+    let currentAttendance = [];
+
+    const handleDocumentClick = (e) => {
+        const popover = container.querySelector('#ac-period-popover');
+        const btn = container.querySelector('#ac-period-btn');
+        if (popover && btn && !popover.contains(e.target) && !btn.contains(e.target)) {
+            popover.style.display = 'none';
+        }
+    };
+    document.addEventListener('click', handleDocumentClick);
+
+    const formatDate = (date) => {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    };
 
     const get30DaysRange = (dateStr) => {
-        const end = new Date(dateStr);
-        const start = new Date(dateStr);
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const end = new Date(y, m - 1, d);
+        const start = new Date(y, m - 1, d);
         start.setDate(start.getDate() - 29);
         
         const dates = [];
         let current = new Date(start);
         while (current <= end) {
-            dates.push(current.toISOString().slice(0, 10));
+            dates.push(formatDate(current));
             current.setDate(current.getDate() + 1);
         }
         return dates;
+    };
+
+    const getRangeDates = (dateStr, mode) => {
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const target = new Date(y, m - 1, d);
+        const dates = [];
+        if (mode === 'today') {
+            dates.push(dateStr);
+        } else if (mode === 'custom') {
+            if (customRangeStart && customRangeEnd) {
+                const [sy, sm, sd] = customRangeStart.split('-').map(Number);
+                const [ey, em, ed] = customRangeEnd.split('-').map(Number);
+                const start = new Date(sy, sm - 1, sd);
+                const end = new Date(ey, em - 1, ed);
+                let current = new Date(start);
+                while (current <= end) {
+                    dates.push(formatDate(current));
+                    current.setDate(current.getDate() + 1);
+                }
+            } else {
+                dates.push(dateStr);
+            }
+        } else if (mode === 'week') {
+            const day = target.getDay();
+            const diffToMonday = day === 0 ? -6 : 1 - day;
+            const monday = new Date(target);
+            monday.setDate(target.getDate() + diffToMonday);
+            for (let i = 0; i < 7; i++) {
+                const current = new Date(monday);
+                current.setDate(monday.getDate() + i);
+                dates.push(formatDate(current));
+            }
+        } else if (mode === 'last_week') {
+            const day = target.getDay();
+            const diffToMonday = day === 0 ? -6 : 1 - day;
+            const monday = new Date(target);
+            monday.setDate(target.getDate() + diffToMonday - 7);
+            for (let i = 0; i < 7; i++) {
+                const current = new Date(monday);
+                current.setDate(monday.getDate() + i);
+                dates.push(formatDate(current));
+            }
+        } else if (mode === 'month') {
+            const year = target.getFullYear();
+            const month = target.getMonth();
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            let current = new Date(firstDay);
+            while (current <= lastDay) {
+                dates.push(formatDate(current));
+                current.setDate(current.getDate() + 1);
+            }
+        } else if (mode === 'last_month') {
+            const year = target.getFullYear();
+            const month = target.getMonth();
+            const firstDay = new Date(year, month - 1, 1);
+            const lastDay = new Date(year, month, 0);
+            let current = new Date(firstDay);
+            while (current <= lastDay) {
+                dates.push(formatDate(current));
+                current.setDate(current.getDate() + 1);
+            }
+        }
+        return dates;
+    };
+
+    const getRangeLabelText = () => {
+        const rangeDates = getRangeDates(selectedDate, selectedRangeMode);
+        if (selectedRangeMode === 'today') {
+            return `오늘: ${selectedDate}`;
+        }
+        if (selectedRangeMode === 'custom') {
+            return `기간: ${customRangeStart} ~ ${customRangeEnd}`;
+        }
+        const modeKo = {
+            'today': '오늘',
+            'week': '이번주',
+            'last_week': '저번주',
+            'month': '이번달',
+            'last_month': '지난달'
+        };
+        const start = rangeDates[0];
+        const end = rangeDates[rangeDates.length - 1];
+        return `${modeKo[selectedRangeMode] || '기간'}: ${start} ~ ${end}`;
+    };
+
+    const getPeriodUrgentList = (rangeDates) => {
+        const studentsList = stateStore.getStudents();
+        const attendanceList = currentAttendance;
+        const now = new Date();
+        const todayStr = now.toISOString().slice(0, 10);
+        const urgent = [];
+        
+        rangeDates.forEach(date => {
+            const dailySchedule = stateStore.getTeacherStudentScheduleForDate(date) || [];
+            dailySchedule.forEach(entry => {
+                const s = studentsList.find(stud => stud.id === entry.studentId);
+                if (!s) return;
+                
+                const att = attendanceList.find(a => a.studentId === s.id && a.date === date);
+                let status = '예정';
+                
+                if (att) {
+                    if (att.status === 'present') status = '출석';
+                    else if (att.status === 'late') status = '지각';
+                    else if (att.status === 'absent') status = '결석';
+                } else {
+                    const [classHour, classMin] = entry.time.split(':').map(Number);
+                    const classTimeToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), classHour, classMin);
+                    const diffMins = (now - classTimeToday) / (1000 * 60);
+                    
+                    if (date < todayStr) {
+                        status = '결석';
+                    } else if (date === todayStr) {
+                        if (diffMins > 15) {
+                            status = '지각';
+                        }
+                    }
+                }
+                
+                if (status === '지각' || status === '결석') {
+                    const duplicate = urgent.find(x => x.student.id === s.id && x.date === date && x.time === entry.time);
+                    if (!duplicate) {
+                        urgent.push({ student: s, status, date, time: entry.time, note: att ? (att.note || '') : '' });
+                    }
+                }
+            });
+        });
+        
+        urgent.sort((a, b) => b.date.localeCompare(a.date) || a.time.localeCompare(b.time));
+        return urgent;
+    };
+
+    const drawCalendarGrid = (year, month) => {
+        const grid = container.querySelector('#ac-cal-days-grid');
+        const monthLabel = container.querySelector('#ac-cal-month-label');
+        if (!grid || !monthLabel) return;
+        
+        monthLabel.textContent = `${year}년 ${month}월`;
+        
+        const firstDay = new Date(year, month - 1, 1);
+        const lastDay = new Date(year, month, 0).getDate();
+        const startOffset = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
+        
+        const prevMonthLastDay = new Date(year, month - 1, 0).getDate();
+        
+        let html = '';
+        
+        // Prev month days
+        for (let i = startOffset - 1; i >= 0; i--) {
+            const d = prevMonthLastDay - i;
+            const prevM = month === 1 ? 12 : month - 1;
+            const prevY = month === 1 ? year - 1 : year;
+            const dateStr = `${prevY}-${String(prevM).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            html += `<div class="ac-cal-day-cell other-month" data-date="${dateStr}">${d}</div>`;
+        }
+        
+        // Current month days
+        for (let d = 1; d <= lastDay; d++) {
+            const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            const isSelected = dateStr === selectedDate ? 'selected' : '';
+            const cellColorStyle = new Date(year, month - 1, d).getDay() === 0 ? 'color: #e74c3c;' : 'color: var(--text-main);';
+            const selectedStyle = isSelected ? 'background: var(--primary) !important; color: #fff !important; font-weight: 700;' : '';
+            html += `<div class="ac-cal-day-cell ${isSelected}" data-date="${dateStr}" style="${cellColorStyle} ${selectedStyle}">${d}</div>`;
+        }
+        
+        // Next month days to fill 42 cells
+        const totalFilled = startOffset + lastDay;
+        const nextDays = 42 - totalFilled;
+        for (let d = 1; d <= nextDays; d++) {
+            const nextM = month === 12 ? 1 : month + 1;
+            const nextY = month === 12 ? year + 1 : year;
+            const dateStr = `${nextY}-${String(nextM).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            html += `<div class="ac-cal-day-cell other-month" data-date="${dateStr}">${d}</div>`;
+        }
+        
+        grid.innerHTML = html;
+        
+        // Add click listener to cells
+        grid.querySelectorAll('.ac-cal-day-cell').forEach(cell => {
+            cell.addEventListener('click', () => {
+                selectedDate = cell.dataset.date;
+                const parts = selectedDate.split('-');
+                calYear = parseInt(parts[0]);
+                calMonth = parseInt(parts[1]);
+                selectedRangeMode = 'today';
+                customRangeStart = null;
+                customRangeEnd = null;
+                const popover = container.querySelector('#ac-period-popover');
+                if (popover) popover.style.display = 'none';
+                render();
+            });
+        });
+    };
+
+    const getRangeAttendanceStats = (dateStr, mode, studentsList, attendanceList) => {
+        const dates = getRangeDates(dateStr, mode);
+        const statsMap = {};
+        const teachersList = stateStore.getTeachers();
+
+        studentsList.forEach(s => {
+            statsMap[s.id] = {
+                student: s,
+                total: 0,
+                present: 0,
+                late: 0,
+                absent: 0,
+                scheduled: 0,
+                history: [],
+                lastStatus: '예정',
+                lastTimeText: '-'
+            };
+        });
+
+        const now = new Date();
+        const todayStr = now.toISOString().slice(0, 10);
+
+        dates.forEach(date => {
+            const dailySchedule = stateStore.getTeacherStudentScheduleForDate(date) || [];
+            dailySchedule.forEach(entry => {
+                const sId = entry.studentId;
+                if (!statsMap[sId]) return;
+
+                const att = attendanceList.find(a => a.studentId === sId && a.date === date);
+                let status = '예정';
+                let checkTime = '';
+                let leavingTime = '';
+
+                if (att) {
+                    checkTime = att.time || '';
+                    leavingTime = att.leavingTime || '';
+                    if (att.status === 'present') status = '출석';
+                    else if (att.status === 'late') status = '지각';
+                    else if (att.status === 'absent') status = '결석';
+                } else {
+                    const [classHour, classMin] = entry.time.split(':').map(Number);
+                    const classTimeToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), classHour, classMin);
+                    const diffMins = (now - classTimeToday) / (1000 * 60);
+
+                    if (date < todayStr) {
+                        status = '결석';
+                    } else if (date === todayStr) {
+                        if (diffMins > 15) {
+                            status = '지각';
+                        }
+                    }
+                }
+
+                statsMap[sId].total++;
+                if (status === '출석') statsMap[sId].present++;
+                else if (status === '지각') statsMap[sId].late++;
+                else if (status === '결석') statsMap[sId].absent++;
+                else statsMap[sId].scheduled++;
+
+                statsMap[sId].history.push({ date, time: entry.time, status, checkTime, leavingTime, note: att ? (att.note || '') : '' });
+            });
+        });
+
+        Object.keys(statsMap).forEach(sId => {
+            const item = statsMap[sId];
+            const plannedCount = item.total;
+            item.attendanceRate = plannedCount > 0 ? Math.round(((item.present + item.late) / plannedCount) * 100) : null;
+            
+            if (item.history.length > 0) {
+                item.history.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+                const lastActive = item.history.find(h => h.status !== '예정') || item.history[0];
+                item.lastStatus = lastActive.status;
+                item.lastTimeText = lastActive.checkTime ? `${lastActive.checkTime}${lastActive.leavingTime ? ' ~ ' + lastActive.leavingTime : ''}` : '-';
+            }
+        });
+
+        return statsMap;
+    };
+
+    const get30DaysAttendanceStats = (dateStr, students, attendance) => {
+        const dates = get30DaysRange(dateStr);
+        const statsMap = {};
+        students.forEach(s => {
+            statsMap[s.id] = {
+                student: s,
+                total: 0,
+                present: 0,
+                late: 0,
+                absent: 0,
+                scheduled: 0,
+                history: [],
+                lastStatus: '예정',
+                lastTimeText: '-'
+            };
+        });
+
+        const now = new Date();
+        const todayStr = now.toISOString().slice(0, 10);
+
+        dates.forEach(date => {
+            const dailySchedule = stateStore.getTeacherStudentScheduleForDate(date) || [];
+            dailySchedule.forEach(entry => {
+                const sId = entry.studentId;
+                if (!statsMap[sId]) return;
+
+                const att = attendance.find(a => a.studentId === sId && a.date === date);
+                let status = '예정';
+                let checkTime = '';
+                let leavingTime = '';
+
+                if (att) {
+                    checkTime = att.time || '';
+                    leavingTime = att.leavingTime || '';
+                    if (att.status === 'present') status = '출석';
+                    else if (att.status === 'late') status = '지각';
+                    else if (att.status === 'absent') status = '결석';
+                } else {
+                    const [classHour, classMin] = entry.time.split(':').map(Number);
+                    const classTimeToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), classHour, classMin);
+                    const diffMins = (now - classTimeToday) / (1000 * 60);
+
+                    if (date < todayStr) {
+                        status = '결석';
+                    } else if (date === todayStr) {
+                        if (diffMins > 15) {
+                            status = '지각';
+                        }
+                    }
+                }
+
+                statsMap[sId].total++;
+                if (status === '출석') statsMap[sId].present++;
+                else if (status === '지각') statsMap[sId].late++;
+                else if (status === '결석') statsMap[sId].absent++;
+                else statsMap[sId].scheduled++;
+
+                statsMap[sId].history.push({ date, time: entry.time, status, checkTime, leavingTime, note: att ? (att.note || '') : '' });
+            });
+        });
+
+        Object.keys(statsMap).forEach(sId => {
+            const item = statsMap[sId];
+            const plannedCount = item.total;
+            item.attendanceRate = plannedCount > 0 ? Math.round(((item.present + item.late) / plannedCount) * 100) : null;
+            
+            if (item.history.length > 0) {
+                item.history.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+                const lastActive = item.history.find(h => h.status !== '예정') || item.history[0];
+                item.lastStatus = lastActive.status;
+                item.lastTimeText = lastActive.checkTime ? `${lastActive.checkTime}${lastActive.leavingTime ? ' ~ ' + lastActive.leavingTime : ''}` : '-';
+            }
+        });
+
+        return statsMap;
     };
 
     // Stable mock generator for student detail metrics
@@ -162,63 +534,70 @@ export function renderDirectorAttendanceControl(container) {
             attendance.push({ id: 'V_A3', studentId: 'S1', date: pastS1ClassDates[len - 2], status: 'present', time: '14:00', note: '스케일 연습 진행함' });
             attendance.push({ id: 'V_A4', studentId: 'S1', date: pastS1ClassDates[len - 1], status: 'late', time: '14:15', note: '교통 체증으로 지각' });
         }
+        currentAttendance = attendance;
 
-        // 1. Process attendance lists for the selected date
+        // 1. Process attendance lists for the selected range of dates
         const daysKo = ['일', '월', '화', '수', '목', '금', '토'];
-        const targetDateObj = new Date(selectedDate);
-        const dayOfWeekKo = daysKo[targetDateObj.getDay()];
-
-        // Generate base rows from schedule snapshots / overrides using the unified API
-        const dailySchedule = stateStore.getTeacherStudentScheduleForDate(selectedDate) || [];
-        const dailyClasses = dailySchedule
-            .map(entry => {
-                const s = students.find(stud => stud.id === entry.studentId);
-                const t = teachers.find(teach => teach.id === entry.teacherId) || (s ? teachers.find(teach => teach.id === s.teacherId) : null);
-                const att = s ? attendance.find(a => a.studentId === s.id && a.date === selectedDate) : null;
-                
-                // Determine display status based on class time and attendance record
-                let status = '예정';
-                let checkTime = '';
-                let leavingTime = '';
-                let note = '';
-                
-                if (att) {
-                    checkTime = att.time || '';
-                    leavingTime = att.leavingTime || '';
-                    note = att.note || '';
+        const rangeDates = getRangeDates(selectedDate, selectedRangeMode);
+        
+        let dailyClasses = [];
+        
+        rangeDates.forEach(date => {
+            const dateObj = new Date(date);
+            const dayKo = daysKo[dateObj.getDay()];
+            const dailySchedule = stateStore.getTeacherStudentScheduleForDate(date) || [];
+            
+            const classesForDate = dailySchedule
+                .map(entry => {
+                    const s = students.find(stud => stud.id === entry.studentId);
+                    const t = teachers.find(teach => teach.id === entry.teacherId) || (s ? teachers.find(teach => teach.id === s.teacherId) : null);
+                    const att = s ? attendance.find(a => a.studentId === s.id && a.date === date) : null;
                     
-                    if (att.status === 'present') status = '출석';
-                    else if (att.status === 'late') status = '지각';
-                    else if (att.status === 'absent') status = '결석';
-                } else {
-                    // Check if class time has passed today (default 지연 기준: 15분)
-                    const [classHour, classMin] = entry.time.split(':').map(Number);
-                    const now = new Date();
-                    const classTimeToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), classHour, classMin);
-                    const diffMins = (now - classTimeToday) / (1000 * 60);
+                    let status = '예정';
+                    let checkTime = '';
+                    let leavingTime = '';
+                    let note = '';
                     
-                    if (selectedDate < now.toISOString().slice(0, 10)) {
-                        status = '결석'; // Past date defaults to absent
-                    } else if (selectedDate === now.toISOString().slice(0, 10)) {
-                        if (diffMins > 15) {
-                            status = '지각'; // Overdue class today is mapped to late (지각)
+                    if (att) {
+                        checkTime = att.time || '';
+                        leavingTime = att.leavingTime || '';
+                        note = att.note || '';
+                        
+                        if (att.status === 'present') status = '출석';
+                        else if (att.status === 'late') status = '지각';
+                        else if (att.status === 'absent') status = '결석';
+                    } else {
+                        const [classHour, classMin] = entry.time.split(':').map(Number);
+                        const now = new Date();
+                        const classTimeToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), classHour, classMin);
+                        const diffMins = (now - classTimeToday) / (1000 * 60);
+                        
+                        if (date < now.toISOString().slice(0, 10)) {
+                            status = '결석';
+                        } else if (date === now.toISOString().slice(0, 10)) {
+                            if (diffMins > 15) {
+                                status = '지각';
+                            }
                         }
                     }
-                }
-
-                return {
-                    classId: entry.id,
-                    time: entry.time,
-                    student: s,
-                    teacher: t,
-                    status: status,
-                    checkTime: checkTime,
-                    leavingTime: leavingTime,
-                    note: note,
-                    instrument: s ? s.instrument : ''
-                };
-            })
-            .filter(row => row.student); // Ensure student exists
+                    
+                    return {
+                        classId: entry.id,
+                        date: date,
+                        dayOfWeek: dayKo,
+                        time: entry.time,
+                        student: s,
+                        teacher: t,
+                        status: status,
+                        checkTime: checkTime,
+                        leavingTime: leavingTime,
+                        note: note,
+                        instrument: s ? s.instrument : ''
+                    };
+                })
+                .filter(row => row.student);
+            dailyClasses = dailyClasses.concat(classesForDate);
+        });
 
         // Extract instrument list for filter dropdown
         const instruments = ['전체', ...new Set(students.map(s => s.instrument).filter(Boolean))];
@@ -265,85 +644,7 @@ export function renderDirectorAttendanceControl(container) {
         // Sort rows by time
         filteredRows.sort((a, b) => a.time.localeCompare(b.time));
 
-        // 30-day range and attendance stats calculation helpers
-        const get30DaysAttendanceStats = (dateStr) => {
-            const dates = get30DaysRange(dateStr);
-            const statsMap = {};
-            students.forEach(s => {
-                statsMap[s.id] = {
-                    student: s,
-                    total: 0,
-                    present: 0,
-                    late: 0,
-                    absent: 0,
-                    scheduled: 0,
-                    history: [],
-                    lastStatus: '예정',
-                    lastTimeText: '-'
-                };
-            });
-
-            const now = new Date();
-            const todayStr = now.toISOString().slice(0, 10);
-
-            dates.forEach(date => {
-                const dailySchedule = stateStore.getTeacherStudentScheduleForDate(date) || [];
-                dailySchedule.forEach(entry => {
-                    const sId = entry.studentId;
-                    if (!statsMap[sId]) return;
-
-                    const att = attendance.find(a => a.studentId === sId && a.date === date);
-                    let status = '예정';
-                    let checkTime = '';
-                    let leavingTime = '';
-
-                    if (att) {
-                        checkTime = att.time || '';
-                        leavingTime = att.leavingTime || '';
-                        if (att.status === 'present') status = '출석';
-                        else if (att.status === 'late') status = '지각';
-                        else if (att.status === 'absent') status = '결석';
-                    } else {
-                        const [classHour, classMin] = entry.time.split(':').map(Number);
-                        const classTimeToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), classHour, classMin);
-                        const diffMins = (now - classTimeToday) / (1000 * 60);
-
-                        if (date < todayStr) {
-                            status = '결석';
-                        } else if (date === todayStr) {
-                            if (diffMins > 15) {
-                                status = '지각';
-                            }
-                        }
-                    }
-
-                    statsMap[sId].total++;
-                    if (status === '출석') statsMap[sId].present++;
-                    else if (status === '지각') statsMap[sId].late++;
-                    else if (status === '결석') statsMap[sId].absent++;
-                    else statsMap[sId].scheduled++;
-
-                    statsMap[sId].history.push({ date, time: entry.time, status, checkTime, leavingTime, note: att ? (att.note || '') : '' });
-                });
-            });
-
-            Object.keys(statsMap).forEach(sId => {
-                const item = statsMap[sId];
-                const plannedCount = item.total;
-                item.attendanceRate = plannedCount > 0 ? Math.round(((item.present + item.late) / plannedCount) * 100) : null;
-                
-                if (item.history.length > 0) {
-                    item.history.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-                    const lastActive = item.history.find(h => h.status !== '예정') || item.history[0];
-                    item.lastStatus = lastActive.status;
-                    item.lastTimeText = lastActive.checkTime ? `${lastActive.checkTime}${lastActive.leavingTime ? ' ~ ' + lastActive.leavingTime : ''}` : '-';
-                }
-            });
-
-            return statsMap;
-        };
-
-        const statsMap = get30DaysAttendanceStats(selectedDate);
+        const statsMap = getRangeAttendanceStats(selectedDate, selectedRangeMode, students, attendance);
         latestStatsMap = statsMap;
 
         // Filter student list based on selected filters and search
@@ -640,6 +941,11 @@ export function renderDirectorAttendanceControl(container) {
             pending: dailyClasses.filter(r => r.status === '결석').length
         };
 
+        // Calculate urgent counts for selected range
+        const urgentList = getPeriodUrgentList(rangeDates);
+        const urgentAbsentCount = urgentList.filter(x => x.status === '결석').length;
+        const urgentLateCount = urgentList.filter(x => x.status === '지각').length;
+
         // Operating hours config for compact-board
         const operatingHours = ['13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00'];
         const hourGroups = {};
@@ -727,29 +1033,75 @@ export function renderDirectorAttendanceControl(container) {
                     line-height: 1.4;
                     box-sizing: border-box;
                 }
-                .ac-presets {
-                    display: flex;
-                    gap: 4px;
-                    padding: 3px;
-                    border-radius: 6px;
-                    background: rgba(0,0,0,0.05);
+                .ac-period-selector {
+                    position: relative;
+                    display: inline-block;
+                }
+                .period-popover {
+                    display: none;
+                    position: absolute;
+                    top: 40px;
+                    left: 0;
+                    z-index: 1000;
+                    background: #ffffff !important;
+                    opacity: 1 !important;
+                    border: 1px solid var(--border-color);
+                    border-radius: 8px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                    padding: 12px;
+                    min-width: 380px;
                     box-sizing: border-box;
                 }
-                .ac-preset-btn {
+                @media (max-width: 480px) {
+                    .period-popover {
+                        min-width: 320px;
+                        width: calc(100vw - 32px);
+                    }
+                }
+                .btn-preset-quick, .ac-preset-btn {
                     min-height: 28px;
                     padding: 0 10px;
                     font-size: 0.75rem;
-                    border: none;
-                    background: transparent;
-                    color: var(--text-muted);
+                    border: 1px solid var(--border-color);
+                    background: var(--bg-body);
+                    color: var(--text-main);
                     cursor: pointer;
                     border-radius: 4px;
                     box-sizing: border-box;
+                    transition: all 0.15s ease;
                 }
-                .ac-preset-btn.active {
-                    background: var(--bg-body);
-                    color: var(--primary);
-                    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                .btn-preset-quick:hover, .ac-preset-btn:hover {
+                    background: rgba(9, 132, 227, 0.05) !important;
+                    border-color: var(--primary) !important;
+                }
+                .btn-preset-quick.active, .ac-preset-btn.active {
+                    background: var(--primary) !important;
+                    color: #fff !important;
+                    border-color: var(--primary) !important;
+                }
+                .ac-cal-day-cell {
+                    height: 24px;
+                    line-height: 24px;
+                    font-size: 11px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    color: var(--text-main);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    transition: all 0.15s ease;
+                }
+                .ac-cal-day-cell:hover {
+                    background: rgba(9, 132, 227, 0.08);
+                }
+                .ac-cal-day-cell.selected {
+                    background: var(--primary) !important;
+                    color: #fff !important;
+                    font-weight: 700;
+                }
+                .ac-cal-day-cell.other-month {
+                    color: var(--text-muted);
+                    opacity: 0.4;
                 }
                 
                 .ac-search-combo {
@@ -887,10 +1239,10 @@ export function renderDirectorAttendanceControl(container) {
                     -webkit-overflow-scrolling: touch;
                 }
                 .time-tile {
-                    flex: 0 0 180px;
-                    min-width: 180px;
-                    min-height: 120px;
-                    padding: 14px;
+                    flex: 0 0 220px;
+                    min-width: 220px;
+                    min-height: 150px;
+                    padding: 18px;
                     border: 1px solid var(--border-color);
                     border-radius: 8px;
                     background: var(--bg-body);
@@ -904,21 +1256,21 @@ export function renderDirectorAttendanceControl(container) {
                     display: flex;
                     align-items: center;
                     justify-content: space-between;
-                    margin-bottom: 8px;
+                    margin-bottom: 10px;
                 }
                 .tile-time {
-                    font-size: 16px;
+                    font-size: 20px;
                     font-weight: 800;
                 }
                 .tile-count {
-                    font-size: 14px;
+                    font-size: 17px;
                     color: var(--text-muted);
                 }
                 .tile-stats {
                     display: grid;
                     grid-template-columns: repeat(4, minmax(0, 1fr));
-                    gap: 4px;
-                    margin-bottom: 8px;
+                    gap: 6px;
+                    margin-bottom: 10px;
                 }
                 .tile-stat {
                     display: flex;
@@ -927,11 +1279,11 @@ export function renderDirectorAttendanceControl(container) {
                     justify-content: center;
                     border-radius: 4px;
                     background: rgba(0,0,0,0.04);
-                    font-size: 13px;
+                    font-size: 15px;
                     font-weight: 700;
                     line-height: 1.2;
                     text-align: center;
-                    padding: 4px 0;
+                    padding: 6px 0;
                 }
                 .tile-stat.good { background: rgba(46,204,113,0.1); color: #2ecc71; }
                 .tile-stat.warn { background: rgba(241,196,15,0.1); color: #f1c40f; }
@@ -950,9 +1302,9 @@ export function renderDirectorAttendanceControl(container) {
                     grid-template-columns: 14px 1fr auto;
                     align-items: center;
                     gap: 4px;
-                    padding: 4px 6px;
+                    padding: 5px 8px;
                     border-radius: 4px;
-                    font-size: 13px;
+                    font-size: 15px;
                     font-weight: 700;
                     cursor: pointer;
                     transition: background-color 0.15s ease;
@@ -971,7 +1323,7 @@ export function renderDirectorAttendanceControl(container) {
                     white-space: nowrap;
                 }
                 .mini-meta {
-                    font-size: 13px;
+                    font-size: 15px;
                     opacity: 0.8;
                 }
  
@@ -1026,12 +1378,27 @@ export function renderDirectorAttendanceControl(container) {
                 }
                 .warning-row {
                     display: grid;
-                    grid-template-columns: 38px 1fr 60px;
-                    gap: 10px;
+                    grid-template-columns: 38px minmax(0, 1fr) 70px;
+                    gap: 12px;
                     align-items: center;
-                    padding: 10px 16px;
+                    padding: 12px 16px;
                     border-bottom: 1px solid var(--border-color);
                     cursor: pointer;
+                }
+                .warning-rate {
+                    text-align: right;
+                    white-space: nowrap;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: flex-end;
+                    justify-content: center;
+                    min-width: 60px;
+                }
+                .warning-evidence {
+                    font-size: 0.72rem !important;
+                    color: var(--text-muted);
+                    display: inline-block;
+                    word-break: break-all;
                 }
                 .warning-row:last-child {
                     border-bottom: none;
@@ -1055,15 +1422,42 @@ export function renderDirectorAttendanceControl(container) {
                 
                 .warning-student {
                     display: flex;
-                    align-items: baseline;
-                    gap: 7px;
+                    align-items: center;
+                    flex-wrap: wrap;
+                    gap: 6px;
                     margin-bottom: 4px;
                 }
                 .warning-student b {
                     font-size: 0.85rem;
                     font-weight: 800;
+                    color: var(--text-main);
                 }
-                .warning-student span {
+                .warning-severity {
+                    padding: 1px 5px;
+                    border-radius: 4px;
+                    font-size: 10px;
+                    font-weight: 700;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    line-height: 1.2;
+                }
+                .warning-severity.critical {
+                    background: rgba(231,76,60,0.1);
+                    color: #e74c3c;
+                    border: 1px solid rgba(231,76,60,0.2);
+                }
+                .warning-severity.red {
+                    background: rgba(231,76,60,0.1);
+                    color: #e74c3c;
+                    border: 1px solid rgba(231,76,60,0.2);
+                }
+                .warning-severity.amber {
+                    background: rgba(241,196,15,0.1);
+                    color: #f1c40f;
+                    border: 1px solid rgba(241,196,15,0.2);
+                }
+                .warning-student-meta {
                     font-size: 0.72rem;
                     color: var(--text-muted);
                 }
@@ -1089,19 +1483,17 @@ export function renderDirectorAttendanceControl(container) {
                     background: rgba(241,196,15,0.05);
                     color: #f1c40f;
                 }
-                .warning-rate {
-                    text-align: right;
-                }
                 .warning-rate strong {
                     display: block;
-                    font-size: 1.1rem;
+                    font-size: 0.95rem;
                     font-weight: 800;
-                    color: #e74c3c;
+                    color: var(--text-main);
                 }
                 .warning-rate span {
                     display: block;
-                    font-size: 0.6rem;
+                    font-size: 0.65rem;
                     color: var(--text-muted);
+                    margin-top: 2px;
                 }
                 
                 /* Common Badge Styles */
@@ -1486,13 +1878,54 @@ export function renderDirectorAttendanceControl(container) {
 
                 <!-- 2. Filter Bar (Search combo merged inside) -->
                 <div class="ac-filters-card">
-                    <div class="ac-presets">
-                        <button class="ac-preset-btn active">오늘</button>
-                        <button class="ac-preset-btn">주간</button>
-                        <button class="ac-preset-btn">월간</button>
+                    <!-- Period selector -->
+                    <div class="ac-period-selector" style="position: relative; display: inline-block;">
+                        <button type="button" id="ac-period-btn" class="form-control" style="width: 260px; height: 36px; text-align: left; background: var(--bg-body); border: 1px solid var(--border-color); border-radius: 4px; font-size: 13px; color: var(--text-main); font-weight: 600; display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: 0 12px; box-sizing: border-box;">
+                            <span id="ac-period-label">${getRangeLabelText()}</span>
+                            <span style="font-size: 10px; color: var(--text-muted);">▼</span>
+                        </button>
+                        
+                        <!-- Popover panel -->
+                        <div id="ac-period-popover" class="period-popover" style="display: none; position: absolute; top: 40px; left: 0; z-index: 1000; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: var(--shadow-md); padding: 12px; min-width: 380px; box-sizing: border-box; max-width: calc(100vw - 32px);">
+                            <div style="display: flex; gap: 12px;">
+                                <!-- Left: Small Mini Calendar -->
+                                <div class="mini-datepicker-calendar" style="flex: 1;">
+                                    <div class="calendar-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                                        <button type="button" id="ac-cal-prev-btn" style="border: none; background: transparent; cursor: pointer; padding: 4px; font-weight: 700; color: var(--text-main);">〈</button>
+                                        <span id="ac-cal-month-label" style="font-size: 13px; font-weight: 700; color: var(--text-main);"></span>
+                                        <button type="button" id="ac-cal-next-btn" style="border: none; background: transparent; cursor: pointer; padding: 4px; font-weight: 700; color: var(--text-main);">〉</button>
+                                    </div>
+                                    <!-- Days grid header -->
+                                    <div class="calendar-grid-header" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 4px;">
+                                        <span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span><span style="color: #e74c3c;">일</span>
+                                    </div>
+                                    <!-- Days grid cells -->
+                                    <div id="ac-cal-days-grid" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center;">
+                                        <!-- filled dynamically -->
+                                    </div>
+                                    
+                                    <div class="manual-date-picker" style="margin-top: 8px; border-top: 1px solid var(--border-color); padding-top: 8px; display: flex; flex-direction: column; gap: 6px;">
+                                        <span style="font-size: 11px; color: var(--text-muted); font-weight: 600;">직접 기간 선택</span>
+                                        <div style="display: flex; align-items: center; gap: 4px;">
+                                            <input type="date" id="ac-start-date" value="${customRangeStart || selectedDate}" class="form-control" style="width: 115px; height: 28px; font-size: 11px; padding: 0 6px; box-sizing: border-box;">
+                                            <span style="font-size: 11px; color: var(--text-muted);">~</span>
+                                            <input type="date" id="ac-end-date" value="${customRangeEnd || selectedDate}" class="form-control" style="width: 115px; height: 28px; font-size: 11px; padding: 0 6px; box-sizing: border-box;">
+                                            <button type="button" id="ac-custom-range-apply-btn" class="btn btn-primary" style="height: 28px; font-size: 11px; padding: 0 8px; min-width: 40px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: 700;">적용</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Right: Quick Preset Buttons (Vertical) -->
+                                <div class="quick-presets" style="width: 90px; border-left: 1px solid var(--border-color); padding-left: 12px; display: flex; flex-direction: column; gap: 6px; justify-content: center;">
+                                    <button type="button" class="btn-preset-quick ac-preset-btn ${selectedRangeMode === 'today' ? 'active' : ''}" data-range="today" style="width: 100%; height: 28px; font-size: 12px; font-weight: 600; padding: 0; cursor: pointer;">오늘</button>
+                                    <button type="button" class="btn-preset-quick ac-preset-btn ${selectedRangeMode === 'week' ? 'active' : ''}" data-range="week" style="width: 100%; height: 28px; font-size: 12px; font-weight: 600; padding: 0; cursor: pointer;">이번주</button>
+                                    <button type="button" class="btn-preset-quick ac-preset-btn ${selectedRangeMode === 'last_week' ? 'active' : ''}" data-range="last_week" style="width: 100%; height: 28px; font-size: 12px; font-weight: 600; padding: 0; cursor: pointer;">저번주</button>
+                                    <button type="button" class="btn-preset-quick ac-preset-btn ${selectedRangeMode === 'month' ? 'active' : ''}" data-range="month" style="width: 100%; height: 28px; font-size: 12px; font-weight: 600; padding: 0; cursor: pointer;">이번달</button>
+                                    <button type="button" class="btn-preset-quick ac-preset-btn ${selectedRangeMode === 'last_month' ? 'active' : ''}" data-range="last_month" style="width: 100%; height: 28px; font-size: 12px; font-weight: 600; padding: 0; cursor: pointer;">지난달</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    
-                    <input type="date" id="ac-date-picker" value="${selectedDate}" class="form-control" style="width: 150px; height:36px;">
                     
                     <select id="ac-status-select" class="form-control" style="width: 130px; height:36px;">
                         <option value="전체" ${selectedStatus === '전체' ? 'selected' : ''}>전체 상태</option>
@@ -1564,12 +1997,13 @@ export function renderDirectorAttendanceControl(container) {
                 <!-- 5. Urgent Queue Banner -->
                 <section class="radar-banner">
                     <div>
-                        <p id="urgentBannerText">오늘 발생한 결석, 지각 처리 큐입니다.</p>
+                        <p id="urgentBannerText">${selectedRangeMode === 'today' ? `오늘 발생한 결석 ${urgentAbsentCount}명, 지각 ${urgentLateCount}명입니다.` : `선택 기간 결석 ${urgentAbsentCount}명, 지각 ${urgentLateCount}명입니다.`}</p>
                     </div>
                     <div>
                         <button class="btn btn-none mini-btn" id="ac-urgent-btn" style="background:#fff;">전체 보기</button>
                     </div>
                 </section>
+                <div class="queue-popover" id="ac-urgent-queue-panel" style="display:none; border:1px solid var(--border-color); border-radius:var(--radius-md); background:var(--bg-card); box-shadow:var(--shadow-sm); margin-top:8px;"></div>
 
                 <!-- 6. Main Grid (Vertical stack of Left Panel + Warning Console) -->
                 <div class="main-grid">
@@ -1661,7 +2095,7 @@ export function renderDirectorAttendanceControl(container) {
 
                                             return `
                                                 <tr class="ac-student-row ${row.student.id === selectedStudentId ? 'selected' : ''}" data-student-id="${row.student.id}">
-                                                    <td>${dayOfWeekKo}</td>
+                                                    <td>${row.dayOfWeek}</td>
                                                     <td><b>${row.time}</b></td>
                                                     <td>
                                                         <div class="student-cell">
@@ -1711,16 +2145,20 @@ export function renderDirectorAttendanceControl(container) {
                                         <div class="warning-main">
                                             <div class="warning-student">
                                                 <b>${w.studentName}</b>
-                                                <span>${w.instrument} · ${w.teacherName}</span>
+                                                <span class="warning-severity ${w.severity}">${w.severity === 'critical' ? '긴급' : (w.severity === 'red' ? '경고' : '주의')}</span>
+                                                <span class="warning-student-meta">${w.instrument} · ${w.teacherName}</span>
                                             </div>
-                                            <div class="warning-tags" style="margin-top: 4px;">
+                                            <div class="warning-tags" style="margin-top: 4px; display: flex; align-items: center; flex-wrap: wrap; gap: 4px;">
                                                 <span class="warning-chip ${w.severity === 'amber' ? 'amber' : ''}">△ ${w.title}</span>
-                                                <span class="warning-evidence" style="font-size:13px; color:var(--text-muted); margin-left: 6px;">${w.evidenceText}</span>
+                                            </div>
+                                            <div class="warning-evidence" style="margin-top: 4px; font-size: 0.72rem; color: var(--text-muted); line-height: 1.35; display: block;">
+                                                <span class="warning-reason" style="display:block; font-weight:700; color:var(--text-main);">${w.reason}</span>
+                                                <span class="warning-detail" style="display:block; margin-top:2px;">${w.evidenceText}</span>
                                             </div>
                                         </div>
                                         <div class="warning-rate">
-                                            <strong style="color: ${w.severity === 'amber' ? '#f1c40f' : '#e74c3c'};">${w.severity.toUpperCase()}</strong>
-                                            <span>${w.reason}</span>
+                                            <strong>${w.attendanceRate !== undefined && w.attendanceRate !== null ? w.attendanceRate : 0}%</strong>
+                                            <span>출석률</span>
                                         </div>
                                     </div>
                                 `;
@@ -1831,10 +2269,36 @@ export function renderDirectorAttendanceControl(container) {
         `;
 
         // Bind event listeners
-        const datePicker = container.querySelector('#ac-date-picker');
-        if (datePicker) {
-            datePicker.addEventListener('change', (e) => {
-                selectedDate = e.target.value;
+        const applyBtn = container.querySelector('#ac-custom-range-apply-btn');
+        if (applyBtn) {
+            applyBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const startInput = container.querySelector('#ac-start-date');
+                const endInput = container.querySelector('#ac-end-date');
+                if (startInput && endInput) {
+                    let startVal = startInput.value;
+                    let endVal = endInput.value;
+                    if (!startVal || !endVal) {
+                        const popover = container.querySelector('#ac-period-popover');
+                        if (popover) popover.style.display = 'none';
+                        return;
+                    }
+                    if (startVal > endVal) {
+                        endVal = startVal;
+                        endInput.value = startVal;
+                    }
+                    customRangeStart = startVal;
+                    customRangeEnd = endVal;
+                    selectedRangeMode = 'custom';
+                    selectedDate = startVal;
+                    const parts = selectedDate.split('-');
+                    if (parts.length === 3) {
+                        calYear = parseInt(parts[0]);
+                        calMonth = parseInt(parts[1]);
+                    }
+                }
+                const popover = container.querySelector('#ac-period-popover');
+                if (popover) popover.style.display = 'none';
                 render();
             });
         }
@@ -1891,6 +2355,19 @@ export function renderDirectorAttendanceControl(container) {
             });
         }
 
+        // Range presets click
+        const presetBtns = container.querySelectorAll('.ac-preset-btn');
+        presetBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                selectedRangeMode = btn.dataset.range;
+                customRangeStart = null;
+                customRangeEnd = null;
+                const popover = container.querySelector('#ac-period-popover');
+                if (popover) popover.style.display = 'none';
+                render();
+            });
+        });
+
         // Tabs click
         const tabBtns = container.querySelectorAll('.ac-tab');
         tabBtns.forEach(btn => {
@@ -1909,11 +2386,11 @@ export function renderDirectorAttendanceControl(container) {
             });
         });
 
-        // Urgent banner click
+        // Urgent banner click & Urgent Queue Toggle
         const urgentBtn = container.querySelector('#ac-urgent-btn');
         if (urgentBtn) {
             urgentBtn.addEventListener('click', () => {
-                showKakaoTalkToast('[가상 알림] 오늘 발생한 결석/지각 등의 긴급 확인 필요 리스트 팝업은 다음 Phase에서 연계 지원 예정입니다.');
+                toggleUrgentQueue();
             });
         }
 
@@ -1982,9 +2459,102 @@ export function renderDirectorAttendanceControl(container) {
             backdrop.addEventListener('click', closeInspector);
         }
 
+        // Draw calendar grid
+        drawCalendarGrid(calYear, calMonth);
+
+        // Period popover toggle event
+        const periodBtn = container.querySelector('#ac-period-btn');
+        const periodPopover = container.querySelector('#ac-period-popover');
+        if (periodBtn && periodPopover) {
+            periodBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isHidden = periodPopover.style.display === 'none';
+                periodPopover.style.display = isHidden ? 'block' : 'none';
+                if (isHidden) {
+                    drawCalendarGrid(calYear, calMonth);
+                }
+            });
+            
+            periodPopover.addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
+        }
+
+        // Calendar prev/next month buttons
+        const prevCalBtn = container.querySelector('#ac-cal-prev-btn');
+        const nextCalBtn = container.querySelector('#ac-cal-next-btn');
+        if (prevCalBtn) {
+            prevCalBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                calMonth--;
+                if (calMonth < 1) {
+                    calMonth = 12;
+                    calYear--;
+                }
+                drawCalendarGrid(calYear, calMonth);
+            });
+        }
+        if (nextCalBtn) {
+            nextCalBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                calMonth++;
+                if (calMonth > 12) {
+                    calMonth = 1;
+                    calYear++;
+                }
+                drawCalendarGrid(calYear, calMonth);
+            });
+        }
+
         // If a student was selected, keep drawer open on re-render
         if (selectedStudentId) {
             selectStudent(selectedStudentId, false);
+        }
+    };
+
+    const toggleUrgentQueue = () => {
+        const panel = container.querySelector('#ac-urgent-queue-panel');
+        if (!panel) return;
+        
+        const isOpen = panel.classList.toggle('open');
+        if (isOpen) {
+            panel.style.display = 'block';
+            
+            const rangeDates = getRangeDates(selectedDate, selectedRangeMode);
+            const urgent = getPeriodUrgentList(rangeDates);
+
+            if (urgent.length > 0) {
+                panel.innerHTML = `
+                    <div class="action-list" style="display:grid; gap:8px; padding:12px;">
+                        ${urgent.map(row => {
+                            let badgeTone = row.status === '지각' ? 'warn' : 'danger';
+                            const reasonText = row.note || (row.status === '지각' ? '지각 등원' : '결석 확인 필요');
+                            const dateLabel = selectedRangeMode === 'today' ? '' : `${row.date} `;
+                            return `
+                                <div class="action-item ac-queue-item" data-student-id="${row.student.id}" style="display:flex; align-items:center; justify-content:space-between; padding:9px 10px; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-card); cursor:pointer; box-sizing:border-box;">
+                                    <div>
+                                        <b style="font-size:13px; color:var(--text-main);">${row.student.name}</b>
+                                        <small style="display:block; font-size:11px; color:var(--text-muted); margin-top:2px;">${dateLabel}${row.time} · ${reasonText}</small>
+                                    </div>
+                                    <span class="badge ${badgeTone}">${row.status}</span>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+                
+                panel.querySelectorAll('.ac-queue-item').forEach(item => {
+                    item.addEventListener('click', () => {
+                        const sid = item.dataset.studentId;
+                        selectStudent(sid);
+                    });
+                });
+            } else {
+                const noQueueText = selectedRangeMode === 'today' ? '오늘 처리할 결석/지각 큐가 없습니다.' : '선택 기간 처리할 결석/지각 큐가 없습니다.';
+                panel.innerHTML = `<div class="placeholder-panel" style="padding:16px; text-align:center; color:var(--text-muted); font-size:13px;">${noQueueText}</div>`;
+            }
+        } else {
+            panel.style.display = 'none';
         }
     };
 
@@ -1994,8 +2564,9 @@ export function renderDirectorAttendanceControl(container) {
         const student = students.find(s => s.id === studentId);
         if (!student) return;
 
-        // Retrieve real stats calculated for the selectedDate
-        const studentStats = latestStatsMap[studentId] || {
+        // Retrieve 30-day fixed stats for inspector drawer display
+        const statsMap30Days = get30DaysAttendanceStats(selectedDate, students, currentAttendance);
+        const studentStats = statsMap30Days[studentId] || {
             total: 0,
             present: 0,
             late: 0,
@@ -2022,8 +2593,17 @@ export function renderDirectorAttendanceControl(container) {
             const ageText = student.age ? `${student.age}세` : '';
             const adultAgeInfo = [isAdultText !== '-' ? isAdultText : '', ageText].filter(Boolean).join(' · ');
             const phoneText = student.phone ? `본인: ${student.phone}` : '';
-            const parentPhoneText = student.parentPhone ? `보호자: ${student.parentPhone}` : '';
-            const contacts = [phoneText, parentPhoneText].filter(Boolean).join(' | ');
+            const parentNameText = student.parentName ? `보호자명: ${student.parentName}` : '';
+            const parentPhoneText = student.parentPhone ? `보호자1: ${student.parentPhone}` : '';
+            const parentPhone2Text = student.parentPhone2 ? `보호자2: ${student.parentPhone2}` : '';
+
+            const contactItems = [];
+            if (phoneText) contactItems.push(`<div>${phoneText}</div>`);
+            if (parentNameText) contactItems.push(`<div>${parentNameText}</div>`);
+            if (parentPhoneText) contactItems.push(`<div>${parentPhoneText}</div>`);
+            if (parentPhone2Text) contactItems.push(`<div>${parentPhone2Text}</div>`);
+            
+            const contactsHtml = contactItems.join('');
 
             meta.innerHTML = `
                 <div style="font-size:13px; color:var(--text-muted); margin-top:4px;">
@@ -2033,7 +2613,11 @@ export function renderDirectorAttendanceControl(container) {
                     악기/반: ${student.instrument || '미지정'} · 강사: ${teacherName}
                 </div>
                 ${adultAgeInfo ? `<div style="font-size:13px; color:var(--text-muted); margin-top:2px;">구분: ${adultAgeInfo}</div>` : ''}
-                ${contacts ? `<div style="font-size:13px; color:var(--text-muted); margin-top:2px; font-weight:600;">${contacts}</div>` : ''}
+                ${contactsHtml ? `
+                    <div class="ac-inspector-contacts" style="font-size:13px; color:var(--text-muted); margin-top:6px; font-weight:600; line-height:1.4; word-break:break-all;">
+                        ${contactsHtml}
+                    </div>
+                ` : ''}
             `;
         }
 
@@ -2257,6 +2841,7 @@ export function renderDirectorAttendanceControl(container) {
         unsubTeachers();
         unsubClasses();
         unsubAttendance();
+        document.removeEventListener('click', handleDocumentClick);
 
         // Clean up global header actions and restore defaults
         const dynamicActions = document.getElementById('ac-global-header-actions');
