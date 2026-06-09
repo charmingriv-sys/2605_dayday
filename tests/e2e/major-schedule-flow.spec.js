@@ -384,4 +384,95 @@ test.describe('Director Major Schedule CRUD & Flow', () => {
     });
     expect(messagesCount).toBe(2); // Initial seed count is 2
   });
+
+  test('should verify main page search target policies, chosung search, and exact member ID match', async ({ page }) => {
+    // 1. Click "주요일정관리" menu item in the sidebar
+    const menuItem = page.locator('.menu-item[data-view="dir-major-schedule"]');
+    await expect(menuItem).toBeVisible();
+    await menuItem.click();
+
+    // Verify main search input placeholder
+    const mainSearchInput = page.locator('#searchInput');
+    await expect(mainSearchInput).toBeVisible();
+    await expect(mainSearchInput).toHaveAttribute('placeholder', '일정명, 장소, 원생명, 초성, 악기, 회원번호 검색');
+
+    // Make sure we are in "주요일정보기" (Event View) first
+    const eventViewBtn = page.locator('#eventViewBtn');
+    await eventViewBtn.click();
+
+    // A. Event Name search: "피아노 콩쿠르"
+    await mainSearchInput.fill('피아노 콩쿠르');
+    // Expect only "한국청소년 피아노 콩쿠르" to be visible
+    await expect(page.locator('#eventBody tr')).toHaveCount(1);
+    await expect(page.locator('#eventBody tr')).toContainText('한국청소년 피아노 콩쿠르');
+
+    // B. Place search: "예술의전당"
+    await mainSearchInput.fill('예술의전당');
+    await expect(page.locator('#eventBody tr')).toHaveCount(1);
+    await expect(page.locator('#eventBody tr')).toContainText('한국청소년 피아노 콩쿠르');
+
+    // C. Student Name search: "김제나"
+    await mainSearchInput.fill('김제나');
+    // 김제나 (S2) participates in "영 첼리스트 콩쿠르" and "6월 결석자 보강 편성"
+    await expect(page.locator('#eventBody tr')).toHaveCount(2);
+    await expect(page.locator('#eventBody tr').nth(0)).toContainText('6월 결석자 보강 편성');
+    await expect(page.locator('#eventBody tr').nth(1)).toContainText('영 첼리스트 콩쿠르');
+
+    // D. Chosung search: "ㅊㄷㅇ" -> 최다은 (S1)
+    await mainSearchInput.fill('ㅊㄷㅇ');
+    // 최다은 participates in "한국청소년 피아노 콩쿠르" and "여름 정기 음악회"
+    await expect(page.locator('#eventBody tr')).toHaveCount(2);
+    await expect(page.locator('#eventBody tr').nth(0)).toContainText('한국청소년 피아노 콩쿠르');
+    await expect(page.locator('#eventBody tr').nth(1)).toContainText('여름 정기 음악회');
+
+    // E. Instrument search: "오보에" -> 박수호 (S3), 채은재 (S5)
+    // S3 -> "예원학교 입시 실기고사", "입시반 학부모 상담 주간"
+    // S5 -> "한국청소년 피아노 콩쿠르"
+    await mainSearchInput.fill('오보에');
+    await expect(page.locator('#eventBody tr')).toHaveCount(3);
+
+    // F. Member ID search (Exact Match priority): "S1"
+    await mainSearchInput.fill('S1');
+    // If exact match priority is active, only S1 (최다은) is matched, NOT S10 or S11.
+    // S1 participates in: "한국청소년 피아노 콩쿠르" and "여름 정기 음악회"
+    // S10 and S11 do not participate in any schedules. So if exact match works, we get 2 results.
+    await expect(page.locator('#eventBody tr')).toHaveCount(2);
+    await expect(page.locator('#eventBody tr').nth(0)).toContainText('한국청소년 피아노 콩쿠르');
+    await expect(page.locator('#eventBody tr').nth(1)).toContainText('여름 정기 음악회');
+
+    // G. Verify Excluded Search Targets:
+    // 1. Owner Name "정은비" (owner of ev1) -> should not match
+    await mainSearchInput.fill('정은비');
+    await expect(page.locator('#eventBody tr')).toHaveCount(1);
+    await expect(page.locator('#eventBody tr')).toContainText('검색 결과가 없습니다.');
+
+    // 2. Event Memo "보호자 확인 필요" (memo of ev1) -> should not match
+    await mainSearchInput.fill('보호자 확인 필요');
+    await expect(page.locator('#eventBody tr')).toHaveCount(1);
+    await expect(page.locator('#eventBody tr')).toContainText('검색 결과가 없습니다.');
+
+    // H. Verify identical filtering on both tabs
+    // 1. Search "ㅊㄷㅇ" in Event View
+    await mainSearchInput.fill('ㅊㄷㅇ');
+    await expect(page.locator('#eventBody tr')).toHaveCount(2); // 2 events
+
+    // 2. Switch to "일정참여학생보기" (Participant View)
+    const participantViewBtn = page.locator('#participantViewBtn');
+    await participantViewBtn.click();
+    // Since we searched for "최다은" (ㅊㄷㅇ), only 최다은 rows should match (2 rows).
+    // Event: "한국청소년 피아노 콩쿠르", Student: "최다은"
+    // Event: "여름 정기 음악회", Student: "최다은"
+    // (Other students in these events like S5 채은재, S4 신지준 should be filtered out from rows)
+    await expect(page.locator('#eventBody tr')).toHaveCount(2);
+    await expect(page.locator('#eventBody tr').nth(0)).toContainText('최다은');
+    await expect(page.locator('#eventBody tr').nth(1)).toContainText('최다은');
+    // Ensure it doesn't contain 채은재 or 신지준
+    await expect(page.locator('#eventBody')).not.toContainText('채은재');
+    await expect(page.locator('#eventBody')).not.toContainText('신지준');
+
+    // 3. Clear search in Participant View
+    await mainSearchInput.fill('');
+    // Should restore all student-event rows (11 rows)
+    await expect(page.locator('#eventBody tr')).toHaveCount(11);
+  });
 });

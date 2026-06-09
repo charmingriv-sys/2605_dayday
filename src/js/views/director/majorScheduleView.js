@@ -15,6 +15,36 @@ const getChosungStr = (str) => {
     return res;
 };
 
+const matchStudent = (student, cleanQuery, isChosungOnly, exactMatchExists) => {
+  if (!cleanQuery) return true;
+  
+  // Name match
+  let nameMatch = false;
+  if (isChosungOnly) {
+    nameMatch = getChosungStr(student.name.toLowerCase()).includes(cleanQuery);
+  } else {
+    nameMatch = student.name.toLowerCase().includes(cleanQuery);
+  }
+
+  // Instrument/Class (grade) match
+  const instrumentMatch = student.instrument && student.instrument.toLowerCase().includes(cleanQuery);
+  const gradeMatch = student.grade && student.grade.toLowerCase().includes(cleanQuery);
+
+  // Member ID match
+  const studentMemberNoStr = student.studentMemberNo !== undefined && student.studentMemberNo !== null ? String(student.studentMemberNo).toLowerCase() : "";
+  const memberNoStr = student.memberNo !== undefined && student.memberNo !== null ? String(student.memberNo).toLowerCase() : "";
+  const idStr = student.id !== undefined && student.id !== null ? String(student.id).toLowerCase() : "";
+
+  let idMatch = false;
+  if (exactMatchExists) {
+    idMatch = (studentMemberNoStr === cleanQuery || memberNoStr === cleanQuery || idStr === cleanQuery);
+  } else {
+    idMatch = (studentMemberNoStr.includes(cleanQuery) || memberNoStr.includes(cleanQuery) || idStr.includes(cleanQuery));
+  }
+
+  return nameMatch || instrumentMatch || gradeMatch || idMatch;
+};
+
 const formatNoteDate = (dateStr) => {
   if (!dateStr) return "-";
   try {
@@ -133,6 +163,8 @@ export function renderMajorSchedule(container) {
       
       return {
         id: student.id,
+        studentMemberNo: student.studentMemberNo,
+        memberNo: student.memberNo,
         name: student.name,
         grade: grade,
         instrument: student.instrument || '피아노',
@@ -149,13 +181,30 @@ export function renderMajorSchedule(container) {
   const getFilteredEventsList = () => {
     const list = stateStore.getMajorSchedules() || [];
     const adaptedStudents = getAdaptedStudents();
+    
+    const cleanQuery = searchQuery.trim().toLowerCase();
+    const isChosungOnly = cleanQuery ? /^[ㄱ-ㅎ\s]+$/.test(cleanQuery) : false;
+
+    let exactMatchExists = false;
+    if (cleanQuery) {
+      exactMatchExists = adaptedStudents.some(student => {
+        const studentMemberNoStr = student.studentMemberNo !== undefined && student.studentMemberNo !== null ? String(student.studentMemberNo).toLowerCase() : "";
+        const memberNoStr = student.memberNo !== undefined && student.memberNo !== null ? String(student.memberNo).toLowerCase() : "";
+        const idStr = student.id !== undefined && student.id !== null ? String(student.id).toLowerCase() : "";
+        return studentMemberNoStr === cleanQuery || memberNoStr === cleanQuery || idStr === cleanQuery;
+      });
+    }
+
     return list.filter((event) => {
       const parts = adaptedStudents.filter(s => event.participantStudentIds && event.participantStudentIds.includes(s.id));
       if (activeType !== "all" && event.type !== activeType) return false;
       if (selectedOwner !== "전체" && event.ownerId !== selectedOwner) return false;
-      if (searchQuery) {
-        const haystack = [event.name, event.ownerId, event.memo || '', ...parts.map((student) => student.name)].join(" ");
-        if (!haystack.includes(searchQuery)) return false;
+      
+      if (cleanQuery) {
+        const eventNameMatch = event.name.toLowerCase().includes(cleanQuery);
+        const eventPlaceMatch = event.place && event.place.toLowerCase().includes(cleanQuery);
+        const anyStudentMatches = parts.some(student => matchStudent(student, cleanQuery, isChosungOnly, exactMatchExists));
+        if (!eventNameMatch && !eventPlaceMatch && !anyStudentMatches) return false;
       }
       return true;
     }).sort((a, b) => dday(a.eventDate) - dday(b.eventDate));
@@ -981,7 +1030,7 @@ export function renderMajorSchedule(container) {
               </select>
             </div>
             <div class="search-box">
-              <input id="searchInput" placeholder="일정명, 학생명 검색" value="${searchQuery}" />
+              <input id="searchInput" placeholder="일정명, 장소, 원생명, 초성, 악기, 회원번호 검색" value="${searchQuery}" />
             </div>
           </section>
 
@@ -1117,6 +1166,15 @@ export function renderMajorSchedule(container) {
     const strip = container.querySelector('#eventStrip');
     if (!strip) return;
 
+    if (list.length === 0) {
+      strip.innerHTML = `
+        <div style="width: 100%; text-align: center; color: var(--muted); padding: 40px 20px; font-size: 14px; background: var(--panel); border: 1px dashed var(--line); border-radius: 8px; box-sizing: border-box;">
+          검색 조건에 맞는 일정이 없습니다.
+        </div>
+      `;
+      return;
+    }
+
     strip.innerHTML = list.map((event) => {
       const parts = adaptedStudents.filter(s => event.participantStudentIds && event.participantStudentIds.includes(s.id));
       const urgent = event.dueDate && dday(event.dueDate) <= 5;
@@ -1177,43 +1235,71 @@ export function renderMajorSchedule(container) {
         </tr>
       `;
 
-      const list = getFilteredEventsList().flatMap((event) => {
+      let list = getFilteredEventsList().flatMap((event) => {
         const parts = adaptedStudents.filter(s => event.participantStudentIds && event.participantStudentIds.includes(s.id));
         return parts.map((student) => ({ event, student }));
       });
 
-      eventBody.innerHTML = list.map(({ event, student }) => `
-        <tr data-student-id="${student.id}">
-          <td><div class="event-name"><strong>${student.name}</strong><span>${student.grade} · ${student.instrument}</span></div></td>
-          <td><div class="event-name"><strong>${event.name}</strong><span>${event.memo || ""}</span></div></td>
-          <td>${typeChip(event.type)}</td>
-          <td>${fmt(event.eventDate)}</td>
-          <td><b style="color:${dday(event.eventDate) <= 7 ? "var(--red)" : "var(--ink)"}">D-${dday(event.eventDate)}</b></td>
-          <td>${student.lesson}</td>
-          <td>${student.teacher}</td>
-          <td>
-            <span class="mini-chip ${student.notes.length > 0 ? "tone-blue" : "tone-green"}">
-              ${student.notes.length > 0 ? "메모 있음" : "메모 없음"}
-            </span>
-          </td>
-          <td><button class="primary btn-row-action" data-student-id="${student.id}">확인</button></td>
-        </tr>
-      `).join("");
-
-      eventBody.querySelectorAll('tr').forEach(row => {
-        row.addEventListener('click', (e) => {
-          if (e.target.closest('.btn-row-action')) return;
-          openStudent(row.dataset.studentId);
+      if (searchQuery) {
+        const cleanQuery = searchQuery.trim().toLowerCase();
+        const isChosungOnly = /^[ㄱ-ㅎ\s]+$/.test(cleanQuery);
+        const exactMatchExists = adaptedStudents.some(student => {
+          const studentMemberNoStr = student.studentMemberNo !== undefined && student.studentMemberNo !== null ? String(student.studentMemberNo).toLowerCase() : "";
+          const memberNoStr = student.memberNo !== undefined && student.memberNo !== null ? String(student.memberNo).toLowerCase() : "";
+          const idStr = student.id !== undefined && student.id !== null ? String(student.id).toLowerCase() : "";
+          return studentMemberNoStr === cleanQuery || memberNoStr === cleanQuery || idStr === cleanQuery;
         });
 
-        const btn = row.querySelector('.btn-row-action');
-        if (btn) {
-          btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openStudent(btn.dataset.studentId);
+        list = list.filter(({ event, student }) => {
+          const eventNameMatch = event.name.toLowerCase().includes(cleanQuery);
+          const eventPlaceMatch = event.place && event.place.toLowerCase().includes(cleanQuery);
+          const studentMatch = matchStudent(student, cleanQuery, isChosungOnly, exactMatchExists);
+          return eventNameMatch || eventPlaceMatch || studentMatch;
+        });
+      }
+
+      if (list.length === 0) {
+        eventBody.innerHTML = `
+          <tr>
+            <td colspan="9" style="text-align: center; color: var(--muted); padding: 30px 20px; font-size: 14px;">
+              검색 결과가 없습니다.
+            </td>
+          </tr>
+        `;
+      } else {
+        eventBody.innerHTML = list.map(({ event, student }) => `
+          <tr data-student-id="${student.id}">
+            <td><div class="event-name"><strong>${student.name} (${student.studentMemberNo || student.memberNo || student.id})</strong><span>${student.grade} · ${student.instrument}</span></div></td>
+            <td><div class="event-name"><strong>${event.name}</strong><span>${event.memo || ""}</span></div></td>
+            <td>${typeChip(event.type)}</td>
+            <td>${fmt(event.eventDate)}</td>
+            <td><b style="color:${dday(event.eventDate) <= 7 ? "var(--red)" : "var(--ink)"}">D-${dday(event.eventDate)}</b></td>
+            <td>${student.lesson}</td>
+            <td>${student.teacher}</td>
+            <td>
+              <span class="mini-chip ${student.notes.length > 0 ? "tone-blue" : "tone-green"}">
+                ${student.notes.length > 0 ? "메모 있음" : "메모 없음"}
+              </span>
+            </td>
+            <td><button class="primary btn-row-action" data-student-id="${student.id}">확인</button></td>
+          </tr>
+        `).join("");
+
+        eventBody.querySelectorAll('tr').forEach(row => {
+          row.addEventListener('click', (e) => {
+            if (e.target.closest('.btn-row-action')) return;
+            openStudent(row.dataset.studentId);
           });
-        }
-      });
+
+          const btn = row.querySelector('.btn-row-action');
+          if (btn) {
+            btn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              openStudent(btn.dataset.studentId);
+            });
+          }
+        });
+      }
 
     } else {
       tableViewHelp.textContent = "일정 단위로 마감/공개/참여 원생을 봅니다.";
@@ -1232,36 +1318,46 @@ export function renderMajorSchedule(container) {
 
       const list = getFilteredEventsList();
 
-      eventBody.innerHTML = list.map((event) => {
-        const parts = adaptedStudents.filter(s => event.participantStudentIds && event.participantStudentIds.includes(s.id));
-        return `
-          <tr data-event-id="${event.id}">
-            <td><div class="event-name"><strong>${event.name}</strong><span>${event.memo || ""}</span></div></td>
-            <td>${typeChip(event.type)}</td>
-            <td>${fmt(event.eventDate)}</td>
-            <td><b style="color:${dday(event.eventDate) <= 7 ? "var(--red)" : "var(--ink)"}">D-${dday(event.eventDate)}</b></td>
-            <td>${parts.length}명</td>
-            <td>${event.ownerId}</td>
-            <td>${visibilityChip(event.visible)}</td>
-            <td><button class="primary btn-row-action" data-event-id="${event.id}">확인</button></td>
+      if (list.length === 0) {
+        eventBody.innerHTML = `
+          <tr>
+            <td colspan="8" style="text-align: center; color: var(--muted); padding: 30px 20px; font-size: 14px;">
+              검색 결과가 없습니다.
+            </td>
           </tr>
         `;
-      }).join("");
+      } else {
+        eventBody.innerHTML = list.map((event) => {
+          const parts = adaptedStudents.filter(s => event.participantStudentIds && event.participantStudentIds.includes(s.id));
+          return `
+            <tr data-event-id="${event.id}">
+              <td><div class="event-name"><strong>${event.name}</strong><span>${event.memo || ""}</span></div></td>
+              <td>${typeChip(event.type)}</td>
+              <td>${fmt(event.eventDate)}</td>
+              <td><b style="color:${dday(event.eventDate) <= 7 ? "var(--red)" : "var(--ink)"}">D-${dday(event.eventDate)}</b></td>
+              <td>${parts.length}명</td>
+              <td>${event.ownerId}</td>
+              <td>${visibilityChip(event.visible)}</td>
+              <td><button class="primary btn-row-action" data-event-id="${event.id}">확인</button></td>
+            </tr>
+          `;
+        }).join("");
 
-      eventBody.querySelectorAll('tr').forEach(row => {
-        row.addEventListener('click', (e) => {
-          if (e.target.closest('.btn-row-action')) return;
-          openEvent(row.dataset.eventId);
-        });
-
-        const btn = row.querySelector('.btn-row-action');
-        if (btn) {
-          btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openEvent(btn.dataset.eventId);
+        eventBody.querySelectorAll('tr').forEach(row => {
+          row.addEventListener('click', (e) => {
+            if (e.target.closest('.btn-row-action')) return;
+            openEvent(row.dataset.eventId);
           });
-        }
-      });
+
+          const btn = row.querySelector('.btn-row-action');
+          if (btn) {
+            btn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              openEvent(btn.dataset.eventId);
+            });
+          }
+        });
+      }
     }
   };
 
@@ -1309,7 +1405,7 @@ export function renderMajorSchedule(container) {
             <div class="student-mini" data-student-id="${student.id}">
               <div class="mini-avatar">${student.name.slice(-2)}</div>
               <div class="queue-main">
-                <strong>${student.name} · ${student.instrument}</strong>
+                <strong>${student.name} (${student.studentMemberNo || student.memberNo || student.id}) · ${student.instrument}</strong>
                 <span>${student.teacher} · ${student.memo || ""}</span>
               </div>
               <span class="mini-chip ${student.notes.length > 0 ? "tone-blue" : "tone-green"}">
@@ -1374,7 +1470,7 @@ export function renderMajorSchedule(container) {
         <div class="avatar">${student.name.slice(-2)}</div>
         <div class="drawer-student-main">
           <strong>${student.name}</strong>
-          <span>${student.grade} · ${student.instrument} · ${student.teacher} 강사</span>
+          <span>(${student.studentMemberNo || student.memberNo || student.id}) · ${student.grade} · ${student.instrument} · ${student.teacher} 강사</span>
         </div>
       </div>
     `;
@@ -1734,6 +1830,8 @@ export function renderMajorSchedule(container) {
         if (!cleanQuery) return true;
         const cleanName = student.name.toLowerCase();
         const cleanId = String(student.id).toLowerCase();
+        const cleanMemberNo = student.memberNo ? String(student.memberNo).toLowerCase() : "";
+        const cleanStudentMemberNo = student.studentMemberNo ? String(student.studentMemberNo).toLowerCase() : "";
         const cleanInstrument = student.instrument.toLowerCase();
         const cleanTeacher = student.teacher.toLowerCase();
 
@@ -1744,6 +1842,8 @@ export function renderMajorSchedule(container) {
         } else {
           return cleanName.includes(cleanQuery) ||
                  cleanId.includes(cleanQuery) ||
+                 cleanMemberNo.includes(cleanQuery) ||
+                 cleanStudentMemberNo.includes(cleanQuery) ||
                  cleanInstrument.includes(cleanQuery) ||
                  cleanTeacher.includes(cleanQuery);
         }
@@ -1754,7 +1854,7 @@ export function renderMajorSchedule(container) {
         return `
           <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; cursor: pointer; font-size: 13px; font-weight: 700; color: var(--ink);">
             <input type="checkbox" name="participantStudentIds" value="${student.id}" ${isChecked ? "checked" : ""}>
-            <span>${student.name} (${student.instrument}/${student.teacher})</span>
+            <span>${student.name} (${student.studentMemberNo || student.memberNo || student.id}) (${student.instrument}/${student.teacher})</span>
           </label>
         `;
       }).join("");
