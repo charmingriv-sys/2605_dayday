@@ -55,18 +55,32 @@ test.describe('Director Major Schedule Management Flow', () => {
     // 2. Assert page title has changed to "주요일정 관리"
     const pageTitle = page.locator('#page-title');
     await expect(pageTitle).toBeVisible();
+    await expect(pageTitle).toHaveCount(1);
     await expect(pageTitle).toContainText('주요일정 관리');
 
-    // 3. Assert header subtitle and sync/refresh buttons
-    const headerEl = page.locator('#dashboard-content header');
-    await expect(headerEl).toBeVisible();
-    await expect(headerEl.locator('h1')).toContainText('주요일정 관리');
-    await expect(headerEl.locator('.sub')).toContainText('다가오는 일정과 그 일정 때문에 챙겨야 할 원생을 한 화면에서 확인합니다.');
-    
-    const lastSync = page.locator('#lastSync');
-    const refreshBtn = headerEl.locator('button:text-is("새로고침")');
+    // 3. Assert local header does NOT exist in dashboard content (no duplicate header)
+    const localHeader = page.locator('#dashboard-content header');
+    await expect(localHeader).not.toBeVisible();
+
+    // 3b. Assert global header actions are mounted
+    const lastSync = page.locator('#major-schedule-last-sync');
+    const refreshBtn = page.locator('#major-schedule-refresh-btn');
     await expect(lastSync).toBeVisible();
+    await expect(lastSync).toContainText('마지막 동기화 16:40');
     await expect(refreshBtn).toBeVisible();
+    await expect(refreshBtn).toContainText('새로고침');
+
+    // Verify style/class structure consistency with attendance control
+    await expect(lastSync).toHaveClass(/major-schedule-clock/);
+    await expect(refreshBtn).toHaveClass(/btn btn-primary/);
+
+    // Test refresh button updates the last sync time
+    await refreshBtn.click();
+    await page.waitForTimeout(100);
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
+    await expect(lastSync).toContainText(`마지막 동기화 ${hh}:${mm}`);
 
     // 4. Assert KPI metric cards
     const kpiEvents = page.locator('#kpiEvents');
@@ -200,5 +214,33 @@ test.describe('Director Major Schedule Management Flow', () => {
     // Close Create Drawer
     await page.locator('.drawer-close').click();
     await expect(drawer).not.toHaveClass(/open/);
+
+    // 12. Verify cleanup on page transition
+    const todayConsoleMenu = page.locator('.menu-item[data-view="dir-today-console"]');
+    await expect(todayConsoleMenu).toBeVisible();
+    await todayConsoleMenu.click();
+    
+    // Verify that the global header actions for major schedule are removed
+    await expect(page.locator('#major-schedule-global-header-actions')).not.toBeVisible();
+
+    // 13. Verify switching back and forth between Major Schedule and Attendance Control
+    // Go to Attendance Control view
+    const attendanceMenu = page.locator('.menu-item[data-view="dir-attendance-control"]');
+    await expect(attendanceMenu).toBeVisible();
+    await attendanceMenu.click();
+
+    // Verify Attendance Control actions are mounted and Major Schedule actions are not
+    const acRefreshBtn = page.locator('#ac-refresh-btn');
+    await expect(acRefreshBtn).toBeVisible();
+    await expect(page.locator('#major-schedule-refresh-btn')).not.toBeVisible();
+
+    // Go back to Major Schedule view
+    const majorScheduleMenu = page.locator('.menu-item[data-view="dir-major-schedule"]');
+    await expect(majorScheduleMenu).toBeVisible();
+    await majorScheduleMenu.click();
+
+    // Verify Major Schedule actions are restored and Attendance Control actions are removed
+    await expect(page.locator('#major-schedule-refresh-btn')).toBeVisible();
+    await expect(page.locator('#ac-refresh-btn')).not.toBeVisible();
   });
 });

@@ -96,11 +96,33 @@ function upcomingLessons(student) {
 }
 
 export function renderMajorSchedule(container) {
+  const headerActions = document.querySelector('.header-actions');
+  const settingsQuickBar = document.getElementById('settings-quick-bar');
+  const currentDateEl = document.getElementById('current-date');
+
+  // Hide default items
+  if (settingsQuickBar) settingsQuickBar.style.display = 'none';
+  if (currentDateEl) currentDateEl.style.display = 'none';
+
+  // Create our action container in global header
+  let majorHeaderActions = document.getElementById('major-schedule-global-header-actions');
+  if (!majorHeaderActions) {
+      majorHeaderActions = document.createElement('div');
+      majorHeaderActions.id = 'major-schedule-global-header-actions';
+      majorHeaderActions.style.display = 'flex';
+      majorHeaderActions.style.alignItems = 'center';
+      majorHeaderActions.style.gap = '8px';
+      if (headerActions) {
+          headerActions.appendChild(majorHeaderActions);
+      }
+  }
+
   let activeType = "all";
   let tableView = "event";
   let selectedStatus = "전체";
   let selectedOwner = "전체";
   let searchQuery = "";
+  let lastSyncTime = "16:40";
 
   const render = () => {
     const monthEvents = events.filter((event) => dday(event.date) >= 0).length;
@@ -108,6 +130,13 @@ export function renderMajorSchedule(container) {
     const todayLessons = students.filter((student) => /^\d/.test(student.lesson)).length;
 
     const owners = [...new Set(events.map((event) => event.owner))];
+
+    if (majorHeaderActions) {
+      majorHeaderActions.innerHTML = `
+        <div class="major-schedule-clock" id="major-schedule-last-sync">마지막 동기화 ${lastSyncTime}</div>
+        <button class="btn btn-primary" id="major-schedule-refresh-btn">새로고침</button>
+      `;
+    }
 
     container.innerHTML = `
       <style>
@@ -160,51 +189,23 @@ export function renderMajorSchedule(container) {
           color: #fff;
         }
 
-        .major-schedule-root header {
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          gap: 16px;
-          margin-bottom: 14px;
-        }
-
-        .major-schedule-root h1 {
-          margin: 0;
-          font-size: 24px;
-          line-height: 1.18;
-          font-weight: 950;
-        }
-
-        .major-schedule-root .sub {
-          margin-top: 6px;
-          color: var(--muted);
-          font-size: 13px;
+        .major-schedule-clock {
+          padding: 6px 12px;
+          border: 1px solid var(--border-color);
+          border-radius: var(--radius-md);
+          font-size: 0.82rem;
           font-weight: 700;
-        }
-
-        .major-schedule-root .header-actions {
+          background: var(--bg-card);
+          color: var(--text-main);
           display: flex;
           align-items: center;
-          gap: 8px;
-        }
-
-        .major-schedule-root .sync {
-          min-height: 32px;
-          display: flex;
-          align-items: center;
-          padding: 0 11px;
-          border: 1px solid var(--line);
-          border-radius: 7px;
-          background: #fff;
-          color: var(--muted);
-          font-size: 12px;
-          font-weight: 800;
         }
 
         .major-schedule-root .page-stack {
           display: flex;
           flex-direction: column;
           gap: 12px;
+          padding-top: 4px;
         }
 
         .major-schedule-root .kpi-row {
@@ -906,17 +907,6 @@ export function renderMajorSchedule(container) {
       </style>
 
       <div class="major-schedule-root">
-        <header>
-          <div>
-            <h1>주요일정 관리</h1>
-            <div class="sub">다가오는 일정과 그 일정 때문에 챙겨야 할 원생을 한 화면에서 확인합니다.</div>
-          </div>
-          <div class="header-actions">
-            <div class="sync" id="lastSync">마지막 동기화 16:40</div>
-            <button class="primary" id="btn-refresh-page">새로고침</button>
-          </div>
-        </header>
-
         <div class="page-stack">
           <section class="kpi-row">
             <div class="kpi-card">
@@ -1002,14 +992,13 @@ export function renderMajorSchedule(container) {
 
   const bindEvents = () => {
     // Refresh Page
-    const refreshBtn = container.querySelector('#btn-refresh-page');
+    const refreshBtn = document.getElementById('major-schedule-refresh-btn');
     if (refreshBtn) {
       refreshBtn.addEventListener('click', () => {
         const now = new Date();
         const hh = String(now.getHours()).padStart(2, "0");
         const mm = String(now.getMinutes()).padStart(2, "0");
-        const syncEl = container.querySelector('#lastSync');
-        if (syncEl) syncEl.textContent = `마지막 동기화 ${hh}:${mm}`;
+        lastSyncTime = `${hh}:${mm}`;
         render();
       });
     }
@@ -1541,6 +1530,12 @@ export function renderMajorSchedule(container) {
   render();
 
   return () => {
-    // Cleanup routines if needed
+    // Clean up global header actions and restore defaults
+    const dynamicActions = document.getElementById('major-schedule-global-header-actions');
+    if (dynamicActions) {
+        dynamicActions.remove();
+    }
+    if (settingsQuickBar) settingsQuickBar.style.display = '';
+    if (currentDateEl) currentDateEl.style.display = '';
   };
 }
