@@ -135,6 +135,21 @@ function renderIcon(name, size = 16, color = "currentColor", stroke = 1.7) {
   `;
 }
 
+// --- Chosung Helper ----------------------------------------------------------
+const chosung = ["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+const getChosungStr = (str) => {
+  let res = "";
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i) - 44032;
+    if (code >= 0 && code < 11172) {
+      res += chosung[Math.floor(code / 588)];
+    } else {
+      res += str.charAt(i);
+    }
+  }
+  return res;
+};
+
 // --- Local View State --------------------------------------------------------
 const viewState = {
   studentFilterKlass: "all",
@@ -150,6 +165,8 @@ const viewState = {
 
   recipients: [],
   senderNumber: "0212345678",
+  customSenderNumber: "",
+  senderSelectValue: "",
   method: "SMS",
   schedule: {
     on: false,
@@ -165,7 +182,15 @@ const viewState = {
   vaultPages: { recommend: 0, saved: 0, recent: 0 },
 
   focusOpen: false,
-  scenarioKey: null
+  scenarioKey: null,
+
+  // Template creation modal state
+  saveModalOpen: false,
+  saveModalTitle: "",
+  saveModalBody: "",
+  saveModalError: "",
+  savedTemplates: [...MOCK_SAVED_TEMPLATES],
+  isComposing: false
 };
 
 // --- Data Adapter mapping stateStore -----------------------------------------
@@ -365,7 +390,7 @@ export function renderMessageSend(container) {
       /* Grid and responsiveness */
       .message-send-grid {
         display: grid;
-        grid-template-columns: minmax(300px, 1fr) minmax(360px, 1.15fr) minmax(320px, 1fr);
+        grid-template-columns: minmax(320px, 1fr) minmax(360px, 1.3fr) minmax(320px, 1fr);
         gap: 16px;
         align-items: start;
       }
@@ -416,22 +441,28 @@ export function renderMessageSend(container) {
       <div id="messageSendDisclaimer"></div>
       <div id="messageSendScenarioStrip"></div>
       <div class="message-send-grid">
-        <div id="studentListPanel"></div>
+        <!-- Column 1: Students list and recipients list -->
         <div style="display: flex; flex-direction: column; gap: 16px; min-width: 0;">
+          <div id="studentListPanel"></div>
           <div id="recipientListPanel"></div>
-          <div id="composePanel"></div>
         </div>
+        
+        <!-- Column 2: Compose text message form -->
+        <div id="composePanel"></div>
+        
+        <!-- Column 3: Message Vault templates -->
         <div class="message-send-col-vault" id="messageVaultPanel"></div>
       </div>
       <div id="globalSendBar"></div>
       <div id="focusConfirmOverlay"></div>
+      <div id="templateSaveModalOverlay"></div>
     </div>
   `;
 
   // Render Header Actions
   const syncTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
   syncTimeContainer.innerHTML = `
-    <div class="major-schedule-clock">마지막 동기화 ${syncTime}</div>
+    <div class="major-schedule-clock" id="major-schedule-last-sync">마지막 동기화 ${syncTime}</div>
     <button class="btn btn-primary" id="message-send-refresh-btn">새로고침</button>
   `;
 
@@ -449,6 +480,7 @@ export function renderMessageSend(container) {
     renderMessageVault();
     renderSendBar();
     renderFocusConfirm();
+    renderTemplateSaveModal();
   };
 
   // 1. Disclaimer Yellow Box
@@ -467,22 +499,20 @@ export function renderMessageSend(container) {
     `;
   };
 
-  // 2. Scenario Strip
+  // 2. Scenario Strip (Templates)
   const renderScenarioStrip = () => {
     const block = container.querySelector('#messageSendScenarioStrip');
-    const students = getAdaptedStudents();
     block.innerHTML = `
       <div style="background: #fff; border-radius: 16px; border: 1px solid #E9EEF4; box-shadow: var(--shadow-sm); padding: 13px 16px; margin-bottom: 2px;">
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 11px;">
           <span style="width: 24px; height: 24px; border-radius: 7px; background: #EAF1FE; display: flex; align-items: center; justify-content: center;">
             ${renderIcon('star', 14, '#2563EB')}
           </span>
-          <h3 style="margin: 0; font-size: 14.5px; font-weight: 800; color: var(--text-main);">상황별 1클릭 발송</h3>
-          <span style="font-size: 11.5px; color: var(--text-muted);">대상 자동 선택 + 문구 자동 적용 (화면 데이터 자동 주입)</span>
+          <h3 style="margin: 0; font-size: 14.5px; font-weight: 800; color: var(--text-main);">자주 쓰는 상황별 메시지 템플릿</h3>
+          <span style="font-size: 11.5px; color: var(--text-muted);">원하는 상황에 맞는 템플릿 문구를 즉시 본문에 불러옵니다.</span>
         </div>
         <div style="display: flex; gap: 9px; flex-wrap: wrap;">
           ${SCENARIOS.map(sc => {
-            const count = students.filter(sc.filter).length;
             const t = TONES[sc.tone];
             const active = viewState.scenarioKey === sc.key;
             const btnBg = active ? t.fg : "#fff";
@@ -493,10 +523,10 @@ export function renderMessageSend(container) {
             const activeIconBg = active ? "rgba(255,255,255,.2)" : t.bg;
             
             return `
-              <button class="btn-scenario" data-key="${sc.key}" ${count === 0 ? 'disabled' : ''} style="
-                display: flex; align-items: center; gap: 9px; padding: 9px 13px; border-radius: 11px; cursor: ${count === 0 ? 'default' : 'pointer'};
+              <button class="btn-scenario" data-key="${sc.key}" style="
+                display: flex; align-items: center; gap: 9px; padding: 9px 13px; border-radius: 11px; cursor: pointer;
                 background: ${btnBg}; border: 1.5px solid ${btnBd}; transition: all .12s;
-                opacity: ${count === 0 ? .45 : 1}; box-shadow: ${active ? `0 4px 12px ${t.fg}33` : "none"};
+                box-shadow: ${active ? `0 4px 12px ${t.fg}33` : "none"};
                 font-family: inherit; margin-bottom: 0;
               ">
                 <span style="width: 28px; height: 28px; border-radius: 8px; background: ${activeIconBg}; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
@@ -504,7 +534,7 @@ export function renderMessageSend(container) {
                 </span>
                 <span style="text-align: left;">
                   <span style="display: block; fontSize: 13px; fontWeight: 700; color: ${titleColor}; line-height: 1.25;">${sc.label}</span>
-                  <span style="display: block; fontSize: 11px; color: ${descColor};">${sc.desc} · ${count}명</span>
+                  <span style="display: block; fontSize: 11px; color: ${descColor};">${sc.desc}</span>
                 </span>
                 ${sc.ad ? `<span style="font-size: 9.5px; font-weight: 800; color: ${active ? '#fff' : '#B45309'}; background: ${active ? 'rgba(255,255,255,.2)' : '#FEF3DD'}; padding: 1px 5px; border-radius: 4px; margin-left: 4px;">광고</span>` : ''}
               </button>
@@ -522,31 +552,11 @@ export function renderMessageSend(container) {
 
         viewState.scenarioKey = scKey;
         
-        // Auto fill form
+        // Load only template content
         viewState.title = sc.title;
         viewState.body = sc.body;
         viewState.image = null;
         viewState.method = "SMS";
-
-        // Auto populate recipients based on filter
-        const matchedStudents = students.filter(sc.filter);
-        const res = [];
-        matchedStudents.forEach(s => {
-          sc.types.forEach(ty => {
-            if (ty === "student") {
-              res.push({ name: s.name, phone: s.studentPhone, role: "본인", no: s.id, optOut: s.optOut, key: s.studentPhone + "|본인" });
-            }
-            if (ty === "g1") {
-              res.push({ name: s.name, phone: s.guardian1.phone, role: `보호자(${s.guardian1.label})`, no: s.id, optOut: s.optOut, key: s.guardian1.phone + "|g1" });
-            }
-            if (ty === "g2" && s.guardian2) {
-              res.push({ name: s.name, phone: s.guardian2.phone, role: `보호자(${s.guardian2.label})`, no: s.id, optOut: s.optOut, key: s.guardian2.phone + "|g2" });
-            }
-          });
-        });
-
-        viewState.recipients = res;
-        viewState.focusOpen = true;
 
         render();
       });
@@ -554,7 +564,7 @@ export function renderMessageSend(container) {
   };
 
   // 3. Column 1: Student List
-  const renderStudentList = () => {
+  const renderStudentList = (isFullRender = true) => {
     const block = container.querySelector('#studentListPanel');
     const students = getAdaptedStudents();
 
@@ -564,7 +574,12 @@ export function renderMessageSend(container) {
       if (viewState.studentFilterPay !== "all" && s.pay !== viewState.studentFilterPay) return false;
       if (viewState.studentSearchQuery) {
         const clean = viewState.studentSearchQuery.trim().toLowerCase();
-        if (!s.name.toLowerCase().includes(clean)) return false;
+        const isChosungOnly = /^[ㄱ-ㅎ\s]+$/.test(clean);
+        if (isChosungOnly) {
+          if (!getChosungStr(s.name.toLowerCase()).includes(clean)) return false;
+        } else {
+          if (!s.name.toLowerCase().includes(clean)) return false;
+        }
       }
       return true;
     });
@@ -580,6 +595,91 @@ export function renderMessageSend(container) {
       if (viewState.contactTypes.g1) contactCount++;
       if (viewState.contactTypes.g2 && s.guardian2) contactCount++;
     });
+
+    const isPartial = !isFullRender && block && block.querySelector('#studentTableRows');
+
+    if (isPartial) {
+      // 1. Update list count label
+      const countHeaderSpan = block.querySelector('.message-send-card-header span:last-child');
+      if (countHeaderSpan) countHeaderSpan.textContent = `${filtered.length}명`;
+
+      // 2. Update Table Header Checkbox
+      const btnToggleAll = block.querySelector('#btnToggleAllStudents');
+      if (btnToggleAll) {
+        btnToggleAll.style.borderColor = allChecked || someChecked ? 'var(--primary)' : '#cbd5e1';
+        btnToggleAll.style.background = allChecked ? 'var(--primary)' : someChecked ? 'var(--primary)' : '#fff';
+        btnToggleAll.innerHTML = allChecked ? renderIcon('check', 10, '#fff', 3) : someChecked ? `<span style="width: 8px; height: 2px; background: #fff; border-radius: 1px;"></span>` : '';
+      }
+
+      // 3. Update Rows HTML
+      const tableRowsDiv = block.querySelector('#studentTableRows');
+      if (tableRowsDiv) {
+        tableRowsDiv.innerHTML = filtered.map(s => {
+          const checked = viewState.selectedStudentIds.has(s.id);
+          const meta = PAY_META[s.pay] || { label: "미등록", tone: "slate" };
+          const badgeText = s.pay === "paid" ? "완납" : s.pay === "requested" ? "결제요청" : s.pay === "unpaid" ? "미납" : "미등록";
+
+          const initial = s.name.slice(-2);
+          const hue = (s.id.charCodeAt(1) || 5) % 6;
+          const avBg = ["#eff6ff", "#f5f3ff", "#ecfdf3", "#fff7ed", "#fef2f2", "#f5f5f5"][hue];
+          const avFg = ["#2563eb", "#7c3aed", "#16a34a", "#d97706", "#dc2626", "#4b5563"][hue];
+
+          return `
+            <div class="student-row" data-id="${s.id}" style="
+              display: grid; grid-template-columns: 32px 1fr 70px; gap: 8px; padding: 8px 16px;
+              border-top: 1px solid #f1f5f9; align-items: center; cursor: pointer;
+              background: ${checked ? '#fafcff' : 'transparent'};
+            ">
+              <button class="row-checkbox" data-id="${s.id}" style="
+                width: 16px; height: 16px; border-radius: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+                border: 1.5px solid ${checked ? 'var(--primary)' : '#cbd5e1'}; background: ${checked ? 'var(--primary)' : '#fff'};
+                cursor: pointer; padding: 0; margin-bottom: 0;
+              ">
+                ${checked ? renderIcon('check', 10, '#fff', 3) : ''}
+              </button>
+              <span style="display: flex; align-items: center; gap: 9px; min-width: 0;">
+                <span class="message-send-avatar" style="width: 28px; height: 28px; font-size: 11px; background: ${avBg}; color: ${avFg};">${initial}</span>
+                <span style="min-width: 0;">
+                  <span style="display: block; font-size: 12.5px; font-weight: 700; color: var(--text-main);">${s.name}</span>
+                  <span style="display: block; font-size: 10.5px; color: var(--text-muted);">${s.grade} · ${s.klass}</span>
+                </span>
+              </span>
+              <span style="display: flex; justify-content: center;">
+                <span class="message-send-chip tone-${meta.tone}" style="font-size: 10px; padding: 2px 7px;">${badgeText}</span>
+              </span>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // 4. Update Footer count & button
+      const selectedCountB = block.querySelector('#selectedStudentsCount');
+      if (selectedCountB) selectedCountB.textContent = viewState.selectedStudentIds.size;
+
+      const addToRecipientsBtn = block.querySelector('#btnAddToRecipients');
+      if (addToRecipientsBtn) {
+        const disabled = viewState.selectedStudentIds.size === 0 || (!viewState.contactTypes.student && !viewState.contactTypes.g1 && !viewState.contactTypes.g2);
+        addToRecipientsBtn.disabled = disabled;
+        addToRecipientsBtn.style.background = disabled ? '#c9d3e0' : 'var(--primary)';
+        addToRecipientsBtn.style.cursor = disabled ? 'default' : 'pointer';
+        addToRecipientsBtn.style.boxShadow = disabled ? 'none' : '0 4px 12px rgba(37,99,235,.2)';
+        addToRecipientsBtn.innerHTML = `${renderIcon('arrowR', 15, '#fff')} 발송인원 추가 ${contactCount > 0 ? `(${contactCount}건)` : ''}`;
+      }
+
+      // Re-bind row click listener
+      block.querySelectorAll('.student-row').forEach(row => {
+        row.addEventListener('click', (e) => {
+          const id = row.dataset.id;
+          if (viewState.selectedStudentIds.has(id)) {
+            viewState.selectedStudentIds.delete(id);
+          } else {
+            viewState.selectedStudentIds.add(id);
+          }
+          renderStudentList(false);
+        });
+      });
+      return;
+    }
 
     block.className = 'message-send-card';
     block.innerHTML = `
@@ -739,20 +839,19 @@ export function renderMessageSend(container) {
     const classFilter = block.querySelector('#studentClassFilter');
     classFilter.addEventListener('change', (e) => {
       viewState.studentFilterKlass = e.target.value;
-      renderStudentList();
+      renderStudentList(true);
     });
 
     const payFilter = block.querySelector('#studentPayFilter');
     payFilter.addEventListener('change', (e) => {
       viewState.studentFilterPay = e.target.value;
-      renderStudentList();
+      renderStudentList(true);
     });
 
     const searchInput = block.querySelector('#studentSearchInput');
     searchInput.addEventListener('input', (e) => {
       viewState.studentSearchQuery = e.target.value;
-      // Re-evaluate table rows only for performance
-      renderStudentList();
+      renderStudentList(false);
     });
 
     block.querySelectorAll('.student-row').forEach(row => {
@@ -763,7 +862,7 @@ export function renderMessageSend(container) {
         } else {
           viewState.selectedStudentIds.add(id);
         }
-        renderStudentList();
+        renderStudentList(false);
       });
     });
 
@@ -773,19 +872,19 @@ export function renderMessageSend(container) {
       } else {
         filtered.forEach(s => viewState.selectedStudentIds.add(s.id));
       }
-      renderStudentList();
+      renderStudentList(false);
     });
 
     block.querySelector('#btnToggleDedupe').addEventListener('click', () => {
       viewState.dedupe = !viewState.dedupe;
-      renderStudentList();
+      renderStudentList(false);
     });
 
     block.querySelectorAll('.btn-toggle-contact-type').forEach(btn => {
       btn.addEventListener('click', () => {
         const type = btn.dataset.type;
         viewState.contactTypes[type] = !viewState.contactTypes[type];
-        renderStudentList();
+        renderStudentList(false);
       });
     });
 
@@ -818,7 +917,7 @@ export function renderMessageSend(container) {
       // Clear selection
       viewState.selectedStudentIds.clear();
       
-      renderStudentList();
+      renderStudentList(true);
       renderRecipientList();
       renderComposePanel();
       renderSendBar();
@@ -873,9 +972,10 @@ export function renderMessageSend(container) {
               else if (r.role === "엑셀") roleTone = "teal";
               
               return `
-                <span style="
-                  display: inline-flex; align-items: center; gap: 8px; padding: 4px 8px 4px 6px;
-                  background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+                <span class="message-send-recipient-card" style="
+                  display: inline-flex; align-items: center; gap: 7px; padding: 5px 8px;
+                  background: #fff; border: 1px solid var(--border-color); border-radius: 9px;
+                  box-shadow: var(--shadow-sm); position: relative;
                 ">
                   <span class="message-send-avatar" style="width: 22px; height: 22px; font-size: 9px; background: ${avBg}; color: ${avFg};">${r.name.slice(-2)}</span>
                   <span>
@@ -944,23 +1044,65 @@ export function renderMessageSend(container) {
     });
   };
 
-  // 5. Column 2 Bottom: Compose Panel
+  // 5. Column 2: Compose Panel
   const renderComposePanel = () => {
     const block = container.querySelector('#composePanel');
-    const kind = msgKind(viewState.title, viewState.body, !!viewState.image);
+    const kind = viewState.method === "PUSH" ? "PUSH" : viewState.method === "알림톡" ? "알림톡" : msgKind(viewState.title, viewState.body, !!viewState.image);
     const bytes = byteLen(viewState.title) + byteLen(viewState.body);
     const limit = kind === "SMS" ? 90 : 2000;
     const isOver = bytes > limit;
     
+    // 동적 발신번호 목록 구성
+    const getSenderNumbers = () => {
+      const numbers = [];
+      const settings = stateStore.getSettings() || {};
+      const currentUser = stateStore.getCurrentUser() || {};
+      
+      if (settings.phone) {
+        numbers.push({ label: `대표번호: ${settings.phone}`, value: settings.phone.replace(/[^0-9]/g, '') });
+      }
+      if (currentUser.phone) {
+        numbers.push({ label: `대표자: ${currentUser.phone}`, value: currentUser.phone.replace(/[^0-9]/g, '') });
+      }
+      
+      const dbSettings = stateStore.db.settings || {};
+      if (dbSettings.senderNumber) {
+        numbers.push({ label: `설정 발신번호: ${dbSettings.senderNumber}`, value: dbSettings.senderNumber.replace(/[^0-9]/g, '') });
+      }
+      if (dbSettings.representativePhone) {
+        numbers.push({ label: `대표자 연락처: ${dbSettings.representativePhone}`, value: dbSettings.representativePhone.replace(/[^0-9]/g, '') });
+      }
+
+      const uniqueMap = new Map();
+      numbers.forEach(n => {
+        if (n.value && !uniqueMap.has(n.value)) {
+          uniqueMap.set(n.value, n);
+        }
+      });
+
+      const list = Array.from(uniqueMap.values());
+      if (list.length === 0) {
+        list.push({ label: "기본 발신번호: 02-1234-5678", value: "0212345678" });
+      }
+      list.push({ label: "직접 입력...", value: "custom" });
+      return list;
+    };
+    
+    const senderNumbers = getSenderNumbers();
+    if (!viewState.senderSelectValue) {
+      viewState.senderSelectValue = senderNumbers[0].value;
+      viewState.senderNumber = senderNumbers[0].value;
+    }
+    
     block.className = 'message-send-card';
     block.innerHTML = `
       <div class="message-send-card-header">
-        <span style="width: 26px; height: 26px; border-radius: 7px; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; fontSize: 12px; fontWeight: 800;">3</span>
-        <h2 class="message-send-card-title">메시지 작성</h2>
+        <span style="width: 26px; height: 26px; border-radius: 7px; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800;">2</span>
+        <h2 class="message-send-card-title">보낼 메시지 작성</h2>
         <span style="
           margin-left: auto; font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 999px;
-          color: ${kind === "SMS" ? "var(--sky)" : kind === "LMS" ? "var(--violet)" : "var(--rose)"};
-          background: ${kind === "SMS" ? "var(--sky-light)" : kind === "LMS" ? "var(--violet-light)" : "var(--rose-light)"};
+          color: ${kind === "SMS" ? "var(--sky)" : kind === "LMS" ? "var(--violet)" : kind === "MMS" ? "var(--rose)" : kind === "PUSH" ? "var(--success)" : "var(--primary)"};
+          background: ${kind === "SMS" ? "var(--sky-light)" : kind === "LMS" ? "var(--violet-light)" : kind === "MMS" ? "var(--rose-light)" : kind === "PUSH" ? "var(--success-light)" : "var(--primary-light)"};
         ">${kind}</span>
       </div>
 
@@ -968,17 +1110,23 @@ export function renderMessageSend(container) {
         <!-- Sender number -->
         <div>
           <label style="display: block; font-size: 11.5px; font-weight: 700; color: var(--text-muted); margin-bottom: 5px;">발신 번호</label>
-          <div style="display: flex; gap: 7px;">
-            <div style="position: relative; flex: 1;">
+          <div style="display: flex; flex-direction: column; gap: 7px;">
+            <div style="position: relative; width: 100%;">
               <select id="senderNumberSelect" style="
                 width: 100%; padding: 8px 30px 8px 10px; font-size: 13px; color: var(--text-main);
                 background: #f8fafc; border: 1px solid var(--border-color); border-radius: 9px; appearance: none; font-weight: 600; cursor: pointer;
               ">
-                ${SENDER_NUMBERS.map(n => `<option value="${n.value}" ${viewState.senderNumber === n.value ? 'selected' : ''}>${n.label}</option>`).join('')}
+                ${senderNumbers.map(n => `<option value="${n.value}" ${viewState.senderSelectValue === n.value ? 'selected' : ''}>${n.label}</option>`).join('')}
               </select>
               <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none;">${renderIcon('chevronD', 14, '#94A3B8')}</span>
             </div>
-            <button id="btnAddSenderStub" style="padding: 0 14px; font-size: 12px; font-weight: 700; color: var(--slate); background: #fff; border: 1px solid var(--border-color); border-radius: 9px; cursor: pointer; white-space: nowrap; margin-bottom: 0;">인증 추가</button>
+            
+            ${viewState.senderSelectValue === "custom" ? `
+              <input type="text" id="customSenderNumberInput" value="${viewState.customSenderNumber}" placeholder="발신 전화번호 직접 입력 (예: 01012345678)" style="
+                width: 100%; padding: 8px 11px; font-size: 13px; color: var(--text-main); background: #ffffff;
+                border: 1px solid var(--border-color); border-radius: 9px; margin-top: 2px;
+              " />
+            ` : ''}
           </div>
         </div>
 
@@ -987,7 +1135,7 @@ export function renderMessageSend(container) {
           <div>
             <label style="display: block; font-size: 11.5px; font-weight: 700; color: var(--text-muted); margin-bottom: 5px;">발송방식</label>
             <div style="display: flex; gap: 3px; padding: 3px; background: #f1f5f9; border-radius: 9px;">
-              ${["SMS", "PUSH"].map(m => `
+              ${["SMS", "PUSH", "알림톡"].map(m => `
                 <button class="btn-toggle-method" data-method="${m}" style="
                   padding: 6px 14px; font-size: 12px; font-weight: 700; border-radius: 7px; border: none; cursor: pointer; margin-bottom: 0;
                   color: ${viewState.method === m ? 'var(--primary)' : '#8a97a8'};
@@ -996,25 +1144,6 @@ export function renderMessageSend(container) {
                   font-family: inherit;
                 ">${m}</button>
               `).join('')}
-            </div>
-          </div>
-          <div style="flex: 1; min-width: 0;">
-            <label style="display: block; font-size: 11.5px; font-weight: 700; color: var(--text-muted); margin-bottom: 5px;">예약 설정</label>
-            <div style="display: flex; align-items: center; gap: 7px;">
-              <button id="btnToggleSchedule" style="
-                width: 34px; height: 20px; border-radius: 999px; border: none; cursor: pointer; flex-shrink: 0; padding: 2px; margin-bottom: 0;
-                background: ${viewState.schedule.on ? 'var(--primary)' : '#cbd5e1'}; display: flex; justify-content: ${viewState.schedule.on ? 'flex-end' : 'flex-start'};
-              ">
-                <span style="width: 16px; height: 16px; border-radius: 999px; background: #fff; display: block;"></span>
-              </button>
-              <input type="date" id="scheduleDateInput" value="${viewState.schedule.date}" ${!viewState.schedule.on ? 'disabled' : ''} style="
-                padding: 7px 9px; font-size: 12px; flex: 1; min-width: 0; border: 1px solid var(--border-color); border-radius: 9px;
-                background: #f8fafc; color: var(--text-main); opacity: ${viewState.schedule.on ? 1 : 0.5};
-              ">
-              <input type="time" id="scheduleTimeInput" value="${viewState.schedule.time}" ${!viewState.schedule.on ? 'disabled' : ''} style="
-                padding: 7px 9px; font-size: 12px; width: 84px; border: 1px solid var(--border-color); border-radius: 9px;
-                background: #f8fafc; color: var(--text-main); opacity: ${viewState.schedule.on ? 1 : 0.5};
-              ">
             </div>
           </div>
         </div>
@@ -1045,11 +1174,18 @@ export function renderMessageSend(container) {
         <!-- Phone screen style compose textarea -->
         <div>
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-            <label style="font-size: 11.5px; font-weight: 700; color: var(--text-muted);">내용</label>
-            <span style="font-size: 11px; font-weight: 700; color: ${isOver ? 'var(--danger)' : 'var(--text-muted)'};">
+            <label style="font-size: 11.5px; font-weight: 700; color: var(--text-muted);">메시지 본문 입력</label>
+            <span style="font-size: 11px; font-weight: 700; color: ${isOver ? 'var(--danger)' : 'var(--text-muted)'};" fontvariantnumeric="tabular-nums">
               ${bytes} / ${limit} byte ${isOver ? '· 초과' : ''}
             </span>
           </div>
+          
+          <textarea id="composeBodyInput" placeholder="여기에 발송할 메시지 내용을 입력하세요." style="
+            width: 100%; min-height: 110px; padding: 12px 14px; font-size: 13.5px; line-height: 1.55;
+            color: var(--text-main); background: #ffffff; border: 1.5px solid var(--border-color);
+            border-radius: 10px; outline: none; transition: all 0.2s ease; resize: vertical;
+            box-shadow: 0 1px 2px rgba(16,24,40,.05); font-family: inherit; margin-bottom: 12px;
+          " onfocus="this.style.borderColor='var(--primary)'; this.style.boxShadow='0 0 0 3px rgba(37,99,235,.15)';" onblur="this.style.borderColor='var(--border-color)'; this.style.boxShadow='none';">${viewState.body}</textarea>
           
           <!-- Realistic Smartphone Preview Container -->
           <div class="phone-frame">
@@ -1067,13 +1203,13 @@ export function renderMessageSend(container) {
             </div>
             <div style="background: #eef2f6; height: 160px; overflow-y: auto; padding: 12px; display: flex; flex-direction: column;">
               <div style="margin: 0 auto 10px; text-align: center;"><span style="font-size: 9px; color: #94a3b8; background: #e2e8f0; padding: 2px 8px; border-radius: 999px;">오늘 오후 2:56</span></div>
-              <div style="max-width: 220px; background: #fff; border-radius: 5px 15px 15px 15px; padding: 8px 11px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); margin-right: auto; position: relative;">
+              <div style="max-width: 220px; background: #fff; border-radius: 5px 15px 15px 15px; padding: 9px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); margin-right: auto; position: relative; font-size: 12.5px; line-height: 1.5; color: var(--text-main); word-break: break-all;">
                 ${viewState.image ? `<div style="height: 50px; background: #e2e8f0; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #64748b; margin-bottom: 6px;">[이미지 첨부됨]</div>` : ''}
-                <textarea id="composeBodyInput" placeholder="여기에 발송할 안내 문구를 작성해 주세요." style="
-                  width: 100%; border: none; outline: none; resize: none; background: transparent;
-                  font-size: 12.5px; line-height: 1.5; color: var(--text-main); font-family: inherit;
-                  min-height: 90px; padding: 0; display: block;
-                ">${viewState.body}</textarea>
+                ${(() => {
+                  const val = viewState.body || "";
+                  if (!val.trim()) return '<span style="color: #94a3b8;">작성된 메시지가 없습니다.</span>';
+                  return val.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
+                })()}
               </div>
             </div>
             <div style="height: 16px; background: #eef2f6; display: flex; justify-content: center; align-items: center; padding-bottom: 6px;">
@@ -1094,39 +1230,72 @@ export function renderMessageSend(container) {
               <button id="btnRemoveImage" style="width: 20px; height: 20px; border-radius: 4px; border: none; background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;">${renderIcon('close', 10, '#64748b')}</button>
             </div>
           ` : `
-            <button id="btnAddImageStub" style="
+            <button id="btnComposeAddImage" style="
               width: 100%; padding: 10px; display: flex; align-items: center; justify-content: center; gap: 8px;
               font-size: 12px; font-weight: 700; color: var(--slate); background: #f8fafc;
-              border: 1.5px dashed var(--border-color); border-radius: 9px; cursor: pointer; margin-bottom: 0; font-family: inherit;
+              border: 1.5px dashed var(--border-color); border-radius: 999px; cursor: pointer; margin-bottom: 0; font-family: inherit;
             ">
               ${renderIcon('plus', 14, '#94a3b8')} 이미지 첨부 (MMS 전환)
             </button>
           `}
         </div>
 
-        <!-- Send trigger review button -->
-        <button id="btnReviewSend" ${viewState.recipients.length === 0 || (!viewState.body.trim() && !viewState.image) ? 'disabled' : ''} style="
-          margin-top: 4px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px; font-size: 14.5px; font-weight: 800;
-          color: #fff; background: ${viewState.recipients.length === 0 || (!viewState.body.trim() && !viewState.image) ? '#cbd5e0' : 'var(--primary)'};
-          border: none; border-radius: 11px; cursor: ${viewState.recipients.length === 0 || (!viewState.body.trim() && !viewState.image) ? 'default' : 'pointer'};
-          box-shadow: ${viewState.recipients.length === 0 || (!viewState.body.trim() && !viewState.image) ? 'none' : '0 6px 18px rgba(37,99,235,.26)'};
-          font-family: inherit;
-        ">
-          ${renderIcon(viewState.schedule.on ? 'clock' : 'send', 16, '#fff')}
-          ${viewState.schedule.on ? `${viewState.recipients.length}명 예약 검토` : `${viewState.recipients.length}명 발송 검토`}
-        </button>
+        <!-- Save Template Button -->
+        <div style="margin-top: 8px;">
+          <button id="btnOpenSaveTemplateModal" style="
+            width: 100%; padding: 9px; display: flex; align-items: center; justify-content: center; gap: 6px;
+            font-size: 12px; font-weight: 700; color: var(--primary); background: var(--primary-light);
+            border: 1px solid #c3d4fb; border-radius: 9px; cursor: pointer; margin-bottom: 0; font-family: inherit;
+          ">
+            ${renderIcon('star', 13, 'var(--primary)')} 현재 내용을 템플릿으로 저장
+          </button>
+        </div>
+
+        <!-- Action Buttons Split -->
+        <div style="display: flex; gap: 8px; margin-top: 4px;">
+          <button id="btnReviewSend" ${viewState.recipients.length === 0 || (!viewState.body.trim() && !viewState.image) ? 'disabled' : ''} style="
+            flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 11px; font-size: 13.5px; font-weight: 800;
+            color: #fff; background: ${viewState.recipients.length === 0 || (!viewState.body.trim() && !viewState.image) ? '#cbd5e0' : 'var(--primary)'};
+            border: none; border-radius: 10px; cursor: ${viewState.recipients.length === 0 || (!viewState.body.trim() && !viewState.image) ? 'default' : 'pointer'};
+            box-shadow: ${viewState.recipients.length === 0 || (!viewState.body.trim() && !viewState.image) ? 'none' : '0 4px 12px rgba(37,99,235,.15)'};
+            font-family: inherit; margin-bottom: 0;
+          ">
+            ${renderIcon('send', 14, '#fff')} ${viewState.recipients.length}명 즉시발송
+          </button>
+          
+          <button id="btnReserveSend" ${viewState.recipients.length === 0 || (!viewState.body.trim() && !viewState.image) ? 'disabled' : ''} style="
+            flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 11px; font-size: 13.5px; font-weight: 800;
+            color: ${viewState.recipients.length === 0 || (!viewState.body.trim() && !viewState.image) ? '#94a3b8' : 'var(--slate)'};
+            background: ${viewState.recipients.length === 0 || (!viewState.body.trim() && !viewState.image) ? '#f1f5f9' : '#e2e8f0'};
+            border: none; border-radius: 10px; cursor: ${viewState.recipients.length === 0 || (!viewState.body.trim() && !viewState.image) ? 'default' : 'pointer'};
+            font-family: inherit; margin-bottom: 0;
+          ">
+            ${renderIcon('clock', 14, viewState.recipients.length === 0 || (!viewState.body.trim() && !viewState.image) ? '#94a3b8' : 'var(--slate)')} ${viewState.recipients.length}명 예약발송
+          </button>
+        </div>
       </div>
     `;
 
     // Hook listeners
     const senderSelect = block.querySelector('#senderNumberSelect');
     senderSelect.addEventListener('change', (e) => {
-      viewState.senderNumber = e.target.value;
+      viewState.senderSelectValue = e.target.value;
+      if (e.target.value === "custom") {
+        viewState.senderNumber = viewState.customSenderNumber;
+      } else {
+        viewState.senderNumber = e.target.value;
+      }
+      renderComposePanel();
+      renderSendBar();
     });
 
-    block.querySelector('#btnAddSenderStub').addEventListener('click', () => {
-      alert("신규 발신번호 등록 및 통신사 서류 인증 프로세스는 다음 고도화 단계에서 연동됩니다.");
-    });
+    const customSenderInput = block.querySelector('#customSenderNumberInput');
+    if (customSenderInput) {
+      customSenderInput.addEventListener('input', (e) => {
+        viewState.customSenderNumber = e.target.value;
+        viewState.senderNumber = e.target.value;
+      });
+    }
 
     block.querySelectorAll('.btn-toggle-method').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -1134,22 +1303,6 @@ export function renderMessageSend(container) {
         renderComposePanel();
         renderSendBar();
       });
-    });
-
-    block.querySelector('#btnToggleSchedule').addEventListener('click', () => {
-      viewState.schedule.on = !viewState.schedule.on;
-      renderComposePanel();
-      renderSendBar();
-    });
-
-    const dateInp = block.querySelector('#scheduleDateInput');
-    dateInp.addEventListener('change', (e) => {
-      viewState.schedule.date = e.target.value;
-    });
-
-    const timeInp = block.querySelector('#scheduleTimeInput');
-    timeInp.addEventListener('change', (e) => {
-      viewState.schedule.time = e.target.value;
     });
 
     const macroSelect = block.querySelector('#macroInsertSelect');
@@ -1170,9 +1323,8 @@ export function renderMessageSend(container) {
     const titleInp = block.querySelector('#composeTitleInput');
     titleInp.addEventListener('input', (e) => {
       viewState.title = e.target.value;
-      // Real-time byte update in header
       const kindSpan = block.querySelector('.message-send-card-header span:last-child');
-      const calculatedKind = msgKind(viewState.title, viewState.body, !!viewState.image);
+      const calculatedKind = viewState.method === "PUSH" ? "PUSH" : viewState.method === "알림톡" ? "알림톡" : msgKind(viewState.title, viewState.body, !!viewState.image);
       kindSpan.textContent = calculatedKind;
     });
 
@@ -1180,12 +1332,26 @@ export function renderMessageSend(container) {
     bodyInp.addEventListener('input', (e) => {
       viewState.body = e.target.value;
       
-      // Update byte counter in UI
+      // Update byte counter and live preview in UI
       const countLabel = block.querySelector('span[fontvariantnumeric="tabular-nums"]');
       const currentBytes = byteLen(viewState.title) + byteLen(viewState.body);
-      const limitVal = msgKind(viewState.title, viewState.body, !!viewState.image) === "SMS" ? 90 : 2000;
+      const calculatedKind = viewState.method === "PUSH" ? "PUSH" : viewState.method === "알림톡" ? "알림톡" : msgKind(viewState.title, viewState.body, !!viewState.image);
+      const limitVal = calculatedKind === "SMS" ? 90 : 2000;
       if (countLabel) {
         countLabel.textContent = `${currentBytes} / ${limitVal} byte`;
+      }
+      
+      // Real-time live text preview update
+      const previewTextDiv = block.querySelector('.phone-frame div[style*="background: #fff; border-radius: 5px 15px 15px 15px"]');
+      if (previewTextDiv) {
+        const innerText = viewState.body.trim()
+          ? viewState.body.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>")
+          : '<span style="color: #94a3b8;">작성된 메시지가 없습니다.</span>';
+        
+        previewTextDiv.innerHTML = `
+          ${viewState.image ? `<div style="height: 50px; background: #e2e8f0; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #64748b; margin-bottom: 6px;">[이미지 첨부됨]</div>` : ''}
+          ${innerText}
+        `;
       }
     });
 
@@ -1195,12 +1361,23 @@ export function renderMessageSend(container) {
       renderSendBar();
     });
 
-    const addImgBtn = block.querySelector('#btnAddImageStub');
+    const addImgBtn = block.querySelector('#btnComposeAddImage');
     if (addImgBtn) {
       addImgBtn.addEventListener('click', () => {
         viewState.image = "학원안내_홍보물.png";
         renderComposePanel();
         renderSendBar();
+      });
+    }
+
+    const openSaveModalBtn = block.querySelector('#btnOpenSaveTemplateModal');
+    if (openSaveModalBtn) {
+      openSaveModalBtn.addEventListener('click', () => {
+        viewState.saveModalOpen = true;
+        viewState.saveModalTitle = viewState.title;
+        viewState.saveModalBody = viewState.body;
+        viewState.saveModalError = "";
+        renderTemplateSaveModal();
       });
     }
 
@@ -1228,7 +1405,7 @@ export function renderMessageSend(container) {
     if (viewState.vaultActiveTab === "recommend") {
       listData = MOCK_RECOMMENDED;
     } else if (viewState.vaultActiveTab === "saved") {
-      listData = MOCK_SAVED_TEMPLATES;
+      listData = viewState.savedTemplates;
     } else {
       listData = MOCK_RECENT_MESSAGES;
     }
@@ -1253,7 +1430,7 @@ export function renderMessageSend(container) {
       <div style="display: flex; align-items: center; padding: 12px 12px 0; border-bottom: 1px solid #f1f5f9; gap: 2px;">
         ${[
           { key: "recommend", label: "추천", icon: "star", count: MOCK_RECOMMENDED.length },
-          { key: "saved", label: "저장", icon: "note", count: MOCK_SAVED_TEMPLATES.length },
+          { key: "saved", label: "저장", icon: "note", count: viewState.savedTemplates.length },
           { key: "recent", label: "최근", icon: "clock", count: MOCK_RECENT_MESSAGES.length }
         ].map(tab => {
           const active = viewState.vaultActiveTab === tab.key;
@@ -1279,33 +1456,43 @@ export function renderMessageSend(container) {
         </div>
       </div>
 
-      <!-- Paginated List -->
-      <div style="padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; flex: 1; min-height: 180px;">
+      <!-- Paginated List with Speech Bubble Previews -->
+      <div style="padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 180px;">
         ${paginatedData.length === 0 ? `
           <div style="padding: 40px 10px; text-align: center; font-size: 12px; color: var(--text-muted);">검색 결과가 없습니다.</div>
-        ` : paginatedData.map(item => `
-          <div style="display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 10px; background: #fafbfe; border: 1px solid #edf2f7;">
-            <div style="display: flex; align-items: center; gap: 6px;">
-              ${item.name ? `<span style="font-size: 12px; font-weight: 700; color: var(--text-main);">${item.name}</span>` : `<span style="font-size: 11px; color: var(--text-muted);">${item.sentAt}</span>`}
-              <span style="font-size: 9px; font-weight: 800; color: var(--primary); background: var(--primary-light); padding: 1px 5px; border-radius: 4px; margin-left: 2px;">${item.kind}</span>
-              ${item.ad ? `<span style="font-size: 9px; font-weight: 800; color: #b45309; background: #fef3dd; padding: 1px 5px; border-radius: 4px;">광고</span>` : ''}
-              ${item.success !== undefined ? `<span style="margin-left: auto; font-size: 11px; color: var(--success); font-weight: 700;">${item.success}/${item.count} 발송</span>` : ''}
+        ` : paginatedData.map(item => {
+          const typeColor = item.kind === 'SMS' ? 'var(--sky)' : item.kind === 'LMS' ? 'var(--violet)' : item.kind === 'MMS' ? 'var(--rose)' : item.kind === 'PUSH' ? 'var(--success)' : 'var(--primary)';
+          const typeBg = item.kind === 'SMS' ? 'var(--sky-light)' : item.kind === 'LMS' ? 'var(--violet-light)' : item.kind === 'MMS' ? 'var(--rose-light)' : item.kind === 'PUSH' ? 'var(--success-light)' : 'var(--primary-light)';
+          
+          return `
+            <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 12px; background: #ffffff; border: 1.5px solid #f1f5f9; box-shadow: 0 2px 8px rgba(0,0,0,0.02); transition: all 0.2s ease;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                ${item.name ? `<span style="font-size: 12px; font-weight: 800; color: var(--text-main);">${item.name}</span>` : `<span style="font-size: 11px; color: var(--text-muted); font-weight: 700;">${item.sentAt}</span>`}
+                <span style="font-size: 9px; font-weight: 800; color: ${typeColor}; background: ${typeBg}; padding: 2px 6px; border-radius: 6px; margin-left: 2px;">${item.kind}</span>
+                ${item.ad ? `<span style="font-size: 9px; font-weight: 800; color: #b45309; background: #fef3dd; padding: 2px 6px; border-radius: 6px;">광고</span>` : ''}
+                ${item.success !== undefined ? `<span style="margin-left: auto; font-size: 10.5px; color: var(--success); font-weight: 800;">${item.success}/${item.count} 발송</span>` : ''}
+              </div>
+              
+              <!-- Smartphone Message Bubble Style -->
+              <div style="
+                background: #f1f5f9; border-radius: 5px 12px 12px 12px; padding: 9px 12px; font-size: 11.5px;
+                line-height: 1.5; color: #334155; position: relative; border-left: 3px solid ${typeColor};
+                max-height: 72px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+              ">${item.body}</div>
+              
+              <div style="display: flex; gap: 6px; margin-top: 2px;">
+                <button class="btn-apply-template" data-id="${item.id}" style="
+                  display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 11.5px; font-weight: 700;
+                  color: #fff; background: var(--primary); border: none; border-radius: 7px; cursor: pointer; font-family: inherit; margin-bottom: 0;
+                ">${renderIcon('check', 11, '#fff', 2.5)} 적용</button>
+                <button class="btn-edit-template-stub" style="
+                  display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 11.5px; font-weight: 700;
+                  color: var(--slate); background: #fff; border: 1px solid var(--border-color); border-radius: 7px; cursor: pointer; font-family: inherit; margin-bottom: 0;
+                ">${renderIcon('edit', 11, 'var(--slate)')} 수정</button>
+              </div>
             </div>
-            
-            <div style="background: #eef2f6; border-radius: 8px; padding: 8px; font-size: 11.5px; line-height: 1.45; color: #374151; white-space: pre-wrap; max-height: 60px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">${item.body}</div>
-            
-            <div style="display: flex; gap: 6px; margin-top: 4px;">
-              <button class="btn-apply-template" data-id="${item.id}" style="
-                display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; font-size: 11.5px; font-weight: 700;
-                color: #fff; background: var(--primary); border: none; border-radius: 6px; cursor: pointer; font-family: inherit; margin-bottom: 0;
-              ">${renderIcon('check', 11, '#fff', 2.5)} 적용</button>
-              <button class="btn-edit-template-stub" style="
-                display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; font-size: 11.5px; font-weight: 700;
-                color: var(--slate); background: #fff; border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; font-family: inherit; margin-bottom: 0;
-              ">${renderIcon('edit', 11, 'var(--slate)')} 불러와 수정</button>
-            </div>
-          </div>
-        `).join('')}
+          `;
+        }).join('')}
       </div>
 
       <!-- Pagination controls -->
@@ -1353,6 +1540,8 @@ export function renderMessageSend(container) {
         viewState.image = item.kind === "MMS" ? "안내_포스터.jpg" : null;
         if (item.kind === "PUSH") {
           viewState.method = "PUSH";
+        } else if (item.kind === "알림톡") {
+          viewState.method = "알림톡";
         } else {
           viewState.method = "SMS";
         }
@@ -1399,10 +1588,7 @@ export function renderMessageSend(container) {
 
     const excluded = viewState.recipients.filter(r => r.optOut).length;
     const sendable = viewState.recipients.length - excluded;
-    
-    const kind = viewState.method === "PUSH" ? "PUSH" : msgKind(viewState.title, viewState.body, !!viewState.image);
-    const unitPrice = kind === "SMS" ? 20 : kind === "LMS" ? 50 : kind === "MMS" ? 200 : 0;
-    const cost = unitPrice * sendable;
+    const kind = viewState.method === "PUSH" ? "PUSH" : viewState.method === "알림톡" ? "알림톡" : msgKind(viewState.title, viewState.body, !!viewState.image);
 
     block.innerHTML = `
       <div style="
@@ -1428,11 +1614,7 @@ export function renderMessageSend(container) {
           <div style="display: flex; align-items: center; gap: 16px;">
             <span style="display: flex; flex-direction: column;">
               <span style="font-size: 11px; color: var(--text-muted); font-weight: 700;">유형</span>
-              <span id="sendBarMsgType" style="font-size: 13px; font-weight: 800; color: ${kind === 'SMS' ? 'var(--sky)' : kind === 'LMS' ? 'var(--violet)' : 'var(--rose)'};">${kind}</span>
-            </span>
-            <span style="display: flex; flex-direction: column;">
-              <span style="font-size: 11px; color: var(--text-muted); font-weight: 700;">예상 비용</span>
-              <span style="font-size: 13px; font-weight: 800; color: var(--text-main);">약 ${cost.toLocaleString()}원</span>
+              <span id="sendBarMsgType" style="font-size: 13px; font-weight: 800; color: ${kind === 'SMS' ? 'var(--sky)' : kind === 'LMS' ? 'var(--violet)' : kind === 'MMS' ? 'var(--rose)' : kind === 'PUSH' ? 'var(--success)' : 'var(--primary)'};">${kind}</span>
             </span>
             ${viewState.schedule.on ? `
               <span style="display: flex; flex-direction: column;">
@@ -1442,20 +1624,38 @@ export function renderMessageSend(container) {
             ` : ''}
           </div>
           
-          <button id="btnSendBarReview" style="
-            margin-left: auto; display: flex; align-items: center; gap: 8px; padding: 11px 24px; font-size: 14px; font-weight: 800;
-            color: #fff; background: var(--primary); border: none; border-radius: 12px; cursor: pointer;
-            box-shadow: 0 6px 18px rgba(37,99,235,.26); font-family: inherit; margin-bottom: 0;
-          ">
-            ${renderIcon(viewState.schedule.on ? 'clock' : 'send', 16, '#fff')} ${viewState.schedule.on ? '예약 검토' : '발송 검토'}
-          </button>
+          <div style="margin-left: auto; display: flex; gap: 8px;">
+            <button id="btnSendBarDirect" style="
+              display: flex; align-items: center; gap: 6px; padding: 11px 20px; font-size: 13.5px; font-weight: 800;
+              color: #fff; background: var(--primary); border: none; border-radius: 10px; cursor: pointer;
+              box-shadow: 0 4px 12px rgba(37,99,235,.2); font-family: inherit; margin-bottom: 0;
+            ">
+              ${renderIcon('send', 14, '#fff')} ${sendable}명 즉시발송
+            </button>
+            <button id="btnSendBarReserve" style="
+              display: flex; align-items: center; gap: 6px; padding: 11px 20px; font-size: 13.5px; font-weight: 800;
+              color: var(--slate); background: #e2e8f0; border: none; border-radius: 10px; cursor: pointer;
+              font-family: inherit; margin-bottom: 0;
+            ">
+              ${renderIcon('clock', 14, 'var(--slate)')} ${sendable}명 예약발송
+            </button>
+          </div>
         </div>
       </div>
     `;
 
-    block.querySelector('#btnSendBarReview').addEventListener('click', () => {
-      viewState.focusOpen = true;
-      renderFocusConfirm();
+    block.querySelector('#btnSendBarDirect').addEventListener('click', () => {
+      alert("실제 SMS/PUSH/알림톡 발송 기능은 추후 연결 예정입니다.");
+      viewState.recipients = [];
+      viewState.selectedStudentIds.clear();
+      render();
+    });
+
+    block.querySelector('#btnSendBarReserve').addEventListener('click', () => {
+      alert("예약발송 기능은 추후 서버 연동 후 제공 예정입니다.");
+      viewState.recipients = [];
+      viewState.selectedStudentIds.clear();
+      render();
     });
   };
 
@@ -1482,9 +1682,10 @@ export function renderMessageSend(container) {
 
     const excluded = viewState.recipients.filter(r => r.optOut).length;
     const sendable = viewState.recipients.length - excluded;
-    const kind = viewState.method === "PUSH" ? "PUSH" : msgKind(viewState.title, viewState.body, !!viewState.image);
-    const unitPrice = kind === "SMS" ? 20 : kind === "LMS" ? 50 : kind === "MMS" ? 200 : 0;
+    const kind = viewState.method === "PUSH" ? "PUSH" : viewState.method === "알림톡" ? "알림톡" : msgKind(viewState.title, viewState.body, !!viewState.image);
+    const unitPrice = kind === "SMS" ? 20 : kind === "LMS" ? 50 : kind === "MMS" ? 200 : kind === "알림톡" ? 15 : 0;
     const cost = unitPrice * sendable;
+    const chipToneClass = kind === 'SMS' ? 'sky' : kind === 'LMS' ? 'violet' : kind === 'MMS' ? 'red' : kind === 'PUSH' ? 'green' : 'blue';
 
     block.innerHTML = `
       <!-- Close overlay clicking backdrop -->
@@ -1518,13 +1719,8 @@ export function renderMessageSend(container) {
               </div>
               <div style="flex: 1; padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;">
                 <div style="font-size: 11px; color: var(--text-muted); font-weight: 700; margin-bottom: 2px;">발송 방식</div>
-                <div style="font-size: 16px; font-weight: 800; color: ${kind === 'SMS' ? 'var(--sky)' : 'var(--violet)'};">${kind}</div>
+                <div style="font-size: 16px; font-weight: 800; color: ${kind === 'SMS' ? 'var(--sky)' : kind === 'LMS' ? 'var(--violet)' : kind === 'MMS' ? 'var(--rose)' : kind === 'PUSH' ? 'var(--success)' : 'var(--primary)'};">${kind}</div>
                 <div style="font-size: 9.5px; color: var(--text-muted-light); margin-top: 2px;">발신: ${viewState.senderNumber}</div>
-              </div>
-              <div style="flex: 1; padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;">
-                <div style="font-size: 11px; color: var(--text-muted); font-weight: 700; margin-bottom: 2px;">예상 비용</div>
-                <div style="font-size: 16px; font-weight: 800; color: var(--text-main);">${cost.toLocaleString()}원</div>
-                <div style="font-size: 9.5px; color: var(--text-muted-light); margin-top: 2px;">건당 ${unitPrice}원</div>
               </div>
             </div>
 
@@ -1542,7 +1738,7 @@ export function renderMessageSend(container) {
               <div style="background: #eef2f6; border-radius: 10px; padding: 10px; max-width: 280px; margin: 0 auto; border: 1px solid #e2e8f0;">
                 <div style="font-size: 10px; color: var(--text-muted); border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
                   <span>수신화면 미리보기</span>
-                  <span class="message-send-chip tone-${kind === 'SMS' ? 'sky' : 'violet'}" style="padding: 0 4px; font-size: 8px; border-radius: 3px;">${kind}</span>
+                  <span class="message-send-chip tone-${chipToneClass}" style="padding: 0 4px; font-size: 8px; border-radius: 3px;">${kind}</span>
                 </div>
                 ${viewState.image ? `<div style="height: 60px; background: #cbd5e1; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #475569; margin-bottom: 6px;">[이미지 첨부: ${viewState.image}]</div>` : ''}
                 ${viewState.title ? `<div style="font-weight: 700; font-size: 12px; color: #000; margin-bottom: 4px;">${viewState.title}</div>` : ''}
@@ -1585,12 +1781,153 @@ export function renderMessageSend(container) {
     block.querySelector('#btnFocusCancel').addEventListener('click', closeOverlay);
     
     block.querySelector('#btnFocusSendConfirm').addEventListener('click', () => {
-      alert("실제 SMS/PUSH/알림톡 발송 기능은 추후 연결 예정입니다.");
+      if (viewState.schedule.on) {
+        alert("예약발송은 추후 서버 연동 후 제공 예정입니다.");
+      } else {
+        alert("실제 SMS/PUSH/알림톡 발송 기능은 추후 연결 예정입니다.");
+      }
       viewState.focusOpen = false;
       viewState.recipients = [];
       viewState.selectedStudentIds.clear();
       
       render();
+    });
+  };
+
+  // 9. Template Save Modal Dialog
+  const renderTemplateSaveModal = () => {
+    const block = container.querySelector('#templateSaveModalOverlay');
+    if (!viewState.saveModalOpen) {
+      block.style.display = 'none';
+      block.style.position = '';
+      block.style.inset = '';
+      block.style.zIndex = '';
+      block.innerHTML = '';
+      return;
+    }
+    block.style.display = 'flex';
+    block.style.position = 'fixed';
+    block.style.inset = '0';
+    block.style.zIndex = '100';
+    block.style.alignItems = 'center';
+    block.style.justifyContent = 'center';
+    block.style.padding = '20px';
+    block.style.background = 'rgba(15, 23, 42, 0.42)';
+    block.style.animation = 'fadeIn 0.15s ease-out';
+
+    // Escape helper for input values
+    const escVal = (str) => (str || "").replace(/"/g, '&quot;');
+    const escHtml = (str) => (str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+    block.innerHTML = `
+      <div id="btnSaveModalCloseBackdrop" style="position: absolute; inset: 0;"></div>
+      <div style="
+        position: relative; background: #fff; border-radius: 16px; width: 100%; max-width: 420px;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+        animation: popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); display: flex; flex-direction: column; overflow: hidden;
+      ">
+        <!-- Header -->
+        <div style="display: flex; align-items: center; gap: 10px; padding: 14px 20px; background: #fff; border-bottom: 1px solid #edf2f7;">
+          <span style="width: 28px; height: 28px; border-radius: 8px; background: var(--warning-light); display: flex; align-items: center; justify-content: center;">
+            ${renderIcon('star', 14, 'var(--warning)')}
+          </span>
+          <h3 style="margin: 0; font-size: 15px; font-weight: 800; color: var(--text-main);">템플릿 신규 저장</h3>
+          <button id="btnSaveModalClose" style="
+            margin-left: auto; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border-color);
+            background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
+          ">${renderIcon('close', 14, '#64748b')}</button>
+        </div>
+
+        <!-- Body -->
+        <div style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">템플릿 제목</label>
+            <input type="text" id="saveModalTitleInp" value="${escVal(viewState.saveModalTitle)}" placeholder="템플릿 제목을 입력해 주세요" style="
+              width: 100%; padding: 10px 12px; font-size: 13px; border-radius: 8px; border: 1px solid var(--border-color);
+              box-sizing: border-box; outline: none; transition: border-color 0.15s;
+            ">
+          </div>
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">템플릿 내용</label>
+            <textarea id="saveModalBodyInp" placeholder="템플릿 내용을 입력해 주세요" style="
+              width: 100%; height: 120px; padding: 10px 12px; font-size: 13px; border-radius: 8px; border: 1px solid var(--border-color);
+              box-sizing: border-box; outline: none; transition: border-color 0.15s; resize: none; font-family: inherit;
+            ">${escHtml(viewState.saveModalBody)}</textarea>
+          </div>
+          ${viewState.saveModalError ? `<div style="font-size: 11.5px; color: var(--danger); font-weight: 700;">${viewState.saveModalError}</div>` : ''}
+        </div>
+
+        <!-- Footer -->
+        <div style="display: flex; gap: 10px; padding: 12px 20px; background: #fff; border-top: 1px solid #edf2f7; justify-content: flex-end;">
+          <button id="btnSaveModalCancel" style="
+            display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; font-size: 13.5px; font-weight: 700;
+            color: var(--slate); background: #f1f5f9; border: none; border-radius: 10px; cursor: pointer; font-family: inherit; margin-bottom: 0;
+          ">취소</button>
+          <button id="btnSaveModalSubmit" style="
+            display: inline-flex; align-items: center; gap: 6px; padding: 10px 24px; font-size: 13.5px; font-weight: 800;
+            color: #fff; background: var(--primary); border: none; border-radius: 10px; cursor: pointer;
+            box-shadow: 0 4px 12px rgba(37,99,235,.2); font-family: inherit; margin-bottom: 0;
+          ">저장</button>
+        </div>
+      </div>
+    `;
+
+    // Hook listeners
+    const closeSaveModal = () => {
+      viewState.saveModalOpen = false;
+      renderTemplateSaveModal();
+    };
+
+    block.querySelector('#btnSaveModalCloseBackdrop').addEventListener('click', closeSaveModal);
+    block.querySelector('#btnSaveModalClose').addEventListener('click', closeSaveModal);
+    block.querySelector('#btnSaveModalCancel').addEventListener('click', closeSaveModal);
+
+    const titleInp = block.querySelector('#saveModalTitleInp');
+    titleInp.addEventListener('input', (e) => {
+      viewState.saveModalTitle = e.target.value;
+    });
+
+    const bodyInp = block.querySelector('#saveModalBodyInp');
+    bodyInp.addEventListener('input', (e) => {
+      viewState.saveModalBody = e.target.value;
+    });
+
+    block.querySelector('#btnSaveModalSubmit').addEventListener('click', () => {
+      if (!viewState.saveModalTitle.trim()) {
+        viewState.saveModalError = "제목을 입력해 주세요.";
+        renderTemplateSaveModal();
+        return;
+      }
+      if (!viewState.saveModalBody.trim()) {
+        viewState.saveModalError = "내용을 입력해 주세요.";
+        renderTemplateSaveModal();
+        return;
+      }
+
+      // Add to template list in state
+      const nextId = "t" + (viewState.savedTemplates.length + 1);
+      const newTemplate = {
+        id: nextId,
+        name: viewState.saveModalTitle.trim(),
+        title: viewState.saveModalTitle.trim(),
+        body: viewState.saveModalBody.trim(),
+        kind: viewState.method === "PUSH" ? "PUSH" : viewState.method === "알림톡" ? "알림톡" : msgKind(viewState.saveModalTitle.trim(), viewState.saveModalBody.trim(), !!viewState.image),
+        ad: false,
+        savedAt: new Date().toISOString().slice(0, 10)
+      };
+      
+      viewState.savedTemplates.unshift(newTemplate);
+      
+      // Setup dynamic alert behavior
+      alert(`템플릿 "${newTemplate.name}"이(가) 보관함에 임시 저장되었습니다.`);
+      
+      // Auto-toggle tab to Saved
+      viewState.vaultActiveTab = "saved";
+      viewState.vaultPages["saved"] = 0;
+      
+      viewState.saveModalOpen = false;
+      renderTemplateSaveModal();
+      renderMessageVault();
     });
   };
 

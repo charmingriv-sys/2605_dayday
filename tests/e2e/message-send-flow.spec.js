@@ -136,4 +136,57 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     // Assert message send specific header action is cleaned up
     await expect(page.locator('#message-send-refresh-btn')).toBeHidden();
   });
+
+  test('should flow template save modal and update saved list', async ({ page }) => {
+    // Navigate to Message Send view
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+
+    // Type title and body
+    const titleInput = page.locator('#composeTitleInput');
+    await titleInput.fill('테스트용 템플릿 제목');
+    const bodyInput = page.locator('#composeBodyInput');
+    await bodyInput.fill('테스트용 템플릿 내용입니다.');
+
+    // Click "현재 내용을 템플릿으로 저장"
+    const openSaveModalBtn = page.locator('#btnOpenSaveTemplateModal');
+    await expect(openSaveModalBtn).toBeVisible();
+    await openSaveModalBtn.click();
+
+    // Verify modal overlay is visible
+    const saveOverlay = page.locator('#templateSaveModalOverlay');
+    await expect(saveOverlay).toBeVisible();
+
+    // Verify inputs in modal are pre-filled
+    const modalTitle = page.locator('#saveModalTitleInp');
+    await expect(modalTitle).toHaveValue('테스트용 템플릿 제목');
+    const modalBody = page.locator('#saveModalBodyInp');
+    await expect(modalBody).toHaveValue('테스트용 템플릿 내용입니다.');
+
+    // Setup dialog listener for alert
+    let dialogTriggered = false;
+    let dialogText = '';
+    page.on('dialog', async (dialog) => {
+      dialogTriggered = true;
+      dialogText = dialog.message();
+      await dialog.accept();
+    });
+
+    // Click Save
+    const saveSubmitBtn = page.locator('#btnSaveModalSubmit');
+    await saveSubmitBtn.click();
+
+    // Assert alert was shown
+    expect(dialogTriggered).toBe(true);
+    expect(dialogText).toContain('템플릿 "테스트용 템플릿 제목"이(가) 보관함에 임시 저장되었습니다.');
+
+    // Modal should close
+    await expect(saveOverlay).toBeHidden();
+
+    // Tab should auto-toggle to Saved, and first item in list should be the new template
+    const activeTab = page.locator('.btn-vault-tab[data-tab="saved"]');
+    await expect(activeTab).toHaveAttribute('data-tab', 'saved');
+
+    const firstSavedItem = page.locator('#messageVaultPanel').locator('span').filter({ hasText: '테스트용 템플릿 제목' }).first();
+    await expect(firstSavedItem).toBeVisible();
+  });
 });
