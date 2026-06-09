@@ -7,6 +7,7 @@ export {
     renderDirectorAttendance,
     renderKioskAttendance,
     renderDirectorAttendanceControl,
+    renderMajorSchedule,
     renderBooks,
     renderBooksElapsed,
     renderSubjects,
