@@ -1,39 +1,46 @@
 // majorScheduleView.js - Major Schedule Management View
 import { stateStore } from '../../state.js';
 
+const chosung = ["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+const getChosungStr = (str) => {
+    let res = "";
+    for (let i = 0; i < str.length; i++) {
+        const code = str.charCodeAt(i) - 44032;
+        if (code > -1 && code < 11172) {
+            res += chosung[Math.floor(code / 588)];
+        } else {
+            res += str.charAt(i);
+        }
+    }
+    return res;
+};
+
 const eventTypes = {
   all: { label: "전체", tone: "slate" },
   concours: { label: "콩쿠르", tone: "blue" },
-  exam: { label: "시험/평가", tone: "red" },
-  recital: { label: "발표/행사", tone: "violet" },
-  makeup: { label: "보강/휴강", tone: "amber" },
-  counsel: { label: "상담/관리", tone: "green" }
+  exam: { label: "입시", tone: "red" },
+  makeup: { label: "보강", tone: "amber" },
+  event: { label: "행사", tone: "violet" },
+  counsel: { label: "상담", tone: "green" },
+  etc: { label: "기타", tone: "slate" }
 };
 
-const events = [
-  { id: "ev1", type: "concours", name: "한국청소년 피아노 콩쿠르", date: "2026-06-14", due: "2026-06-07", owner: "정은비", place: "예술의전당", status: "확인필요", visible: false, memo: "접수 마감 전 보호자 확인 필요" },
-  { id: "ev2", type: "exam", name: "예원학교 입시 실기고사", date: "2026-07-05", due: "2026-06-09", owner: "한지섭", place: "예원학교 음악관", status: "확인필요", visible: false, memo: "입시 상담 예약과 원서 접수 확인" },
-  { id: "ev3", type: "concours", name: "영 첼리스트 콩쿠르", date: "2026-06-21", due: "2026-06-11", owner: "성여진", place: "금호아트홀", status: "진행중", visible: false, memo: "결석 학생 보강 배정 필요" },
-  { id: "ev4", type: "recital", name: "여름 정기 음악회", date: "2026-06-27", due: null, owner: "윤채린", place: "튜링 그랜드홀", status: "진행중", visible: false, memo: "전체 리허설 6월 25일" },
-  { id: "ev5", type: "makeup", name: "6월 결석자 보강 편성", date: "2026-06-12", due: null, owner: "운영실", place: "원내", status: "확인필요", visible: false, memo: "최근 결석 원생 보강 시간 확정" },
-  { id: "ev6", type: "counsel", name: "입시반 학부모 상담 주간", date: "2026-06-18", due: null, owner: "원장", place: "상담실", status: "진행중", visible: false, memo: "입시반 학부모 상담 후보 자동 큐" }
-];
-
-const students = [
-  { id: 1, name: "이서윤", grade: "초6", instrument: "피아노", teacher: "정은비", eventIds: ["ev1", "ev4"], lesson: "16:00 A-3", lessonSource: "정규 수업 배정", memo: "콩쿠르 자유곡 템포 점검", notes: ["06.04 콩쿠르 접수 보호자 확인 필요", "06.01 템포 흔들림, 다음 레슨에서 재점검"] },
-  { id: 2, name: "박도현", grade: "중2", instrument: "첼로", teacher: "성여진", eventIds: ["ev3", "ev5"], lesson: "18:00 C-1", lessonSource: "정규 수업 배정", memo: "지난주 결석 1회, 보강 미정", notes: ["06.04 결석 보강 후보", "05.30 암보 불안정, 보호자 안내 완료"] },
-  { id: 3, name: "김하린", grade: "중3", instrument: "피아노", teacher: "한지섭", eventIds: ["ev2", "ev6"], lesson: "토 11:00 A-1", lessonSource: "주말 정규 수업", memo: "입시 원서 마감 임박", notes: ["06.04 입시 상담 일정 조율 필요", "06.02 원서 제출 서류 안내"] },
-  { id: 4, name: "정시우", grade: "초5", instrument: "바이올린", teacher: "윤채린", eventIds: ["ev4"], lesson: "금 17:30 B-2", lessonSource: "정규 수업 배정", memo: "무대 리허설 일정만 확인", notes: ["06.03 리허설 안내 문자 발송"] },
-  { id: 5, name: "최예준", grade: "중1", instrument: "피아노", teacher: "정은비", eventIds: ["ev1"], lesson: "17:00 A-2", lessonSource: "정규 수업 배정", memo: "D-10 완성도 낮음", notes: ["06.04 추가 레슨 편성 검토", "06.01 곡 완성도 낮음, 원장 확인"] },
-  { id: 6, name: "윤서아", grade: "초6", instrument: "바이올린", teacher: "성여진", eventIds: ["ev5"], lesson: "16:30 B-1", lessonSource: "정규 수업 배정", memo: "결석 2회 누적", notes: ["06.04 보강 가능 시간 확인 필요", "05.29 결석 사유 입력"] },
-  { id: 7, name: "백서진", grade: "고2", instrument: "피아노", teacher: "한지섭", eventIds: ["ev2", "ev6"], lesson: "금 19:30 A-1", lessonSource: "입시반 정규 수업", memo: "예고 입시 상담 필요", notes: ["06.04 학부모 상담 후보", "06.02 입시곡 진도 양호"] }
-];
-
-const today = new Date(2026, 5, 4);
+function getToday() {
+  if (typeof window !== 'undefined' && window.__DAYDAY_E2E__) {
+    return new Date(2026, 5, 4);
+  }
+  return new Date();
+}
 
 function dday(dateStr) {
+  if (!dateStr) return 0;
   const [y, m, d] = dateStr.split("-").map(Number);
-  return Math.round((new Date(y, m - 1, d) - today) / 86400000);
+  const target = new Date(y, m - 1, d);
+  const today = getToday();
+  // Clear time components for pure date difference
+  target.setHours(0, 0, 0, 0);
+  const todayClear = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return Math.round((target - todayClear) / 86400000);
 }
 
 function fmt(dateStr) {
@@ -43,56 +50,13 @@ function fmt(dateStr) {
   return `${m}.${d}(${dow})`;
 }
 
-function eventParts(eventId) {
-  return students.filter((student) => student.eventIds.includes(eventId));
-}
-
-function hasStudentMemo(student) {
-  return student.notes && student.notes.length > 0;
-}
-
 function typeChip(type) {
-  const meta = eventTypes[type];
+  const meta = eventTypes[type] || { label: "기타", tone: "slate" };
   return `<span class="type-chip tone-${meta.tone}">${meta.label}</span>`;
-}
-
-function statusChip(status) {
-  const tone = status === "완료" ? "green" : status === "진행중" ? "blue" : "red";
-  return `<span class="status-chip tone-${tone}">${status}</span>`;
 }
 
 function visibilityChip(visible) {
   return `<span class="status-chip ${visible ? "tone-green" : "tone-slate"}">${visible ? "학부모 공개" : "비공개"}</span>`;
-}
-
-function memoStateChip(student) {
-  return `<span class="mini-chip ${hasStudentMemo(student) ? "tone-blue" : "tone-green"}">${hasStudentMemo(student) ? "메모 있음" : "메모 없음"}</span>`;
-}
-
-function eventMemoItems(event) {
-  return event.notes && event.notes.length ? event.notes : [event.memo];
-}
-
-function lessonTime(student) {
-  const token = student.lesson.split(" ").find((part) => /\d{1,2}:\d{2}/.test(part));
-  return token || "-";
-}
-
-function lessonDateTime(student, offset = 0) {
-  const base = new Date(today);
-  base.setDate(today.getDate() + offset);
-  const month = String(base.getMonth() + 1).padStart(2, "0");
-  const date = String(base.getDate()).padStart(2, "0");
-  return `${month}/${date} ${lessonTime(student)}`;
-}
-
-function upcomingLessons(student) {
-  return [
-    { label: "다음", at: lessonDateTime(student, 0), type: "정규" },
-    { label: "2회차", at: lessonDateTime(student, 3), type: "정규" },
-    { label: "3회차", at: lessonDateTime(student, 7), type: "정규" },
-    { label: "4회차", at: lessonDateTime(student, 10), type: "정규" }
-  ];
 }
 
 export function renderMajorSchedule(container) {
@@ -119,17 +83,86 @@ export function renderMajorSchedule(container) {
 
   let activeType = "all";
   let tableView = "event";
-  let selectedStatus = "전체";
   let selectedOwner = "전체";
   let searchQuery = "";
   let lastSyncTime = "16:40";
 
-  const render = () => {
-    const monthEvents = events.filter((event) => dday(event.date) >= 0).length;
-    const deadline = events.filter((event) => event.due && dday(event.due) >= 0 && dday(event.due) <= 7).length;
-    const todayLessons = students.filter((student) => /^\d/.test(student.lesson)).length;
+  // State adapter to map real db tables to structure required by the UI
+  const getAdaptedStudents = () => {
+    const dbStudents = stateStore.getStudents() || [];
+    const dbTeachers = stateStore.getTeachers() || [];
+    const dbClasses = stateStore.db.classes || [];
+    const dbSchedules = stateStore.getMajorSchedules() || [];
 
-    const owners = [...new Set(events.map((event) => event.owner))];
+    return dbStudents.map(student => {
+      // Resolve teacher name
+      const teacherObj = dbTeachers.find(t => t.id === student.teacherId);
+      const teacherName = teacherObj ? teacherObj.name : (student.teacher || '기타');
+      
+      // Resolve related event IDs
+      const eventIds = dbSchedules
+        .filter(ev => ev.participantStudentIds && ev.participantStudentIds.includes(student.id))
+        .map(ev => ev.id);
+
+      // Resolve lesson time
+      const studentClasses = dbClasses.filter(c => c.studentId === student.id);
+      const lesson = studentClasses.length > 0 
+        ? studentClasses.map(c => `${c.dayOfWeek} ${c.time}`).join(', ')
+        : '수업 없음';
+
+      // Parse school and age to grade
+      const grade = student.school ? `${student.school} ${student.age ? student.age + '세' : ''}` : (student.age ? `${student.age}세` : '일반');
+
+      // Notes
+      let notes = [];
+      if (student.scheduleNotes) {
+        notes = student.scheduleNotes.split('\n').map(n => n.trim()).filter(Boolean);
+      }
+      
+      return {
+        id: student.id,
+        name: student.name,
+        grade: grade,
+        instrument: student.instrument || '피아노',
+        teacher: teacherName,
+        eventIds: eventIds,
+        lesson: lesson,
+        lessonSource: studentClasses.length > 0 ? "정규 수업 배정" : "미지정",
+        memo: student.scheduleNotes || '-',
+        notes: notes
+      };
+    });
+  };
+
+  const getFilteredEventsList = () => {
+    const list = stateStore.getMajorSchedules() || [];
+    const adaptedStudents = getAdaptedStudents();
+    return list.filter((event) => {
+      const parts = adaptedStudents.filter(s => event.participantStudentIds && event.participantStudentIds.includes(s.id));
+      if (activeType !== "all" && event.type !== activeType) return false;
+      if (selectedOwner !== "전체" && event.ownerId !== selectedOwner) return false;
+      if (searchQuery) {
+        const haystack = [event.name, event.ownerId, event.memo || '', ...parts.map((student) => student.name)].join(" ");
+        if (!haystack.includes(searchQuery)) return false;
+      }
+      return true;
+    }).sort((a, b) => dday(a.eventDate) - dday(b.eventDate));
+  };
+
+  const render = () => {
+    const allEvents = stateStore.getMajorSchedules() || [];
+    const adaptedStudents = getAdaptedStudents();
+    const dbClasses = stateStore.db.classes || [];
+    const dbStudents = stateStore.getStudents() || [];
+
+    const monthEvents = allEvents.filter((event) => dday(event.eventDate) >= 0).length;
+    const deadline = allEvents.filter((event) => event.dueDate && dday(event.dueDate) >= 0 && dday(event.dueDate) <= 7).length;
+    
+    // Resolve today's lessons count dynamically
+    const dayOfWeekKo = ["일", "월", "화", "수", "목", "금", "토"][getToday().getDay()];
+    const todayLessons = dbStudents.filter(s => dbClasses.some(c => c.studentId === s.id && c.dayOfWeek === dayOfWeekKo)).length;
+
+    const owners = [...new Set(allEvents.map((event) => event.ownerId))];
 
     if (majorHeaderActions) {
       majorHeaderActions.innerHTML = `
@@ -797,7 +830,6 @@ export function renderMajorSchedule(container) {
           border-bottom: 1px solid var(--line-2);
           cursor: pointer;
         }
-
         .major-schedule-root .student-mini:last-child { border-bottom: 0; }
 
         .major-schedule-root .mini-avatar {
@@ -931,12 +963,6 @@ export function renderMajorSchedule(container) {
           <section class="filters-card">
             <div class="filter-left">
               <div class="segmented" id="typeTabs"></div>
-              <select id="statusFilter">
-                <option value="전체" ${selectedStatus === "전체" ? "selected" : ""}>전체 상태</option>
-                <option value="확인필요" ${selectedStatus === "확인필요" ? "selected" : ""}>확인필요</option>
-                <option value="진행중" ${selectedStatus === "진행중" ? "selected" : ""}>진행중</option>
-                <option value="완료" ${selectedStatus === "완료" ? "selected" : ""}>완료</option>
-              </select>
               <select id="ownerFilter">
                 <option value="전체">전체 담당자</option>
                 ${owners.map(o => `<option value="${o}" ${selectedOwner === o ? "selected" : ""}>${o}</option>`).join('')}
@@ -952,7 +978,7 @@ export function renderMajorSchedule(container) {
               <div class="card-head">
                 <div>
                   <h2>주요 일정 목록</h2>
-                  <p>임박 일정과 미처리 학생 수를 기준으로 먼저 확인합니다.</p>
+                  <p>임박 일정과 포함 원생을 기준으로 먼저 확인합니다.</p>
                 </div>
                 <div class="header-actions">
                   <button id="btn-add-schedule-trigger">일정 추가</button>
@@ -1018,15 +1044,6 @@ export function renderMajorSchedule(container) {
       });
     }
 
-    // Status filter
-    const statusSelect = container.querySelector('#statusFilter');
-    if (statusSelect) {
-      statusSelect.addEventListener('change', (e) => {
-        selectedStatus = e.target.value;
-        render();
-      });
-    }
-
     // Owner filter
     const ownerSelect = container.querySelector('#ownerFilter');
     if (ownerSelect) {
@@ -1067,7 +1084,7 @@ export function renderMajorSchedule(container) {
     // Add schedule trigger
     const addTrigger = container.querySelector('#btn-add-schedule-trigger');
     if (addTrigger) {
-      addTrigger.addEventListener('click', openCreateStub);
+      addTrigger.addEventListener('click', () => openForm());
     }
 
     // Drawer close events
@@ -1082,44 +1099,31 @@ export function renderMajorSchedule(container) {
     }
   };
 
-  const getFilteredEventsList = () => {
-    return events.filter((event) => {
-      const parts = eventParts(event.id);
-      if (activeType !== "all" && event.type !== activeType) return false;
-      if (selectedStatus !== "전체" && event.status !== selectedStatus) return false;
-      if (selectedOwner !== "전체" && event.owner !== selectedOwner) return false;
-      if (searchQuery) {
-        const haystack = [event.name, event.owner, event.memo, ...parts.map((student) => student.name)].join(" ");
-        if (!haystack.includes(searchQuery)) return false;
-      }
-      return true;
-    }).sort((a, b) => dday(a.date) - dday(b.date));
-  };
-
   const renderEventStrip = () => {
     const list = getFilteredEventsList();
+    const adaptedStudents = getAdaptedStudents();
     const strip = container.querySelector('#eventStrip');
     if (!strip) return;
 
     strip.innerHTML = list.map((event) => {
-      const parts = eventParts(event.id);
-      const urgent = event.due && dday(event.due) <= 5;
-      const meta = eventTypes[event.type];
+      const parts = adaptedStudents.filter(s => event.participantStudentIds && event.participantStudentIds.includes(s.id));
+      const urgent = event.dueDate && dday(event.dueDate) <= 5;
+      const meta = eventTypes[event.type] || { tone: "slate" };
       return `
         <article class="event-card" data-id="${event.id}">
           <div class="event-bar" style="background:var(--${meta.tone === "slate" ? "blue" : meta.tone})"></div>
           <div class="event-body">
             <div class="event-head">
               ${typeChip(event.type)}
-              <div class="dday">일정 D-${dday(event.date)}</div>
+              <div class="dday">일정 D-${dday(event.eventDate)}</div>
             </div>
             <div class="event-title">${event.name}</div>
             <div class="event-meta">
-              <span>${fmt(event.date)} · ${event.place}</span>
+              <span>${fmt(event.eventDate)} · ${event.place || "-"}</span>
             </div>
             <div class="event-due-box ${urgent ? "urgent" : ""}">
-              <span>${event.due ? `접수마감 ${fmt(event.due)}` : "접수마감 없음"}</span>
-              <span class="due-dday">${event.due ? `D-${dday(event.due)}` : "-"}</span>
+              <span>${event.dueDate ? `접수마감 ${fmt(event.dueDate)}` : "접수마감 없음"}</span>
+              <span class="due-dday">${event.dueDate ? `D-${dday(event.dueDate)}` : "-"}</span>
             </div>
             <div class="mini-avatars">
               ${parts.slice(0, 4).map((student) => `<span class="avatar-sm">${student.name.slice(-2)}</span>`).join("")}
@@ -1143,6 +1147,8 @@ export function renderMajorSchedule(container) {
     const tableViewHelp = container.querySelector('#tableViewHelp');
     if (!eventHead || !eventBody) return;
 
+    const adaptedStudents = getAdaptedStudents();
+
     if (tableView === "participant") {
       tableViewHelp.textContent = "원생 단위로 관련 일정과 다가오는 수업 정보를 봅니다.";
       eventHead.innerHTML = `
@@ -1150,7 +1156,7 @@ export function renderMajorSchedule(container) {
           <th>참여 원생</th>
           <th>관련 일정</th>
           <th>구분</th>
-          <th>일자</th>
+          <th>진행/종료일</th>
           <th>D-day</th>
           <th>다가오는 수업</th>
           <th>담당자</th>
@@ -1160,19 +1166,24 @@ export function renderMajorSchedule(container) {
       `;
 
       const list = getFilteredEventsList().flatMap((event) => {
-        return eventParts(event.id).map((student) => ({ event, student }));
+        const parts = adaptedStudents.filter(s => event.participantStudentIds && event.participantStudentIds.includes(s.id));
+        return parts.map((student) => ({ event, student }));
       });
 
       eventBody.innerHTML = list.map(({ event, student }) => `
         <tr data-student-id="${student.id}">
           <td><div class="event-name"><strong>${student.name}</strong><span>${student.grade} · ${student.instrument}</span></div></td>
-          <td><div class="event-name"><strong>${event.name}</strong><span>${event.memo}</span></div></td>
+          <td><div class="event-name"><strong>${event.name}</strong><span>${event.memo || ""}</span></div></td>
           <td>${typeChip(event.type)}</td>
-          <td>${fmt(event.date)}</td>
-          <td><b style="color:${dday(event.date) <= 7 ? "var(--red)" : "var(--ink)"}">D-${dday(event.date)}</b></td>
-          <td>${lessonDateTime(student)}</td>
+          <td>${fmt(event.eventDate)}</td>
+          <td><b style="color:${dday(event.eventDate) <= 7 ? "var(--red)" : "var(--ink)"}">D-${dday(event.eventDate)}</b></td>
+          <td>${student.lesson}</td>
           <td>${student.teacher}</td>
-          <td>${memoStateChip(student)}</td>
+          <td>
+            <span class="mini-chip ${student.notes.length > 0 ? "tone-blue" : "tone-green"}">
+              ${student.notes.length > 0 ? "메모 있음" : "메모 없음"}
+            </span>
+          </td>
           <td><button class="primary btn-row-action" data-student-id="${student.id}">확인</button></td>
         </tr>
       `).join("");
@@ -1180,14 +1191,14 @@ export function renderMajorSchedule(container) {
       eventBody.querySelectorAll('tr').forEach(row => {
         row.addEventListener('click', (e) => {
           if (e.target.closest('.btn-row-action')) return;
-          openStudent(Number(row.dataset.studentId));
+          openStudent(row.dataset.studentId);
         });
 
         const btn = row.querySelector('.btn-row-action');
         if (btn) {
           btn.addEventListener('click', (e) => {
             e.stopPropagation();
-            openStudent(Number(btn.dataset.studentId));
+            openStudent(btn.dataset.studentId);
           });
         }
       });
@@ -1198,13 +1209,11 @@ export function renderMajorSchedule(container) {
         <tr>
           <th>일정</th>
           <th>구분</th>
-          <th>일자</th>
+          <th>진행/종료일</th>
           <th>D-day</th>
           <th>포함 원생</th>
-          <th>미처리</th>
           <th>담당자</th>
           <th>공개</th>
-          <th>상태</th>
           <th>확인</th>
         </tr>
       `;
@@ -1212,19 +1221,16 @@ export function renderMajorSchedule(container) {
       const list = getFilteredEventsList();
 
       eventBody.innerHTML = list.map((event) => {
-        const parts = eventParts(event.id);
-        const openCount = parts.filter(hasStudentMemo).length;
+        const parts = adaptedStudents.filter(s => event.participantStudentIds && event.participantStudentIds.includes(s.id));
         return `
           <tr data-event-id="${event.id}">
-            <td><div class="event-name"><strong>${event.name}</strong><span>${event.memo}</span></div></td>
+            <td><div class="event-name"><strong>${event.name}</strong><span>${event.memo || ""}</span></div></td>
             <td>${typeChip(event.type)}</td>
-            <td>${fmt(event.date)}</td>
-            <td><b style="color:${dday(event.date) <= 7 ? "var(--red)" : "var(--ink)"}">D-${dday(event.date)}</b></td>
+            <td>${fmt(event.eventDate)}</td>
+            <td><b style="color:${dday(event.eventDate) <= 7 ? "var(--red)" : "var(--ink)"}">D-${dday(event.eventDate)}</b></td>
             <td>${parts.length}명</td>
-            <td><span class="mini-chip ${openCount ? "tone-red" : "tone-green"}">${openCount}명</span></td>
-            <td>${event.owner}</td>
+            <td>${event.ownerId}</td>
             <td>${visibilityChip(event.visible)}</td>
-            <td>${statusChip(event.status)}</td>
             <td><button class="primary btn-row-action" data-event-id="${event.id}">확인</button></td>
           </tr>
         `;
@@ -1248,109 +1254,100 @@ export function renderMajorSchedule(container) {
   };
 
   const openEvent = (id) => {
-    const event = events.find((item) => item.id === id);
-    const parts = eventParts(id);
+    const event = stateStore.getMajorSchedules().find((item) => item.id === id);
+    if (!event) return;
+    const adaptedStudents = getAdaptedStudents();
+    const parts = adaptedStudents.filter(s => event.participantStudentIds && event.participantStudentIds.includes(s.id));
     
     const drawerHead = container.querySelector('#drawerHead');
     const drawerBody = container.querySelector('#drawerBody');
     const drawerFooter = container.querySelector('#drawerFooter');
 
+    const meta = eventTypes[event.type] || { label: "기타" };
+
     drawerHead.innerHTML = `
       <div class="drawer-student-card">
-        <div class="avatar">${eventTypes[event.type].label.slice(0, 2)}</div>
+        <div class="avatar">${meta.label.slice(0, 2)}</div>
         <div class="drawer-student-main">
           <strong>${event.name}</strong>
-          <span>${fmt(event.date)} · 일정 D-${dday(event.date)} · ${event.place} · ${event.owner}</span>
+          <span>${fmt(event.eventDate)} · 일정 D-${dday(event.eventDate)} · ${event.place || "-"} · ${event.ownerId}</span>
         </div>
       </div>
     `;
 
     drawerBody.innerHTML = `
-      <section class="drawer-section memo-section">
-        <h3>메모</h3>
-        <div class="section-body">
-          ${eventMemoItems(event).map((note) => `
-            <div class="memo-item">
-              <div class="student-mini">
-                <div class="mini-avatar">메모</div>
-                <div class="queue-main">
-                  <strong>${note.split(" ")[0]}</strong>
-                  <span>${note.replace(note.split(" ")[0] + " ", "")}</span>
-                </div>
-                <span class="mini-chip tone-blue">확인</span>
-              </div>
-              <div class="memo-actions">
-                <button class="btn-memo-edit">수정</button>
-                <button class="btn-memo-delete">삭제</button>
-              </div>
-            </div>
-          `).join("")}
-        </div>
-      </section>
       <section class="drawer-section">
         <h3>일정 정보</h3>
         <div class="section-body">
           <div class="detail-grid">
-            <div class="detail-item"><span>일자</span><strong>${fmt(event.date)}</strong></div>
-            <div class="detail-item"><span>장소</span><strong>${event.place}</strong></div>
-            <div class="detail-item"><span>접수마감</span><strong>${event.due ? fmt(event.due) + " · D-" + dday(event.due) : "없음"}</strong></div>
-            <div class="detail-item"><span>담당자</span><strong>${event.owner}</strong></div>
+            <div class="detail-item"><span>진행/종료일</span><strong>${fmt(event.eventDate)}</strong></div>
+            <div class="detail-item"><span>장소</span><strong>${event.place || "-"}</strong></div>
+            <div class="detail-item"><span>접수마감</span><strong>${event.dueDate ? fmt(event.dueDate) + " · D-" + dday(event.dueDate) : "없음"}</strong></div>
+            <div class="detail-item"><span>담당자</span><strong>${event.ownerId}</strong></div>
             <div class="detail-item"><span>학부모/학생 노출</span><strong>${event.visible ? "공개 중" : "비공개"}</strong></div>
             <div class="detail-item"><span>공개 기본값</span><strong>보여주지 않음</strong></div>
           </div>
-          <p class="note">${event.memo}</p>
+          <p class="note" style="white-space: pre-wrap;">${event.memo || "등록된 메모가 없습니다."}</p>
         </div>
       </section>
       <section class="drawer-section">
         <h3>포함 원생 ${parts.length}명</h3>
         <div class="section-body">
-          ${parts.map((student) => `
+          ${parts.length === 0 ? `<div style="font-size: 13px; color: var(--muted); text-align: center; padding: 12px;">참여 원생이 없습니다.</div>` : parts.map((student) => `
             <div class="student-mini" data-student-id="${student.id}">
               <div class="mini-avatar">${student.name.slice(-2)}</div>
               <div class="queue-main">
                 <strong>${student.name} · ${student.instrument}</strong>
-                <span>${student.teacher} · ${student.memo}</span>
+                <span>${student.teacher} · ${student.memo || ""}</span>
               </div>
-              ${memoStateChip(student)}
+              <span class="mini-chip ${student.notes.length > 0 ? "tone-blue" : "tone-green"}">
+                ${student.notes.length > 0 ? "메모 있음" : "메모 없음"}
+              </span>
             </div>
           `).join("")}
         </div>
       </section>
     `;
 
-    drawerBody.querySelectorAll('.memo-item').forEach(item => {
-      item.addEventListener('click', () => {
-        item.classList.toggle('open');
-      });
-    });
-
     drawerBody.querySelectorAll('.student-mini').forEach(mini => {
       mini.addEventListener('click', (e) => {
         e.stopPropagation();
-        openStudent(Number(mini.dataset.studentId));
+        openStudent(mini.dataset.studentId);
       });
     });
 
     drawerFooter.innerHTML = `
-      <button class="primary-action" id="btn-drawer-memo">메모</button>
-      <button id="btn-drawer-message">메세지</button>
-      <button id="btn-drawer-visibility-toggle">공개 변경</button>
+      <button id="btn-drawer-delete" class="btn" style="color: var(--red); border-color: var(--red-soft);">삭제</button>
+      <button id="btn-drawer-edit" class="btn primary">수정</button>
     `;
 
-    const visToggle = drawerFooter.querySelector('#btn-drawer-visibility-toggle');
-    if (visToggle) {
-      visToggle.addEventListener('click', () => {
-        alert(`${event.name} 일정을 학부모/원생에게 공개하려면 공개 대상과 문구를 한 번 더 확인합니다. 기본값은 비공개입니다.`);
-      });
-    }
+    const editBtn = drawerFooter.querySelector('#btn-drawer-edit');
+    const deleteBtn = drawerFooter.querySelector('#btn-drawer-delete');
+
+    editBtn.addEventListener('click', () => {
+      openForm(event);
+    });
+
+    deleteBtn.addEventListener('click', () => {
+      const confirmDelete = confirm('이 일정을 삭제할까요?');
+      if (confirmDelete) {
+        stateStore.deleteMajorSchedule(event.id);
+        closeDrawer();
+        render();
+      }
+    });
 
     drawerFooter.classList.add("open");
     showDrawer();
   };
 
   const openStudent = (id) => {
-    const student = students.find((item) => item.id === id);
-    const related = student.eventIds.map((eventId) => events.find((event) => event.id === eventId));
+    const adaptedStudents = getAdaptedStudents();
+    const student = adaptedStudents.find((item) => item.id === id);
+    if (!student) return;
+
+    const allEvents = stateStore.getMajorSchedules() || [];
+    const related = student.eventIds.map((eventId) => allEvents.find((event) => event.id === eventId)).filter(Boolean);
 
     const drawerHead = container.querySelector('#drawerHead');
     const drawerBody = container.querySelector('#drawerBody');
@@ -1366,23 +1363,26 @@ export function renderMajorSchedule(container) {
       </div>
     `;
 
+    // auto calculate next lesson dates for premium detail view (4 times)
+    const upcomingLessonsList = [
+      { label: "다음", at: `6/4(목) ${student.lesson.split(' ').pop() || "14:00"}` },
+      { label: "2회차", at: `6/11(목) ${student.lesson.split(' ').pop() || "14:00"}` },
+      { label: "3회차", at: `6/18(목) ${student.lesson.split(' ').pop() || "14:00"}` },
+      { label: "4회차", at: `6/25(목) ${student.lesson.split(' ').pop() || "14:00"}` }
+    ];
+
     drawerBody.innerHTML = `
-      <section class="drawer-section memo-section">
-        <h3>메모</h3>
+      <section class="drawer-section">
+        <h3>학원 등록 메모</h3>
         <div class="section-body">
-          ${student.notes.map((note) => `
-            <div class="memo-item">
-              <div class="student-mini">
+          ${student.notes.length === 0 ? `<div style="font-size: 13px; color: var(--muted); text-align: center; padding: 12px;">등록된 메모가 없습니다.</div>` : student.notes.map((note) => `
+            <div class="memo-item" style="padding: 10px 0; border-bottom: 1px solid var(--line-2);">
+              <div class="student-mini" style="border: 0; padding: 0;">
                 <div class="mini-avatar">메모</div>
-                <div class="queue-main">
-                  <strong>${note.split(" ")[0]}</strong>
-                  <span>${note.replace(note.split(" ")[0] + " ", "")}</span>
+                <div class="queue-main" style="margin-left: 8px;">
+                  <strong>${note.includes(" ") ? note.split(" ")[0] : "메모"}</strong>
+                  <span>${note.includes(" ") ? note.substring(note.indexOf(" ") + 1) : note}</span>
                 </div>
-                <span class="mini-chip tone-blue">확인</span>
-              </div>
-              <div class="memo-actions">
-                <button class="btn-memo-edit">수정</button>
-                <button class="btn-memo-delete">삭제</button>
               </div>
             </div>
           `).join("")}
@@ -1396,11 +1396,11 @@ export function renderMajorSchedule(container) {
             <div class="detail-item"><span>악기</span><strong>${student.instrument}</strong></div>
           </div>
           <div class="drawer-lesson-list">
-            ${upcomingLessons(student).map((lesson) => `
+            ${upcomingLessonsList.map((lesson) => `
               <div class="drawer-lesson-row">
                 <strong>${lesson.label}</strong>
                 <span>${lesson.at}</span>
-                <span class="mini-chip tone-slate">${lesson.type}</span>
+                <span class="mini-chip tone-slate">정규</span>
               </div>
             `).join("")}
           </div>
@@ -1409,25 +1409,19 @@ export function renderMajorSchedule(container) {
       <section class="drawer-section">
         <h3>관련 일정</h3>
         <div class="section-body">
-          ${related.map((event) => `
+          ${related.length === 0 ? `<div style="font-size: 13px; color: var(--muted); text-align: center; padding: 12px;">참여 중인 주요 일정이 없습니다.</div>` : related.map((event) => `
             <div class="student-mini" data-event-id="${event.id}">
-              <div class="mini-avatar">${eventTypes[event.type].label[0]}</div>
+              <div class="mini-avatar">${(eventTypes[event.type] || { label: "기" }).label[0]}</div>
               <div class="queue-main">
                 <strong>${event.name}</strong>
-                <span>${fmt(event.date)} · D-${dday(event.date)} · ${event.owner}</span>
+                <span>${fmt(event.eventDate)} · D-${dday(event.eventDate)} · ${event.ownerId}</span>
               </div>
-              ${statusChip(event.status)}
+              ${visibilityChip(event.visible)}
             </div>
           `).join("")}
         </div>
       </section>
     `;
-
-    drawerBody.querySelectorAll('.memo-item').forEach(item => {
-      item.addEventListener('click', () => {
-        item.classList.toggle('open');
-      });
-    });
 
     drawerBody.querySelectorAll('.student-mini').forEach(mini => {
       mini.addEventListener('click', (e) => {
@@ -1437,73 +1431,279 @@ export function renderMajorSchedule(container) {
     });
 
     drawerFooter.innerHTML = `
-      <button class="primary-action" id="btn-drawer-memo">메모</button>
-      <button id="btn-drawer-arrange">레슨편성</button>
-      <button id="btn-drawer-message">메세지</button>
+      <button id="btn-student-close" class="btn primary">닫기</button>
     `;
+    drawerFooter.querySelector('#btn-student-close').addEventListener('click', closeDrawer);
 
     drawerFooter.classList.add("open");
     showDrawer();
   };
 
-  const openCreateStub = () => {
+  const openForm = (event = null) => {
+    const isEdit = !!event;
     const drawerHead = container.querySelector('#drawerHead');
     const drawerBody = container.querySelector('#drawerBody');
     const drawerFooter = container.querySelector('#drawerFooter');
 
     drawerHead.innerHTML = `
-      <span class="type-chip tone-blue">신규</span>
-      <div class="drawer-title">일정 추가</div>
-      <div class="drawer-meta"><span class="mini-chip tone-slate">입력 부담 최소화 버전</span></div>
+      <span class="type-chip tone-blue">${isEdit ? "수정" : "신규"}</span>
+      <div class="drawer-title" style="margin-top: 6px;">${isEdit ? "일정 수정" : "일정 추가"}</div>
     `;
+
+    // Fetch teachers for ownerId dropdown
+    const teachers = stateStore.getTeachers() || [];
+    const ownerOptions = [
+      `<option value="">담당자 선택</option>`,
+      ...teachers.map(t => `<option value="${t.name}" ${event && event.ownerId === t.name ? "selected" : ""}>${t.name}</option>`),
+      `<option value="원장" ${event && event.ownerId === "원장" ? "selected" : ""}>원장</option>`,
+      `<option value="운영실" ${event && event.ownerId === "운영실" ? "selected" : ""}>운영실</option>`
+    ].join("");
+
+    // Visibility toggle state
+    let isVisible = event ? !!event.visible : false;
+    
+    // Checked student IDs tracked in memory to survive filtering/searching
+    const checkedIds = new Set(event ? event.participantStudentIds : []);
 
     drawerBody.innerHTML = `
+      <div id="drawer-error-msg" style="display: none; padding: 8px 12px; margin-bottom: 12px; background: var(--red-soft); border: 1px solid #fecaca; border-radius: 6px; color: var(--red); font-size: 12.5px; font-weight: 850;"></div>
+      
       <section class="drawer-section">
-        <h3>필수 입력값</h3>
-        <div class="section-body">
-          <div class="detail-grid">
-            <div class="detail-item"><span>일정명</span><strong>필수</strong></div>
-            <div class="detail-item"><span>일자</span><strong>필수</strong></div>
-            <div class="detail-item"><span>구분</span><strong>필수</strong></div>
-            <div class="detail-item"><span>참여 원생</span><strong>검색/필터 후 체크박스 추가</strong></div>
-            <div class="detail-item"><span>학부모/원생 노출</span><strong>기본 OFF</strong></div>
-            <div class="detail-item"><span>ON 전환</span><strong>추가 확인 필요</strong></div>
+        <h3>기본 정보</h3>
+        <div class="section-body" style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label style="font-size: 11px; font-weight: 850; color: var(--muted);">일정명 <span style="color: var(--red)">*</span></label>
+            <input id="form-event-name" type="text" placeholder="일정명을 입력하세요" value="${event ? event.name : ""}" style="width: 100%;" />
           </div>
-          <p class="note">참여 원생은 원생 검색, 반/악기별 필터, 강사별 필터로 찾고 체크박스로 여러 명을 한 번에 추가합니다. 전체선택으로 반이나 강사 단위 추가도 가능합니다. 학부모/원생 로그인 권한에 노출할 수 있지만 기본값은 비공개이며, 공개로 바꿀 때 한 번 더 확인합니다.</p>
+          
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <label style="font-size: 11px; font-weight: 850; color: var(--muted);">구분 <span style="color: var(--red)">*</span></label>
+              <select id="form-event-type" style="width: 100%;">
+                <option value="">구분 선택</option>
+                <option value="concours" ${event && event.type === "concours" ? "selected" : ""}>콩쿠르</option>
+                <option value="exam" ${event && event.type === "exam" ? "selected" : ""}>입시</option>
+                <option value="makeup" ${event && event.type === "makeup" ? "selected" : ""}>보강</option>
+                <option value="event" ${event && event.type === "event" ? "selected" : ""}>행사</option>
+                <option value="counsel" ${event && event.type === "counsel" ? "selected" : ""}>상담</option>
+                <option value="etc" ${event && event.type === "etc" ? "selected" : ""}>기타</option>
+              </select>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <label style="font-size: 11px; font-weight: 850; color: var(--muted);">담당자 <span style="color: var(--red)">*</span></label>
+              <select id="form-owner-id" style="width: 100%;">
+                ${ownerOptions}
+              </select>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <label style="font-size: 11px; font-weight: 850; color: var(--muted);">진행/종료일 <span style="color: var(--red)">*</span></label>
+              <input id="form-event-date" type="date" value="${event ? event.eventDate : ""}" style="width: 100%;" />
+            </div>
+            
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <label style="font-size: 11px; font-weight: 850; color: var(--muted);">접수마감일</label>
+              <input id="form-due-date" type="date" value="${event ? event.dueDate || "" : ""}" style="width: 100%;" />
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label style="font-size: 11px; font-weight: 850; color: var(--muted);">장소</label>
+            <input id="form-place" type="text" placeholder="장소를 입력하세요" value="${event ? event.place || "" : ""}" style="width: 100%;" />
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label style="font-size: 11px; font-weight: 850; color: var(--muted);">메모</label>
+            <textarea id="form-memo" placeholder="메모를 입력하세요" style="width: 100%; min-height: 70px; border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; font-size: 13px; font-family: inherit; font-weight: 750; resize: vertical;">${event ? event.memo || "" : ""}</textarea>
+          </div>
         </div>
       </section>
+
       <section class="drawer-section">
-        <h3>참여 원생 추가 방식</h3>
+        <h3>공개 설정</h3>
+        <div class="section-body" style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+          <div>
+            <div style="font-size: 13.5px; font-weight: 950; color: var(--ink);">학부모/원생 공개 여부</div>
+            <div style="font-size: 11px; color: var(--muted); font-weight: 750; margin-top: 3px;">공개 설정 시 학부모/원생 화면에 일정이 노출됩니다.</div>
+          </div>
+          <button type="button" id="form-visible-toggle" class="btn" style="min-width: 170px; min-height: 36px; font-size: 12.5px; font-weight: 900; border-radius: 20px; transition: all 0.1s ease; border-color: ${isVisible ? "var(--green)" : "var(--line)"}; background: ${isVisible ? "var(--green-soft)" : "#f8fafc"}; color: ${isVisible ? "var(--green)" : "#475569"};">
+            ${isVisible ? "학부모/원생 공개 ON" : "학부모/원생 공개 OFF"}
+          </button>
+        </div>
+      </section>
+
+      <section class="drawer-section">
+        <h3 id="selected-participants-count">선택된 원생: ${checkedIds.size}명</h3>
         <div class="section-body">
-          <div class="detail-grid">
-            <div class="detail-item"><span>검색</span><strong>이름/회원번호 입력</strong></div>
-            <div class="detail-item"><span>필터</span><strong>반/악기 · 담당강사</strong></div>
-            <div class="detail-item"><span>선택</span><strong>체크박스 다중 선택</strong></div>
-            <div class="detail-item"><span>일괄</span><strong>전체선택 후 추가</strong></div>
+          <input id="form-participant-search" type="text" placeholder="원생명, 회원번호, 초성 검색" style="width: 100%; margin-bottom: 8px; box-sizing: border-box;" />
+          <div id="form-participants-list" style="max-height: 200px; overflow-y: auto; padding: 10px; border: 1px solid var(--line-2); border-radius: 7px; background: #fff;">
+            <!-- Rendered dynamically -->
           </div>
         </div>
       </section>
     `;
+
+    const checkboxesList = drawerBody.querySelector('#form-participants-list');
+    const allStudents = getAdaptedStudents();
+
+    // Checkboxes rendering with query filtering (including Chosung search)
+    const renderCheckboxes = (query = "") => {
+      const cleanQuery = query.trim().toLowerCase();
+      const isChosungOnly = /^[ㄱ-ㅎ]+$/.test(cleanQuery);
+
+      const filteredStudents = allStudents.filter(student => {
+        if (!cleanQuery) return true;
+        const cleanName = student.name.toLowerCase();
+        const cleanId = String(student.id).toLowerCase();
+        const cleanInstrument = student.instrument.toLowerCase();
+        const cleanTeacher = student.teacher.toLowerCase();
+
+        if (isChosungOnly) {
+          return getChosungStr(cleanName).includes(cleanQuery) ||
+                 getChosungStr(cleanInstrument).includes(cleanQuery) ||
+                 getChosungStr(cleanTeacher).includes(cleanQuery);
+        } else {
+          return cleanName.includes(cleanQuery) ||
+                 cleanId.includes(cleanQuery) ||
+                 cleanInstrument.includes(cleanQuery) ||
+                 cleanTeacher.includes(cleanQuery);
+        }
+      });
+
+      checkboxesList.innerHTML = filteredStudents.map(student => {
+        const isChecked = checkedIds.has(student.id);
+        return `
+          <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; cursor: pointer; font-size: 13px; font-weight: 700; color: var(--ink);">
+            <input type="checkbox" name="participantStudentIds" value="${student.id}" ${isChecked ? "checked" : ""}>
+            <span>${student.name} (${student.instrument}/${student.teacher})</span>
+          </label>
+        `;
+      }).join("");
+    };
+
+    // Initial render of student checkboxes
+    renderCheckboxes();
+
+    // Filter list on search input (safe from IME composition breaks)
+    const searchInput = drawerBody.querySelector('#form-participant-search');
+    searchInput.addEventListener('input', (e) => {
+      renderCheckboxes(e.target.value);
+    });
+
+    // Bind visible toggle event
+    const toggleBtn = drawerBody.querySelector('#form-visible-toggle');
+    toggleBtn.addEventListener('click', () => {
+      if (!isVisible) {
+        // Turning ON: confirm first
+        const approve = confirm('학부모/원생에게 공개 상태로 저장할까요?');
+        if (approve) {
+          isVisible = true;
+          toggleBtn.textContent = '학부모/원생 공개 ON';
+          toggleBtn.style.borderColor = 'var(--green)';
+          toggleBtn.style.background = 'var(--green-soft)';
+          toggleBtn.style.color = 'var(--green)';
+        }
+      } else {
+        // Turning OFF: direct toggle
+        isVisible = false;
+        toggleBtn.textContent = '학부모/원생 공개 OFF';
+        toggleBtn.style.borderColor = 'var(--line)';
+        toggleBtn.style.background = '#f8fafc';
+        toggleBtn.style.color = '#475569';
+      }
+    });
+
+    // Handle selected count updates and preserve state in memory
+    const updateSelectedCount = () => {
+      const countEl = drawerBody.querySelector('#selected-participants-count');
+      if (countEl) {
+        countEl.textContent = `선택된 원생: ${checkedIds.size}명`;
+      }
+    };
+
+    checkboxesList.addEventListener('change', (e) => {
+      if (e.target.name === 'participantStudentIds') {
+        const studentId = e.target.value;
+        if (e.target.checked) {
+          checkedIds.add(studentId);
+        } else {
+          checkedIds.delete(studentId);
+        }
+        updateSelectedCount();
+      }
+    });
 
     drawerFooter.innerHTML = `
-      <button id="btn-create-cancel">취소</button>
-      <button class="primary" id="btn-create-save">일정 저장</button>
+      <button id="btn-form-cancel" class="btn">취소</button>
+      <button id="btn-form-save" class="btn primary">저장</button>
     `;
 
-    const cancelBtn = drawerFooter.querySelector('#btn-create-cancel');
-    const saveBtn = drawerFooter.querySelector('#btn-create-save');
+    const cancelBtn = drawerFooter.querySelector('#btn-form-cancel');
+    const saveBtn = drawerFooter.querySelector('#btn-form-save');
 
-    if (cancelBtn) {
-      cancelBtn.addEventListener('click', closeDrawer);
-    }
-
-    if (saveBtn) {
-      saveBtn.addEventListener('click', () => {
+    cancelBtn.addEventListener('click', () => {
+      if (isEdit) {
+        openEvent(event.id);
+      } else {
         closeDrawer();
-      });
-    }
+      }
+    });
 
-    drawerFooter.classList.add("open");
+    saveBtn.addEventListener('click', () => {
+      const errorMsgEl = drawerBody.querySelector('#drawer-error-msg');
+      errorMsgEl.style.display = 'none';
+
+      // Gather input values
+      const name = drawerBody.querySelector('#form-event-name').value.trim();
+      const type = drawerBody.querySelector('#form-event-type').value;
+      const ownerId = drawerBody.querySelector('#form-owner-id').value;
+      const eventDate = drawerBody.querySelector('#form-event-date').value;
+      const dueDate = drawerBody.querySelector('#form-due-date').value || null;
+      const place = drawerBody.querySelector('#form-place').value.trim() || null;
+      const memo = drawerBody.querySelector('#form-memo').value.trim() || null;
+
+      // Gather checked students from the Set directly (to include filtered out ones)
+      const participantStudentIds = Array.from(checkedIds);
+
+      // Validate required fields
+      if (!name || !type || !ownerId || !eventDate) {
+        errorMsgEl.textContent = '필수값을 모두 입력하세요 (일정명, 구분, 담당자, 진행/종료일)';
+        errorMsgEl.style.display = 'block';
+        drawerBody.scrollTop = 0;
+        return;
+      }
+
+      const payload = {
+        name,
+        type,
+        ownerId,
+        eventDate,
+        dueDate,
+        place,
+        memo,
+        visible: isVisible,
+        participantStudentIds
+      };
+
+      try {
+        if (isEdit) {
+          stateStore.updateMajorSchedule(event.id, payload);
+        } else {
+          stateStore.addMajorSchedule(payload);
+        }
+        closeDrawer();
+        render(); // Re-render page
+      } catch (err) {
+        errorMsgEl.textContent = `저장 실패: ${err.message}`;
+        errorMsgEl.style.display = 'block';
+        drawerBody.scrollTop = 0;
+      }
+    });
+
+    drawerFooter.classList.add('open');
     showDrawer();
   };
 
@@ -1513,6 +1713,7 @@ export function renderMajorSchedule(container) {
     const body = container.querySelector('#drawerBody');
 
     if (backdrop) backdrop.classList.add('open');
+    if (drawer) drawer.classList.open = true;
     if (drawer) drawer.classList.add('open');
     if (body) body.scrollTop = 0;
   };

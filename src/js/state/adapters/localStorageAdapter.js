@@ -284,6 +284,33 @@ export class LocalStorageAdapter extends DataAdapter {
             db.attendanceChangeLogs = [];
             migrated = true;
         }
+
+        if (!db.majorSchedules) {
+            db.majorSchedules = [
+              { id: "ev1", type: "concours", name: "한국청소년 피아노 콩쿠르", eventDate: "2026-06-14", dueDate: "2026-06-07", ownerId: "정은비", place: "예술의전당", visible: false, memo: "접수 마감 전 보호자 확인 필요", participantStudentIds: ["S1", "S5"], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+              { id: "ev2", type: "exam", name: "예원학교 입시 실기고사", eventDate: "2026-07-05", dueDate: "2026-06-09", ownerId: "한지섭", place: "예원학교 음악관", visible: false, memo: "입시 상담 예약과 원서 접수 확인", participantStudentIds: ["S3", "S7"], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+              { id: "ev3", type: "concours", name: "영 첼리스트 콩쿠르", eventDate: "2026-06-21", dueDate: "2026-06-11", ownerId: "성여진", place: "금호아트홀", visible: false, memo: "결석 학생 보강 배정 필요", participantStudentIds: ["S2"], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+              { id: "ev4", type: "event", name: "여름 정기 음악회", eventDate: "2026-06-27", dueDate: null, ownerId: "윤채린", place: "튜링 그랜드홀", visible: false, memo: "전체 리허설 6월 25일", participantStudentIds: ["S1", "S4"], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+              { id: "ev5", type: "makeup", name: "6월 결석자 보강 편성", eventDate: "2026-06-12", dueDate: null, ownerId: "운영실", place: "원내", visible: false, memo: "최근 결석 원생 보강 시간 확정", participantStudentIds: ["S2", "S6"], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+              { id: "ev6", type: "counsel", name: "입시반 학부모 상담 주간", eventDate: "2026-06-18", dueDate: null, ownerId: "원장", place: "상담실", visible: false, memo: "입시반 학부모 상담 후보 자동 큐", participantStudentIds: ["S3", "S7"], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+            ];
+            migrated = true;
+        } else {
+            db.majorSchedules.forEach(e => {
+                if (e.type === 'recital') {
+                    e.type = 'event';
+                    migrated = true;
+                }
+                if (e.status !== undefined) {
+                    delete e.status;
+                    migrated = true;
+                }
+                if (e.openCount !== undefined) {
+                    delete e.openCount;
+                    migrated = true;
+                }
+            });
+        }
  
         return migrated;
     }
