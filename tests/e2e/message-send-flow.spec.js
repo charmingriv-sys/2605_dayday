@@ -192,6 +192,145 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     await expect(firstSavedItem).toBeVisible();
   });
 
+  test('should support template CRUD lifecycle, reload persistence, and apply functionality', async ({ page }) => {
+    // Navigate to Message Send view
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+
+    const initialLogsLength = await page.evaluate(() => window.stateStore.getOutboundMessageLogs().length);
+    const initialMsgLength = await page.evaluate(() => window.stateStore.db.messages.length);
+
+    // 1. Create a new template
+    const titleInput = page.locator('#composeTitleInput');
+    await titleInput.fill('E2E CRUD 테스트 템플릿 제목');
+    const bodyInput = page.locator('#composeBodyInput');
+    await bodyInput.fill('E2E CRUD 테스트 템플릿 내용입니다.');
+
+    // Set method to PUSH to verify it propagates
+    const pushBtn = page.locator('.btn-toggle-method[data-method="PUSH"]');
+    if (await pushBtn.count() > 0) {
+      await pushBtn.click();
+    }
+
+    let dialogText = '';
+    const saveDialogHandler = async (dialog) => {
+      dialogText = dialog.message();
+      await dialog.accept();
+    };
+    page.on('dialog', saveDialogHandler);
+    await page.locator('#btnOpenSaveTemplateModal').click();
+    await page.locator('#btnSaveModalSubmit').click();
+    page.off('dialog', saveDialogHandler);
+
+    expect(dialogText).toContain('템플릿 "E2E CRUD 테스트 템플릿 제목"이(가) 보관함에 임시 저장되었습니다.');
+
+    // Verify template is visible at the top of the saved tab
+    const vaultPanel = page.locator('#messageVaultPanel');
+    const firstSavedItemTitle = vaultPanel.locator('.template-title').first();
+    await expect(firstSavedItemTitle).toContainText('E2E CRUD 테스트 템플릿 제목');
+
+    // 2. Reload and verify persistence
+    await page.reload();
+    const directorBtn = page.locator('.role-btn.director');
+    if (await directorBtn.isVisible()) {
+      await directorBtn.click();
+    }
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+
+    // Click saved tab
+    await page.locator('.btn-vault-tab[data-tab="saved"]').click();
+    
+    // Check if the template still exists
+    await expect(firstSavedItemTitle).toContainText('E2E CRUD 테스트 템플릿 제목');
+
+    // 3. Apply the template and verify compose form fields
+    // First, clear the inputs
+    await page.locator('#composeTitleInput').fill('');
+    await page.locator('#composeBodyInput').fill('');
+    
+    // Apply template
+    const applyBtn = vaultPanel.locator('.btn-apply-template').first();
+    await applyBtn.click();
+    
+    // Form fields should match the template
+    await expect(page.locator('#composeTitleInput')).toHaveValue('E2E CRUD 테스트 템플릿 제목');
+    await expect(page.locator('#composeBodyInput')).toHaveValue('E2E CRUD 테스트 템플릿 내용입니다.');
+    
+    await expect(page.locator('.btn-toggle-method[data-method="PUSH"]')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+
+    // 4. Edit the template
+    const editBtn = vaultPanel.locator('.btn-edit-template').first();
+    await editBtn.click();
+
+    const editOverlay = page.locator('#templateEditModalOverlay');
+    await expect(editOverlay).toBeVisible();
+
+    const editTitleInp = page.locator('#editModalTitleInp');
+    await expect(editTitleInp).toHaveValue('E2E CRUD 테스트 템플릿 제목');
+    const editBodyInp = page.locator('#editModalBodyInp');
+    await expect(editBodyInp).toHaveValue('E2E CRUD 테스트 템플릿 내용입니다.');
+
+    // Update fields
+    await editTitleInp.fill('수정된 템플릿 제목');
+    await editBodyInp.fill('수정된 템플릿 내용입니다.');
+    
+    // Select SMS radio in edit modal
+    await page.locator('input[name="editModalMethod"][value="SMS"]').click();
+
+    let editDialogText = '';
+    const editDialogHandler = async (dialog) => {
+      editDialogText = dialog.message();
+      await dialog.accept();
+    };
+    page.on('dialog', editDialogHandler);
+    await page.locator('#btnEditModalSubmit').click();
+    page.off('dialog', editDialogHandler);
+
+    expect(editDialogText).toContain('템플릿이 수정되었습니다.');
+    await expect(editOverlay).toBeHidden();
+
+    // Verify changes are rendered
+    await expect(firstSavedItemTitle).toContainText('수정된 템플릿 제목');
+    await expect(vaultPanel.locator('.message-body-container').first()).toContainText('수정된 템플릿 내용입니다.');
+    await expect(vaultPanel.locator('span').filter({ hasText: 'SMS' }).first()).toBeVisible();
+
+    // 5. Delete the template
+    let deleteConfirmCalled = false;
+    const deleteDialogHandler = async (dialog) => {
+      deleteConfirmCalled = true;
+      expect(dialog.message()).toContain('저장된 메시지 템플릿을 삭제할까요?');
+      await dialog.accept();
+    };
+    page.on('dialog', deleteDialogHandler);
+    await vaultPanel.locator('.btn-delete-template').first().click();
+    page.off('dialog', deleteDialogHandler);
+
+    expect(deleteConfirmCalled).toBe(true);
+
+    // Verify deleted from list
+    await expect(vaultPanel.locator('.template-title').filter({ hasText: '수정된 템플릿 제목' })).toBeHidden();
+
+    // Check empty state
+    await expect(vaultPanel).toContainText('저장된 메시지 템플릿이 없습니다.');
+
+    // 6. Side effects checks: outboundMessageLogs or db.messages should NOT have changed
+    const finalLogsLength = await page.evaluate(() => window.stateStore.getOutboundMessageLogs().length);
+    const finalMsgLength = await page.evaluate(() => window.stateStore.db.messages.length);
+    expect(finalLogsLength).toBe(initialLogsLength);
+    expect(finalMsgLength).toBe(initialMsgLength);
+
+    // Recommend tab and Recent tab are unaffected
+    await page.locator('.btn-vault-tab[data-tab="recommend"]').click();
+    await expect(vaultPanel.locator('span').filter({ hasText: '신규 원장 인사' }).first()).toBeVisible();
+
+    // Prohibited words and cost/pricing phrases check
+    const pageText = await page.innerText('.message-send-root');
+    expect(pageText).not.toContain('예상비용');
+    expect(pageText).not.toContain('예상 비용');
+    expect(pageText).not.toContain('소요비용');
+    expect(pageText).not.toContain('단가');
+    expect(pageText).not.toContain('발송완료');
+  });
+
   test('should support manual recipient entry, Excel CSV copy-paste, outbound logs, detail modal, and height alignment', async ({ page }) => {
     // Navigate to Message Send view
     await page.locator('.menu-item[data-view="dir-message-send"]').click();

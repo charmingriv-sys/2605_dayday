@@ -189,8 +189,15 @@ const viewState = {
   saveModalTitle: "",
   saveModalBody: "",
   saveModalError: "",
-  savedTemplates: [...MOCK_SAVED_TEMPLATES],
   isComposing: false,
+
+  // Template edit modal state
+  editModalOpen: false,
+  editModalTemplateId: null,
+  editModalTitle: "",
+  editModalBody: "",
+  editModalMethod: "SMS",
+  editModalError: "",
 
   // New modal states
   directAddModalOpen: false,
@@ -468,6 +475,7 @@ export function renderMessageSend(container) {
       <div id="globalSendBar"></div>
       <div id="focusConfirmOverlay"></div>
       <div id="templateSaveModalOverlay"></div>
+      <div id="templateEditModalOverlay"></div>
       <div id="directAddModalOverlay"></div>
       <div id="excelImportModalOverlay"></div>
       <div id="recipientDetailModalOverlay"></div>
@@ -496,6 +504,7 @@ export function renderMessageSend(container) {
     renderSendBar();
     renderFocusConfirm();
     renderTemplateSaveModal();
+    renderTemplateEditModal();
     renderDirectAddModal();
     renderExcelImportModal();
     renderRecipientDetailModal();
@@ -1443,7 +1452,7 @@ export function renderMessageSend(container) {
     if (viewState.vaultActiveTab === "recommend") {
       listData = MOCK_RECOMMENDED;
     } else if (viewState.vaultActiveTab === "saved") {
-      listData = viewState.savedTemplates;
+      listData = stateStore.getMessageTemplates();
     } else {
       listData = stateStore.getOutboundMessageLogs();
     }
@@ -1478,7 +1487,7 @@ export function renderMessageSend(container) {
       <div style="display: flex; align-items: center; padding: 12px 12px 0; border-bottom: 1px solid #f1f5f9; gap: 2px;">
         ${[
           { key: "recommend", label: "추천", icon: "star", count: MOCK_RECOMMENDED.length },
-          { key: "saved", label: "저장", icon: "note", count: viewState.savedTemplates.length },
+          { key: "saved", label: "저장", icon: "note", count: stateStore.getMessageTemplates().length },
           { key: "recent", label: "최근", icon: "clock", count: stateStore.getOutboundMessageLogs().length }
         ].map(tab => {
           const active = viewState.vaultActiveTab === tab.key;
@@ -1542,7 +1551,14 @@ export function renderMessageSend(container) {
                 cursor: pointer; text-decoration: underline; font-family: inherit; margin: 0;
               ">단체</button>`;
             }
+          } else if (viewState.vaultActiveTab === "saved") {
+            kindLabel = item.method === "ALIMTALK" ? "알림톡" : item.method;
+            dateLabel = formatDate(item.updatedAt || item.createdAt);
+            recipientLabel = `<span style="font-size: 12px; font-weight: 800; color: var(--text-main);" class="template-title">${item.title}</span>`;
           } else {
+            // recommend tab
+            kindLabel = item.kind || "";
+            dateLabel = item.sentAt || "";
             recipientLabel = item.name ? `<span style="font-size: 12px; font-weight: 800; color: var(--text-main);">${item.name}</span>` : "";
           }
 
@@ -1564,7 +1580,7 @@ export function renderMessageSend(container) {
                 ${recipientLabel}
                 <span style="font-size: 9px; font-weight: 800; color: ${typeColor}; background: ${typeBg}; padding: 2px 6px; border-radius: 6px; margin-left: 2px;">${kindLabel}</span>
                 ${item.ad ? `<span style="font-size: 9px; font-weight: 800; color: #b45309; background: #fef3dd; padding: 2px 6px; border-radius: 6px;">광고</span>` : ''}
-                <span style="margin-left: auto; font-size: 10.5px; color: var(--success); font-weight: 800;">${item.recipientCount || item.count || 0}/${item.recipientCount || item.count || 0}명 발송</span>
+                ${isRecent ? `<span style="margin-left: auto; font-size: 10.5px; color: var(--success); font-weight: 800;">${item.recipientCount || item.count || 0}/${item.recipientCount || item.count || 0}명 발송</span>` : ''}
               </div>
               
               <!-- Smartphone Message Bubble Style -->
@@ -1573,6 +1589,7 @@ export function renderMessageSend(container) {
                 line-height: 1.5; color: #334155; position: relative; border-left: 3px solid ${typeColor};
                 cursor: ${showToggle ? 'pointer' : 'default'};
               ">
+                ${(viewState.vaultActiveTab !== "saved" && item.title) ? `<div style="font-weight: 800; font-size: 11.5px; color: #000; margin-bottom: 4px;">${item.title}</div>` : ''}
                 <div style="white-space: pre-wrap;">${displayedBody}</div>
                 ${showToggle ? `
                   <div class="btn-toggle-body" data-id="${item.id}" style="
@@ -1589,10 +1606,16 @@ export function renderMessageSend(container) {
                     display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 11.5px; font-weight: 700;
                     color: #fff; background: var(--primary); border: none; border-radius: 7px; cursor: pointer; font-family: inherit; margin-bottom: 0;
                   ">${renderIcon('check', 11, '#fff', 2.5)} 적용</button>
-                  <button class="btn-edit-template-stub" style="
-                    display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 11.5px; font-weight: 700;
-                    color: var(--slate); background: #fff; border: 1px solid var(--border-color); border-radius: 7px; cursor: pointer; font-family: inherit; margin-bottom: 0;
-                  ">${renderIcon('edit', 11, 'var(--slate)')} 수정</button>
+                  ${viewState.vaultActiveTab === "saved" ? `
+                    <button class="btn-edit-template" data-id="${item.id}" style="
+                      display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 11.5px; font-weight: 700;
+                      color: var(--slate); background: #fff; border: 1px solid var(--border-color); border-radius: 7px; cursor: pointer; font-family: inherit; margin-bottom: 0;
+                    ">${renderIcon('edit', 11, 'var(--slate)')} 수정</button>
+                    <button class="btn-delete-template" data-id="${item.id}" style="
+                      display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 11.5px; font-weight: 700;
+                      color: var(--danger, #dc2626); background: #fff; border: 1px solid #f6c6c6; border-radius: 7px; cursor: pointer; font-family: inherit; margin-bottom: 0;
+                    ">${renderIcon('close', 11, 'var(--danger, #dc2626)')} 삭제</button>
+                  ` : ''}
                 </div>
               </div>
             </div>
@@ -1660,9 +1683,44 @@ export function renderMessageSend(container) {
       });
     });
 
-    block.querySelectorAll('.btn-edit-template-stub').forEach(btn => {
-      btn.addEventListener('click', () => {
-        alert("템플릿 관리(신규 템플릿 저장, 기존 템플릿 편집) 기능은 추후 고도화 단계에서 연동됩니다.");
+    block.querySelectorAll('.btn-edit-template').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        const item = listData.find(d => d.id === id);
+        if (!item) return;
+
+        viewState.editModalOpen = true;
+        viewState.editModalTemplateId = item.id;
+        viewState.editModalTitle = item.title;
+        viewState.editModalBody = item.body;
+        viewState.editModalMethod = item.method || "SMS";
+        viewState.editModalError = "";
+        renderTemplateEditModal();
+      });
+    });
+
+    block.querySelectorAll('.btn-delete-template').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        const item = listData.find(d => d.id === id);
+        if (!item) return;
+
+        const ok = confirm("저장된 메시지 템플릿을 삭제할까요?");
+        if (ok) {
+          stateStore.deleteMessageTemplate(id);
+          const templates = stateStore.getMessageTemplates();
+          const itemsPerPage = 3;
+          const totalPages = Math.ceil(templates.length / itemsPerPage);
+          const currentPage = viewState.vaultPages["saved"] || 0;
+          if (currentPage >= totalPages && totalPages > 0) {
+            viewState.vaultPages["saved"] = totalPages - 1;
+          } else if (totalPages === 0) {
+            viewState.vaultPages["saved"] = 0;
+          }
+          renderMessageVault();
+        }
       });
     });
 
@@ -2083,41 +2141,192 @@ export function renderMessageSend(container) {
     });
 
     block.querySelector('#btnSaveModalSubmit').addEventListener('click', () => {
-      if (!viewState.saveModalTitle.trim()) {
+      const title = viewState.saveModalTitle.trim();
+      const body = viewState.saveModalBody.trim();
+      if (!title) {
         viewState.saveModalError = "제목을 입력해 주세요.";
         renderTemplateSaveModal();
         return;
       }
-      if (!viewState.saveModalBody.trim()) {
+      if (!body) {
         viewState.saveModalError = "내용을 입력해 주세요.";
         renderTemplateSaveModal();
         return;
       }
 
-      // Add to template list in state
-      const nextId = "t" + (viewState.savedTemplates.length + 1);
-      const newTemplate = {
-        id: nextId,
-        name: viewState.saveModalTitle.trim(),
-        title: viewState.saveModalTitle.trim(),
-        body: viewState.saveModalBody.trim(),
-        kind: viewState.method === "PUSH" ? "PUSH" : viewState.method === "알림톡" ? "알림톡" : msgKind(viewState.saveModalTitle.trim(), viewState.saveModalBody.trim(), !!viewState.image),
-        ad: false,
-        savedAt: new Date().toISOString().slice(0, 10)
-      };
-      
-      viewState.savedTemplates.unshift(newTemplate);
-      
-      // Setup dynamic alert behavior
-      alert(`템플릿 "${newTemplate.name}"이(가) 보관함에 임시 저장되었습니다.`);
-      
-      // Auto-toggle tab to Saved
-      viewState.vaultActiveTab = "saved";
-      viewState.vaultPages["saved"] = 0;
-      
-      viewState.saveModalOpen = false;
-      renderTemplateSaveModal();
-      renderMessageVault();
+      try {
+        const added = stateStore.addMessageTemplate({
+          title,
+          body,
+          method: viewState.method === "알림톡" ? "ALIMTALK" : viewState.method === "PUSH" ? "PUSH" : "SMS",
+          imageName: viewState.image
+        });
+
+        // Setup dynamic alert behavior
+        alert(`템플릿 "${added.title}"이(가) 보관함에 임시 저장되었습니다.`);
+
+        // Auto-toggle tab to Saved
+        viewState.vaultActiveTab = "saved";
+        viewState.vaultPages["saved"] = 0;
+
+        viewState.saveModalOpen = false;
+        renderTemplateSaveModal();
+        renderMessageVault();
+      } catch (err) {
+        viewState.saveModalError = err.message;
+        renderTemplateSaveModal();
+      }
+    });
+  };
+
+  // Template Edit Modal Dialog
+  const renderTemplateEditModal = () => {
+    const block = container.querySelector('#templateEditModalOverlay');
+    if (!viewState.editModalOpen) {
+      block.style.display = 'none';
+      block.style.position = '';
+      block.style.inset = '';
+      block.style.zIndex = '';
+      block.innerHTML = '';
+      return;
+    }
+    block.style.display = 'flex';
+    block.style.position = 'fixed';
+    block.style.inset = '0';
+    block.style.zIndex = '100';
+    block.style.alignItems = 'center';
+    block.style.justifyContent = 'center';
+    block.style.padding = '20px';
+    block.style.background = 'rgba(15, 23, 42, 0.42)';
+    block.style.animation = 'fadeIn 0.15s ease-out';
+
+    // Escape helper for input values
+    const escVal = (str) => (str || "").replace(/"/g, '&quot;');
+    const escHtml = (str) => (str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+    block.innerHTML = `
+      <div id="btnEditModalCloseBackdrop" style="position: absolute; inset: 0;"></div>
+      <div style="
+        position: relative; background: #fff; border-radius: 16px; width: 100%; max-width: 420px;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+        animation: popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); display: flex; flex-direction: column; overflow: hidden;
+      ">
+        <!-- Header -->
+        <div style="display: flex; align-items: center; gap: 10px; padding: 14px 20px; background: #fff; border-bottom: 1px solid #edf2f7;">
+          <span style="width: 28px; height: 28px; border-radius: 8px; background: var(--primary-light); display: flex; align-items: center; justify-content: center;">
+            ${renderIcon('edit', 14, 'var(--primary)')}
+          </span>
+          <h3 style="margin: 0; font-size: 15px; font-weight: 800; color: var(--text-main);">템플릿 수정</h3>
+          <button id="btnEditModalClose" style="
+            margin-left: auto; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border-color);
+            background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
+          ">${renderIcon('close', 14, '#64748b')}</button>
+        </div>
+
+        <!-- Body -->
+        <div style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">템플릿 제목</label>
+            <input type="text" id="editModalTitleInp" value="${escVal(viewState.editModalTitle)}" placeholder="템플릿 제목을 입력해 주세요" style="
+              width: 100%; padding: 10px 12px; font-size: 13px; border-radius: 8px; border: 1px solid var(--border-color);
+              box-sizing: border-box; outline: none; transition: border-color 0.15s;
+            ">
+          </div>
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">템플릿 내용</label>
+            <textarea id="editModalBodyInp" placeholder="템플릿 내용을 입력해 주세요" style="
+              width: 100%; height: 120px; padding: 10px 12px; font-size: 13px; border-radius: 8px; border: 1px solid var(--border-color);
+              box-sizing: border-box; outline: none; transition: border-color 0.15s; resize: none; font-family: inherit;
+            ">${escHtml(viewState.editModalBody)}</textarea>
+          </div>
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">발송 방식</label>
+            <div style="display: flex; gap: 8px;">
+              ${["SMS", "PUSH", "ALIMTALK"].map(method => {
+                const checked = viewState.editModalMethod === method;
+                const label = method === "ALIMTALK" ? "알림톡" : method;
+                return `
+                  <label style="display: flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer; font-weight: 600; color: var(--text-main);">
+                    <input type="radio" name="editModalMethod" value="${method}" ${checked ? 'checked' : ''} style="margin: 0; cursor: pointer;">
+                    ${label}
+                  </label>
+                `;
+              }).join('')}
+            </div>
+          </div>
+          ${viewState.editModalError ? `<div style="font-size: 11.5px; color: var(--danger); font-weight: 700;">${viewState.editModalError}</div>` : ''}
+        </div>
+
+        <!-- Footer -->
+        <div style="display: flex; gap: 10px; padding: 12px 20px; background: #fff; border-top: 1px solid #edf2f7; justify-content: flex-end;">
+          <button id="btnEditModalCancel" style="
+            display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; font-size: 13.5px; font-weight: 700;
+            color: var(--slate); background: #f1f5f9; border: none; border-radius: 10px; cursor: pointer; font-family: inherit; margin-bottom: 0;
+          ">취소</button>
+          <button id="btnEditModalSubmit" style="
+            display: inline-flex; align-items: center; gap: 6px; padding: 10px 24px; font-size: 13.5px; font-weight: 800;
+            color: #fff; background: var(--primary); border: none; border-radius: 10px; cursor: pointer;
+            box-shadow: 0 4px 12px rgba(37,99,235,.2); font-family: inherit; margin-bottom: 0;
+          ">저장</button>
+        </div>
+      </div>
+    `;
+
+    // Hook listeners
+    const closeEditModal = () => {
+      viewState.editModalOpen = false;
+      renderTemplateEditModal();
+    };
+
+    block.querySelector('#btnEditModalCloseBackdrop').addEventListener('click', closeEditModal);
+    block.querySelector('#btnEditModalClose').addEventListener('click', closeEditModal);
+    block.querySelector('#btnEditModalCancel').addEventListener('click', closeEditModal);
+
+    const titleInp = block.querySelector('#editModalTitleInp');
+    titleInp.addEventListener('input', (e) => {
+      viewState.editModalTitle = e.target.value;
+    });
+
+    const bodyInp = block.querySelector('#editModalBodyInp');
+    bodyInp.addEventListener('input', (e) => {
+      viewState.editModalBody = e.target.value;
+    });
+
+    block.querySelectorAll('input[name="editModalMethod"]').forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        viewState.editModalMethod = e.target.value;
+      });
+    });
+
+    block.querySelector('#btnEditModalSubmit').addEventListener('click', () => {
+      const title = viewState.editModalTitle.trim();
+      const body = viewState.editModalBody.trim();
+      if (!title) {
+        viewState.editModalError = "제목을 입력해 주세요.";
+        renderTemplateEditModal();
+        return;
+      }
+      if (!body) {
+        viewState.editModalError = "내용을 입력해 주세요.";
+        renderTemplateEditModal();
+        return;
+      }
+
+      try {
+        stateStore.updateMessageTemplate(viewState.editModalTemplateId, {
+          title,
+          body,
+          method: viewState.editModalMethod
+        });
+
+        alert("템플릿이 수정되었습니다.");
+        viewState.editModalOpen = false;
+        renderTemplateEditModal();
+        renderMessageVault();
+      } catch (err) {
+        viewState.editModalError = err.message;
+        renderTemplateEditModal();
+      }
     });
   };
 

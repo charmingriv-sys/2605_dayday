@@ -168,5 +168,83 @@ export const communicationMethods = {
         this.saveDB();
         this.notify('OUTBOUND_MESSAGE_LOGS_CHANGED', this.db.outboundMessageLogs);
         return newLog;
+    },
+
+    // --- MESSAGE TEMPLATES ---
+    getMessageTemplates() {
+        if (!this.db.messageTemplates) {
+            this.db.messageTemplates = [];
+            this.saveDB();
+        }
+        return [...this.db.messageTemplates].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    },
+
+    addMessageTemplate(payload) {
+        if (!this.db.messageTemplates) {
+            this.db.messageTemplates = [];
+        }
+        if (!payload.title || !payload.title.trim()) {
+            throw new Error("템플릿 제목은 필수 입력 항목입니다.");
+        }
+        if (!payload.body || !payload.body.trim()) {
+            throw new Error("템플릿 본문은 필수 입력 항목입니다.");
+        }
+
+        const id = 'tmpl_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+        const now = new Date().toISOString();
+        const newTemplate = {
+            id,
+            createdAt: now,
+            updatedAt: now,
+            title: payload.title.trim(),
+            body: payload.body.trim(),
+            method: payload.method || 'SMS',
+            category: payload.category || 'custom',
+            imageName: payload.imageName || null,
+            favorite: payload.favorite || false
+        };
+        this.db.messageTemplates.unshift(newTemplate);
+        this.saveDB();
+        this.notify('MESSAGE_TEMPLATES_CHANGED', this.db.messageTemplates);
+        return newTemplate;
+    },
+
+    updateMessageTemplate(templateId, patch) {
+        if (!this.db.messageTemplates) {
+            this.db.messageTemplates = [];
+        }
+        const index = this.db.messageTemplates.findIndex(t => t.id === templateId);
+        if (index === -1) {
+            throw new Error("수정할 템플릿을 찾을 수 없습니다.");
+        }
+        if (patch.title !== undefined && !patch.title.trim()) {
+            throw new Error("템플릿 제목은 필수 입력 항목입니다.");
+        }
+        if (patch.body !== undefined && !patch.body.trim()) {
+            throw new Error("템플릿 본문은 필수 입력 항목입니다.");
+        }
+
+        const current = this.db.messageTemplates[index];
+        const updated = {
+            ...current,
+            ...patch,
+            updatedAt: new Date().toISOString()
+        };
+        if (patch.title !== undefined) updated.title = patch.title.trim();
+        if (patch.body !== undefined) updated.body = patch.body.trim();
+
+        this.db.messageTemplates[index] = updated;
+        this.saveDB();
+        this.notify('MESSAGE_TEMPLATES_CHANGED', this.db.messageTemplates);
+        return updated;
+    },
+
+    deleteMessageTemplate(templateId) {
+        if (!this.db.messageTemplates) {
+            this.db.messageTemplates = [];
+        }
+        this.db.messageTemplates = this.db.messageTemplates.filter(t => t.id !== templateId);
+        this.saveDB();
+        this.notify('MESSAGE_TEMPLATES_CHANGED', this.db.messageTemplates);
     }
 };
