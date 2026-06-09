@@ -246,4 +246,142 @@ test.describe('Director Major Schedule CRUD & Flow', () => {
     await expect(updatedEventRow).not.toBeVisible();
     await expect(kpiEvents).toContainText('6');
   });
+
+  test('should verify student drawer layout, memo CRUD, and footer action buttons', async ({ page }) => {
+    // 1. Click "주요일정관리" menu item in the sidebar
+    const menuItem = page.locator('.menu-item[data-view="dir-major-schedule"]');
+    await expect(menuItem).toBeVisible();
+    await menuItem.click();
+
+    // 2. Click "일정참여학생보기" tab
+    const participantViewBtn = page.locator('#participantViewBtn');
+    await expect(participantViewBtn).toBeVisible();
+    await participantViewBtn.click();
+
+    // 3. Click the first row (S1: 최다은) to open student drawer
+    const s1Row = page.locator('#eventBody tr:has-text("최다은")').first();
+    await expect(s1Row).toBeVisible();
+    await s1Row.click();
+
+    const drawer = page.locator('#drawer');
+    await expect(drawer).toHaveClass(/open/);
+
+    // 4. Assert first section title is "메모" and "학원 등록 메모" is NOT present
+    const firstSectionHeader = drawer.locator('.drawer-section.memo-section h3');
+    await expect(firstSectionHeader).toBeVisible();
+    await expect(firstSectionHeader).toHaveText('메모');
+    await expect(drawer).not.toContainText('학원 등록 메모');
+
+    // Verify upcoming lessons, related events, and 3 footer buttons are present
+    const upcomingHeader = drawer.locator('h3:text-is("다가오는 수업")');
+    await expect(upcomingHeader).toBeVisible();
+    
+    const relatedHeader = drawer.locator('h3:text-is("관련 일정")');
+    await expect(relatedHeader).toBeVisible();
+
+    const memoBtn = page.locator('#btn-student-memo');
+    const lessonBtn = page.locator('#btn-student-lesson');
+    const messageBtn = page.locator('#btn-student-message');
+    const closeBtn = page.locator('#btn-student-close');
+
+    await expect(memoBtn).toBeVisible();
+    await expect(lessonBtn).toBeVisible();
+    await expect(messageBtn).toBeVisible();
+    await expect(closeBtn).toBeVisible();
+
+    // 5. Test note CRUD inside student drawer
+    // A. Click "메모" button to open inline note form
+    await memoBtn.click();
+    
+    const memoForm = drawer.locator('#memo-form-area');
+    await expect(memoForm).toBeVisible();
+
+    const memoInput = drawer.locator('#memo-input');
+    const memoSaveBtn = drawer.locator('#btn-memo-save');
+    const memoError = drawer.locator('#memo-error-msg');
+
+    // Test validation: try to save empty memo
+    await memoInput.fill('   ');
+    await memoSaveBtn.click();
+    await expect(memoError).toBeVisible();
+    await expect(memoError).toContainText('메모 내용을 입력해 주세요.');
+
+    // Save valid memo
+    await memoInput.fill('E2E 테스트 신규 메모');
+    await memoSaveBtn.click();
+
+    // Memo form should hide and list should update instantly
+    await expect(memoForm).not.toBeVisible();
+    const newMemoItem = drawer.locator('.memo-item:has-text("E2E 테스트 신규 메모")');
+    await expect(newMemoItem).toBeVisible();
+
+    // Verify registration date is displayed as bold and is NOT the word "메모"
+    const boldHeader = newMemoItem.locator('strong');
+    await expect(boldHeader).toHaveText('06-04 09:00');
+    await expect(boldHeader).not.toHaveText('메모');
+
+    // B. Edit note
+    await newMemoItem.click(); // toggle open memo actions
+    const editNoteBtn = newMemoItem.locator('.btn-edit-note');
+    await expect(editNoteBtn).toBeVisible();
+    await editNoteBtn.click();
+
+    await expect(memoForm).toBeVisible();
+    await expect(memoInput).toHaveValue('E2E 테스트 신규 메모');
+    await memoInput.fill('E2E 테스트 수정된 메모');
+    await memoSaveBtn.click();
+
+    await expect(memoForm).not.toBeVisible();
+    const updatedMemoItem = drawer.locator('.memo-item:has-text("E2E 테스트 수정된 메모")');
+    await expect(updatedMemoItem).toBeVisible();
+
+    // C. Delete note
+    await updatedMemoItem.click(); // toggle open
+    const deleteNoteBtn = updatedMemoItem.locator('.btn-delete-note');
+    await expect(deleteNoteBtn).toBeVisible();
+
+    page.once('dialog', async dialog => {
+      expect(dialog.message()).toContain('이 메모를 삭제할까요?');
+      await dialog.accept();
+    });
+    await deleteNoteBtn.click();
+    await expect(updatedMemoItem).not.toBeVisible();
+
+    // 6. Verify Lesson Scheduling Button (clicks and triggers alert + routes to dir-schedules)
+    page.once('dialog', async dialog => {
+      expect(dialog.message()).toContain('레슨편성 기능은 추후 원생 수업 편성 화면과 연결 예정입니다.');
+      await dialog.accept();
+    });
+    await lessonBtn.click();
+
+    // Drawer should close and active sidebar view should switch to dir-schedules
+    await expect(drawer).not.toBeVisible();
+    const schedulesMenuItem = page.locator('.menu-item[data-view="dir-schedules"]');
+    await expect(schedulesMenuItem).toHaveClass(/active/);
+    
+    // Go back to major schedule view
+    const majorScheduleMenuItem = page.locator('.menu-item[data-view="dir-major-schedule"]');
+    await majorScheduleMenuItem.click();
+    await participantViewBtn.click();
+    await s1Row.click();
+    await expect(drawer).toHaveClass(/open/);
+
+    // 7. Verify Message Button (clicks and triggers alert + routes to dir-communication)
+    page.once('dialog', async dialog => {
+      expect(dialog.message()).toContain('메세지 기능은 학부모 소통 관리와 연결 예정입니다.');
+      await dialog.accept();
+    });
+    await messageBtn.click();
+
+    // Drawer should close and active sidebar view should switch to dir-communication
+    await expect(drawer).not.toBeVisible();
+    const communicationMenuItem = page.locator('.menu-item[data-view="dir-communication"]');
+    await expect(communicationMenuItem).toHaveClass(/active/);
+
+    // 8. Verify no message side effects (no messages created in database)
+    const messagesCount = await page.evaluate(() => {
+      return (window.stateStore.db.messages || []).length;
+    });
+    expect(messagesCount).toBe(2); // Initial seed count is 2
+  });
 });

@@ -137,6 +137,69 @@ try {
     assert.ok(!stateStore.getMajorSchedules().some(e => e.id === idToDelete), 'Deleted schedule should not exist');
     console.log('✓ Deletion check passed.');
 
+    // 7. Verify majorScheduleStudentNotes CRUD
+    console.log('7. Verifying majorScheduleStudentNotes CRUD...');
+    stateStore.db.majorScheduleStudentNotes = [];
+
+    // Verify retrieval of empty notes
+    const emptyNotes = stateStore.getMajorScheduleStudentNotes('S1');
+    assert.deepStrictEqual(emptyNotes, [], 'Notes should initially be empty for S1');
+
+    // Add note validation
+    assert.throws(() => {
+        stateStore.addMajorScheduleStudentNote('S1', '');
+    }, /cannot be empty/, 'Should throw if note content is empty');
+
+    assert.throws(() => {
+        stateStore.addMajorScheduleStudentNote('S1', '   ');
+    }, /cannot be empty/, 'Should throw if note content is whitespace only');
+
+    // Add valid note
+    const note1 = stateStore.addMajorScheduleStudentNote('S1', '첫 번째 일정 메모');
+    assert.ok(note1.id, 'Note should have id');
+    assert.strictEqual(note1.studentId, 'S1');
+    assert.strictEqual(note1.content, '첫 번째 일정 메모');
+    assert.ok(note1.createdAt);
+    assert.ok(note1.updatedAt);
+
+    // Retrieve notes
+    const notesForS1 = stateStore.getMajorScheduleStudentNotes('S1');
+    assert.strictEqual(notesForS1.length, 1);
+    assert.strictEqual(notesForS1[0].content, '첫 번째 일정 메모');
+
+    // Add second note to test order
+    await new Promise(r => setTimeout(r, 10));
+    const note2 = stateStore.addMajorScheduleStudentNote('S1', '두 번째 일정 메모');
+    
+    // Retrieve again and verify newest first
+    const sortedNotes = stateStore.getMajorScheduleStudentNotes('S1');
+    assert.strictEqual(sortedNotes.length, 2);
+    assert.strictEqual(sortedNotes[0].id, note2.id, 'Newest note should be first');
+
+    // Update note
+    const updatedNote = stateStore.updateMajorScheduleStudentNote(note1.id, { content: '수정된 일정 메모' });
+    assert.strictEqual(updatedNote.content, '수정된 일정 메모');
+
+    // Verify empty update validation
+    assert.throws(() => {
+        stateStore.updateMajorScheduleStudentNote(note1.id, { content: '' });
+    }, /cannot be empty/, 'Should throw on updating to empty content');
+
+    // Delete note
+    const deletedNoteResult = stateStore.deleteMajorScheduleStudentNote(note1.id);
+    assert.strictEqual(deletedNoteResult, true);
+    assert.strictEqual(stateStore.getMajorScheduleStudentNotes('S1').length, 1);
+    assert.ok(!stateStore.getMajorScheduleStudentNotes('S1').some(n => n.id === note1.id));
+
+    // Verify student baseline data (scheduleNotes, name, etc.) did not change
+    const originalStudent = stateStore.db.students.find(s => s.id === 'S1');
+    assert.strictEqual(originalStudent.scheduleNotes, '', 'Original student scheduleNotes should remain unchanged');
+
+    // Verify no message logs or messages were created (no side effects)
+    const originalMessagesCount = (stateStore.db.messages || []).length;
+    assert.strictEqual(originalMessagesCount, 2, 'Messages count should remain unchanged');
+    console.log('✓ majorScheduleStudentNotes CRUD checks passed.');
+
 } catch (err) {
     console.error('❌ Major Schedule Store CRUD API Verification FAILED:', err.stack);
     hasError = true;

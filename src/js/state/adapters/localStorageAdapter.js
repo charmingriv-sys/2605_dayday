@@ -311,6 +311,25 @@ export class LocalStorageAdapter extends DataAdapter {
                 }
             });
         }
+
+        if (!db.majorScheduleStudentNotes) {
+            db.majorScheduleStudentNotes = [
+              { id: "msn_1", studentId: "S1", content: "06.04 콩쿠르 접수 보호자 확인 필요", createdAt: "2026-06-04T10:00:00.000Z", updatedAt: "2026-06-04T10:00:00.000Z" },
+              { id: "msn_2", studentId: "S1", content: "06.01 템포 흔들림, 다음 레슨에서 재점검", createdAt: "2026-06-01T10:00:00.000Z", updatedAt: "2026-06-01T10:00:00.000Z" },
+              { id: "msn_3", studentId: "S2", content: "06.04 결석 보강 후보", createdAt: "2026-06-04T10:00:00.000Z", updatedAt: "2026-06-04T10:00:00.000Z" },
+              { id: "msn_4", studentId: "S2", content: "05.30 암보 불안정, 보호자 안내 완료", createdAt: "2026-05-30T10:00:00.000Z", updatedAt: "2026-05-30T10:00:00.000Z" },
+              { id: "msn_5", studentId: "S3", content: "06.04 입시 상담 일정 조율 필요", createdAt: "2026-06-04T10:00:00.000Z", updatedAt: "2026-06-04T10:00:00.000Z" },
+              { id: "msn_6", studentId: "S3", content: "06.02 원서 제출 서류 안내", createdAt: "2026-06-02T10:00:00.000Z", updatedAt: "2026-06-02T10:00:00.000Z" },
+              { id: "msn_7", studentId: "S4", content: "06.03 리허설 안내 문자 발송", createdAt: "2026-06-03T10:00:00.000Z", updatedAt: "2026-06-03T10:00:00.000Z" },
+              { id: "msn_8", studentId: "S5", content: "06.04 추가 레슨 편성 검토", createdAt: "2026-06-04T10:00:00.000Z", updatedAt: "2026-06-04T10:00:00.000Z" },
+              { id: "msn_9", studentId: "S5", content: "06.01 곡 완성도 낮음, 원장 확인", createdAt: "2026-06-01T10:00:00.000Z", updatedAt: "2026-06-01T10:00:00.000Z" },
+              { id: "msn_10", studentId: "S6", content: "06.04 보강 가능 시간 확인 필요", createdAt: "2026-06-04T10:00:00.000Z", updatedAt: "2026-06-04T10:00:00.000Z" },
+              { id: "msn_11", studentId: "S6", content: "05.29 결석 사유 입력", createdAt: "2026-05-29T10:00:00.000Z", updatedAt: "2026-05-29T10:00:00.000Z" },
+              { id: "msn_12", studentId: "S7", content: "06.04 학부모 상담 후보", createdAt: "2026-06-04T10:00:00.000Z", updatedAt: "2026-06-04T10:00:00.000Z" },
+              { id: "msn_13", studentId: "S7", content: "06.02 입시곡 진도 양호", createdAt: "2026-06-02T10:00:00.000Z", updatedAt: "2026-06-02T10:00:00.000Z" }
+            ];
+            migrated = true;
+        }
  
         return migrated;
     }

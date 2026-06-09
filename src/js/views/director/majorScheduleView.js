@@ -15,6 +15,21 @@ const getChosungStr = (str) => {
     return res;
 };
 
+const formatNoteDate = (dateStr) => {
+  if (!dateStr) return "-";
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return "-";
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${mm}-${dd} ${hh}:${min}`;
+  } catch (e) {
+    return "-";
+  }
+};
+
 const eventTypes = {
   all: { label: "전체", tone: "slate" },
   concours: { label: "콩쿠르", tone: "blue" },
@@ -114,10 +129,7 @@ export function renderMajorSchedule(container) {
       const grade = student.school ? `${student.school} ${student.age ? student.age + '세' : ''}` : (student.age ? `${student.age}세` : '일반');
 
       // Notes
-      let notes = [];
-      if (student.scheduleNotes) {
-        notes = student.scheduleNotes.split('\n').map(n => n.trim()).filter(Boolean);
-      }
+      let notes = stateStore.getMajorScheduleStudentNotes(student.id) || [];
       
       return {
         id: student.id,
@@ -127,7 +139,7 @@ export function renderMajorSchedule(container) {
         teacher: teacherName,
         eventIds: eventIds,
         lesson: lesson,
-        lessonSource: studentClasses.length > 0 ? "정규 수업 배정" : "미지정",
+        lessonSource: studentClasses.length > 0 ? "정규 수업 배정" : "미정",
         memo: student.scheduleNotes || '-',
         notes: notes
       };
@@ -1341,9 +1353,13 @@ export function renderMajorSchedule(container) {
     showDrawer();
   };
 
-  const openStudent = (id) => {
-    const adaptedStudents = getAdaptedStudents();
-    const student = adaptedStudents.find((item) => item.id === id);
+  const openStudent = (studentId) => {
+    const refreshStudentData = () => {
+      const dbStudents = getAdaptedStudents();
+      return dbStudents.find(s => s.id === studentId);
+    };
+
+    let student = refreshStudentData();
     if (!student) return;
 
     const allEvents = stateStore.getMajorSchedules() || [];
@@ -1371,21 +1387,119 @@ export function renderMajorSchedule(container) {
       { label: "4회차", at: `6/25(목) ${student.lesson.split(' ').pop() || "14:00"}` }
     ];
 
-    drawerBody.innerHTML = `
-      <section class="drawer-section">
-        <h3>학원 등록 메모</h3>
-        <div class="section-body">
-          ${student.notes.length === 0 ? `<div style="font-size: 13px; color: var(--muted); text-align: center; padding: 12px;">등록된 메모가 없습니다.</div>` : student.notes.map((note) => `
-            <div class="memo-item" style="padding: 10px 0; border-bottom: 1px solid var(--line-2);">
-              <div class="student-mini" style="border: 0; padding: 0;">
+    const renderMemoList = () => {
+      const containerEl = drawerBody.querySelector('#drawer-memo-list-container');
+      if (!containerEl) return;
+      
+      const currentStudent = refreshStudentData();
+      if (!currentStudent) return;
+      
+      if (currentStudent.notes.length === 0) {
+        containerEl.innerHTML = `<div style="font-size: 13px; color: var(--muted); text-align: center; padding: 12px;">등록된 메모가 없습니다.</div>`;
+      } else {
+        containerEl.innerHTML = currentStudent.notes.map((note) => {
+          const formattedDate = formatNoteDate(note.createdAt || note.updatedAt);
+          return `
+            <div class="memo-item" data-note-id="${note.id}" style="cursor: pointer;">
+              <div class="student-mini" style="border: 0; padding: 9px 0;">
                 <div class="mini-avatar">메모</div>
                 <div class="queue-main" style="margin-left: 8px;">
-                  <strong>${note.includes(" ") ? note.split(" ")[0] : "메모"}</strong>
-                  <span>${note.includes(" ") ? note.substring(note.indexOf(" ") + 1) : note}</span>
+                  <strong style="font-size: 11px; color: var(--muted);">${formattedDate}</strong>
+                  <span>${note.content}</span>
                 </div>
+                <span class="mini-chip tone-blue">확인</span>
+              </div>
+              <div class="memo-actions">
+                <button class="btn btn-edit-note" style="min-height: 26px; padding: 0 9px; font-size: 11px; margin-bottom: 0;">수정</button>
+                <button class="btn btn-delete-note" style="min-height: 26px; padding: 0 9px; font-size: 11px; margin-bottom: 0; color: var(--red); border-color: var(--red-soft);">삭제</button>
               </div>
             </div>
-          `).join("")}
+          `;
+        }).join("");
+
+        containerEl.querySelectorAll('.memo-item').forEach(itemEl => {
+          itemEl.addEventListener('click', (e) => {
+            if (e.target.closest('.btn-edit-note') || e.target.closest('.btn-delete-note')) {
+              return;
+            }
+            itemEl.classList.toggle('open');
+          });
+
+          const editBtn = itemEl.querySelector('.btn-edit-note');
+          editBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const noteId = itemEl.dataset.noteId;
+            const currentStudent = refreshStudentData();
+            const note = currentStudent.notes.find(n => n.id === noteId);
+            if (note) {
+              openMemoForm(note);
+            }
+          });
+
+          const deleteBtn = itemEl.querySelector('.btn-delete-note');
+          deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const noteId = itemEl.dataset.noteId;
+            const approve = confirm('이 메모를 삭제할까요?');
+            if (approve) {
+              stateStore.deleteMajorScheduleStudentNote(noteId);
+              renderMemoList();
+            }
+          });
+        });
+      }
+    };
+
+    const openMemoForm = (noteToEdit = null) => {
+      const formArea = drawerBody.querySelector('#memo-form-area');
+      const formTitle = drawerBody.querySelector('#memo-form-title');
+      const inputEl = drawerBody.querySelector('#memo-input');
+      const errorEl = drawerBody.querySelector('#memo-error-msg');
+
+      errorEl.style.display = 'none';
+      errorEl.textContent = '';
+      
+      if (noteToEdit) {
+        formTitle.textContent = '메모 수정';
+        formArea.dataset.noteId = noteToEdit.id;
+        inputEl.value = noteToEdit.content;
+      } else {
+        formTitle.textContent = '새 메모 작성';
+        delete formArea.dataset.noteId;
+        inputEl.value = '';
+      }
+
+      formArea.style.display = 'block';
+      inputEl.focus();
+      drawerBody.scrollTop = 0;
+    };
+
+    const closeMemoForm = () => {
+      const formArea = drawerBody.querySelector('#memo-form-area');
+      const inputEl = drawerBody.querySelector('#memo-input');
+      const errorEl = drawerBody.querySelector('#memo-error-msg');
+
+      formArea.style.display = 'none';
+      delete formArea.dataset.noteId;
+      inputEl.value = '';
+      errorEl.style.display = 'none';
+      errorEl.textContent = '';
+    };
+
+    drawerBody.innerHTML = `
+      <section class="drawer-section memo-section">
+        <h3>메모</h3>
+        <div class="section-body">
+          <div id="memo-form-area" style="display: none; margin-bottom: 12px; padding: 12px; border: 1px solid var(--blue-soft); border-radius: 8px; background: #f0f9ff;">
+            <div style="font-size: 12px; font-weight: 850; color: var(--blue); margin-bottom: 6px;" id="memo-form-title">새 메모 작성</div>
+            <textarea id="memo-input" placeholder="메모 내용을 입력하세요" style="width: 100%; min-height: 60px; padding: 8px; font-size: 13px; border: 1px solid var(--line); border-radius: 6px; resize: vertical; box-sizing: border-box;"></textarea>
+            <div id="memo-error-msg" style="display: none; color: var(--red); font-size: 11px; font-weight: 850; margin: 4px 0 6px 0;"></div>
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
+              <button class="btn" id="btn-memo-cancel" style="min-height: 28px; padding: 0 12px; font-size: 12px; background: #fff;">취소</button>
+              <button class="btn primary" id="btn-memo-save" style="min-height: 28px; padding: 0 12px; font-size: 12px; background: var(--blue); color: #fff; border-color: var(--blue);">저장</button>
+            </div>
+          </div>
+          <div id="drawer-memo-list-container"></div>
         </div>
       </section>
       <section class="drawer-section">
@@ -1423,7 +1537,43 @@ export function renderMajorSchedule(container) {
       </section>
     `;
 
-    drawerBody.querySelectorAll('.student-mini').forEach(mini => {
+    renderMemoList();
+
+    const cancelMemoBtn = drawerBody.querySelector('#btn-memo-cancel');
+    const saveMemoBtn = drawerBody.querySelector('#btn-memo-save');
+    const memoInputEl = drawerBody.querySelector('#memo-input');
+    const memoFormArea = drawerBody.querySelector('#memo-form-area');
+    const memoErrorEl = drawerBody.querySelector('#memo-error-msg');
+
+    cancelMemoBtn.addEventListener('click', closeMemoForm);
+
+    saveMemoBtn.addEventListener('click', () => {
+      memoErrorEl.style.display = 'none';
+      memoErrorEl.textContent = '';
+
+      const content = memoInputEl.value.trim();
+      if (!content) {
+        memoErrorEl.textContent = '메모 내용을 입력해 주세요.';
+        memoErrorEl.style.display = 'block';
+        return;
+      }
+
+      const noteId = memoFormArea.dataset.noteId;
+      try {
+        if (noteId) {
+          stateStore.updateMajorScheduleStudentNote(noteId, { content });
+        } else {
+          stateStore.addMajorScheduleStudentNote(studentId, content);
+        }
+        closeMemoForm();
+        renderMemoList();
+      } catch (err) {
+        memoErrorEl.textContent = `저장 실패: ${err.message}`;
+        memoErrorEl.style.display = 'block';
+      }
+    });
+
+    drawerBody.querySelectorAll('.student-mini[data-event-id]').forEach(mini => {
       mini.addEventListener('click', (e) => {
         e.stopPropagation();
         openEvent(mini.dataset.eventId);
@@ -1431,9 +1581,35 @@ export function renderMajorSchedule(container) {
     });
 
     drawerFooter.innerHTML = `
-      <button id="btn-student-close" class="btn primary">닫기</button>
+      <button id="btn-student-memo" class="btn primary-action">메모</button>
+      <button id="btn-student-lesson" class="btn">레슨편성</button>
+      <button id="btn-student-message" class="btn">메세지</button>
+      <button id="btn-student-close" class="btn" style="min-width: 60px;">닫기</button>
     `;
+
     drawerFooter.querySelector('#btn-student-close').addEventListener('click', closeDrawer);
+    
+    drawerFooter.querySelector('#btn-student-memo').addEventListener('click', () => {
+      openMemoForm();
+    });
+
+    drawerFooter.querySelector('#btn-student-lesson').addEventListener('click', () => {
+      alert('레슨편성 기능은 추후 원생 수업 편성 화면과 연결 예정입니다.');
+      closeDrawer();
+      const targetMenu = document.querySelector('.menu-item[data-view="dir-schedules"]');
+      if (targetMenu) {
+        targetMenu.click();
+      }
+    });
+
+    drawerFooter.querySelector('#btn-student-message').addEventListener('click', () => {
+      alert('메세지 기능은 학부모 소통 관리와 연결 예정입니다.');
+      closeDrawer();
+      const targetMenu = document.querySelector('.menu-item[data-view="dir-communication"]');
+      if (targetMenu) {
+        targetMenu.click();
+      }
+    });
 
     drawerFooter.classList.add("open");
     showDrawer();
@@ -1726,6 +1902,8 @@ export function renderMajorSchedule(container) {
     if (backdrop) backdrop.classList.remove('open');
     if (drawer) drawer.classList.remove('open');
     if (footer) footer.classList.remove('open');
+
+    render();
   };
 
   render();

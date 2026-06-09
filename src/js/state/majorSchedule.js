@@ -95,5 +95,88 @@ export const majorScheduleMethods = {
             return true;
         }
         return false;
+    },
+
+    getMajorScheduleStudentNotes(studentId) {
+        if (!this.db.majorScheduleStudentNotes) {
+            this.db.majorScheduleStudentNotes = [];
+        }
+        if (!studentId) {
+            return [...this.db.majorScheduleStudentNotes].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        }
+        return this.db.majorScheduleStudentNotes
+            .filter(n => n.studentId === studentId)
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    },
+
+    addMajorScheduleStudentNote(studentId, content) {
+        if (!this.db.majorScheduleStudentNotes) {
+            this.db.majorScheduleStudentNotes = [];
+        }
+        if (!studentId) {
+            throw new Error('Required field [studentId] missing');
+        }
+        const cleanContent = String(content || '').trim();
+        if (!cleanContent) {
+            throw new Error('Required field [content] cannot be empty');
+        }
+
+        const id = 'msn_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+        const newNote = {
+            id,
+            studentId,
+            content: cleanContent,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+
+        this.db.majorScheduleStudentNotes.push(newNote);
+        this.saveDB();
+        this.notify('MAJOR_SCHEDULE_STUDENT_NOTES_CHANGED', newNote);
+        return newNote;
+    },
+
+    updateMajorScheduleStudentNote(noteId, patch) {
+        if (!this.db.majorScheduleStudentNotes) {
+            this.db.majorScheduleStudentNotes = [];
+        }
+        const index = this.db.majorScheduleStudentNotes.findIndex(n => n.id === noteId);
+        if (index === -1) {
+            throw new Error(`Major schedule student note not found for ID: ${noteId}`);
+        }
+
+        const current = this.db.majorScheduleStudentNotes[index];
+        const merged = { ...current };
+
+        if (patch.content !== undefined) {
+            const cleanContent = String(patch.content || '').trim();
+            if (!cleanContent) {
+                throw new Error('Required field [content] cannot be empty');
+            }
+            merged.content = cleanContent;
+        }
+
+        merged.updatedAt = new Date().toISOString();
+        this.db.majorScheduleStudentNotes[index] = merged;
+        this.saveDB();
+        this.notify('MAJOR_SCHEDULE_STUDENT_NOTES_CHANGED', merged);
+        return merged;
+    },
+
+    deleteMajorScheduleStudentNote(noteId) {
+        if (!this.db.majorScheduleStudentNotes) {
+            this.db.majorScheduleStudentNotes = [];
+            return false;
+        }
+
+        const initialLength = this.db.majorScheduleStudentNotes.length;
+        this.db.majorScheduleStudentNotes = this.db.majorScheduleStudentNotes.filter(n => n.id !== noteId);
+
+        if (this.db.majorScheduleStudentNotes.length < initialLength) {
+            this.saveDB();
+            this.notify('MAJOR_SCHEDULE_STUDENT_NOTES_CHANGED', { id: noteId, deleted: true });
+            return true;
+        }
+        return false;
     }
 };
