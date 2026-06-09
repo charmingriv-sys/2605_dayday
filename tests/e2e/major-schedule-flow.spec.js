@@ -347,42 +347,38 @@ test.describe('Director Major Schedule CRUD & Flow', () => {
     await deleteNoteBtn.click();
     await expect(updatedMemoItem).not.toBeVisible();
 
-    // 6. Verify Lesson Scheduling Button (clicks and triggers alert + routes to dir-schedules)
+    // 6. Verify Lesson Scheduling Button (clicks and triggers alert only)
     page.once('dialog', async dialog => {
-      expect(dialog.message()).toContain('레슨편성 기능은 추후 원생 수업 편성 화면과 연결 예정입니다.');
+      expect(dialog.message()).toContain('레슨편성 연결 방식은 검토 중입니다.');
       await dialog.accept();
     });
     await lessonBtn.click();
 
-    // Drawer should close and active sidebar view should switch to dir-schedules
-    await expect(drawer).not.toBeVisible();
-    const schedulesMenuItem = page.locator('.menu-item[data-view="dir-schedules"]');
-    await expect(schedulesMenuItem).toHaveClass(/active/);
-    
-    // Go back to major schedule view
+    // Drawer should remain open and active sidebar view should NOT switch
+    await expect(drawer).toBeVisible();
     const majorScheduleMenuItem = page.locator('.menu-item[data-view="dir-major-schedule"]');
-    await majorScheduleMenuItem.click();
-    await participantViewBtn.click();
-    await s1Row.click();
-    await expect(drawer).toHaveClass(/open/);
+    await expect(majorScheduleMenuItem).toHaveClass(/active/);
 
-    // 7. Verify Message Button (clicks and triggers alert + routes to dir-communication)
+    // 7. Verify Message Button (clicks and triggers alert only)
     page.once('dialog', async dialog => {
-      expect(dialog.message()).toContain('메세지 기능은 학부모 소통 관리와 연결 예정입니다.');
+      expect(dialog.message()).toContain('메시지 기능은 추후 학부모 소통 화면과 연결 예정입니다.');
       await dialog.accept();
     });
     await messageBtn.click();
 
-    // Drawer should close and active sidebar view should switch to dir-communication
-    await expect(drawer).not.toBeVisible();
-    const communicationMenuItem = page.locator('.menu-item[data-view="dir-communication"]');
-    await expect(communicationMenuItem).toHaveClass(/active/);
+    // Drawer should remain open and active sidebar view should NOT switch
+    await expect(drawer).toBeVisible();
+    await expect(majorScheduleMenuItem).toHaveClass(/active/);
 
     // 8. Verify no message side effects (no messages created in database)
     const messagesCount = await page.evaluate(() => {
       return (window.stateStore.db.messages || []).length;
     });
     expect(messagesCount).toBe(2); // Initial seed count is 2
+
+    // Clean up: close the drawer using the close button
+    await page.locator('#btn-drawer-close').click();
+    await expect(drawer).not.toHaveClass(/open/);
   });
 
   test('should verify main page search target policies, chosung search, and exact member ID match', async ({ page }) => {
@@ -394,7 +390,7 @@ test.describe('Director Major Schedule CRUD & Flow', () => {
     // Verify main search input placeholder
     const mainSearchInput = page.locator('#searchInput');
     await expect(mainSearchInput).toBeVisible();
-    await expect(mainSearchInput).toHaveAttribute('placeholder', '일정명, 장소, 원생명, 초성, 악기, 회원번호 검색');
+    await expect(mainSearchInput).toHaveAttribute('placeholder', '일정명, 장소, 원생명, 초성, 악기, 회원번호, 담당자 검색');
 
     // Make sure we are in "주요일정보기" (Event View) first
     const eventViewBtn = page.locator('#eventViewBtn');
@@ -440,9 +436,20 @@ test.describe('Director Major Schedule CRUD & Flow', () => {
     await expect(page.locator('#eventBody tr').nth(0)).toContainText('한국청소년 피아노 콩쿠르');
     await expect(page.locator('#eventBody tr').nth(1)).toContainText('여름 정기 음악회');
 
-    // G. Verify Excluded Search Targets:
-    // 1. Owner Name "정은비" (owner of ev1) -> should not match
-    await mainSearchInput.fill('정은비');
+    // G. Verify Search Targets for Owner/Teacher:
+    // 1. Owner Name "한지섭" (owner of ev2) -> should match
+    await mainSearchInput.fill('한지섭');
+    await expect(page.locator('#eventBody tr')).toHaveCount(1);
+    await expect(page.locator('#eventBody tr')).toContainText('예원학교 입시 실기고사');
+
+    // 2. Teacher Name "이해원" (teacher of participant student S6 in ev5) -> should match
+    await mainSearchInput.fill('이해원');
+    await expect(page.locator('#eventBody tr')).toHaveCount(1);
+    await expect(page.locator('#eventBody tr')).toContainText('6월 결석자 보강 편성');
+
+    // H. Verify Excluded Search Targets:
+    // 1. Event Type "concours" (ev1, ev3 type) -> should not match
+    await mainSearchInput.fill('concours');
     await expect(page.locator('#eventBody tr')).toHaveCount(1);
     await expect(page.locator('#eventBody tr')).toContainText('검색 결과가 없습니다.');
 
@@ -451,7 +458,7 @@ test.describe('Director Major Schedule CRUD & Flow', () => {
     await expect(page.locator('#eventBody tr')).toHaveCount(1);
     await expect(page.locator('#eventBody tr')).toContainText('검색 결과가 없습니다.');
 
-    // H. Verify identical filtering on both tabs
+    // I. Verify identical filtering on both tabs
     // 1. Search "ㅊㄷㅇ" in Event View
     await mainSearchInput.fill('ㅊㄷㅇ');
     await expect(page.locator('#eventBody tr')).toHaveCount(2); // 2 events

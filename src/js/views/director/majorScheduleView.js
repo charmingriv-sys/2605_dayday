@@ -30,6 +30,9 @@ const matchStudent = (student, cleanQuery, isChosungOnly, exactMatchExists) => {
   const instrumentMatch = student.instrument && student.instrument.toLowerCase().includes(cleanQuery);
   const gradeMatch = student.grade && student.grade.toLowerCase().includes(cleanQuery);
 
+  // Teacher match
+  const teacherMatch = student.teacher && student.teacher.toLowerCase().includes(cleanQuery);
+
   // Member ID match
   const studentMemberNoStr = student.studentMemberNo !== undefined && student.studentMemberNo !== null ? String(student.studentMemberNo).toLowerCase() : "";
   const memberNoStr = student.memberNo !== undefined && student.memberNo !== null ? String(student.memberNo).toLowerCase() : "";
@@ -42,7 +45,7 @@ const matchStudent = (student, cleanQuery, isChosungOnly, exactMatchExists) => {
     idMatch = (studentMemberNoStr.includes(cleanQuery) || memberNoStr.includes(cleanQuery) || idStr.includes(cleanQuery));
   }
 
-  return nameMatch || instrumentMatch || gradeMatch || idMatch;
+  return nameMatch || instrumentMatch || gradeMatch || idMatch || teacherMatch;
 };
 
 const formatNoteDate = (dateStr) => {
@@ -203,8 +206,9 @@ export function renderMajorSchedule(container) {
       if (cleanQuery) {
         const eventNameMatch = event.name.toLowerCase().includes(cleanQuery);
         const eventPlaceMatch = event.place && event.place.toLowerCase().includes(cleanQuery);
+        const eventOwnerMatch = event.ownerId && event.ownerId.toLowerCase().includes(cleanQuery);
         const anyStudentMatches = parts.some(student => matchStudent(student, cleanQuery, isChosungOnly, exactMatchExists));
-        if (!eventNameMatch && !eventPlaceMatch && !anyStudentMatches) return false;
+        if (!eventNameMatch && !eventPlaceMatch && !eventOwnerMatch && !anyStudentMatches) return false;
       }
       return true;
     }).sort((a, b) => dday(a.eventDate) - dday(b.eventDate));
@@ -1030,7 +1034,7 @@ export function renderMajorSchedule(container) {
               </select>
             </div>
             <div class="search-box">
-              <input id="searchInput" placeholder="일정명, 장소, 원생명, 초성, 악기, 회원번호 검색" value="${searchQuery}" />
+              <input id="searchInput" placeholder="일정명, 장소, 원생명, 초성, 악기, 회원번호, 담당자 검색" value="${searchQuery}" />
             </div>
           </section>
 
@@ -1690,21 +1694,11 @@ export function renderMajorSchedule(container) {
     });
 
     drawerFooter.querySelector('#btn-student-lesson').addEventListener('click', () => {
-      alert('레슨편성 기능은 추후 원생 수업 편성 화면과 연결 예정입니다.');
-      closeDrawer();
-      const targetMenu = document.querySelector('.menu-item[data-view="dir-schedules"]');
-      if (targetMenu) {
-        targetMenu.click();
-      }
+      alert('레슨편성 연결 방식은 검토 중입니다.');
     });
 
     drawerFooter.querySelector('#btn-student-message').addEventListener('click', () => {
-      alert('메세지 기능은 학부모 소통 관리와 연결 예정입니다.');
-      closeDrawer();
-      const targetMenu = document.querySelector('.menu-item[data-view="dir-communication"]');
-      if (targetMenu) {
-        targetMenu.click();
-      }
+      alert('메시지 기능은 추후 학부모 소통 화면과 연결 예정입니다.');
     });
 
     drawerFooter.classList.add("open");
