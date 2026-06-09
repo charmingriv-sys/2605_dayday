@@ -25,14 +25,10 @@ const PAY_META = {
 const CLASSES = ["피아노", "바이올린", "첼로", "플루트", "성악", "기타/우쿨렐레"];
 
 const MACROS = [
-  { token: "#{이름}", label: "학생 이름" },
-  { token: "#{반}", label: "반(악기)" },
-  { token: "#{보호자}", label: "보호자 호칭" },
+  { token: "#{이름}", label: "이름" },
+  { token: "#{원생명}", label: "원생명" },
   { token: "#{학원명}", label: "학원명" },
-  { token: "#{원장명}", label: "원장 이름" },
-  { token: "#{수납액}", label: "수납 금액" },
-  { token: "#{미납액}", label: "미납 금액" },
-  { token: "#{다음수업}", label: "다음 수업일시" },
+  { token: "#{발신번호}", label: "발신번호" },
 ];
 
 const SENDER_NUMBERS = [
@@ -204,7 +200,9 @@ const viewState = {
   excelImportModalOpen: false,
   recipientDetailModalOpen: false,
   recipientDetailLogId: null,
-  expandedCardIds: new Set()
+  expandedCardIds: new Set(),
+  showOriginalCardIds: new Set(),
+  previewRecipientIndex: 0
 };
 
 // --- Data Adapter mapping stateStore -----------------------------------------
@@ -291,6 +289,39 @@ const msgKind = (title, body, hasImage) => {
   if (hasImage) return "MMS";
   const total = byteLen(title) + byteLen(body);
   return total <= 90 ? "SMS" : "LMS";
+};
+
+const replaceMacros = (text, recipient) => {
+  if (!text) return "";
+  let result = text;
+  
+  if (recipient && recipient.name) {
+    result = result.replace(/#{이름}/g, recipient.name);
+  }
+  
+  if (recipient) {
+    let studentName = recipient.name;
+    const studentId = recipient.studentId || recipient.no;
+    if (studentId) {
+      const studentObj = stateStore.getStudents().find(s => s.id === studentId);
+      if (studentObj) {
+        studentName = studentObj.name;
+      }
+    }
+    result = result.replace(/#{원생명}/g, studentName);
+  }
+  
+  const settings = stateStore.getSettings() || {};
+  const dbSettings = stateStore.db.settings || {};
+  const academyName = settings.academy || dbSettings.academy || "튜링음악학원";
+  result = result.replace(/#{학원명}/g, academyName);
+  
+  const senderNumber = viewState.senderNumber || "";
+  if (senderNumber) {
+    result = result.replace(/#{발신번호}/g, senderNumber);
+  }
+  
+  return result;
 };
 
 // --- View rendering entry point ----------------------------------------------
@@ -1208,6 +1239,49 @@ export function renderMessageSend(container) {
                 ${renderIcon('clock', 12)}
               </span>
             </div>
+
+            <!-- Preview Recipient Selector Toolbar -->
+            <div style="
+              background: #f1f5f9; border-bottom: 1px solid #e2e8f0; padding: 8px 12px;
+              display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; gap: 8px;
+            ">
+              ${(() => {
+                if (viewState.recipients.length === 0) {
+                  return `<span style="color: var(--text-muted); font-weight: 600; width: 100%; text-align: center;">수신자 없음 (원문 표시)</span>`;
+                }
+                
+                // Keep preview index bounded
+                const maxIdx = Math.max(0, viewState.recipients.length - 1);
+                viewState.previewRecipientIndex = Math.min(viewState.previewRecipientIndex, maxIdx);
+                
+                const currentRecipient = viewState.recipients[viewState.previewRecipientIndex];
+                const displayName = currentRecipient ? currentRecipient.name : "";
+                
+                if (viewState.recipients.length === 1) {
+                  return `<span style="color: var(--primary); font-weight: 800; width: 100%; text-align: center;">미리보기 대상: ${displayName}</span>`;
+                }
+                
+                // Multiple recipients
+                return `
+                  <button id="btnPrevPreviewRecipient" style="
+                    border: none; background: var(--primary-light); color: var(--primary); padding: 5px 12px;
+                    cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 6px;
+                    font-weight: 800; font-family: inherit; margin: 0; box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+                  ">
+                    <span style="display: block; transform: scaleX(-1); line-height: 1;">${renderIcon('chevronR', 12, 'var(--primary)', 2.5)}</span>
+                  </button>
+                  <span style="color: var(--primary); font-weight: 800; flex: 1; text-align: center; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.2px;">
+                    미리보기 대상: ${displayName} (${viewState.previewRecipientIndex + 1}/${viewState.recipients.length})
+                  </span>
+                  <button id="btnNextPreviewRecipient" style="
+                    border: none; background: var(--primary-light); color: var(--primary); padding: 5px 12px;
+                    cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 6px;
+                    font-weight: 800; font-family: inherit; margin: 0; box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+                  ">${renderIcon('chevronR', 12, 'var(--primary)', 2.5)}</button>
+                `;
+              })()}
+            </div>
+
             <div style="display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid #f1f5f9;">
               <span style="width: 24px; height: 24px; border-radius: 999px; background: var(--primary-light); color: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800;">튜</span>
               <span style="font-size: 12px; font-weight: 700;">${ORG.academy}</span>
@@ -1218,11 +1292,34 @@ export function renderMessageSend(container) {
               <div style="max-width: 220px; background: #fff; border-radius: 5px 15px 15px 15px; padding: 9px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); margin-right: auto; position: relative; font-size: 12.5px; line-height: 1.5; color: var(--text-main); word-break: break-all;">
                 ${viewState.image ? `<div style="height: 50px; background: #e2e8f0; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #64748b; margin-bottom: 6px;">[이미지 첨부됨]</div>` : ''}
                 ${(() => {
-                  const val = viewState.body || "";
-                  if (!val.trim()) return '<span style="color: #94a3b8;">작성된 메시지가 없습니다.</span>';
-                  return val.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
+                  let titleVal = viewState.title || "";
+                  let bodyVal = viewState.body || "";
+                  
+                  if (viewState.recipients.length > 0) {
+                    const maxIdx = Math.max(0, viewState.recipients.length - 1);
+                    viewState.previewRecipientIndex = Math.min(viewState.previewRecipientIndex, maxIdx);
+                    
+                    const recipient = viewState.recipients[viewState.previewRecipientIndex];
+                    titleVal = replaceMacros(titleVal, recipient);
+                    bodyVal = replaceMacros(bodyVal, recipient);
+                  }
+                  
+                  const escapedTitle = titleVal.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                  const escapedBody = bodyVal.trim()
+                    ? bodyVal.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>")
+                    : '<span style="color: #94a3b8;">작성된 메시지가 없습니다.</span>';
+                  
+                  return `
+                    ${titleVal ? `<div style="font-weight: 800; font-size: 12px; color: #000; margin-bottom: 4px;">${escapedTitle}</div>` : ''}
+                    <div>${escapedBody}</div>
+                  `;
                 })()}
               </div>
+              ${viewState.recipients.length === 0 ? `
+                <div style="font-size: 10px; color: #94a3b8; margin-top: 8px; text-align: center;">
+                  수신자를 추가하면 개인화 미리보기가 표시됩니다.
+                </div>
+              ` : ''}
             </div>
             <div style="height: 16px; background: #eef2f6; display: flex; justify-content: center; align-items: center; padding-bottom: 6px;">
               <span style="width: 80px; height: 3px; background: #cbd5e1; border-radius: 999px;"></span>
@@ -1317,6 +1414,26 @@ export function renderMessageSend(container) {
       });
     });
 
+    const prevPrevBtn = block.querySelector('#btnPrevPreviewRecipient');
+    if (prevPrevBtn) {
+      prevPrevBtn.addEventListener('click', () => {
+        if (viewState.previewRecipientIndex > 0) {
+          viewState.previewRecipientIndex--;
+          renderComposePanel();
+        }
+      });
+    }
+
+    const nextPrevBtn = block.querySelector('#btnNextPreviewRecipient');
+    if (nextPrevBtn) {
+      nextPrevBtn.addEventListener('click', () => {
+        if (viewState.previewRecipientIndex < viewState.recipients.length - 1) {
+          viewState.previewRecipientIndex++;
+          renderComposePanel();
+        }
+      });
+    }
+
     const macroSelect = block.querySelector('#macroInsertSelect');
     macroSelect.addEventListener('change', (e) => {
       const val = e.target.value;
@@ -1325,11 +1442,20 @@ export function renderMessageSend(container) {
       const ta = block.querySelector('#composeBodyInput');
       if (!ta) return;
 
-      const start = ta.selectionStart || viewState.body.length;
-      const end = ta.selectionEnd || viewState.body.length;
+      const start = ta.selectionStart;
+      const end = ta.selectionEnd;
+      console.log('MACRO SELECT:', start, end, val, JSON.stringify(viewState.body));
       viewState.body = viewState.body.slice(0, start) + val + viewState.body.slice(end);
 
+      e.target.value = ""; // Reset value so the change event can fire again for the same selection
       renderComposePanel();
+
+      const newTa = container.querySelector('#composeBodyInput');
+      if (newTa) {
+        newTa.focus();
+        const newCursorPos = start + val.length;
+        newTa.setSelectionRange(newCursorPos, newCursorPos);
+      }
     });
 
     const titleInp = block.querySelector('#composeTitleInput');
@@ -1404,9 +1530,6 @@ export function renderMessageSend(container) {
     });
 
     // Handle blur and focus mapping
-    bodyInp.addEventListener('blur', (e) => {
-      viewState.body = e.target.value;
-    });
 
     const addImgBtn = block.querySelector('#btnComposeAddImage');
     if (addImgBtn) {
@@ -1444,7 +1567,7 @@ export function renderMessageSend(container) {
   };
 
   // 6. Column 3: Message Vault (Templates / History)
-  const renderMessageVault = () => {
+  const renderMessageVault = (isFullRender = true) => {
     const block = container.querySelector('#messageVaultPanel');
     block.className = 'message-send-col-vault message-send-card';
 
@@ -1482,6 +1605,167 @@ export function renderMessageSend(container) {
       }
     };
 
+    const getVaultListHTML = () => {
+      return paginatedData.length === 0 ? `
+        <div style="padding: 40px 10px; text-align: center; font-size: 12px; color: var(--text-muted);">
+          ${viewState.vaultSearchQuery 
+            ? "검색 결과가 없습니다." 
+            : viewState.vaultActiveTab === "recent" 
+              ? "최근 발송한 메시지 내역이 없습니다." 
+              : viewState.vaultActiveTab === "saved" 
+                ? "저장된 메시지 템플릿이 없습니다." 
+                : "추천 메시지 템플릿이 없습니다."}
+        </div>
+      ` : paginatedData.map(item => {
+        const isRecent = viewState.vaultActiveTab === "recent";
+        const showOriginal = viewState.showOriginalCardIds.has(item.id);
+        let kindLabel = item.kind || "";
+        let dateLabel = item.sentAt || "";
+        let typeBadge = "";
+        let recipientLabel = "";
+
+        // Decide what title and body to display
+        let cardTitle = item.title || "";
+        let cardBody = item.body || "";
+
+        if (isRecent) {
+          kindLabel = item.method === "ALIMTALK" ? "알림톡" : item.method;
+          dateLabel = item.sendType === "scheduled" 
+            ? formatDate(item.scheduledAt) 
+            : formatDate(item.createdAt);
+
+          const typeColor = item.sendType === "scheduled" ? "#d97706" : "#2563eb";
+          const typeBg = item.sendType === "scheduled" ? "#fef3dd" : "#eff6ff";
+          typeBadge = `<span style="font-size: 9px; font-weight: 800; color: ${typeColor}; background: ${typeBg}; padding: 2px 6px; border-radius: 6px;">${item.sendType === 'scheduled' ? '예약' : '즉시'}</span>`;
+
+          if (item.recipientCount === 1) {
+            const name = item.recipients && item.recipients[0] ? item.recipients[0].name : "수신자";
+            recipientLabel = `<span style="font-size: 12px; font-weight: 800; color: var(--text-main);">${name}</span>`;
+          } else {
+            recipientLabel = `<button class="btn-show-recipients-modal" data-id="${item.id}" style="
+              border: none; background: none; padding: 0; font-size: 12px; font-weight: 800; color: var(--primary);
+              cursor: pointer; text-decoration: underline; font-family: inherit; margin: 0;
+            ">단체</button>`;
+          }
+
+          // If we have previewSamples and we are not showing original, use the first sample
+          if (!showOriginal && item.previewSamples && item.previewSamples.length > 0) {
+            cardTitle = item.previewSamples[0].title || "";
+            cardBody = item.previewSamples[0].body || "";
+          }
+        } else if (viewState.vaultActiveTab === "saved") {
+          kindLabel = item.method === "ALIMTALK" ? "알림톡" : item.method;
+          dateLabel = formatDate(item.updatedAt || item.createdAt);
+          recipientLabel = `<span style="font-size: 12px; font-weight: 800; color: var(--text-main);" class="template-title">${item.title}</span>`;
+        } else {
+          // recommend tab
+          kindLabel = item.kind || "";
+          dateLabel = item.sentAt || "";
+          recipientLabel = item.name ? `<span style="font-size: 12px; font-weight: 800; color: var(--text-main);">${item.name}</span>` : "";
+        }
+
+        const typeColor = kindLabel === 'SMS' ? 'var(--sky)' : kindLabel === 'LMS' ? 'var(--violet)' : kindLabel === 'MMS' ? 'var(--rose)' : kindLabel === 'PUSH' ? 'var(--success)' : 'var(--primary)';
+        const typeBg = kindLabel === 'SMS' ? 'var(--sky-light)' : kindLabel === 'LMS' ? 'var(--violet-light)' : kindLabel === 'MMS' ? 'var(--rose-light)' : kindLabel === 'PUSH' ? 'var(--success-light)' : 'var(--primary-light)';
+        
+        const isExpanded = viewState.expandedCardIds.has(item.id);
+        const showToggle = cardBody.length > 70;
+        let displayedBody = cardBody;
+        if (showToggle && !isExpanded) {
+          displayedBody = cardBody.slice(0, 70) + "...";
+        }
+
+        return `
+          <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 12px; background: #ffffff; border: 1.5px solid #f1f5f9; box-shadow: 0 2px 8px rgba(0,0,0,0.02); transition: all 0.2s ease;">
+            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+              ${typeBadge}
+              ${recipientLabel}
+              <span style="font-size: 9px; font-weight: 800; color: ${typeColor}; background: ${typeBg}; padding: 2px 6px; border-radius: 6px; margin-left: 2px;">${kindLabel}</span>
+              ${item.ad ? `<span style="font-size: 9px; font-weight: 800; color: #b45309; background: #fef3dd; padding: 2px 6px; border-radius: 6px;">광고</span>` : ''}
+              ${isRecent ? `<span style="margin-left: auto; font-size: 10.5px; color: var(--success); font-weight: 800;">${item.recipientCount || item.count || 0}/${item.recipientCount || item.count || 0}명 발송</span>` : ''}
+            </div>
+            
+            <!-- Smartphone Message Bubble Style -->
+            <div class="message-body-container" data-id="${item.id}" style="
+              background: #f1f5f9; border-radius: 5px 12px 12px 12px; padding: 9px 12px; font-size: 11.5px;
+              line-height: 1.5; color: #334155; position: relative; border-left: 3px solid ${typeColor};
+              cursor: ${showToggle ? 'pointer' : 'default'};
+            ">
+              ${(viewState.vaultActiveTab !== "saved" && cardTitle) ? `<div style="font-weight: 800; font-size: 11.5px; color: #000; margin-bottom: 4px;">${cardTitle}</div>` : ''}
+              <div style="white-space: pre-wrap;">${displayedBody}</div>
+              ${showToggle ? `
+                <div class="btn-toggle-body" data-id="${item.id}" style="
+                  font-size: 10px; font-weight: 700; color: var(--primary); text-align: right; margin-top: 4px;
+                  cursor: pointer; text-decoration: underline;
+                ">${isExpanded ? '접기' : '전체보기'}</div>
+              ` : ''}
+            </div>
+            
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 2px;">
+              <span style="font-size: 11.5px; color: var(--text-muted); font-weight: 700;">${dateLabel}</span>
+              <div style="display: flex; gap: 6px;">
+                <button class="btn-apply-template" data-id="${item.id}" style="
+                  display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 11.5px; font-weight: 700;
+                  color: #fff; background: var(--primary); border: none; border-radius: 7px; cursor: pointer; font-family: inherit; margin-bottom: 0;
+                ">${renderIcon('check', 11, '#fff', 2.5)} 적용</button>
+                ${isRecent && item.previewSamples && item.previewSamples.length > 0 ? `
+                  <button class="btn-toggle-original" data-id="${item.id}" style="
+                    display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 11.5px; font-weight: 700;
+                    color: var(--slate); background: #fff; border: 1px solid var(--border-color); border-radius: 7px; cursor: pointer; font-family: inherit; margin-bottom: 0;
+                  ">
+                    ${showOriginal ? '치환본 보기' : '원문 보기'}
+                  </button>
+                ` : ''}
+                ${viewState.vaultActiveTab === "saved" ? `
+                  <button class="btn-edit-template" data-id="${item.id}" style="
+                    display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 11.5px; font-weight: 700;
+                    color: var(--slate); background: #fff; border: 1px solid var(--border-color); border-radius: 7px; cursor: pointer; font-family: inherit; margin-bottom: 0;
+                  ">${renderIcon('edit', 11, 'var(--slate)')} 수정</button>
+                  <button class="btn-delete-template" data-id="${item.id}" style="
+                    display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 11.5px; font-weight: 700;
+                    color: var(--danger, #dc2626); background: #fff; border: 1px solid #f6c6c6; border-radius: 7px; cursor: pointer; font-family: inherit; margin-bottom: 0;
+                  ">${renderIcon('close', 11, 'var(--danger, #dc2626)')} 삭제</button>
+                ` : ''}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    };
+
+    const getVaultPaginationHTML = () => {
+      return `
+        ${totalPages > 1 ? `
+          <div style="display: flex; align-items: center; justify-content: center; gap: 4px; padding: 8px 0 4px;">
+            <button id="btnPrevVaultPage" ${currentPage === 0 ? 'disabled' : ''} style="width: 24px; height: 24px; border-radius: 6px; border: none; background: #f1f5f9; cursor: ${currentPage === 0 ? 'default' : 'pointer'}; display: flex; align-items: center; justify-content: center; padding: 0; margin-bottom: 0;">
+              <span style="transform: scaleX(-1);">${renderIcon('chevronR', 12, currentPage === 0 ? '#cbd5e1' : '#64748b')}</span>
+            </button>
+            <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); min-width: 40px; text-align: center;">${currentPage + 1} / ${totalPages}</span>
+            <button id="btnNextVaultPage" ${currentPage === totalPages - 1 ? 'disabled' : ''} style="width: 24px; height: 24px; border-radius: 6px; border: none; background: #f1f5f9; cursor: ${currentPage === totalPages - 1 ? 'default' : 'pointer'}; display: flex; align-items: center; justify-content: center; padding: 0; margin-bottom: 0;">
+              ${renderIcon('chevronR', 12, currentPage === totalPages - 1 ? '#cbd5e1' : '#64748b')}
+            </button>
+          </div>
+        ` : ''}
+        <p style="margin: 4px 0 0; font-size: 10px; color: var(--text-muted-light); text-align: center;">
+          ${viewState.vaultActiveTab === "recommend" ? "추천 문구 · 화면 입력칸에 즉시 대입" : "저장 템플릿 · 적용 단추로 덮어쓰기"}
+        </p>
+      `;
+    };
+
+    const isPartial = !isFullRender && block && block.querySelector('#vaultListContainer');
+
+    if (isPartial) {
+      const listContainer = block.querySelector('#vaultListContainer');
+      if (listContainer) {
+        listContainer.innerHTML = getVaultListHTML();
+      }
+      const paginationContainer = block.querySelector('#vaultPaginationContainer');
+      if (paginationContainer) {
+        paginationContainer.innerHTML = getVaultPaginationHTML();
+      }
+      hookVaultPartialListeners();
+      return;
+    }
+
     block.innerHTML = `
       <!-- Tab Header -->
       <div style="display: flex; align-items: center; padding: 12px 12px 0; border-bottom: 1px solid #f1f5f9; gap: 2px;">
@@ -1514,139 +1798,21 @@ export function renderMessageSend(container) {
       </div>
 
       <!-- Paginated List with Speech Bubble Previews -->
-      <div style="padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 180px; overflow-y: auto;">
-        ${paginatedData.length === 0 ? `
-          <div style="padding: 40px 10px; text-align: center; font-size: 12px; color: var(--text-muted);">
-            ${viewState.vaultSearchQuery 
-              ? "검색 결과가 없습니다." 
-              : viewState.vaultActiveTab === "recent" 
-                ? "최근 발송한 메시지 내역이 없습니다." 
-                : viewState.vaultActiveTab === "saved" 
-                  ? "저장된 메시지 템플릿이 없습니다." 
-                  : "추천 메시지 템플릿이 없습니다."}
-          </div>
-        ` : paginatedData.map(item => {
-          const isRecent = viewState.vaultActiveTab === "recent";
-          let kindLabel = item.kind || "";
-          let dateLabel = item.sentAt || "";
-          let typeBadge = "";
-          let recipientLabel = "";
-
-          if (isRecent) {
-            kindLabel = item.method === "ALIMTALK" ? "알림톡" : item.method;
-            dateLabel = item.sendType === "scheduled" 
-              ? formatDate(item.scheduledAt) 
-              : formatDate(item.createdAt);
-
-            const typeColor = item.sendType === "scheduled" ? "#d97706" : "#2563eb";
-            const typeBg = item.sendType === "scheduled" ? "#fef3dd" : "#eff6ff";
-            typeBadge = `<span style="font-size: 9px; font-weight: 800; color: ${typeColor}; background: ${typeBg}; padding: 2px 6px; border-radius: 6px;">${item.sendType === 'scheduled' ? '예약' : '즉시'}</span>`;
-
-            if (item.recipientCount === 1) {
-              const name = item.recipients && item.recipients[0] ? item.recipients[0].name : "수신자";
-              recipientLabel = `<span style="font-size: 12px; font-weight: 800; color: var(--text-main);">${name}</span>`;
-            } else {
-              recipientLabel = `<button class="btn-show-recipients-modal" data-id="${item.id}" style="
-                border: none; background: none; padding: 0; font-size: 12px; font-weight: 800; color: var(--primary);
-                cursor: pointer; text-decoration: underline; font-family: inherit; margin: 0;
-              ">단체</button>`;
-            }
-          } else if (viewState.vaultActiveTab === "saved") {
-            kindLabel = item.method === "ALIMTALK" ? "알림톡" : item.method;
-            dateLabel = formatDate(item.updatedAt || item.createdAt);
-            recipientLabel = `<span style="font-size: 12px; font-weight: 800; color: var(--text-main);" class="template-title">${item.title}</span>`;
-          } else {
-            // recommend tab
-            kindLabel = item.kind || "";
-            dateLabel = item.sentAt || "";
-            recipientLabel = item.name ? `<span style="font-size: 12px; font-weight: 800; color: var(--text-main);">${item.name}</span>` : "";
-          }
-
-          const typeColor = kindLabel === 'SMS' ? 'var(--sky)' : kindLabel === 'LMS' ? 'var(--violet)' : kindLabel === 'MMS' ? 'var(--rose)' : kindLabel === 'PUSH' ? 'var(--success)' : 'var(--primary)';
-          const typeBg = kindLabel === 'SMS' ? 'var(--sky-light)' : kindLabel === 'LMS' ? 'var(--violet-light)' : kindLabel === 'MMS' ? 'var(--rose-light)' : kindLabel === 'PUSH' ? 'var(--success-light)' : 'var(--primary-light)';
-          
-          const isExpanded = viewState.expandedCardIds.has(item.id);
-          const bodyText = item.body || "";
-          const showToggle = bodyText.length > 70;
-          let displayedBody = bodyText;
-          if (showToggle && !isExpanded) {
-            displayedBody = bodyText.slice(0, 70) + "...";
-          }
-
-          return `
-            <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 12px; background: #ffffff; border: 1.5px solid #f1f5f9; box-shadow: 0 2px 8px rgba(0,0,0,0.02); transition: all 0.2s ease;">
-              <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                ${typeBadge}
-                ${recipientLabel}
-                <span style="font-size: 9px; font-weight: 800; color: ${typeColor}; background: ${typeBg}; padding: 2px 6px; border-radius: 6px; margin-left: 2px;">${kindLabel}</span>
-                ${item.ad ? `<span style="font-size: 9px; font-weight: 800; color: #b45309; background: #fef3dd; padding: 2px 6px; border-radius: 6px;">광고</span>` : ''}
-                ${isRecent ? `<span style="margin-left: auto; font-size: 10.5px; color: var(--success); font-weight: 800;">${item.recipientCount || item.count || 0}/${item.recipientCount || item.count || 0}명 발송</span>` : ''}
-              </div>
-              
-              <!-- Smartphone Message Bubble Style -->
-              <div class="message-body-container" data-id="${item.id}" style="
-                background: #f1f5f9; border-radius: 5px 12px 12px 12px; padding: 9px 12px; font-size: 11.5px;
-                line-height: 1.5; color: #334155; position: relative; border-left: 3px solid ${typeColor};
-                cursor: ${showToggle ? 'pointer' : 'default'};
-              ">
-                ${(viewState.vaultActiveTab !== "saved" && item.title) ? `<div style="font-weight: 800; font-size: 11.5px; color: #000; margin-bottom: 4px;">${item.title}</div>` : ''}
-                <div style="white-space: pre-wrap;">${displayedBody}</div>
-                ${showToggle ? `
-                  <div class="btn-toggle-body" data-id="${item.id}" style="
-                    font-size: 10px; font-weight: 700; color: var(--primary); text-align: right; margin-top: 4px;
-                    cursor: pointer; text-decoration: underline;
-                  ">${isExpanded ? '접기' : '전체보기'}</div>
-                ` : ''}
-              </div>
-              
-              <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 2px;">
-                <span style="font-size: 11.5px; color: var(--text-muted); font-weight: 700;">${dateLabel}</span>
-                <div style="display: flex; gap: 6px;">
-                  <button class="btn-apply-template" data-id="${item.id}" style="
-                    display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 11.5px; font-weight: 700;
-                    color: #fff; background: var(--primary); border: none; border-radius: 7px; cursor: pointer; font-family: inherit; margin-bottom: 0;
-                  ">${renderIcon('check', 11, '#fff', 2.5)} 적용</button>
-                  ${viewState.vaultActiveTab === "saved" ? `
-                    <button class="btn-edit-template" data-id="${item.id}" style="
-                      display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 11.5px; font-weight: 700;
-                      color: var(--slate); background: #fff; border: 1px solid var(--border-color); border-radius: 7px; cursor: pointer; font-family: inherit; margin-bottom: 0;
-                    ">${renderIcon('edit', 11, 'var(--slate)')} 수정</button>
-                    <button class="btn-delete-template" data-id="${item.id}" style="
-                      display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 11.5px; font-weight: 700;
-                      color: var(--danger, #dc2626); background: #fff; border: 1px solid #f6c6c6; border-radius: 7px; cursor: pointer; font-family: inherit; margin-bottom: 0;
-                    ">${renderIcon('close', 11, 'var(--danger, #dc2626)')} 삭제</button>
-                  ` : ''}
-                </div>
-              </div>
-            </div>
-          `;
-        }).join('')}
+      <div id="vaultListContainer" style="padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 180px; overflow-y: auto;">
+        ${getVaultListHTML()}
       </div>
 
       <!-- Pagination controls -->
-      <div style="padding: 0 14px 12px; border-top: 1px solid #f1f5f9; display: flex; flex-direction: column; align-items: center;">
-        ${totalPages > 1 ? `
-          <div style="display: flex; align-items: center; justify-content: center; gap: 4px; padding: 8px 0 4px;">
-            <button id="btnPrevVaultPage" ${currentPage === 0 ? 'disabled' : ''} style="width: 24px; height: 24px; border-radius: 6px; border: none; background: #f1f5f9; cursor: ${currentPage === 0 ? 'default' : 'pointer'}; display: flex; align-items: center; justify-content: center; padding: 0; margin-bottom: 0;">
-              <span style="transform: scaleX(-1);">${renderIcon('chevronR', 12, currentPage === 0 ? '#cbd5e1' : '#64748b')}</span>
-            </button>
-            <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); min-width: 40px; text-align: center;">${currentPage + 1} / ${totalPages}</span>
-            <button id="btnNextVaultPage" ${currentPage === totalPages - 1 ? 'disabled' : ''} style="width: 24px; height: 24px; border-radius: 6px; border: none; background: #f1f5f9; cursor: ${currentPage === totalPages - 1 ? 'default' : 'pointer'}; display: flex; align-items: center; justify-content: center; padding: 0; margin-bottom: 0;">
-              ${renderIcon('chevronR', 12, currentPage === totalPages - 1 ? '#cbd5e1' : '#64748b')}
-            </button>
-          </div>
-        ` : ''}
-        <p style="margin: 4px 0 0; font-size: 10px; color: var(--text-muted-light); text-align: center;">
-          ${viewState.vaultActiveTab === "recommend" ? "추천 문구 · 화면 입력칸에 즉시 대입" : "저장 템플릿 · 적용 단추로 덮어쓰기"}
-        </p>
+      <div id="vaultPaginationContainer" style="padding: 0 14px 12px; border-top: 1px solid #f1f5f9; display: flex; flex-direction: column; align-items: center;">
+        ${getVaultPaginationHTML()}
       </div>
     `;
 
-    // Hook listeners
+    // Hook outer listeners
     block.querySelectorAll('.btn-vault-tab').forEach(btn => {
       btn.addEventListener('click', () => {
         viewState.vaultActiveTab = btn.dataset.tab;
-        renderMessageVault();
+        renderMessageVault(true);
       });
     });
 
@@ -1654,135 +1820,161 @@ export function renderMessageSend(container) {
     searchInp.addEventListener('input', (e) => {
       viewState.vaultSearchQuery = e.target.value;
       viewState.vaultPages[viewState.vaultActiveTab] = 0;
-      renderMessageVault();
+      renderMessageVault(false);
     });
 
-    block.querySelectorAll('.btn-apply-template').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.dataset.id;
-        const item = listData.find(d => d.id === id);
-        if (!item) return;
+    function hookVaultPartialListeners() {
+      block.querySelectorAll('.btn-apply-template').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.dataset.id;
+          const item = listData.find(d => d.id === id);
+          if (!item) return;
 
-        viewState.title = item.title || "";
-        viewState.body = item.body || "";
-        
-        const isMms = (item.kind === "MMS" || item.method === "MMS" || item.imageName);
-        viewState.image = isMms ? (item.imageName || "안내_포스터.jpg") : null;
-        
-        const kind = item.kind || item.method;
-        if (kind === "PUSH") {
-          viewState.method = "PUSH";
-        } else if (kind === "알림톡" || kind === "ALIMTALK") {
-          viewState.method = "알림톡";
-        } else {
-          viewState.method = "SMS";
-        }
-
-        renderComposePanel();
-        renderSendBar();
-      });
-    });
-
-    block.querySelectorAll('.btn-edit-template').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const id = btn.dataset.id;
-        const item = listData.find(d => d.id === id);
-        if (!item) return;
-
-        viewState.editModalOpen = true;
-        viewState.editModalTemplateId = item.id;
-        viewState.editModalTitle = item.title;
-        viewState.editModalBody = item.body;
-        viewState.editModalMethod = item.method || "SMS";
-        viewState.editModalError = "";
-        renderTemplateEditModal();
-      });
-    });
-
-    block.querySelectorAll('.btn-delete-template').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const id = btn.dataset.id;
-        const item = listData.find(d => d.id === id);
-        if (!item) return;
-
-        const ok = confirm("저장된 메시지 템플릿을 삭제할까요?");
-        if (ok) {
-          stateStore.deleteMessageTemplate(id);
-          const templates = stateStore.getMessageTemplates();
-          const itemsPerPage = 3;
-          const totalPages = Math.ceil(templates.length / itemsPerPage);
-          const currentPage = viewState.vaultPages["saved"] || 0;
-          if (currentPage >= totalPages && totalPages > 0) {
-            viewState.vaultPages["saved"] = totalPages - 1;
-          } else if (totalPages === 0) {
-            viewState.vaultPages["saved"] = 0;
+          viewState.title = item.title || "";
+          viewState.body = item.body || "";
+          
+          const isMms = (item.kind === "MMS" || item.method === "MMS" || item.imageName);
+          viewState.image = isMms ? (item.imageName || "안내_포스터.jpg") : null;
+          
+          const kind = item.kind || item.method;
+          if (kind === "PUSH") {
+            viewState.method = "PUSH";
+          } else if (kind === "알림톡" || kind === "ALIMTALK") {
+            viewState.method = "알림톡";
+          } else {
+            viewState.method = "SMS";
           }
-          renderMessageVault();
-        }
-      });
-    });
 
-    // Body expand/collapse click handlers
-    block.querySelectorAll('.message-body-container').forEach(el => {
-      el.addEventListener('click', () => {
-        const id = el.dataset.id;
-        const item = listData.find(d => d.id === id);
-        if (!item || (item.body || "").length <= 70) return;
-        
-        if (viewState.expandedCardIds.has(id)) {
-          viewState.expandedCardIds.delete(id);
-        } else {
-          viewState.expandedCardIds.add(id);
-        }
-        renderMessageVault();
+          renderComposePanel();
+          renderSendBar();
+        });
       });
-    });
 
-    block.querySelectorAll('.btn-toggle-body').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const id = btn.dataset.id;
-        if (viewState.expandedCardIds.has(id)) {
-          viewState.expandedCardIds.delete(id);
-        } else {
-          viewState.expandedCardIds.add(id);
-        }
-        renderMessageVault();
-      });
-    });
+      block.querySelectorAll('.btn-edit-template').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.id;
+          const item = listData.find(d => d.id === id);
+          if (!item) return;
 
-    // Group recipient modal handler
-    block.querySelectorAll('.btn-show-recipients-modal').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const id = btn.dataset.id;
-        viewState.recipientDetailLogId = id;
-        viewState.recipientDetailModalOpen = true;
-        renderRecipientDetailModal();
+          viewState.editModalOpen = true;
+          viewState.editModalTemplateId = item.id;
+          viewState.editModalTitle = item.title;
+          viewState.editModalBody = item.body;
+          viewState.editModalMethod = item.method || "SMS";
+          viewState.editModalError = "";
+          renderTemplateEditModal();
+        });
       });
-    });
 
-    const prevBtn = block.querySelector('#btnPrevVaultPage');
-    if (prevBtn) {
-      prevBtn.addEventListener('click', () => {
-        if (currentPage > 0) {
-          viewState.vaultPages[viewState.vaultActiveTab] = currentPage - 1;
-          renderMessageVault();
-        }
+      block.querySelectorAll('.btn-delete-template').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.id;
+          const item = listData.find(d => d.id === id);
+          if (!item) return;
+
+          const ok = confirm("저장된 메시지 템플릿을 삭제할까요?");
+          if (ok) {
+            stateStore.deleteMessageTemplate(id);
+            const templates = stateStore.getMessageTemplates();
+            const itemsPerPage = 3;
+            const totalPages = Math.ceil(templates.length / itemsPerPage);
+            const currentPage = viewState.vaultPages["saved"] || 0;
+            if (currentPage >= totalPages && totalPages > 0) {
+              viewState.vaultPages["saved"] = totalPages - 1;
+            } else if (totalPages === 0) {
+              viewState.vaultPages["saved"] = 0;
+            }
+            renderMessageVault(true);
+          }
+        });
       });
+
+      // Body expand/collapse click handlers
+      block.querySelectorAll('.message-body-container').forEach(el => {
+        el.addEventListener('click', () => {
+          const id = el.dataset.id;
+          const item = listData.find(d => d.id === id);
+          if (!item) return;
+
+          const isRecent = viewState.vaultActiveTab === "recent";
+          const showOriginal = viewState.showOriginalCardIds.has(item.id);
+          let cardBody = item.body || "";
+          if (isRecent && !showOriginal && item.previewSamples && item.previewSamples.length > 0) {
+            cardBody = item.previewSamples[0].body || "";
+          }
+
+          if (cardBody.length <= 70) return;
+          
+          if (viewState.expandedCardIds.has(id)) {
+            viewState.expandedCardIds.delete(id);
+          } else {
+            viewState.expandedCardIds.add(id);
+          }
+          renderMessageVault(false);
+        });
+      });
+
+      block.querySelectorAll('.btn-toggle-body').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.id;
+          if (viewState.expandedCardIds.has(id)) {
+            viewState.expandedCardIds.delete(id);
+          } else {
+            viewState.expandedCardIds.add(id);
+          }
+          renderMessageVault(false);
+        });
+      });
+
+      block.querySelectorAll('.btn-toggle-original').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.id;
+          if (viewState.showOriginalCardIds.has(id)) {
+            viewState.showOriginalCardIds.delete(id);
+          } else {
+            viewState.showOriginalCardIds.add(id);
+          }
+          renderMessageVault(false);
+        });
+      });
+
+      // Group recipient modal handler
+      block.querySelectorAll('.btn-show-recipients-modal').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.id;
+          viewState.recipientDetailLogId = id;
+          viewState.recipientDetailModalOpen = true;
+          renderRecipientDetailModal();
+        });
+      });
+
+      const prevBtn = block.querySelector('#btnPrevVaultPage');
+      if (prevBtn) {
+        prevBtn.addEventListener('click', () => {
+          if (currentPage > 0) {
+            viewState.vaultPages[viewState.vaultActiveTab] = currentPage - 1;
+            renderMessageVault(false);
+          }
+        });
+      }
+
+      const nextBtn = block.querySelector('#btnNextVaultPage');
+      if (nextBtn) {
+        nextBtn.addEventListener('click', () => {
+          if (currentPage < totalPages - 1) {
+            viewState.vaultPages[viewState.vaultActiveTab] = currentPage + 1;
+            renderMessageVault(false);
+          }
+        });
+      }
     }
 
-    const nextBtn = block.querySelector('#btnNextVaultPage');
-    if (nextBtn) {
-      nextBtn.addEventListener('click', () => {
-        if (currentPage < totalPages - 1) {
-          viewState.vaultPages[viewState.vaultActiveTab] = currentPage + 1;
-          renderMessageVault();
-        }
-      });
-    }
+    hookVaultPartialListeners();
   };
 
   const processMessageSend = (isScheduled) => {
@@ -1798,6 +1990,12 @@ export function renderMessageSend(container) {
     const sendType = isScheduled ? "scheduled" : "immediate";
     const status = isScheduled ? "scheduled_stub" : "stub_saved";
     const method = viewState.method === "알림톡" ? "ALIMTALK" : viewState.method === "PUSH" ? "PUSH" : "SMS";
+
+    const previewSamples = viewState.recipients.slice(0, 3).map(r => ({
+      recipientName: r.name,
+      title: replaceMacros(viewState.title || "", { name: r.name, studentId: r.no }),
+      body: replaceMacros(viewState.body || "", { name: r.name, studentId: r.no })
+    }));
 
     const logData = {
       sendType,
@@ -1815,7 +2013,8 @@ export function renderMessageSend(container) {
       })),
       recipientCount: viewState.recipients.length,
       scheduledAt: isScheduled ? `${viewState.schedule.date}T${viewState.schedule.time}:00+09:00` : null,
-      imageName: viewState.image
+      imageName: viewState.image,
+      previewSamples
     };
 
     stateStore.addOutboundMessageLog(logData);

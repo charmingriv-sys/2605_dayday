@@ -521,4 +521,237 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     expect(pageText).not.toContain('소요비용');
     expect(pageText).not.toContain('단가');
   });
+
+  test('should support macro variables and personalized previews (Phase 11D)', async ({ page }) => {
+    // Navigate to Message Send view
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+
+    // 1. Verify #{수업일}, #{미납금액} related UI/options are not present in macro dropdown
+    const macroOptions = await page.locator('#macroInsertSelect option').allInnerTexts();
+    expect(macroOptions).not.toContain('수업일');
+    expect(macroOptions).not.toContain('미납금액');
+    expect(macroOptions).not.toContain('미납액');
+    expect(macroOptions).not.toContain('납부기한');
+
+    // 2. Select macro #{이름} and check insertion + focus
+    const composeBody = page.locator('#composeBodyInput');
+    await composeBody.fill('안녕하세요 ');
+    
+    // Select macro #{이름}
+    await page.locator('#macroInsertSelect').selectOption('#{이름}');
+    
+    // Focus should be kept
+    await expect(composeBody).toBeFocused();
+    
+    // Value should contain the macro
+    let bodyVal = await composeBody.inputValue();
+    expect(bodyVal).toBe('안녕하세요 #{이름}');
+
+    // 3. Test cursor position insertion: insert #{원생명} between '안녕하세요 ' and '#{이름}'
+    // Put cursor after '안녕하세요 ' (length: 6)
+    await composeBody.focus();
+    await page.evaluate(() => {
+      const el = document.getElementById('composeBodyInput');
+      el.setSelectionRange(6, 6);
+    });
+    
+    await page.locator('#macroInsertSelect').selectOption('#{원생명}');
+    await expect(composeBody).toBeFocused();
+    
+    bodyVal = await composeBody.inputValue();
+    expect(bodyVal).toBe('안녕하세요 #{원생명}#{이름}');
+
+    // Let's add #{학원명} and #{발신번호} as well to verify them
+    await composeBody.fill('반갑습니다. #{이름}님, 여기는 #{학원명}입니다. 문의: #{발신번호}');
+
+    // 4. Smartphone preview should display instructions when recipients count is 0
+    const phoneFrame = page.locator('.phone-frame');
+    await expect(phoneFrame).toContainText('수신자를 추가하면 개인화 미리보기가 표시됩니다.');
+
+    // 5. Add 1 student (e.g. "최다은") and check real-time macro replacement in smartphone preview
+    // Select first student
+    const studentRows = page.locator('.student-row');
+    let targetRow = studentRows.filter({ hasText: '최다은' });
+    let studentName = '최다은';
+    if (await targetRow.count() === 0) {
+      targetRow = studentRows.first();
+      studentName = await page.evaluate(() => {
+        const students = window.stateStore.getStudents();
+        return students[0] ? students[0].name : '최다은';
+      });
+    }
+    await targetRow.click();
+    await page.locator('#btnAddToRecipients').click();
+
+    // Smartphone preview should now show "미리보기 대상: [이름]" and replace macro variables
+    await expect(phoneFrame).toContainText(`미리보기 대상: ${studentName}`);
+    await expect(phoneFrame).not.toContainText('수신자를 추가하면 개인화 미리보기가 표시됩니다.');
+    
+    const settings = await page.evaluate(() => window.stateStore.getSettings() || {});
+    const dbSettings = await page.evaluate(() => window.stateStore.db.settings || {});
+    const academyName = settings.academy || dbSettings.academy || "튜링음악학원";
+    const senderNumber = await page.locator('#senderNumberSelect').inputValue();
+
+    // Verify preview content matches the expected replaced string
+    const expectedReplacedText = `반갑습니다. ${studentName}님, 여기는 ${academyName}입니다. 문의: ${senderNumber}`;
+    await expect(phoneFrame).toContainText(expectedReplacedText);
+    
+    // The original textarea should remain original
+    await expect(composeBody).toHaveValue('반갑습니다. #{이름}님, 여기는 #{학원명}입니다. 문의: #{발신번호}');
+
+    // 6. Add second student to verify prev/next navigation
+    // Let's add "홍길동" manually
+    await page.locator('#btnDirectAddStub').click();
+    await page.locator('#directAddNameInp').fill('홍길동');
+    await page.locator('#directAddPhoneInp').fill('010-9999-8888');
+    await page.locator('#btnDirectAddSubmit').click();
+
+    // Recipients count should be 2
+    await expect(page.locator('#totalRecipientsLabel')).toContainText('2건');
+
+    // Smartphone preview toolbar should show prev/next buttons
+    const prevBtn = page.locator('#btnPrevPreviewRecipient');
+    const nextBtn = page.locator('#btnNextPreviewRecipient');
+    await expect(prevBtn).toBeVisible();
+    await expect(nextBtn).toBeVisible();
+
+    // Current preview target is first recipient (index 0)
+    await expect(phoneFrame).toContainText(`미리보기 대상: ${studentName} (1/2)`);
+    await expect(phoneFrame).toContainText(`반갑습니다. ${studentName}님, 여기는 ${academyName}입니다.`);
+
+    // Click next button
+    await nextBtn.click();
+    
+    // Preview target should change to "홍길동" (index 1)
+    await expect(phoneFrame).toContainText('미리보기 대상: 홍길동 (2/2)');
+    await expect(phoneFrame).toContainText(`반갑습니다. 홍길동님, 여기는 ${academyName}입니다.`);
+
+    // Click prev button
+    await prevBtn.click();
+    await expect(phoneFrame).toContainText(`미리보기 대상: ${studentName} (1/2)`);
+
+    // 7. Verify template save/apply preserves original macro text
+    await page.locator('#btnOpenSaveTemplateModal').click();
+    await page.locator('#saveModalTitleInp').fill('매크로 템플릿 테스트');
+    // Ensure body contains macros
+    await expect(page.locator('#saveModalBodyInp')).toHaveValue('반갑습니다. #{이름}님, 여기는 #{학원명}입니다. 문의: #{발신번호}');
+    
+    let dialogText = '';
+    const dialogHandler = async (dialog) => {
+      dialogText = dialog.message();
+      await dialog.accept();
+    };
+    page.on('dialog', dialogHandler);
+    await page.locator('#btnSaveModalSubmit').click();
+    page.off('dialog', dialogHandler);
+    expect(dialogText).toContain('임시 저장되었습니다.');
+
+    // Clear textarea
+    await composeBody.fill('');
+    
+    // Apply saved template
+    await page.locator('.btn-vault-tab[data-tab="saved"]').click();
+    await page.locator('.btn-apply-template').first().click();
+
+    // Compose textarea should be restored with macro tokens
+    await expect(composeBody).toHaveValue('반갑습니다. #{이름}님, 여기는 #{학원명}입니다. 문의: #{발신번호}');
+
+    // 8. Verify instant send stores outbound logs with previewSamples and original body
+    const initialLogsLength = await page.evaluate(() => window.stateStore.getOutboundMessageLogs().length);
+    const initialMsgLength = await page.evaluate(() => window.stateStore.db.messages.length);
+
+    await page.locator('#btnReviewSend').click();
+    await expect(page.locator('#focusConfirmOverlay')).toBeVisible();
+
+    let sendDialogText = '';
+    const sendDialogHandler = async (dialog) => {
+      sendDialogText = dialog.message();
+      await dialog.accept();
+    };
+    page.on('dialog', sendDialogHandler);
+    await page.locator('#btnFocusSendConfirm').click();
+    page.off('dialog', sendDialogHandler);
+
+    expect(sendDialogText).toContain('발송이력만 저장되었습니다.');
+
+    // Verify logs count increased but messages count did not
+    const finalLogsLength = await page.evaluate(() => window.stateStore.getOutboundMessageLogs().length);
+    expect(finalLogsLength).toBe(initialLogsLength + 1);
+    const finalMsgLength = await page.evaluate(() => window.stateStore.db.messages.length);
+    expect(finalMsgLength).toBe(initialMsgLength);
+
+    // Verify recent log details in DB
+    const lastLog = await page.evaluate(() => window.stateStore.getOutboundMessageLogs()[0]);
+    expect(lastLog.body).toBe('반갑습니다. #{이름}님, 여기는 #{학원명}입니다. 문의: #{발신번호}');
+    expect(lastLog.previewSamples).toBeDefined();
+    expect(lastLog.previewSamples.length).toBe(2);
+    expect(lastLog.previewSamples[0].recipientName).toBe(studentName);
+    expect(lastLog.previewSamples[0].body).toBe(`반갑습니다. ${studentName}님, 여기는 ${academyName}입니다. 문의: ${senderNumber}`);
+    expect(lastLog.previewSamples[1].recipientName).toBe('홍길동');
+    expect(lastLog.previewSamples[1].body).toBe(`반갑습니다. 홍길동님, 여기는 ${academyName}입니다. 문의: ${senderNumber}`);
+
+    // 9. Verify Recent Tab card toggle button
+    const vaultPanel = page.locator('#messageVaultPanel');
+    const toggleOriginalBtn = vaultPanel.locator('.btn-toggle-original').first();
+    await expect(toggleOriginalBtn).toBeVisible();
+    await expect(toggleOriginalBtn).toContainText('원문 보기');
+    
+    // Replaced body should be shown by default
+    await expect(vaultPanel.locator('.message-body-container').first()).toContainText(`반갑습니다. ${studentName}님, 여기는 ${academyName}입니다.`);
+    await expect(vaultPanel.locator('.message-body-container').first()).not.toContainText('#{이름}');
+
+    // Click toggle button to show original
+    await toggleOriginalBtn.click();
+    await expect(toggleOriginalBtn).toContainText('치환본 보기');
+    await expect(vaultPanel.locator('.message-body-container').first()).toContainText('반갑습니다. #{이름}님, 여기는 #{학원명}입니다.');
+    await expect(vaultPanel.locator('.message-body-container').first()).not.toContainText(studentName);
+
+    // Click toggle button again to show replaced
+    await toggleOriginalBtn.click();
+    await expect(toggleOriginalBtn).toContainText('원문 보기');
+    await expect(vaultPanel.locator('.message-body-container').first()).toContainText(`반갑습니다. ${studentName}님, 여기는 ${academyName}입니다.`);
+
+    // 10. Prohibited words check
+    const finalPageText = await page.innerText('.message-send-root');
+    expect(finalPageText).not.toContain('예상비용');
+    expect(finalPageText).not.toContain('예상 비용');
+    expect(finalPageText).not.toContain('소요비용');
+    expect(finalPageText).not.toContain('단가');
+    expect(finalPageText).not.toContain('발송완료');
+
+    // 11. Search input stability checks (Phase 11D-Repair-A)
+    const vaultSearchInput = page.locator('#vaultSearchInput');
+    
+    // Switch to Recommend tab (which is tab "recommend")
+    await page.locator('.btn-vault-tab[data-tab="recommend"]').click();
+    await vaultSearchInput.focus();
+    await vaultSearchInput.type('신'); // Type a Korean character
+    await expect(vaultSearchInput).toBeFocused(); // Focus must be kept
+    await expect(vaultSearchInput).toHaveValue('신'); // Value must not be lost
+    // List should be filtered
+    await expect(page.locator('#vaultListContainer')).toContainText('신규');
+    
+    // Clear search
+    await vaultSearchInput.fill('');
+    
+    // Switch to Saved tab
+    await page.locator('.btn-vault-tab[data-tab="saved"]').click();
+    await vaultSearchInput.focus();
+    await vaultSearchInput.type('매');
+    await expect(vaultSearchInput).toBeFocused();
+    await expect(vaultSearchInput).toHaveValue('매');
+    await expect(page.locator('#vaultListContainer')).toContainText('매크로');
+    
+    // Clear search
+    await vaultSearchInput.fill('');
+    
+    // Switch to Recent tab
+    await page.locator('.btn-vault-tab[data-tab="recent"]').click();
+    await vaultSearchInput.focus();
+    await vaultSearchInput.type('반');
+    await expect(vaultSearchInput).toBeFocused();
+    await expect(vaultSearchInput).toHaveValue('반');
+    await expect(page.locator('#vaultListContainer')).toContainText('반갑습니다');
+  });
 });
+
