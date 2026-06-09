@@ -67,7 +67,7 @@ test.describe('Director Major Schedule CRUD & Flow', () => {
     await eventViewBtn.click();
     
     const eventHeaders = page.locator('#eventHead th');
-    const expectedEventHeaders = ['일정', '구분', '진행/종료일', 'D-day', '포함 원생', '담당자', '공개', '확인'];
+    const expectedEventHeaders = ['일정', '구분', '진행/종료일', 'D-day', '참여 원생', '담당자', '공개', '확인'];
     await expect(eventHeaders).toHaveCount(expectedEventHeaders.length);
     for (let i = 0; i < expectedEventHeaders.length; i++) {
         await expect(eventHeaders.nth(i)).toHaveText(expectedEventHeaders[i]);
@@ -173,7 +173,7 @@ test.describe('Director Major Schedule CRUD & Flow', () => {
 
     const newEventCard = page.locator('#eventStrip .event-card:has-text("E2E 테스트 일정")');
     await expect(newEventCard).toBeVisible();
-    await expect(newEventCard.locator('.dday')).toContainText('일정 D-16');
+    await expect(newEventCard.locator('.dday')).toContainText('진행/종료 D-16');
 
     // 7. Verify "기타" filter tab works
     const typeTabs = page.locator('#typeTabs');
@@ -549,5 +549,123 @@ test.describe('Director Major Schedule CRUD & Flow', () => {
     await mainSearchInput.fill('');
     // Should restore all student-event rows (11 rows)
     await expect(page.locator('#eventBody tr')).toHaveCount(11);
+  });
+
+  test('should verify major schedule card, table, and details drawer UX and layout properties', async ({ page }) => {
+    // 1. Click "주요일정관리" menu item in the sidebar
+    const menuItem = page.locator('.menu-item[data-view="dir-major-schedule"]');
+    await expect(menuItem).toBeVisible();
+    await menuItem.click();
+
+    // 2. Verify table headers match exactly
+    const eventViewBtn = page.locator('#eventViewBtn');
+    await eventViewBtn.click();
+
+    const headers = page.locator('#eventHead th');
+    await expect(headers.nth(0)).toHaveText('일정');
+    await expect(headers.nth(1)).toHaveText('구분');
+    await expect(headers.nth(2)).toHaveText('진행/종료일');
+    await expect(headers.nth(3)).toHaveText('D-day');
+    await expect(headers.nth(4)).toHaveText('참여 원생');
+    await expect(headers.nth(5)).toHaveText('담당자');
+    await expect(headers.nth(6)).toHaveText('공개');
+    await expect(headers.nth(7)).toHaveText('확인');
+
+    // 3. Add an event with 0 participants dynamically
+    await page.evaluate(() => {
+      window.stateStore.addMajorSchedule({
+        name: '참여원생 제로 일정',
+        type: 'event',
+        eventDate: '2026-06-25',
+        dueDate: null,
+        ownerId: '문승현',
+        place: '원내 강당',
+        visible: false,
+        memo: '0명 테스트용 일정 메모입니다.',
+        participantStudentIds: []
+      });
+    });
+
+    // Reload page to reload database from local storage
+    await page.reload();
+    await menuItem.click();
+    await eventViewBtn.click();
+
+    // 4. Verify card display of 0 participant event
+    const zeroCard = page.locator('#eventStrip .event-card:has-text("참여원생 제로 일정")');
+    await expect(zeroCard).toBeVisible();
+    await expect(zeroCard.locator('.dday')).toContainText(/진행\/종료 (D-\d+|D-day|D\+\d+)/);
+    await expect(zeroCard.locator('.event-due-box')).toContainText('접수마감 없음');
+    await expect(zeroCard).toContainText('참여인원 0명');
+
+    // Verify card screen has no D-- strings
+    await expect(page.locator('#eventStrip')).not.toContainText('D--');
+
+    // Verify event strip scrollbar styles are applied
+    const styleTags = await page.locator('style').allTextContents();
+    const hasScrollbarStyle = styleTags.some(style => style.includes('.event-strip::-webkit-scrollbar') && style.includes('height: 10px;'));
+    expect(hasScrollbarStyle).toBe(true);
+
+    // 5. Verify table row displays "참여 없음"
+    const zeroRow = page.locator('#eventBody tr:has-text("참여원생 제로 일정")');
+    await expect(zeroRow).toBeVisible();
+    await expect(zeroRow.locator('td').nth(4)).toHaveText('참여 없음');
+
+    // 6. Click on the 0-participant row to open event detail drawer
+    await zeroRow.click();
+    const drawer = page.locator('#drawer');
+    await expect(drawer).toHaveClass(/open/);
+
+    // Verify detail-grid items
+    const detailGrid = drawer.locator('.detail-grid');
+    await expect(detailGrid).toBeVisible();
+    await expect(detailGrid).toContainText('구분행사');
+    await expect(detailGrid.locator('.detail-item').nth(1)).toContainText(/진행\/종료일.* · (D-\d+|D-day|D\+\d+)/);
+    await expect(detailGrid.locator('.detail-item').nth(2)).toContainText('접수마감접수마감 없음');
+    await expect(detailGrid).toContainText('공개여부비공개');
+
+    // Verify removed concepts are NOT present
+    await expect(drawer).not.toContainText('공개 기본값');
+    await expect(drawer).not.toContainText('openCount');
+    await expect(drawer).not.toContainText('상태');
+    await expect(drawer).not.toContainText('D--');
+
+    // Verify empty participant state
+    await expect(drawer.locator('h3:text-is("참여 원생 0명")')).toBeVisible();
+    await expect(drawer.locator('text=참여 원생이 없습니다.')).toBeVisible();
+
+    // Close drawer
+    await page.locator('#btn-drawer-close').click();
+    await expect(drawer).not.toHaveClass(/open/);
+
+    // 7. Click "한국청소년 피아노 콩쿠르" row to verify participant drawer transit
+    const concoursRow = page.locator('#eventBody tr:has-text("한국청소년 피아노 콩쿠르")');
+    await concoursRow.click();
+    await expect(drawer).toHaveClass(/open/);
+
+    await expect(drawer.locator('h3:text-is("참여 원생 2명")')).toBeVisible();
+    await expect(drawer.locator('#drawerHead')).toContainText(/진행\/종료 (D-\d+|D-day|D\+\d+)/);
+    await expect(detailGrid.locator('.detail-item').nth(1)).toContainText(/진행\/종료일.* · (D-\d+|D-day|D\+\d+)/);
+    await expect(detailGrid.locator('.detail-item').nth(2)).toContainText(/접수마감.* · (D-\d+|D-day|D\+\d+)/);
+    await expect(drawer).not.toContainText('D--');
+    
+    // Verify compact student detail fields: name (memberNo), grade, instrument, teacher
+    const firstStudentMini = drawer.locator('.student-mini').first();
+    await expect(firstStudentMini).toContainText('최다은 (1)');
+    await expect(firstStudentMini).toContainText('하모초등학교 10세');
+    await expect(firstStudentMini).toContainText('피아노');
+    await expect(firstStudentMini).toContainText('담당강사: 정은비');
+
+    // Click on 최다은 student mini to transition to student drawer
+    await firstStudentMini.click();
+    
+    // Header should update to student avatar card
+    await expect(drawer.locator('.drawer-student-card')).toBeVisible();
+    await expect(drawer.locator('.drawer-student-main strong')).toHaveText('최다은');
+    await expect(drawer).not.toContainText('D--');
+
+    // Close student drawer
+    await page.locator('#btn-student-close').click();
+    await expect(drawer).not.toHaveClass(/open/);
   });
 });

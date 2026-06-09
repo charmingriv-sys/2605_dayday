@@ -91,6 +91,16 @@ function dday(dateStr) {
   return Math.round((target - todayClear) / 86400000);
 }
 
+function formatDdayLabel(days) {
+  if (days > 0) {
+    return `D-${days}`;
+  } else if (days === 0) {
+    return `D-day`;
+  } else {
+    return `D+${Math.abs(days)}`;
+  }
+}
+
 function fmt(dateStr) {
   if (!dateStr) return "-";
   const [y, m, d] = dateStr.split("-").map(Number);
@@ -420,8 +430,22 @@ export function renderMajorSchedule(container) {
           grid-auto-columns: 210px;
           gap: 10px;
           overflow-x: auto;
-          padding-bottom: 2px;
+          padding-bottom: 8px;
           scroll-snap-type: x proximity;
+        }
+        .major-schedule-root .event-strip::-webkit-scrollbar {
+          height: 10px;
+        }
+        .major-schedule-root .event-strip::-webkit-scrollbar-track {
+          background: #f1f5f9;
+          border-radius: 5px;
+        }
+        .major-schedule-root .event-strip::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 5px;
+        }
+        .major-schedule-root .event-strip::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
         }
 
         .major-schedule-root .event-card {
@@ -494,10 +518,15 @@ export function renderMajorSchedule(container) {
         }
 
         .major-schedule-root .event-title {
-          min-height: 36px;
           font-size: 13.5px;
           line-height: 1.28;
           font-weight: 950;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          height: 36px;
         }
 
         .major-schedule-root .event-meta {
@@ -508,6 +537,12 @@ export function renderMajorSchedule(container) {
           color: var(--muted);
           font-size: 12px;
           font-weight: 750;
+        }
+        .major-schedule-root .event-meta span {
+          display: block;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .major-schedule-root .event-due-box {
@@ -1240,7 +1275,7 @@ export function renderMajorSchedule(container) {
           <div class="event-body">
             <div class="event-head">
               ${typeChip(event.type)}
-              <div class="dday">일정 D-${dday(event.eventDate)}</div>
+              <div class="dday">진행/종료 ${formatDdayLabel(dday(event.eventDate))}</div>
             </div>
             <div class="event-title">${event.name}</div>
             <div class="event-meta">
@@ -1248,7 +1283,7 @@ export function renderMajorSchedule(container) {
             </div>
             <div class="event-due-box ${urgent ? "urgent" : ""}">
               <span>${event.dueDate ? `접수마감 ${fmt(event.dueDate)}` : "접수마감 없음"}</span>
-              <span class="due-dday">${event.dueDate ? `D-${dday(event.dueDate)}` : "-"}</span>
+              <span class="due-dday">${event.dueDate ? formatDdayLabel(dday(event.dueDate)) : "-"}</span>
             </div>
             <div class="mini-avatars">
               ${parts.slice(0, 4).map((student) => `<span class="avatar-sm">${student.name.slice(-2)}</span>`).join("")}
@@ -1333,7 +1368,7 @@ export function renderMajorSchedule(container) {
               <td><div class="event-name"><strong>${event.name}</strong><span>${event.memo || ""}</span></div></td>
               <td>${typeChip(event.type)}</td>
               <td>${fmt(event.eventDate)}</td>
-              <td><b style="color:${dday(event.eventDate) <= 7 ? "var(--red)" : "var(--ink)"}">D-${dday(event.eventDate)}</b></td>
+              <td><b style="color:${dday(event.eventDate) <= 7 ? "var(--red)" : "var(--ink)"}">${formatDdayLabel(dday(event.eventDate))}</b></td>
               <td>${lessonStr}</td>
               <td>${student.teacher}</td>
               <td>
@@ -1370,7 +1405,7 @@ export function renderMajorSchedule(container) {
           <th>구분</th>
           <th>진행/종료일</th>
           <th>D-day</th>
-          <th>포함 원생</th>
+          <th>참여 원생</th>
           <th>담당자</th>
           <th>공개</th>
           <th>확인</th>
@@ -1395,8 +1430,8 @@ export function renderMajorSchedule(container) {
               <td><div class="event-name"><strong>${event.name}</strong><span>${event.memo || ""}</span></div></td>
               <td>${typeChip(event.type)}</td>
               <td>${fmt(event.eventDate)}</td>
-              <td><b style="color:${dday(event.eventDate) <= 7 ? "var(--red)" : "var(--ink)"}">D-${dday(event.eventDate)}</b></td>
-              <td>${parts.length}명</td>
+              <td><b style="color:${dday(event.eventDate) <= 7 ? "var(--red)" : "var(--ink)"}">${formatDdayLabel(dday(event.eventDate))}</b></td>
+              <td>${parts.length === 0 ? "참여 없음" : `${parts.length}명`}</td>
               <td>${event.ownerId}</td>
               <td>${visibilityChip(event.visible)}</td>
               <td><button class="primary btn-row-action" data-event-id="${event.id}">확인</button></td>
@@ -1439,7 +1474,7 @@ export function renderMajorSchedule(container) {
         <div class="avatar">${meta.label.slice(0, 2)}</div>
         <div class="drawer-student-main">
           <strong>${event.name}</strong>
-          <span>${fmt(event.eventDate)} · 일정 D-${dday(event.eventDate)} · ${event.place || "-"} · ${event.ownerId}</span>
+          <span>${fmt(event.eventDate)} · 진행/종료 ${formatDdayLabel(dday(event.eventDate))} · ${event.place || "-"} · ${event.ownerId}</span>
         </div>
       </div>
     `;
@@ -1449,25 +1484,25 @@ export function renderMajorSchedule(container) {
         <h3>일정 정보</h3>
         <div class="section-body">
           <div class="detail-grid">
-            <div class="detail-item"><span>진행/종료일</span><strong>${fmt(event.eventDate)}</strong></div>
+            <div class="detail-item"><span>구분</span><strong>${meta.label}</strong></div>
+            <div class="detail-item"><span>진행/종료일</span><strong>${fmt(event.eventDate)} · ${formatDdayLabel(dday(event.eventDate))}</strong></div>
+            <div class="detail-item"><span>접수마감</span><strong>${event.dueDate ? fmt(event.dueDate) + " · " + formatDdayLabel(dday(event.dueDate)) : "접수마감 없음"}</strong></div>
             <div class="detail-item"><span>장소</span><strong>${event.place || "-"}</strong></div>
-            <div class="detail-item"><span>접수마감</span><strong>${event.dueDate ? fmt(event.dueDate) + " · D-" + dday(event.dueDate) : "없음"}</strong></div>
             <div class="detail-item"><span>담당자</span><strong>${event.ownerId}</strong></div>
-            <div class="detail-item"><span>학부모/학생 노출</span><strong>${event.visible ? "공개 중" : "비공개"}</strong></div>
-            <div class="detail-item"><span>공개 기본값</span><strong>보여주지 않음</strong></div>
+            <div class="detail-item"><span>공개여부</span><strong>${event.visible ? "학부모 공개" : "비공개"}</strong></div>
           </div>
-          <p class="note" style="white-space: pre-wrap;">${event.memo || "등록된 메모가 없습니다."}</p>
+          <p class="note" style="white-space: pre-wrap; font-size: 13px; color: var(--ink); margin-top: 10px; padding: 10px; border-radius: 6px; background: #f8fafc; border: 1px solid var(--line);">${event.memo || "등록된 메모가 없습니다."}</p>
         </div>
       </section>
       <section class="drawer-section">
-        <h3>포함 원생 ${parts.length}명</h3>
+        <h3>참여 원생 ${parts.length === 0 ? "0" : parts.length}명</h3>
         <div class="section-body">
           ${parts.length === 0 ? `<div style="font-size: 13px; color: var(--muted); text-align: center; padding: 12px;">참여 원생이 없습니다.</div>` : parts.map((student) => `
             <div class="student-mini" data-student-id="${student.id}">
               <div class="mini-avatar">${student.name.slice(-2)}</div>
               <div class="queue-main">
-                <strong>${student.name} (${student.studentMemberNo || student.memberNo || student.id}) · ${student.instrument}</strong>
-                <span>${student.teacher} · ${student.memo || ""}</span>
+                <strong>${student.name} (${student.studentMemberNo || student.memberNo || student.id}) · ${student.grade} · ${student.instrument}</strong>
+                <span>담당강사: ${student.teacher}</span>
               </div>
               <span class="mini-chip ${student.notes.length > 0 ? "tone-blue" : "tone-green"}">
                 ${student.notes.length > 0 ? "메모 있음" : "메모 없음"}
@@ -1692,7 +1727,7 @@ export function renderMajorSchedule(container) {
               <div class="mini-avatar">${(eventTypes[event.type] || { label: "기" }).label[0]}</div>
               <div class="queue-main">
                 <strong>${event.name}</strong>
-                <span>${fmt(event.eventDate)} · D-${dday(event.eventDate)} · ${event.ownerId}</span>
+                <span>${fmt(event.eventDate)} · ${formatDdayLabel(dday(event.eventDate))} · ${event.ownerId}</span>
               </div>
               ${visibilityChip(event.visible)}
             </div>
