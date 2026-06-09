@@ -9,6 +9,7 @@ import { renderCommunication, renderApprovals } from './communicationView.js';
 import { renderPayments, renderBooks, renderBooksElapsed, renderSubjects } from './billingView.js';
 import { renderAcademyInfo } from './settingsView.js';
 import { renderTodayConsole } from './todayConsoleView.js';
+import { renderMessageSend } from './messageSendView.js';
 
 export {
     renderDashboard,
@@ -26,5 +27,6 @@ export {
     renderBooksElapsed,
     renderSubjects,
     renderAcademyInfo,
-    renderTodayConsole
+    renderTodayConsole,
+    renderMessageSend
 };

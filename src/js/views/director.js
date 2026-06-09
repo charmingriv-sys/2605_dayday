@@ -14,5 +14,6 @@ export {
     renderCommunication,
     renderApprovals,
     renderAcademyInfo,
-    renderTodayConsole
+    renderTodayConsole,
+    renderMessageSend
 } from './director/index.js';
