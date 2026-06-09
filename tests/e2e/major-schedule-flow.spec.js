@@ -113,6 +113,10 @@ test.describe('Director Major Schedule CRUD & Flow', () => {
     await page.locator('#form-event-type').selectOption('etc'); // '기타'
     await page.locator('#form-event-date').fill('2026-06-20');
     await page.locator('#form-due-date').fill('2026-06-15');
+    // Verify that "원장" and "운영실" are not present in owner select dropdown options
+    await expect(page.locator('#form-owner-id option[value="원장"]')).toHaveCount(0);
+    await expect(page.locator('#form-owner-id option[value="운영실"]')).toHaveCount(0);
+
     await page.locator('#form-owner-id').selectOption('정은비');
     await page.locator('#form-place').fill('대강당');
     await page.locator('#form-memo').fill('원생 0명 테스트');
@@ -258,12 +262,54 @@ test.describe('Director Major Schedule CRUD & Flow', () => {
     await expect(participantViewBtn).toBeVisible();
     await participantViewBtn.click();
 
+    // A. Add a student S99 with no classes dynamically
+    await page.evaluate(() => {
+      window.stateStore.db.students.push({
+        id: 'S99',
+        name: '무수업원생',
+        studentMemberNo: 99,
+        grade: '초1',
+        instrument: '바이올린',
+        teacher: '문승현',
+        eventIds: ['ev1'],
+        notes: []
+      });
+      const ev1 = window.stateStore.db.majorSchedules.find(e => e.id === 'ev1');
+      if (ev1) {
+        ev1.participantStudentIds.push('S99');
+      }
+      window.stateStore.saveDB();
+    });
+
+    // Reload layout by clicking sidebar menu item
+    await menuItem.click();
+    await participantViewBtn.click();
+
+    // Verify S99 row lesson cell displays "예정된 수업 없음"
+    const s99Row = page.locator('#eventBody tr:has-text("무수업원생")').first();
+    await expect(s99Row).toBeVisible();
+    await expect(s99Row.locator('td').nth(5)).toContainText('예정된 수업 없음');
+
+    const drawer = page.locator('#drawer');
+
+    // Click S99 row to open drawer and verify drawer empty state
+    await s99Row.click();
+    await expect(drawer).toHaveClass(/open/);
+    await expect(drawer.locator('text=예정된 수업 없음')).toBeVisible();
+    await expect(drawer.locator('.drawer-lesson-list')).not.toBeVisible();
+    
+    // Close S99 drawer
+    await page.locator('#btn-drawer-close').click();
+    await expect(drawer).not.toHaveClass(/open/);
+
     // 3. Click the first row (S1: 최다은) to open student drawer
     const s1Row = page.locator('#eventBody tr:has-text("최다은")').first();
     await expect(s1Row).toBeVisible();
-    await s1Row.click();
+    
+    // Verify compact upcoming lessons in table (up to 2, e.g. "월 14:00, 수 14:00")
+    await expect(s1Row.locator('td').nth(5)).toContainText('월 14:00, 수 14:00');
 
-    const drawer = page.locator('#drawer');
+    await s1Row.click();
     await expect(drawer).toHaveClass(/open/);
 
     // 4. Assert first section title is "메모" and "학원 등록 메모" is NOT present
@@ -275,6 +321,18 @@ test.describe('Director Major Schedule CRUD & Flow', () => {
     // Verify upcoming lessons, related events, and 3 footer buttons are present
     const upcomingHeader = drawer.locator('h3:text-is("다가오는 수업")');
     await expect(upcomingHeader).toBeVisible();
+    
+    // Verify upcoming lessons format "담당강사(악기명) MM/DD(요일) HH:MM" and max count of 4
+    const lessonList = drawer.locator('.drawer-lesson-list');
+    await expect(lessonList).toBeVisible();
+    await expect(lessonList.locator('.drawer-lesson-row').nth(0)).toContainText('정은비(피아노) 06/08(월) 14:00');
+    await expect(lessonList.locator('.drawer-lesson-row').nth(1)).toContainText('정은비(피아노) 06/10(수) 14:00');
+    await expect(lessonList.locator('.drawer-lesson-row').nth(2)).toContainText('정은비(피아노) 06/15(월) 14:00');
+    await expect(lessonList.locator('.drawer-lesson-row').nth(3)).toContainText('정은비(피아노) 06/17(수) 14:00');
+    await expect(lessonList.locator('.drawer-lesson-row')).toHaveCount(4);
+
+    // Ensure the separate teacher/instrument grid is removed
+    await expect(drawer.locator('.detail-grid')).not.toBeVisible();
     
     const relatedHeader = drawer.locator('h3:text-is("관련 일정")');
     await expect(relatedHeader).toBeVisible();
@@ -436,13 +494,23 @@ test.describe('Director Major Schedule CRUD & Flow', () => {
     await expect(page.locator('#eventBody tr').nth(0)).toContainText('한국청소년 피아노 콩쿠르');
     await expect(page.locator('#eventBody tr').nth(1)).toContainText('여름 정기 음악회');
 
-    // G. Verify Search Targets for Owner/Teacher:
-    // 1. Owner Name "한지섭" (owner of ev2) -> should match
+    // G. Verify Search Targets for Owner/Teacher & Normalization:
+    // 1. "한지섭" was owner of ev2 but normalized to "문승현". "한지섭" search should now return 0 results.
     await mainSearchInput.fill('한지섭');
     await expect(page.locator('#eventBody tr')).toHaveCount(1);
-    await expect(page.locator('#eventBody tr')).toContainText('예원학교 입시 실기고사');
+    await expect(page.locator('#eventBody tr')).toContainText('검색 결과가 없습니다.');
 
-    // 2. Teacher Name "이해원" (teacher of participant student S6 in ev5) -> should match
+    // 2. Search "성어진" (ev3 owner "성여진" normalized to "성어진") -> should match "영 첼리스트 콩쿠르", "예원학교 입시 실기고사", "입시반 학부모 상담 주간"
+    await mainSearchInput.fill('성어진');
+    await expect(page.locator('#eventBody tr')).toHaveCount(3);
+    await expect(page.locator('#eventBody')).toContainText('영 첼리스트 콩쿠르');
+
+    // 3. Search "문승현" (ev2, ev4, ev5, ev6 normalized to "문승현") -> should match them
+    await mainSearchInput.fill('문승현');
+    const matchesCount = await page.locator('#eventBody tr').count();
+    expect(matchesCount).toBeGreaterThanOrEqual(3);
+
+    // 4. Teacher Name "이해원" (teacher of participant student S6 in ev5) -> should match
     await mainSearchInput.fill('이해원');
     await expect(page.locator('#eventBody tr')).toHaveCount(1);
     await expect(page.locator('#eventBody tr')).toContainText('6월 결석자 보강 편성');

@@ -107,6 +107,57 @@ function visibilityChip(visible) {
   return `<span class="status-chip ${visible ? "tone-green" : "tone-slate"}">${visible ? "학부모 공개" : "비공개"}</span>`;
 }
 
+function getUpcomingLessonsForStudent(student, baselineDate, limit = 4) {
+  const dbClasses = stateStore.db.classes || [];
+  const studentClasses = dbClasses.filter(c => c.studentId === student.id);
+  if (studentClasses.length === 0) return [];
+
+  const dayKoToNum = { '일': 0, '월': 1, '화': 2, '수': 3, '목': 4, '금': 5, '토': 6 };
+  
+  const occurrences = [];
+  const baseTime = baselineDate.getTime();
+
+  studentClasses.forEach(c => {
+    const classDayNum = dayKoToNum[c.dayOfWeek];
+    if (classDayNum === undefined) return;
+    
+    const [hour, min] = c.time.split(':').map(Number);
+    
+    for (let weekOffset = 0; weekOffset < limit + 1; weekOffset++) {
+      const occurrenceDate = new Date(baselineDate.getFullYear(), baselineDate.getMonth(), baselineDate.getDate());
+      occurrenceDate.setHours(hour, min, 0, 0);
+      
+      const currentDayNum = baselineDate.getDay();
+      let dayDiff = classDayNum - currentDayNum;
+      
+      if (dayDiff < 0) {
+        dayDiff += 7;
+      } else if (dayDiff === 0) {
+        const classDateTime = new Date(baselineDate.getFullYear(), baselineDate.getMonth(), baselineDate.getDate());
+        classDateTime.setHours(hour, min, 0, 0);
+        if (classDateTime.getTime() < baseTime) {
+          dayDiff += 7;
+        }
+      }
+      
+      const totalDiff = dayDiff + (weekOffset * 7);
+      occurrenceDate.setDate(occurrenceDate.getDate() + totalDiff);
+      
+      occurrences.push({
+        dayOfWeek: c.dayOfWeek,
+        time: c.time,
+        date: occurrenceDate,
+        teacher: student.teacher,
+        instrument: student.instrument
+      });
+    }
+  });
+
+  occurrences.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  return occurrences.slice(0, limit);
+}
+
 export function renderMajorSchedule(container) {
   const headerActions = document.querySelector('.header-actions');
   const settingsQuickBar = document.getElementById('settings-quick-bar');
@@ -1271,23 +1322,29 @@ export function renderMajorSchedule(container) {
           </tr>
         `;
       } else {
-        eventBody.innerHTML = list.map(({ event, student }) => `
-          <tr data-student-id="${student.id}">
-            <td><div class="event-name"><strong>${student.name} (${student.studentMemberNo || student.memberNo || student.id})</strong><span>${student.grade} · ${student.instrument}</span></div></td>
-            <td><div class="event-name"><strong>${event.name}</strong><span>${event.memo || ""}</span></div></td>
-            <td>${typeChip(event.type)}</td>
-            <td>${fmt(event.eventDate)}</td>
-            <td><b style="color:${dday(event.eventDate) <= 7 ? "var(--red)" : "var(--ink)"}">D-${dday(event.eventDate)}</b></td>
-            <td>${student.lesson}</td>
-            <td>${student.teacher}</td>
-            <td>
-              <span class="mini-chip ${student.notes.length > 0 ? "tone-blue" : "tone-green"}">
-                ${student.notes.length > 0 ? "메모 있음" : "메모 없음"}
-              </span>
-            </td>
-            <td><button class="primary btn-row-action" data-student-id="${student.id}">확인</button></td>
-          </tr>
-        `).join("");
+        eventBody.innerHTML = list.map(({ event, student }) => {
+          const baseline = getToday();
+          const upcoming = getUpcomingLessonsForStudent(student, baseline, 2);
+          const lessonStr = upcoming.length === 0 ? "예정된 수업 없음" : upcoming.map(l => `${l.dayOfWeek} ${l.time}`).join(', ');
+
+          return `
+            <tr data-student-id="${student.id}">
+              <td><div class="event-name"><strong>${student.name} (${student.studentMemberNo || student.memberNo || student.id})</strong><span>${student.grade} · ${student.instrument}</span></div></td>
+              <td><div class="event-name"><strong>${event.name}</strong><span>${event.memo || ""}</span></div></td>
+              <td>${typeChip(event.type)}</td>
+              <td>${fmt(event.eventDate)}</td>
+              <td><b style="color:${dday(event.eventDate) <= 7 ? "var(--red)" : "var(--ink)"}">D-${dday(event.eventDate)}</b></td>
+              <td>${lessonStr}</td>
+              <td>${student.teacher}</td>
+              <td>
+                <span class="mini-chip ${student.notes.length > 0 ? "tone-blue" : "tone-green"}">
+                  ${student.notes.length > 0 ? "메모 있음" : "메모 없음"}
+                </span>
+              </td>
+              <td><button class="primary btn-row-action" data-student-id="${student.id}">확인</button></td>
+            </tr>
+          `;
+        }).join("");
 
         eventBody.querySelectorAll('tr').forEach(row => {
           row.addEventListener('click', (e) => {
@@ -1479,13 +1536,9 @@ export function renderMajorSchedule(container) {
       </div>
     `;
 
-    // auto calculate next lesson dates for premium detail view (4 times)
-    const upcomingLessonsList = [
-      { label: "다음", at: `6/4(목) ${student.lesson.split(' ').pop() || "14:00"}` },
-      { label: "2회차", at: `6/11(목) ${student.lesson.split(' ').pop() || "14:00"}` },
-      { label: "3회차", at: `6/18(목) ${student.lesson.split(' ').pop() || "14:00"}` },
-      { label: "4회차", at: `6/25(목) ${student.lesson.split(' ').pop() || "14:00"}` }
-    ];
+    // Calculate next lesson dates based on actual student classes
+    const baselineDate = getToday();
+    const upcomingLessons = getUpcomingLessonsForStudent(student, baselineDate, 4);
 
     const renderMemoList = () => {
       const containerEl = drawerBody.querySelector('#drawer-memo-list-container');
@@ -1605,19 +1658,30 @@ export function renderMajorSchedule(container) {
       <section class="drawer-section">
         <h3>다가오는 수업</h3>
         <div class="section-body">
-          <div class="detail-grid">
-            <div class="detail-item"><span>담당강사</span><strong>${student.teacher}</strong></div>
-            <div class="detail-item"><span>악기</span><strong>${student.instrument}</strong></div>
-          </div>
-          <div class="drawer-lesson-list">
-            ${upcomingLessonsList.map((lesson) => `
-              <div class="drawer-lesson-row">
-                <strong>${lesson.label}</strong>
-                <span>${lesson.at}</span>
-                <span class="mini-chip tone-slate">정규</span>
-              </div>
-            `).join("")}
-          </div>
+          ${upcomingLessons.length === 0 ? `
+            <div style="font-size: 13px; color: var(--muted); text-align: center; padding: 12px;">예정된 수업 없음</div>
+          ` : `
+            <div class="drawer-lesson-list">
+              ${upcomingLessons.map((lesson, idx) => {
+                const label = idx === 0 ? "다음" : `${idx + 1}회차`;
+                const date = lesson.date;
+                const mm = String(date.getMonth() + 1).padStart(2, '0');
+                const dd = String(date.getDate()).padStart(2, '0');
+                const hh = String(date.getHours()).padStart(2, '0');
+                const min = String(date.getMinutes()).padStart(2, '0');
+                const days = ['일', '월', '화', '수', '목', '금', '토'];
+                const dayKo = days[date.getDay()];
+                const atStr = `${mm}/${dd}(${dayKo}) ${hh}:${min}`;
+                return `
+                  <div class="drawer-lesson-row">
+                    <strong>${label}</strong>
+                    <span>${lesson.teacher}(${lesson.instrument}) ${atStr}</span>
+                    <span class="mini-chip tone-slate">정규</span>
+                  </div>
+                `;
+              }).join("")}
+            </div>
+          `}
         </div>
       </section>
       <section class="drawer-section">
@@ -1720,9 +1784,7 @@ export function renderMajorSchedule(container) {
     const teachers = stateStore.getTeachers() || [];
     const ownerOptions = [
       `<option value="">담당자 선택</option>`,
-      ...teachers.map(t => `<option value="${t.name}" ${event && event.ownerId === t.name ? "selected" : ""}>${t.name}</option>`),
-      `<option value="원장" ${event && event.ownerId === "원장" ? "selected" : ""}>원장</option>`,
-      `<option value="운영실" ${event && event.ownerId === "운영실" ? "selected" : ""}>운영실</option>`
+      ...teachers.map(t => `<option value="${t.name}" ${event && event.ownerId === t.name ? "selected" : ""}>${t.name}</option>`)
     ].join("");
 
     // Visibility toggle state

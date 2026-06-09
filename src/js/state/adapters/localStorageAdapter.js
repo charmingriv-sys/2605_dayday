@@ -295,22 +295,42 @@ export class LocalStorageAdapter extends DataAdapter {
               { id: "ev6", type: "counsel", name: "입시반 학부모 상담 주간", eventDate: "2026-06-18", dueDate: null, ownerId: "원장", place: "상담실", visible: false, memo: "입시반 학부모 상담 후보 자동 큐", participantStudentIds: ["S3", "S7"], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
             ];
             migrated = true;
-        } else {
-            db.majorSchedules.forEach(e => {
-                if (e.type === 'recital') {
-                    e.type = 'event';
-                    migrated = true;
-                }
-                if (e.status !== undefined) {
-                    delete e.status;
-                    migrated = true;
-                }
-                if (e.openCount !== undefined) {
-                    delete e.openCount;
-                    migrated = true;
-                }
-            });
         }
+
+        const teachers = db.teachers || [];
+        const teacherNames = teachers.map(t => t.name);
+        const firstTeacherName = teacherNames[0] || "";
+
+        db.majorSchedules.forEach(e => {
+            if (e.type === 'recital') {
+                e.type = 'event';
+                migrated = true;
+            }
+            if (e.status !== undefined) {
+                delete e.status;
+                migrated = true;
+            }
+            if (e.openCount !== undefined) {
+                delete e.openCount;
+                migrated = true;
+            }
+            
+            // Normalize ownerId to match a registered teacher
+            if (e.ownerId) {
+                if (!teacherNames.includes(e.ownerId)) {
+                    if (e.ownerId === "성여진" && teacherNames.includes("성어진")) {
+                        e.ownerId = "성어진";
+                        migrated = true;
+                    } else {
+                        e.ownerId = firstTeacherName;
+                        migrated = true;
+                    }
+                }
+            } else {
+                e.ownerId = firstTeacherName;
+                migrated = true;
+            }
+        });
 
         if (!db.majorScheduleStudentNotes) {
             db.majorScheduleStudentNotes = [
