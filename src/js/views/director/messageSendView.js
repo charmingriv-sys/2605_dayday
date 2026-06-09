@@ -190,7 +190,14 @@ const viewState = {
   saveModalBody: "",
   saveModalError: "",
   savedTemplates: [...MOCK_SAVED_TEMPLATES],
-  isComposing: false
+  isComposing: false,
+
+  // New modal states
+  directAddModalOpen: false,
+  excelImportModalOpen: false,
+  recipientDetailModalOpen: false,
+  recipientDetailLogId: null,
+  expandedCardIds: new Set()
 };
 
 // --- Data Adapter mapping stateStore -----------------------------------------
@@ -392,7 +399,12 @@ export function renderMessageSend(container) {
         display: grid;
         grid-template-columns: minmax(320px, 1fr) minmax(360px, 1.3fr) minmax(320px, 1fr);
         gap: 16px;
-        align-items: start;
+        align-items: stretch;
+      }
+      .message-send-col-vault {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
       }
       
       @media (max-width: 1100px) {
@@ -456,6 +468,9 @@ export function renderMessageSend(container) {
       <div id="globalSendBar"></div>
       <div id="focusConfirmOverlay"></div>
       <div id="templateSaveModalOverlay"></div>
+      <div id="directAddModalOverlay"></div>
+      <div id="excelImportModalOverlay"></div>
+      <div id="recipientDetailModalOverlay"></div>
     </div>
   `;
 
@@ -481,6 +496,9 @@ export function renderMessageSend(container) {
     renderSendBar();
     renderFocusConfirm();
     renderTemplateSaveModal();
+    renderDirectAddModal();
+    renderExcelImportModal();
+    renderRecipientDetailModal();
   };
 
   // 1. Disclaimer Yellow Box
@@ -894,13 +912,13 @@ export function renderMessageSend(container) {
         if (!viewState.selectedStudentIds.has(s.id)) return;
         
         if (viewState.contactTypes.student) {
-          incoming.push({ name: s.name, phone: s.studentPhone, role: "본인", no: s.id, optOut: s.optOut, key: s.studentPhone + "|본인" });
+          incoming.push({ name: s.name, phone: s.studentPhone, role: "본인", no: s.id, optOut: s.optOut, key: s.studentPhone + "|본인", source: "student" });
         }
         if (viewState.contactTypes.g1) {
-          incoming.push({ name: s.name, phone: s.guardian1.phone, role: `보호자(${s.guardian1.label})`, no: s.id, optOut: s.optOut, key: s.guardian1.phone + "|g1" });
+          incoming.push({ name: s.name, phone: s.guardian1.phone, role: `보호자(${s.guardian1.label})`, no: s.id, optOut: s.optOut, key: s.guardian1.phone + "|g1", source: "student" });
         }
         if (viewState.contactTypes.g2 && s.guardian2) {
-          incoming.push({ name: s.name, phone: s.guardian2.phone, role: `보호자(${s.guardian2.label})`, no: s.id, optOut: s.optOut, key: s.guardian2.phone + "|g2" });
+          incoming.push({ name: s.name, phone: s.guardian2.phone, role: `보호자(${s.guardian2.label})`, no: s.id, optOut: s.optOut, key: s.guardian2.phone + "|g2", source: "student" });
         }
       });
 
@@ -1019,28 +1037,13 @@ export function renderMessageSend(container) {
     }
 
     block.querySelector('#btnExcelImportStub').addEventListener('click', () => {
-      alert("엑셀 일괄 업로드 기능은 추후 연동 예정입니다. (임시 엑셀 데이터 3건이 발송인원에 추가됩니다.)");
-      const demo = [
-        { name: "엑셀_김지원", phone: "010-7012-3344", role: "엑셀", key: "010-7012-3344|excel" },
-        { name: "엑셀_박서준", phone: "010-7045-9981", role: "엑셀", key: "010-7045-9981|excel" },
-        { name: "엑셀_이하늘", phone: "010-7098-2210", role: "엑셀", key: "010-7098-2210|excel" },
-      ];
-      const next = [...viewState.recipients];
-      const exist = new Set(viewState.recipients.map(r => r.phone));
-      demo.forEach(d => {
-        if (!exist.has(d.phone)) {
-          exist.add(d.phone);
-          next.push(d);
-        }
-      });
-      viewState.recipients = next;
-      renderRecipientList();
-      renderComposePanel();
-      renderSendBar();
+      viewState.excelImportModalOpen = true;
+      renderExcelImportModal();
     });
 
     block.querySelector('#btnDirectAddStub').addEventListener('click', () => {
-      alert("직접 번호 입력 및 상세 가입 처리는 추후 고도화 단계에서 연동됩니다.");
+      viewState.directAddModalOpen = true;
+      renderDirectAddModal();
     });
   };
 
@@ -1326,6 +1329,24 @@ export function renderMessageSend(container) {
       const kindSpan = block.querySelector('.message-send-card-header span:last-child');
       const calculatedKind = viewState.method === "PUSH" ? "PUSH" : viewState.method === "알림톡" ? "알림톡" : msgKind(viewState.title, viewState.body, !!viewState.image);
       kindSpan.textContent = calculatedKind;
+
+      const reviewBtn = block.querySelector('#btnReviewSend');
+      if (reviewBtn) {
+        reviewBtn.disabled = viewState.recipients.length === 0 || (!viewState.body.trim() && !viewState.image);
+      }
+
+      const reserveSendBtn = block.querySelector('#btnReserveSend');
+      if (reserveSendBtn) {
+        reserveSendBtn.disabled = viewState.recipients.length === 0 || (!viewState.body.trim() && !viewState.image);
+        reserveSendBtn.style.color = viewState.recipients.length === 0 || (!viewState.body.trim() && !viewState.image) ? '#94a3b8' : 'var(--slate)';
+        reserveSendBtn.style.background = viewState.recipients.length === 0 || (!viewState.body.trim() && !viewState.image) ? '#f1f5f9' : '#e2e8f0';
+      }
+
+      const sendBarMsgType = container.querySelector('#sendBarMsgType');
+      if (sendBarMsgType) {
+        sendBarMsgType.textContent = calculatedKind;
+        sendBarMsgType.style.color = calculatedKind === 'SMS' ? 'var(--sky)' : calculatedKind === 'LMS' ? 'var(--violet)' : calculatedKind === 'MMS' ? 'var(--rose)' : calculatedKind === 'PUSH' ? 'var(--success)' : 'var(--primary)';
+      }
     });
 
     const bodyInp = block.querySelector('#composeBodyInput');
@@ -1353,12 +1374,29 @@ export function renderMessageSend(container) {
           ${innerText}
         `;
       }
+
+      const reviewBtn = block.querySelector('#btnReviewSend');
+      if (reviewBtn) {
+        reviewBtn.disabled = viewState.recipients.length === 0 || (!viewState.body.trim() && !viewState.image);
+      }
+
+      const reserveSendBtn = block.querySelector('#btnReserveSend');
+      if (reserveSendBtn) {
+        reserveSendBtn.disabled = viewState.recipients.length === 0 || (!viewState.body.trim() && !viewState.image);
+        reserveSendBtn.style.color = viewState.recipients.length === 0 || (!viewState.body.trim() && !viewState.image) ? '#94a3b8' : 'var(--slate)';
+        reserveSendBtn.style.background = viewState.recipients.length === 0 || (!viewState.body.trim() && !viewState.image) ? '#f1f5f9' : '#e2e8f0';
+      }
+
+      const sendBarMsgType = container.querySelector('#sendBarMsgType');
+      if (sendBarMsgType) {
+        sendBarMsgType.textContent = calculatedKind;
+        sendBarMsgType.style.color = calculatedKind === 'SMS' ? 'var(--sky)' : calculatedKind === 'LMS' ? 'var(--violet)' : calculatedKind === 'MMS' ? 'var(--rose)' : calculatedKind === 'PUSH' ? 'var(--success)' : 'var(--primary)';
+      }
     });
 
     // Handle blur and focus mapping
     bodyInp.addEventListener('blur', (e) => {
       viewState.body = e.target.value;
-      renderSendBar();
     });
 
     const addImgBtn = block.querySelector('#btnComposeAddImage');
@@ -1399,7 +1437,7 @@ export function renderMessageSend(container) {
   // 6. Column 3: Message Vault (Templates / History)
   const renderMessageVault = () => {
     const block = container.querySelector('#messageVaultPanel');
-    block.className = 'message-send-card';
+    block.className = 'message-send-col-vault message-send-card';
 
     let listData = [];
     if (viewState.vaultActiveTab === "recommend") {
@@ -1407,7 +1445,7 @@ export function renderMessageSend(container) {
     } else if (viewState.vaultActiveTab === "saved") {
       listData = viewState.savedTemplates;
     } else {
-      listData = MOCK_RECENT_MESSAGES;
+      listData = stateStore.getOutboundMessageLogs();
     }
 
     // Filter
@@ -1425,13 +1463,23 @@ export function renderMessageSend(container) {
     const totalPages = Math.ceil(listData.length / itemsPerPage);
     const paginatedData = listData.slice(currentPage * itemsPerPage, (currentPage + 1) * itemsPerPage);
 
+    const formatDate = (isoString) => {
+      if (!isoString) return '';
+      try {
+        const clean = isoString.replace('T', ' ');
+        return clean.slice(0, 16);
+      } catch (e) {
+        return isoString;
+      }
+    };
+
     block.innerHTML = `
       <!-- Tab Header -->
       <div style="display: flex; align-items: center; padding: 12px 12px 0; border-bottom: 1px solid #f1f5f9; gap: 2px;">
         ${[
           { key: "recommend", label: "추천", icon: "star", count: MOCK_RECOMMENDED.length },
           { key: "saved", label: "저장", icon: "note", count: viewState.savedTemplates.length },
-          { key: "recent", label: "최근", icon: "clock", count: MOCK_RECENT_MESSAGES.length }
+          { key: "recent", label: "최근", icon: "clock", count: stateStore.getOutboundMessageLogs().length }
         ].map(tab => {
           const active = viewState.vaultActiveTab === tab.key;
           return `
@@ -1457,38 +1505,95 @@ export function renderMessageSend(container) {
       </div>
 
       <!-- Paginated List with Speech Bubble Previews -->
-      <div style="padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 180px;">
+      <div style="padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 180px; overflow-y: auto;">
         ${paginatedData.length === 0 ? `
-          <div style="padding: 40px 10px; text-align: center; font-size: 12px; color: var(--text-muted);">검색 결과가 없습니다.</div>
+          <div style="padding: 40px 10px; text-align: center; font-size: 12px; color: var(--text-muted);">
+            ${viewState.vaultSearchQuery 
+              ? "검색 결과가 없습니다." 
+              : viewState.vaultActiveTab === "recent" 
+                ? "최근 발송한 메시지 내역이 없습니다." 
+                : viewState.vaultActiveTab === "saved" 
+                  ? "저장된 메시지 템플릿이 없습니다." 
+                  : "추천 메시지 템플릿이 없습니다."}
+          </div>
         ` : paginatedData.map(item => {
-          const typeColor = item.kind === 'SMS' ? 'var(--sky)' : item.kind === 'LMS' ? 'var(--violet)' : item.kind === 'MMS' ? 'var(--rose)' : item.kind === 'PUSH' ? 'var(--success)' : 'var(--primary)';
-          const typeBg = item.kind === 'SMS' ? 'var(--sky-light)' : item.kind === 'LMS' ? 'var(--violet-light)' : item.kind === 'MMS' ? 'var(--rose-light)' : item.kind === 'PUSH' ? 'var(--success-light)' : 'var(--primary-light)';
+          const isRecent = viewState.vaultActiveTab === "recent";
+          let kindLabel = item.kind || "";
+          let dateLabel = item.sentAt || "";
+          let typeBadge = "";
+          let recipientLabel = "";
+
+          if (isRecent) {
+            kindLabel = item.method === "ALIMTALK" ? "알림톡" : item.method;
+            dateLabel = item.sendType === "scheduled" 
+              ? formatDate(item.scheduledAt) 
+              : formatDate(item.createdAt);
+
+            const typeColor = item.sendType === "scheduled" ? "#d97706" : "#2563eb";
+            const typeBg = item.sendType === "scheduled" ? "#fef3dd" : "#eff6ff";
+            typeBadge = `<span style="font-size: 9px; font-weight: 800; color: ${typeColor}; background: ${typeBg}; padding: 2px 6px; border-radius: 6px;">${item.sendType === 'scheduled' ? '예약' : '즉시'}</span>`;
+
+            if (item.recipientCount === 1) {
+              const name = item.recipients && item.recipients[0] ? item.recipients[0].name : "수신자";
+              recipientLabel = `<span style="font-size: 12px; font-weight: 800; color: var(--text-main);">${name}</span>`;
+            } else {
+              recipientLabel = `<button class="btn-show-recipients-modal" data-id="${item.id}" style="
+                border: none; background: none; padding: 0; font-size: 12px; font-weight: 800; color: var(--primary);
+                cursor: pointer; text-decoration: underline; font-family: inherit; margin: 0;
+              ">단체</button>`;
+            }
+          } else {
+            recipientLabel = item.name ? `<span style="font-size: 12px; font-weight: 800; color: var(--text-main);">${item.name}</span>` : "";
+          }
+
+          const typeColor = kindLabel === 'SMS' ? 'var(--sky)' : kindLabel === 'LMS' ? 'var(--violet)' : kindLabel === 'MMS' ? 'var(--rose)' : kindLabel === 'PUSH' ? 'var(--success)' : 'var(--primary)';
+          const typeBg = kindLabel === 'SMS' ? 'var(--sky-light)' : kindLabel === 'LMS' ? 'var(--violet-light)' : kindLabel === 'MMS' ? 'var(--rose-light)' : kindLabel === 'PUSH' ? 'var(--success-light)' : 'var(--primary-light)';
           
+          const isExpanded = viewState.expandedCardIds.has(item.id);
+          const bodyText = item.body || "";
+          const showToggle = bodyText.length > 70;
+          let displayedBody = bodyText;
+          if (showToggle && !isExpanded) {
+            displayedBody = bodyText.slice(0, 70) + "...";
+          }
+
           return `
             <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 12px; background: #ffffff; border: 1.5px solid #f1f5f9; box-shadow: 0 2px 8px rgba(0,0,0,0.02); transition: all 0.2s ease;">
-              <div style="display: flex; align-items: center; gap: 6px;">
-                ${item.name ? `<span style="font-size: 12px; font-weight: 800; color: var(--text-main);">${item.name}</span>` : `<span style="font-size: 11px; color: var(--text-muted); font-weight: 700;">${item.sentAt}</span>`}
-                <span style="font-size: 9px; font-weight: 800; color: ${typeColor}; background: ${typeBg}; padding: 2px 6px; border-radius: 6px; margin-left: 2px;">${item.kind}</span>
+              <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                ${typeBadge}
+                ${recipientLabel}
+                <span style="font-size: 9px; font-weight: 800; color: ${typeColor}; background: ${typeBg}; padding: 2px 6px; border-radius: 6px; margin-left: 2px;">${kindLabel}</span>
                 ${item.ad ? `<span style="font-size: 9px; font-weight: 800; color: #b45309; background: #fef3dd; padding: 2px 6px; border-radius: 6px;">광고</span>` : ''}
-                ${item.success !== undefined ? `<span style="margin-left: auto; font-size: 10.5px; color: var(--success); font-weight: 800;">${item.success}/${item.count} 발송</span>` : ''}
+                <span style="margin-left: auto; font-size: 10.5px; color: var(--success); font-weight: 800;">${item.recipientCount || item.count || 0}/${item.recipientCount || item.count || 0}명 발송</span>
               </div>
               
               <!-- Smartphone Message Bubble Style -->
-              <div style="
+              <div class="message-body-container" data-id="${item.id}" style="
                 background: #f1f5f9; border-radius: 5px 12px 12px 12px; padding: 9px 12px; font-size: 11.5px;
                 line-height: 1.5; color: #334155; position: relative; border-left: 3px solid ${typeColor};
-                max-height: 72px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
-              ">${item.body}</div>
+                cursor: ${showToggle ? 'pointer' : 'default'};
+              ">
+                <div style="white-space: pre-wrap;">${displayedBody}</div>
+                ${showToggle ? `
+                  <div class="btn-toggle-body" data-id="${item.id}" style="
+                    font-size: 10px; font-weight: 700; color: var(--primary); text-align: right; margin-top: 4px;
+                    cursor: pointer; text-decoration: underline;
+                  ">${isExpanded ? '접기' : '전체보기'}</div>
+                ` : ''}
+              </div>
               
-              <div style="display: flex; gap: 6px; margin-top: 2px;">
-                <button class="btn-apply-template" data-id="${item.id}" style="
-                  display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 11.5px; font-weight: 700;
-                  color: #fff; background: var(--primary); border: none; border-radius: 7px; cursor: pointer; font-family: inherit; margin-bottom: 0;
-                ">${renderIcon('check', 11, '#fff', 2.5)} 적용</button>
-                <button class="btn-edit-template-stub" style="
-                  display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 11.5px; font-weight: 700;
-                  color: var(--slate); background: #fff; border: 1px solid var(--border-color); border-radius: 7px; cursor: pointer; font-family: inherit; margin-bottom: 0;
-                ">${renderIcon('edit', 11, 'var(--slate)')} 수정</button>
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 2px;">
+                <span style="font-size: 11.5px; color: var(--text-muted); font-weight: 700;">${dateLabel}</span>
+                <div style="display: flex; gap: 6px;">
+                  <button class="btn-apply-template" data-id="${item.id}" style="
+                    display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 11.5px; font-weight: 700;
+                    color: #fff; background: var(--primary); border: none; border-radius: 7px; cursor: pointer; font-family: inherit; margin-bottom: 0;
+                  ">${renderIcon('check', 11, '#fff', 2.5)} 적용</button>
+                  <button class="btn-edit-template-stub" style="
+                    display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 11.5px; font-weight: 700;
+                    color: var(--slate); background: #fff; border: 1px solid var(--border-color); border-radius: 7px; cursor: pointer; font-family: inherit; margin-bottom: 0;
+                  ">${renderIcon('edit', 11, 'var(--slate)')} 수정</button>
+                </div>
               </div>
             </div>
           `;
@@ -1535,12 +1640,16 @@ export function renderMessageSend(container) {
         const item = listData.find(d => d.id === id);
         if (!item) return;
 
-        viewState.title = item.title;
-        viewState.body = item.body;
-        viewState.image = item.kind === "MMS" ? "안내_포스터.jpg" : null;
-        if (item.kind === "PUSH") {
+        viewState.title = item.title || "";
+        viewState.body = item.body || "";
+        
+        const isMms = (item.kind === "MMS" || item.method === "MMS" || item.imageName);
+        viewState.image = isMms ? (item.imageName || "안내_포스터.jpg") : null;
+        
+        const kind = item.kind || item.method;
+        if (kind === "PUSH") {
           viewState.method = "PUSH";
-        } else if (item.kind === "알림톡") {
+        } else if (kind === "알림톡" || kind === "ALIMTALK") {
           viewState.method = "알림톡";
         } else {
           viewState.method = "SMS";
@@ -1554,6 +1663,46 @@ export function renderMessageSend(container) {
     block.querySelectorAll('.btn-edit-template-stub').forEach(btn => {
       btn.addEventListener('click', () => {
         alert("템플릿 관리(신규 템플릿 저장, 기존 템플릿 편집) 기능은 추후 고도화 단계에서 연동됩니다.");
+      });
+    });
+
+    // Body expand/collapse click handlers
+    block.querySelectorAll('.message-body-container').forEach(el => {
+      el.addEventListener('click', () => {
+        const id = el.dataset.id;
+        const item = listData.find(d => d.id === id);
+        if (!item || (item.body || "").length <= 70) return;
+        
+        if (viewState.expandedCardIds.has(id)) {
+          viewState.expandedCardIds.delete(id);
+        } else {
+          viewState.expandedCardIds.add(id);
+        }
+        renderMessageVault();
+      });
+    });
+
+    block.querySelectorAll('.btn-toggle-body').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        if (viewState.expandedCardIds.has(id)) {
+          viewState.expandedCardIds.delete(id);
+        } else {
+          viewState.expandedCardIds.add(id);
+        }
+        renderMessageVault();
+      });
+    });
+
+    // Group recipient modal handler
+    block.querySelectorAll('.btn-show-recipients-modal').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        viewState.recipientDetailLogId = id;
+        viewState.recipientDetailModalOpen = true;
+        renderRecipientDetailModal();
       });
     });
 
@@ -1576,6 +1725,62 @@ export function renderMessageSend(container) {
         }
       });
     }
+  };
+
+  const processMessageSend = (isScheduled) => {
+    if (viewState.recipients.length === 0) {
+      alert("수신자가 없습니다.");
+      return;
+    }
+    if (!viewState.body.trim() && !viewState.image) {
+      alert("메시지 제목이나 본문을 입력해 주세요.");
+      return;
+    }
+
+    const sendType = isScheduled ? "scheduled" : "immediate";
+    const status = isScheduled ? "scheduled_stub" : "stub_saved";
+    const method = viewState.method === "알림톡" ? "ALIMTALK" : viewState.method === "PUSH" ? "PUSH" : "SMS";
+
+    const logData = {
+      sendType,
+      status,
+      method,
+      senderNumber: viewState.senderNumber || "0212345678",
+      title: viewState.title || "",
+      body: viewState.body || "",
+      recipients: viewState.recipients.map(r => ({
+        name: r.name,
+        phone: r.phone,
+        role: r.role || "직접입력",
+        studentId: r.no || null,
+        source: r.source || "student"
+      })),
+      recipientCount: viewState.recipients.length,
+      scheduledAt: isScheduled ? `${viewState.schedule.date}T${viewState.schedule.time}:00+09:00` : null,
+      imageName: viewState.image
+    };
+
+    stateStore.addOutboundMessageLog(logData);
+
+    if (isScheduled) {
+      alert("실제 예약발송은 아직 연동되지 않았고, 예약이력만 저장되었습니다.");
+    } else {
+      alert("실제 발송은 아직 연동되지 않았고, 발송이력만 저장되었습니다.");
+    }
+
+    viewState.recipients = [];
+    viewState.selectedStudentIds.clear();
+    viewState.title = "";
+    viewState.body = "";
+    viewState.image = null;
+    viewState.schedule.on = false;
+    viewState.focusOpen = false;
+    
+    // Auto toggle to recent tab to show the new item immediately
+    viewState.vaultActiveTab = "recent";
+    viewState.vaultPages["recent"] = 0;
+
+    render();
   };
 
   // 7. Sticky bottom SendBar
@@ -1645,17 +1850,11 @@ export function renderMessageSend(container) {
     `;
 
     block.querySelector('#btnSendBarDirect').addEventListener('click', () => {
-      alert("실제 SMS/PUSH/알림톡 발송 기능은 추후 연결 예정입니다.");
-      viewState.recipients = [];
-      viewState.selectedStudentIds.clear();
-      render();
+      processMessageSend(false);
     });
 
     block.querySelector('#btnSendBarReserve').addEventListener('click', () => {
-      alert("예약발송 기능은 추후 서버 연동 후 제공 예정입니다.");
-      viewState.recipients = [];
-      viewState.selectedStudentIds.clear();
-      render();
+      processMessageSend(true);
     });
   };
 
@@ -1781,16 +1980,7 @@ export function renderMessageSend(container) {
     block.querySelector('#btnFocusCancel').addEventListener('click', closeOverlay);
     
     block.querySelector('#btnFocusSendConfirm').addEventListener('click', () => {
-      if (viewState.schedule.on) {
-        alert("예약발송은 추후 서버 연동 후 제공 예정입니다.");
-      } else {
-        alert("실제 SMS/PUSH/알림톡 발송 기능은 추후 연결 예정입니다.");
-      }
-      viewState.focusOpen = false;
-      viewState.recipients = [];
-      viewState.selectedStudentIds.clear();
-      
-      render();
+      processMessageSend(viewState.schedule.on);
     });
   };
 
@@ -1929,6 +2119,371 @@ export function renderMessageSend(container) {
       renderTemplateSaveModal();
       renderMessageVault();
     });
+  };
+
+  const renderDirectAddModal = () => {
+    const block = container.querySelector('#directAddModalOverlay');
+    if (!viewState.directAddModalOpen) {
+      block.style.display = 'none';
+      block.style.position = '';
+      block.style.inset = '';
+      block.style.zIndex = '';
+      block.innerHTML = '';
+      return;
+    }
+
+    block.style.display = 'flex';
+    block.style.position = 'fixed';
+    block.style.inset = '0';
+    block.style.zIndex = '105';
+    block.style.alignItems = 'center';
+    block.style.justifyContent = 'center';
+    block.style.padding = '20px';
+    block.style.background = 'rgba(15, 23, 42, 0.42)';
+    block.style.animation = 'fadeIn 0.15s ease-out';
+
+    block.innerHTML = `
+      <div id="btnDirectAddCloseBackdrop" style="position: absolute; inset: 0;"></div>
+      <div style="
+        position: relative; background: #fff; border-radius: 16px; width: 100%; max-width: 400px;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+        animation: popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); display: flex; flex-direction: column; overflow: hidden;
+      ">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 14px 20px; background: #fff; border-bottom: 1px solid #edf2f7;">
+          <span style="width: 28px; height: 28px; border-radius: 8px; background: #fef3dd; display: flex; align-items: center; justify-content: center;">
+            ${renderIcon('plus', 14, '#b45309')}
+          </span>
+          <h3 style="margin: 0; font-size: 15px; font-weight: 800; color: var(--text-main);">수신자 직접 입력</h3>
+          <button id="btnDirectAddClose" style="
+            margin-left: auto; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border-color);
+            background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
+          ">${renderIcon('close', 14, '#64748b')}</button>
+        </div>
+
+        <div style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">이름</label>
+            <input type="text" id="directAddNameInp" placeholder="이름을 입력해 주세요" style="
+              width: 100%; padding: 10px 12px; font-size: 13px; border-radius: 8px; border: 1px solid var(--border-color);
+              box-sizing: border-box; outline: none; transition: border-color 0.15s;
+            ">
+          </div>
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">휴대폰 번호</label>
+            <input type="text" id="directAddPhoneInp" placeholder="숫자와 하이픈만 입력 (예: 010-1234-5678)" style="
+              width: 100%; padding: 10px 12px; font-size: 13px; border-radius: 8px; border: 1px solid var(--border-color);
+              box-sizing: border-box; outline: none; transition: border-color 0.15s;
+            ">
+          </div>
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">역할 / 구분</label>
+            <input type="text" value="직접입력" disabled style="
+              width: 100%; padding: 10px 12px; font-size: 13px; border-radius: 8px; border: 1px solid var(--border-color);
+              background: #f1f5f9; color: #64748b; box-sizing: border-box; cursor: not-allowed;
+            ">
+          </div>
+          <div id="directAddErrorMsg" style="display: none; font-size: 11.5px; color: var(--danger); font-weight: 700;"></div>
+        </div>
+
+        <div style="display: flex; gap: 10px; padding: 12px 20px; background: #fff; border-top: 1px solid #edf2f7; justify-content: flex-end;">
+          <button id="btnDirectAddCancel" style="
+            display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; font-size: 13.5px; font-weight: 700;
+            color: var(--slate); background: #f1f5f9; border: none; border-radius: 10px; cursor: pointer; font-family: inherit; margin-bottom: 0;
+          ">취소</button>
+          <button id="btnDirectAddSubmit" style="
+            display: inline-flex; align-items: center; gap: 6px; padding: 10px 24px; font-size: 13.5px; font-weight: 800;
+            color: #fff; background: var(--primary); border: none; border-radius: 10px; cursor: pointer;
+            box-shadow: 0 4px 12px rgba(37,99,235,.2); font-family: inherit; margin-bottom: 0;
+          ">추가</button>
+        </div>
+      </div>
+    `;
+
+    const closeDirect = () => {
+      viewState.directAddModalOpen = false;
+      renderDirectAddModal();
+    };
+
+    block.querySelector('#btnDirectAddCloseBackdrop').addEventListener('click', closeDirect);
+    block.querySelector('#btnDirectAddClose').addEventListener('click', closeDirect);
+    block.querySelector('#btnDirectAddCancel').addEventListener('click', closeDirect);
+
+    const nameInp = block.querySelector('#directAddNameInp');
+    const phoneInp = block.querySelector('#directAddPhoneInp');
+    const errMsgDiv = block.querySelector('#directAddErrorMsg');
+
+    block.querySelector('#btnDirectAddSubmit').addEventListener('click', () => {
+      const name = nameInp.value.trim();
+      const phone = phoneInp.value.trim();
+
+      if (!name) {
+        errMsgDiv.textContent = "이름을 입력해 주세요.";
+        errMsgDiv.style.display = 'block';
+        return;
+      }
+      if (!phone) {
+        errMsgDiv.textContent = "휴대폰 번호를 입력해 주세요.";
+        errMsgDiv.style.display = 'block';
+        return;
+      }
+
+      const phoneRegex = /^[0-9-]+$/;
+      if (!phoneRegex.test(phone)) {
+        errMsgDiv.textContent = "올바른 휴대폰 번호 형식이 아닙니다. (숫자, 하이픈만 허용)";
+        errMsgDiv.style.display = 'block';
+        return;
+      }
+
+      const alreadyExists = viewState.recipients.some(r => r.phone === phone);
+      if (viewState.dedupe && alreadyExists) {
+        viewState.directAddModalOpen = false;
+        renderDirectAddModal();
+        return;
+      }
+
+      viewState.recipients.push({
+        name,
+        phone,
+        role: "직접입력",
+        source: "manual",
+        key: phone + "|manual"
+      });
+
+      viewState.directAddModalOpen = false;
+      renderDirectAddModal();
+
+      renderRecipientList();
+      renderComposePanel();
+      renderSendBar();
+    });
+  };
+
+  const renderExcelImportModal = () => {
+    const block = container.querySelector('#excelImportModalOverlay');
+    if (!viewState.excelImportModalOpen) {
+      block.style.display = 'none';
+      block.style.position = '';
+      block.style.inset = '';
+      block.style.zIndex = '';
+      block.innerHTML = '';
+      return;
+    }
+
+    block.style.display = 'flex';
+    block.style.position = 'fixed';
+    block.style.inset = '0';
+    block.style.zIndex = '105';
+    block.style.alignItems = 'center';
+    block.style.justifyContent = 'center';
+    block.style.padding = '20px';
+    block.style.background = 'rgba(15, 23, 42, 0.42)';
+    block.style.animation = 'fadeIn 0.15s ease-out';
+
+    block.innerHTML = `
+      <div id="btnExcelImportCloseBackdrop" style="position: absolute; inset: 0;"></div>
+      <div style="
+        position: relative; background: #fff; border-radius: 16px; width: 100%; max-width: 440px;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+        animation: popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); display: flex; flex-direction: column; overflow: hidden;
+      ">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 14px 20px; background: #fff; border-bottom: 1px solid #edf2f7;">
+          <span style="width: 28px; height: 28px; border-radius: 8px; background: #e2f4f1; display: flex; align-items: center; justify-content: center;">
+            ${renderIcon('grid', 14, '#0f766e')}
+          </span>
+          <h3 style="margin: 0; font-size: 15px; font-weight: 800; color: var(--text-main);">엑셀/CSV 붙여넣기 추가</h3>
+          <button id="btnExcelImportClose" style="
+            margin-left: auto; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border-color);
+            background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
+          ">${renderIcon('close', 14, '#64748b')}</button>
+        </div>
+
+        <div style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+          <div style="background: #f8fafc; border: 1px dashed var(--border-color); border-radius: 8px; padding: 10px 12px; font-size: 12px; line-height: 1.5; color: var(--text-muted);">
+            <div style="font-weight: 800; color: var(--text-main); margin-bottom: 4px;">형식 안내 (쉼표로 구분)</div>
+            <code style="display: block; background: #edf2f7; padding: 6px 8px; border-radius: 4px; font-family: monospace; font-size: 11px;">
+              이름,휴대폰번호<br>
+              김지원,010-1111-2222<br>
+              박서준,010-3333-4444
+            </code>
+          </div>
+          
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">붙여넣기 영역</label>
+            <textarea id="excelImportTextarea" placeholder="여기에 복사한 행들을 붙여넣으세요" style="
+              width: 100%; height: 160px; padding: 10px 12px; font-size: 13px; border-radius: 8px; border: 1px solid var(--border-color);
+              box-sizing: border-box; outline: none; transition: border-color 0.15s; resize: none; font-family: inherit;
+            "></textarea>
+          </div>
+          
+          <div id="excelImportErrorMsg" style="display: none; font-size: 11.5px; color: var(--danger); font-weight: 700;"></div>
+        </div>
+
+        <div style="display: flex; gap: 10px; padding: 12px 20px; background: #fff; border-top: 1px solid #edf2f7; justify-content: flex-end;">
+          <button id="btnExcelImportCancel" style="
+            display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; font-size: 13.5px; font-weight: 700;
+            color: var(--slate); background: #f1f5f9; border: none; border-radius: 10px; cursor: pointer; font-family: inherit; margin-bottom: 0;
+          ">취소</button>
+          <button id="btnExcelImportSubmit" style="
+            display: inline-flex; align-items: center; gap: 6px; padding: 10px 24px; font-size: 13.5px; font-weight: 800;
+            color: #fff; background: var(--primary); border: none; border-radius: 10px; cursor: pointer;
+            box-shadow: 0 4px 12px rgba(37,99,235,.2); font-family: inherit; margin-bottom: 0;
+          ">저장</button>
+        </div>
+      </div>
+    `;
+
+    const closeExcel = () => {
+      viewState.excelImportModalOpen = false;
+      renderExcelImportModal();
+    };
+
+    block.querySelector('#btnExcelImportCloseBackdrop').addEventListener('click', closeExcel);
+    block.querySelector('#btnExcelImportClose').addEventListener('click', closeExcel);
+    block.querySelector('#btnExcelImportCancel').addEventListener('click', closeExcel);
+
+    const textarea = block.querySelector('#excelImportTextarea');
+    const errMsgDiv = block.querySelector('#excelImportErrorMsg');
+
+    block.querySelector('#btnExcelImportSubmit').addEventListener('click', () => {
+      const text = textarea.value;
+      if (!text.trim()) {
+        errMsgDiv.textContent = "가져올 텍스트를 입력해 주세요.";
+        errMsgDiv.style.display = 'block';
+        return;
+      }
+
+      const lines = text.split('\n');
+      const next = [...viewState.recipients];
+      const exist = new Set(viewState.recipients.map(r => r.phone));
+      let parseErrorCount = 0;
+
+      lines.forEach((line) => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+        if (trimmed.startsWith('이름,') || trimmed.startsWith('이름 ,')) return;
+
+        const parts = trimmed.split(',');
+        if (parts.length < 2) {
+          parseErrorCount++;
+          return;
+        }
+
+        const name = parts[0].trim();
+        const phone = parts[1].trim();
+
+        const phoneRegex = /^[0-9-]+$/;
+        if (!name || !phone || !phoneRegex.test(phone)) {
+          parseErrorCount++;
+          return;
+        }
+
+        if (viewState.dedupe && exist.has(phone)) {
+          return;
+        }
+
+        exist.add(phone);
+        next.push({
+          name,
+          phone,
+          role: "엑셀",
+          source: "excel",
+          key: phone + "|excel"
+        });
+      });
+
+      if (parseErrorCount > 0) {
+        alert(`가져오기 완료! (건너뛴 줄: ${parseErrorCount}개)`);
+        viewState.recipients = next;
+        viewState.excelImportModalOpen = false;
+        renderExcelImportModal();
+        renderRecipientList();
+        renderComposePanel();
+        renderSendBar();
+      } else {
+        viewState.recipients = next;
+        viewState.excelImportModalOpen = false;
+        renderExcelImportModal();
+        renderRecipientList();
+        renderComposePanel();
+        renderSendBar();
+      }
+    });
+  };
+
+  const renderRecipientDetailModal = () => {
+    const block = container.querySelector('#recipientDetailModalOverlay');
+    if (!viewState.recipientDetailModalOpen || !viewState.recipientDetailLogId) {
+      block.style.display = 'none';
+      block.style.position = '';
+      block.style.inset = '';
+      block.style.zIndex = '';
+      block.innerHTML = '';
+      return;
+    }
+    const log = stateStore.getOutboundMessageLogs().find(l => l.id === viewState.recipientDetailLogId);
+    if (!log) {
+      viewState.recipientDetailModalOpen = false;
+      block.style.display = 'none';
+      return;
+    }
+
+    block.style.display = 'flex';
+    block.style.position = 'fixed';
+    block.style.inset = '0';
+    block.style.zIndex = '110';
+    block.style.alignItems = 'center';
+    block.style.justifyContent = 'center';
+    block.style.padding = '20px';
+    block.style.background = 'rgba(15, 23, 42, 0.42)';
+    block.style.animation = 'fadeIn 0.15s ease-out';
+
+    block.innerHTML = `
+      <div id="btnRecipientDetailCloseBackdrop" style="position: absolute; inset: 0;"></div>
+      <div style="
+        position: relative; background: #fff; border-radius: 16px; width: 100%; max-width: 460px;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+        animation: popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); display: flex; flex-direction: column; max-height: 80vh; overflow: hidden;
+      ">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 14px 20px; background: #fff; border-bottom: 1px solid #edf2f7;">
+          <span style="width: 28px; height: 28px; border-radius: 8px; background: var(--primary-light); display: flex; align-items: center; justify-content: center;">
+            ${renderIcon('user', 14, 'var(--primary)')}
+          </span>
+          <h3 style="margin: 0; font-size: 15px; font-weight: 800; color: var(--text-main);">전체 수신자 목록 (${log.recipientCount}명)</h3>
+          <button id="btnRecipientDetailClose" style="
+            margin-left: auto; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border-color);
+            background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
+          ">${renderIcon('close', 14, '#64748b')}</button>
+        </div>
+
+        <div style="padding: 20px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; flex: 1;">
+          ${log.recipients.map(r => `
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-weight: 800; color: var(--text-main);">${r.name}</span>
+                <span style="font-size: 11px; color: var(--text-muted); font-weight: 700; background: #e2e8f0; padding: 1px 6px; border-radius: 4px;">${r.role || '보호자'}</span>
+              </div>
+              <div style="font-weight: 700; color: var(--text-main); font-family: monospace;">${r.phone}</div>
+            </div>
+          `).join('')}
+        </div>
+
+        <div style="display: flex; gap: 10px; padding: 12px 20px; background: #fff; border-top: 1px solid #edf2f7; justify-content: flex-end;">
+          <button id="btnRecipientDetailCloseBtn" style="
+            display: inline-flex; align-items: center; gap: 6px; padding: 10px 24px; font-size: 13.5px; font-weight: 800;
+            color: #fff; background: var(--primary); border: none; border-radius: 10px; cursor: pointer; font-family: inherit; margin-bottom: 0;
+          ">닫기</button>
+        </div>
+      </div>
+    `;
+
+    const closeDetail = () => {
+      viewState.recipientDetailModalOpen = false;
+      renderRecipientDetailModal();
+    };
+
+    block.querySelector('#btnRecipientDetailCloseBackdrop').addEventListener('click', closeDetail);
+    block.querySelector('#btnRecipientDetailClose').addEventListener('click', closeDetail);
+    block.querySelector('#btnRecipientDetailCloseBtn').addEventListener('click', closeDetail);
   };
 
   // Run initial render

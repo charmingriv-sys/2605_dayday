@@ -143,5 +143,30 @@ export const communicationMethods = {
     hasStudentAnsweredSurvey(surveyId, studentId) {
         if (!this.db.surveyResponses) return false;
         return this.db.surveyResponses.some(r => r.surveyId === surveyId && r.studentId === studentId);
+    },
+
+    // --- OUTBOUND MESSAGE LOGS ---
+    getOutboundMessageLogs() {
+        if (!this.db.outboundMessageLogs) {
+            this.db.outboundMessageLogs = [];
+            this.saveDB();
+        }
+        return this.db.outboundMessageLogs;
+    },
+
+    addOutboundMessageLog(log) {
+        if (!this.db.outboundMessageLogs) {
+            this.getOutboundMessageLogs();
+        }
+        const id = 'msglog_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+        const newLog = {
+            id,
+            createdAt: new Date().toISOString(),
+            ...log
+        };
+        this.db.outboundMessageLogs.unshift(newLog);
+        this.saveDB();
+        this.notify('OUTBOUND_MESSAGE_LOGS_CHANGED', this.db.outboundMessageLogs);
+        return newLog;
     }
 };

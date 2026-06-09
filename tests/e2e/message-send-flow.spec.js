@@ -2,6 +2,8 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
   test.beforeEach(async ({ page }) => {
+    page.on('console', msg => console.log(`BROWSER [${msg.type()}]:`, msg.text()));
+    page.on('pageerror', err => console.error('BROWSER ERROR:', err));
     // 1. Navigate and login as director
     await page.goto('/');
     await page.locator('.role-btn.director').click();
@@ -114,7 +116,7 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
 
     // Assert alert dialog was triggered with mock text
     expect(dialogTriggered).toBe(true);
-    expect(dialogText).toContain('실제 SMS/PUSH/알림톡 발송 기능은 추후 연결 예정입니다.');
+    expect(dialogText).toContain('실제 발송은 아직 연동되지 않았고, 발송이력만 저장되었습니다.');
 
     // Focus Modal should be closed and form reset
     await expect(focusOverlay).toBeHidden();
@@ -188,5 +190,196 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
 
     const firstSavedItem = page.locator('#messageVaultPanel').locator('span').filter({ hasText: '테스트용 템플릿 제목' }).first();
     await expect(firstSavedItem).toBeVisible();
+  });
+
+  test('should support manual recipient entry, Excel CSV copy-paste, outbound logs, detail modal, and height alignment', async ({ page }) => {
+    // Navigate to Message Send view
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+
+    // 1. Check direct add modal validation and functionality
+    await page.locator('#btnDirectAddStub').click();
+    await expect(page.locator('#directAddModalOverlay')).toBeVisible();
+
+    const directName = page.locator('#directAddNameInp');
+    const directPhone = page.locator('#directAddPhoneInp');
+    const directSubmit = page.locator('#btnDirectAddSubmit');
+    const directError = page.locator('#directAddErrorMsg');
+
+    // Mismatched pattern
+    await directName.fill('홍길동');
+    await directPhone.fill('invalid-phone123!');
+    await directSubmit.click();
+    await expect(directError).toBeVisible();
+    await expect(directError).toContainText('올바른 휴대폰 번호 형식이 아닙니다');
+
+    // Valid number
+    await directPhone.fill('010-1234-5678');
+    await directSubmit.click();
+    await expect(page.locator('#directAddModalOverlay')).toBeHidden();
+
+    // Recipient label should contain 1
+    await expect(page.locator('#totalRecipientsLabel')).toContainText('1건');
+
+    // 2. Check excel import copy-paste modal parsing and dedupe
+    await page.locator('#btnExcelImportStub').click();
+    await expect(page.locator('#excelImportModalOverlay')).toBeVisible();
+
+    const csvContent = `이름,휴대폰번호
+김지원,010-1111-2222
+박서준,010-3333-4444
+홍길동,010-1234-5678`; // duplicate phone number
+
+    await page.locator('#excelImportTextarea').fill(csvContent);
+    await page.locator('#btnExcelImportSubmit').click();
+    await expect(page.locator('#excelImportModalOverlay')).toBeHidden();
+
+    // Check recipients label has '3건' (1 manual + 2 unique CSV, duplicate excluded by dedupe)
+    await expect(page.locator('#totalRecipientsLabel')).toContainText('3건');
+
+    // 3. Confirm send (immediate) creates outbound log stub and resets form without side-effects on db.messages
+    const composeTitle = page.locator('#composeTitleInput');
+    await composeTitle.fill('E2E 테스트 즉시 발송 제목');
+    const composeBody = page.locator('#composeBodyInput');
+    await composeBody.fill('이것은 E2E 테스트용으로 생성된 즉시 발송 메시지 본문입니다. 이 메시지 본문은 70글자가 넘어가지 않는 아주 평범한 본문입니다.');
+
+    const initialMsgLength = await page.evaluate(() => window.stateStore.db.messages.length);
+    const initialLogLength = await page.evaluate(() => window.stateStore.getOutboundMessageLogs().length);
+
+    // Send immediately
+    await page.locator('#btnReviewSend').click();
+    await expect(page.locator('#focusConfirmOverlay')).toBeVisible();
+
+    let dialogText1 = '';
+    const dialogHandler1 = async (dialog) => {
+      dialogText1 = dialog.message();
+      await dialog.accept();
+    };
+    page.on('dialog', dialogHandler1);
+    await page.locator('#btnFocusSendConfirm').click();
+    page.off('dialog', dialogHandler1);
+    
+    expect(dialogText1).toContain('실제 발송은 아직 연동되지 않았고, 발송이력만 저장되었습니다.');
+
+    // Assert form reset
+    await expect(page.locator('#totalRecipientsLabel')).toBeHidden();
+    await expect(composeTitle).toHaveValue('');
+    await expect(composeBody).toHaveValue('');
+
+    // Verify database counts
+    const finalMsgLength = await page.evaluate(() => window.stateStore.db.messages.length);
+    expect(finalMsgLength).toBe(initialMsgLength);
+
+    const finalLogLength = await page.evaluate(() => window.stateStore.getOutboundMessageLogs().length);
+    expect(finalLogLength).toBe(initialLogLength + 1);
+
+    // Recent tab should be active
+    const activeTab = page.locator('.btn-vault-tab[data-tab="recent"]');
+    await expect(activeTab).toBeVisible();
+
+    // Verify recent log card rendering details
+    const vaultPanel = page.locator('#messageVaultPanel');
+    await expect(vaultPanel.locator('span').filter({ hasText: '즉시' }).first()).toBeVisible();
+    await expect(vaultPanel.locator('span').filter({ hasText: 'SMS' }).first()).toBeVisible();
+    await expect(vaultPanel.locator('span').filter({ hasText: '3/3명 발송' }).first()).toBeVisible();
+
+    // Verify prohibited terminology
+    const panelText = await vaultPanel.innerText();
+    expect(panelText).not.toContain('발송완료');
+    expect(panelText).not.toContain('실제 발송 미연동');
+
+    // 4. Click group (단체) button and verify modal
+    const groupBtn = vaultPanel.locator('.btn-show-recipients-modal').first();
+    await expect(groupBtn).toBeVisible();
+    await groupBtn.click();
+
+    const detailOverlay = page.locator('#recipientDetailModalOverlay');
+    await expect(detailOverlay).toBeVisible();
+    await expect(detailOverlay).toContainText('김지원');
+    await expect(detailOverlay).toContainText('박서준');
+    await expect(detailOverlay).toContainText('홍길동');
+
+    await page.locator('#btnRecipientDetailCloseBtn').click();
+    await expect(detailOverlay).toBeHidden();
+
+    // 5. Test scheduled sending
+    // Add 1 student
+    await page.locator('.student-row').first().click();
+    await page.locator('#btnAddToRecipients').click();
+
+    await composeTitle.fill('E2E 테스트 예약 발송 제목');
+    await composeBody.fill('이것은 E2E 테스트용으로 생성된 예약 발송 메시지 본문입니다.');
+
+    // Setup dialog expectation
+    let dialogText2 = '';
+    const dialogHandler2 = async (dialog) => {
+      dialogText2 = dialog.message();
+      await dialog.accept();
+    };
+    page.on('dialog', dialogHandler2);
+    await page.locator('#btnSendBarReserve').click(); // Clicking reserved send button directly
+    page.off('dialog', dialogHandler2);
+
+    expect(dialogText2).toContain('실제 예약발송은 아직 연동되지 않았고, 예약이력만 저장되었습니다.');
+
+    const schedLogLength = await page.evaluate(() => window.stateStore.getOutboundMessageLogs().length);
+    expect(schedLogLength).toBe(finalLogLength + 1);
+
+    // Verify recent log card rendering scheduled details
+    await expect(vaultPanel.locator('span').filter({ hasText: '예약' }).first()).toBeVisible();
+    await expect(vaultPanel.locator('span').filter({ hasText: '1/1명 발송' }).first()).toBeVisible();
+
+    // 6. Verify single recipient display on recent card
+    const firstStudentName = "최다은";
+    await expect(vaultPanel.locator('span').filter({ hasText: firstStudentName }).first()).toBeVisible();
+
+    // 7. Verify body expansion toggle for long body
+    const initialLogsCount = await page.evaluate(() => window.stateStore.getOutboundMessageLogs().length);
+    await page.locator('.student-row').first().click();
+    await page.locator('#btnAddToRecipients').click();
+
+    const longBodyText = '이것은 70자 이상이 넘는 매우 긴 메시지 본문입니다. 이것은 70자 이상이 넘는 매우 긴 메시지 본문입니다. 이것은 70자 이상이 넘는 매우 긴 메시지 본문입니다. 끝.';
+    await composeBody.fill(longBodyText);
+
+    // Setup dialog expectation
+    await page.locator('#btnReviewSend').click();
+    await expect(page.locator('#focusConfirmOverlay')).toBeVisible();
+
+    let dialogText3 = '';
+    const dialogHandler3 = async (dialog) => {
+      dialogText3 = dialog.message();
+      await dialog.accept();
+    };
+    page.on('dialog', dialogHandler3);
+    await page.locator('#btnFocusSendConfirm').click();
+    page.off('dialog', dialogHandler3);
+
+    const afterLongBodyLogsCount = await page.evaluate(() => window.stateStore.getOutboundMessageLogs().length);
+    expect(afterLongBodyLogsCount).toBe(initialLogsCount + 1);
+
+    // Verify toggle button in Recent card
+    const toggleBtn = vaultPanel.locator('.btn-toggle-body').first();
+    await expect(toggleBtn).toBeVisible();
+    await expect(toggleBtn).toContainText('전체보기');
+
+    // Click to expand
+    await toggleBtn.click();
+    await expect(toggleBtn).toContainText('접기');
+    await expect(vaultPanel).toContainText('끝.');
+
+    // Click to collapse
+    await toggleBtn.click();
+    await expect(toggleBtn).toContainText('전체보기');
+
+    // 8. 3rd Column message-send-col-vault Height Alignment Verification
+    const composeBox = await page.locator('#composePanel').boundingBox();
+    const vaultBox = await page.locator('#messageVaultPanel').boundingBox();
+    expect(Math.abs(composeBox.height - vaultBox.height)).toBeLessThan(10); // Heights match within 10px tolerance
+
+    // 9. Cost / pricing text check
+    const pageText = await page.innerText('.message-send-root');
+    expect(pageText).not.toContain('예상비용');
+    expect(pageText).not.toContain('예상 비용');
+    expect(pageText).not.toContain('소요비용');
+    expect(pageText).not.toContain('단가');
   });
 });
