@@ -39,6 +39,7 @@ const VIEW_TITLES = {
     'dir-payments': '수납 및 결제 현황',
     'dir-teachers': '강사 명부 관리',
     'dir-schedules': '강사 출근 및 시간표 관리',
+    'dir-teacher-attendance': '강사 근태관리',
     'dir-attendance': '원생 출결 종합 관리',
     'dir-attendance-control': '출결 관제',
     'dir-major-schedule': '주요일정 관리',
@@ -1887,6 +1888,7 @@ async function switchView(viewName) {
             viewModules['dir-payments'] = module.renderPayments;
             viewModules['dir-teachers'] = module.renderTeachers;
             viewModules['dir-schedules'] = module.renderSchedules;
+            viewModules['dir-teacher-attendance'] = module.renderTeacherAttendance;
             viewModules['dir-attendance'] = module.renderDirectorAttendanceControl; // Deprecated: reroute to unified attendance control
             viewModules['dir-attendance-control'] = module.renderDirectorAttendanceControl;
             viewModules['dir-major-schedule'] = module.renderMajorSchedule;

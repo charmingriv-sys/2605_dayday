@@ -10,6 +10,7 @@ import { renderPayments, renderBooks, renderBooksElapsed, renderSubjects } from 
 import { renderAcademyInfo } from './settingsView.js';
 import { renderTodayConsole } from './todayConsoleView.js';
 import { renderMessageSend } from './messageSendView.js';
+import { renderTeacherAttendance } from './teacherAttendanceView.js';
 
 export {
     renderDashboard,
@@ -28,5 +29,6 @@ export {
     renderSubjects,
     renderAcademyInfo,
     renderTodayConsole,
-    renderMessageSend
+    renderMessageSend,
+    renderTeacherAttendance
 };

@@ -540,11 +540,21 @@ export function renderKioskAttendance(container) {
             // Check matching when exactly 4 digits entered
             if (inputDigits.length === 4) {
                 const students = stateStore.getStudents();
-                const matched = students.filter(s => {
+                const teachers = stateStore.getTeachers();
+                const studentsMatched = students.filter(s => {
                     const parentLast4 = s.parentPhone ? s.parentPhone.replace(/[^0-9]/g, '').slice(-4) : '';
                     const studentLast4 = s.phone ? s.phone.replace(/[^0-9]/g, '').slice(-4) : '';
                     return parentLast4 === inputDigits || studentLast4 === inputDigits;
                 });
+                const teachersMatched = teachers.filter(t => {
+                    const phoneFields = [t.phone, t.mobile, t.teacherPhone, t.contact];
+                    return phoneFields.some(phone => {
+                        if (!phone) return false;
+                        return phone.replace(/[^0-9]/g, '').slice(-4) === inputDigits;
+                    });
+                }).map(t => ({ ...t, isTeacher: true }));
+
+                const matched = [...studentsMatched, ...teachersMatched];
 
                 if (matched.length > 0) {
                     matchedStudents = matched;
@@ -557,7 +567,7 @@ export function renderKioskAttendance(container) {
                     // No match found
                     const displayMsg = container.querySelector('#kiosk-message-banner');
                     if (displayMsg) {
-                        displayMsg.textContent = '일치하는 원생이 없습니다. 번호를 다시 확인해주세요.';
+                        displayMsg.textContent = '일치하는 대상이 없습니다. 번호를 다시 확인해주세요.';
                         displayMsg.style.color = 'var(--danger)';
                     }
                     // Shake effect on keypad dots
@@ -636,6 +646,20 @@ export function renderKioskAttendance(container) {
         stateStore.leaveAttendance(studentId, todayStr, nowTimeStr);
         
         completeStatus = 'out';
+        activeStep = 'complete';
+        render();
+
+        // 5 second auto reset
+        autoResetTimeout = setTimeout(() => {
+            resetKiosk();
+        }, 5000);
+    };
+
+    const triggerTeacherAttendance = (teacher) => {
+        const nowIso = new Date().toISOString();
+        const result = stateStore.markTeacherAttendanceByTeacherId(teacher.id, nowIso);
+        
+        completeStatus = result.status;
         activeStep = 'complete';
         render();
 
@@ -735,16 +759,16 @@ export function renderKioskAttendance(container) {
             kioskHtml = `
                 <div style="text-align: center; margin-bottom: 2rem;">
                     <i class="fa-solid fa-circle-question" style="font-size: 2.5rem; color: var(--primary); margin-bottom: 1rem;"></i>
-                    <h2 style="font-size: 1.6rem; font-weight: 800; margin-bottom: 8px;">원생 이름 선택</h2>
+                    <h2 style="font-size: 1.6rem; font-weight: 800; margin-bottom: 8px;">이름 선택</h2>
                     <p style="color: var(--text-muted); font-size: 0.95rem;">본인의 이름을 터치해 주세요.</p>
                 </div>
 
-                <!-- Student selection grid -->
+                <!-- Student/Teacher selection grid -->
                 <div class="kiosk-student-grid">
                     ${matchedStudents.map(student => `
                         <div class="kiosk-student-card" data-student-id="${student.id}" data-testid="kiosk-student-card-${student.id}">
-                            <div class="kiosk-student-name">${student.name}</div>
-                            <div class="kiosk-student-desc">${student.instrument} / ${student.school || '학원생'}</div>
+                            <div class="kiosk-student-name">${student.name}${student.isTeacher ? ' (강사)' : ''}</div>
+                            <div class="kiosk-student-desc">${student.instrument} / ${student.isTeacher ? '강사' : (student.school || '학원생')}</div>
                         </div>
                     `).join('')}
                 </div>
@@ -786,18 +810,43 @@ export function renderKioskAttendance(container) {
                 </div>
             `;
         } else if (activeStep === 'complete') {
-            const isCheckIn = completeStatus === 'in';
-            const actionLabel = isCheckIn ? '등원' : '하원';
-            const actionDesc = isCheckIn ? '학원에 안전하게 등원하였습니다.' : '수업을 마치고 안전하게 하원하였습니다.';
-            const iconClass = isCheckIn ? 'fa-circle-check' : 'fa-circle-chevron-right';
-            const iconColor = isCheckIn ? 'var(--success)' : 'var(--warning)';
+            const isTeacher = selectedStudent.isTeacher;
+            let actionLabel = '';
+            let actionDesc = '';
+            let iconClass = '';
+            let iconColor = '';
+
+            if (isTeacher) {
+                if (completeStatus === 'checked_in') {
+                    actionLabel = '출근 확인되었습니다.';
+                    actionDesc = '오늘도 좋은 수업 부탁드립니다.';
+                    iconClass = 'fa-circle-check';
+                    iconColor = 'var(--success)';
+                } else if (completeStatus === 'checked_out') {
+                    actionLabel = '퇴근 확인되었습니다.';
+                    actionDesc = '오늘 근무가 기록되었습니다.';
+                    iconClass = 'fa-circle-chevron-right';
+                    iconColor = 'var(--warning)';
+                } else {
+                    actionLabel = '오늘 출근과 퇴근이 이미 기록되었습니다.';
+                    actionDesc = '';
+                    iconClass = 'fa-circle-info';
+                    iconColor = 'var(--primary)';
+                }
+            } else {
+                const isCheckIn = completeStatus === 'in';
+                actionLabel = isCheckIn ? '등원이 완료되었습니다!' : '하원이 완료되었습니다!';
+                actionDesc = isCheckIn ? '학원에 안전하게 등원하였습니다.' : '수업을 마치고 안전하게 하원하였습니다.';
+                iconClass = isCheckIn ? 'fa-circle-check' : 'fa-circle-chevron-right';
+                iconColor = isCheckIn ? 'var(--success)' : 'var(--warning)';
+            }
 
             kioskHtml = `
                 <div style="text-align: center; max-width: 480px; margin: 0 auto;">
                     <i class="fa-solid ${iconClass}" style="font-size: 4.5rem; color: ${iconColor}; margin-bottom: 1.5rem; filter: drop-shadow(0 0 15px rgba(255,255,255,0.05));"></i>
-                    <h2 style="font-size: 1.8rem; font-weight: 800; margin-bottom: 10px; color: var(--text-main);">${selectedStudent.name} 님</h2>
-                    <p style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin-bottom: 6px;">${actionLabel}이 완료되었습니다!</p>
-                    <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 2rem;">${actionDesc}</p>
+                    <h2 style="font-size: 1.8rem; font-weight: 800; margin-bottom: 10px; color: var(--text-main);">${selectedStudent.name} ${isTeacher ? '강사님' : '님'}</h2>
+                    <p style="font-size: 1.1rem; font-weight: 600; color: var(--text-main); margin-bottom: 6px;">${actionLabel}</p>
+                    ${actionDesc ? `<p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 2rem;">${actionDesc}</p>` : '<div style="margin-bottom: 2rem;"></div>'}
 
                     <button class="btn btn-primary" id="kiosk-complete-reset" style="padding: 12px 30px; font-weight: 600; border-radius: var(--radius-md);">
                         즉시 처음 화면으로
@@ -833,8 +882,12 @@ export function renderKioskAttendance(container) {
                 card.addEventListener('click', (e) => {
                     const id = e.currentTarget.dataset.studentId;
                     selectedStudent = matchedStudents.find(s => s.id === id);
-                    activeStep = 'select-status';
-                    render();
+                    if (selectedStudent.isTeacher) {
+                        triggerTeacherAttendance(selectedStudent);
+                    } else {
+                        activeStep = 'select-status';
+                        render();
+                    }
                 });
             });
 
