@@ -338,28 +338,107 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     await page.locator('.menu-item[data-view="dir-message-send"]').click();
 
     // 1. Check direct add modal validation and functionality
+    // Verify "번호 직접입력" button text is correct
+    await expect(page.locator('#btnDirectAddStub')).toContainText('번호 직접입력');
     await page.locator('#btnDirectAddStub').click();
     await expect(page.locator('#directAddModalOverlay')).toBeVisible();
+
+    // Verify disabled "역할 / 구분" input does not exist
+    await expect(page.locator('input[value="직접입력"][disabled]')).toBeHidden();
 
     const directName = page.locator('#directAddNameInp');
     const directPhone = page.locator('#directAddPhoneInp');
     const directSubmit = page.locator('#btnDirectAddSubmit');
     const directError = page.locator('#directAddErrorMsg');
+    const directSuccess = page.locator('#directAddSuccessMsg');
 
-    // Mismatched pattern
+    // Empty phone check
     await directName.fill('홍길동');
+    await directPhone.fill('');
+    await directSubmit.click();
+    await expect(directError).toBeVisible();
+    await expect(directError).toContainText('휴대폰 번호를 입력해 주세요.');
+
+    // Mismatched pattern check
     await directPhone.fill('invalid-phone123!');
     await directSubmit.click();
     await expect(directError).toBeVisible();
-    await expect(directError).toContainText('올바른 휴대폰 번호 형식이 아닙니다');
+    await expect(directError).toContainText('숫자와 하이픈만 입력해 주세요.');
 
-    // Valid number
+    // Digits length error: too short
+    await directPhone.fill('010-123');
+    await directSubmit.click();
+    await expect(directError).toBeVisible();
+    await expect(directError).toContainText('올바른 전화번호를 입력해 주세요.');
+
+    // Digits length error: too long
+    await directPhone.fill('010-1234-567890');
+    await directSubmit.click();
+    await expect(directError).toBeVisible();
+    await expect(directError).toContainText('올바른 전화번호를 입력해 주세요.');
+
+    // Correct entry: Name + Phone (11 digits, un-hyphenated)
+    await directName.fill('홍길동');
+    await directPhone.fill('01012345678');
+    await directSubmit.click();
+    
+    // Modal should NOT close, input fields should be cleared, phone focused, success msg visible
+    await expect(page.locator('#directAddModalOverlay')).toBeVisible();
+    await expect(directSuccess).toBeVisible();
+    await expect(directSuccess).toContainText('추가되었습니다.');
+    await expect(directName).toHaveValue('');
+    await expect(directPhone).toHaveValue('');
+    await expect(directPhone).toBeFocused();
+
+    // Duplicate check: add same number (even with hyphens)
+    await directName.fill('홍길동중복');
     await directPhone.fill('010-1234-5678');
     await directSubmit.click();
+    await expect(directError).toBeVisible();
+    await expect(directError).toContainText('이미 추가된 번호입니다.');
+
+    // Correct entry: Phone only (name-less entry, 11 digits, un-hyphenated)
+    await directName.fill('');
+    await directPhone.fill('01098765432');
+    await directSubmit.click();
+    await expect(directSuccess).toBeVisible();
+    await expect(directSuccess).toContainText('추가되었습니다.');
+    await expect(directName).toHaveValue('');
+    await expect(directPhone).toHaveValue('');
+    await expect(directPhone).toBeFocused();
+
+    // Correct entry: Phone only (10 digits, un-hyphenated)
+    await directName.fill('');
+    await directPhone.fill('0101234567');
+    await directSubmit.click();
+    await expect(directSuccess).toBeVisible();
+    await expect(directName).toHaveValue('');
+    await expect(directPhone).toHaveValue('');
+    await expect(directPhone).toBeFocused();
+
+    // Correct entry: Phone only (10 digits Seoul, un-hyphenated)
+    await directName.fill('');
+    await directPhone.fill('0212345678');
+    await directSubmit.click();
+    await expect(directSuccess).toBeVisible();
+    await expect(directName).toHaveValue('');
+    await expect(directPhone).toHaveValue('');
+    await expect(directPhone).toBeFocused();
+
+    // Click "완료" button to close modal
+    await page.locator('#btnDirectAddDone').click();
     await expect(page.locator('#directAddModalOverlay')).toBeHidden();
 
-    // Recipient label should contain 1
-    await expect(page.locator('#totalRecipientsLabel')).toContainText('1건');
+    // Recipient label should contain 4 (홍길동 + 3 직접입력)
+    await expect(page.locator('#totalRecipientsLabel')).toContainText('4건');
+
+    // Verify recipient cards display with auto-formatted hyphenated phones
+    const recipientCards = page.locator('.message-send-recipient-card');
+    await expect(recipientCards.filter({ hasText: '홍길동' })).toBeVisible();
+    await expect(recipientCards.filter({ hasText: '010-1234-5678' })).toBeVisible();
+    await expect(recipientCards.filter({ hasText: '010-9876-5432' })).toBeVisible();
+    await expect(recipientCards.filter({ hasText: '010-123-4567' })).toBeVisible();
+    await expect(recipientCards.filter({ hasText: '02-1234-5678' })).toBeVisible();
 
     // 2. Check excel import copy-paste modal parsing and dedupe
     await page.locator('#btnExcelImportStub').click();
@@ -374,8 +453,8 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     await page.locator('#btnExcelImportSubmit').click();
     await expect(page.locator('#excelImportModalOverlay')).toBeHidden();
 
-    // Check recipients label has '3건' (1 manual + 2 unique CSV, duplicate excluded by dedupe)
-    await expect(page.locator('#totalRecipientsLabel')).toContainText('3건');
+    // Check recipients label has '6건' (4 manual + 2 unique CSV, duplicate excluded by dedupe)
+    await expect(page.locator('#totalRecipientsLabel')).toContainText('6건');
 
     // 3. Confirm send (immediate) creates outbound log stub and resets form without side-effects on db.messages
     const composeTitle = page.locator('#composeTitleInput');
@@ -402,7 +481,7 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     expect(dialogText1).toContain('실제 발송은 아직 연동되지 않았고, 발송이력만 저장되었습니다.');
 
     // Assert form NOT reset (retained)
-    await expect(page.locator('#totalRecipientsLabel')).toContainText('3건');
+    await expect(page.locator('#totalRecipientsLabel')).toContainText('6건');
     await expect(composeTitle).toHaveValue('E2E 테스트 즉시 발송 제목');
     await expect(composeBody).toHaveValue('이것은 E2E 테스트용으로 생성된 즉시 발송 메시지 본문입니다. 이 메시지 본문은 70글자가 넘어가지 않는 아주 평범한 본문입니다.');
 
@@ -417,6 +496,13 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     const finalLogLength = await page.evaluate(() => window.stateStore.getOutboundMessageLogs().length);
     expect(finalLogLength).toBe(initialLogLength + 1);
 
+    // Verify raw values are kept in stateStore / DB
+    const lastOutboundLog = await page.evaluate(() => window.stateStore.getOutboundMessageLogs()[0]);
+    expect(lastOutboundLog.recipients.some(r => r.name === '홍길동' && r.phone === '01012345678')).toBe(true);
+    expect(lastOutboundLog.recipients.some(r => r.name === '직접입력' && r.phone === '01098765432')).toBe(true);
+    expect(lastOutboundLog.recipients.some(r => r.name === '직접입력' && r.phone === '0101234567')).toBe(true);
+    expect(lastOutboundLog.recipients.some(r => r.name === '직접입력' && r.phone === '0212345678')).toBe(true);
+
     // Recent tab should be active
     const activeTab = page.locator('.btn-vault-tab[data-tab="recent"]');
     await expect(activeTab).toBeVisible();
@@ -425,7 +511,7 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     const vaultPanel = page.locator('#messageVaultPanel');
     await expect(vaultPanel.locator('span').filter({ hasText: '즉시' }).first()).toBeVisible();
     await expect(vaultPanel.locator('span').filter({ hasText: 'SMS' }).first()).toBeVisible();
-    await expect(vaultPanel.locator('span').filter({ hasText: '3/3명 발송' }).first()).toBeVisible();
+    await expect(vaultPanel.locator('span').filter({ hasText: '6/6명 발송' }).first()).toBeVisible();
 
     // Verify prohibited terminology
     const panelText = await vaultPanel.innerText();
@@ -442,6 +528,13 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     await expect(detailOverlay).toContainText('김지원');
     await expect(detailOverlay).toContainText('박서준');
     await expect(detailOverlay).toContainText('홍길동');
+    await expect(detailOverlay).toContainText('직접입력');
+    
+    // Verify phone formats in detail modal
+    await expect(detailOverlay).toContainText('010-1234-5678');
+    await expect(detailOverlay).toContainText('010-9876-5432');
+    await expect(detailOverlay).toContainText('010-123-4567');
+    await expect(detailOverlay).toContainText('02-1234-5678');
 
     await page.locator('#btnRecipientDetailCloseBtn').click();
     await expect(detailOverlay).toBeHidden();
@@ -609,6 +702,7 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     await page.locator('#directAddNameInp').fill('홍길동');
     await page.locator('#directAddPhoneInp').fill('010-9999-8888');
     await page.locator('#btnDirectAddSubmit').click();
+    await page.locator('#btnDirectAddDone').click();
 
     // Recipients count should be 2
     await expect(page.locator('#totalRecipientsLabel')).toContainText('2건');
@@ -740,7 +834,7 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     // 1. 메시지 보내기 화면으로 이동
     await page.locator('.menu-item[data-view="dir-message-send"]').click();
 
-    // 중복 추가 허용을 위해 dedupe 비활성화
+    // 중복 추가 허용을 위해 dedupe 비활성화 -> 단, 직접 입력은 모달 단에서 항시 중복이 제한됨
     await page.locator('#btnToggleDedupe').click();
 
     // 2. 수신인 추가
@@ -753,7 +847,7 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     await targetRow.click();
     await page.locator('#btnAddToRecipients').click();
 
-    // (2) 직접 입력을 통해 중복 전화번호 추가 (최다은 번호 조회 후 중복 추가)
+    // (2) 직접 입력을 통해 중복 전화번호 추가 시도 (최다은 번호 조회 후 중복 추가 시도) -> 모달에서 차단되어야 함
     const students = await page.evaluate(() => window.stateStore.getStudents());
     const targetStudent = students.find(s => s.name === '최다은') || students[0];
     const targetPhone = targetStudent.parentPhone || targetStudent.phone;
@@ -762,20 +856,27 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     await page.locator('#directAddNameInp').fill('최다은중복');
     await page.locator('#directAddPhoneInp').fill(targetPhone);
     await page.locator('#btnDirectAddSubmit').click();
+    await expect(page.locator('#directAddErrorMsg')).toBeVisible();
+    await expect(page.locator('#directAddErrorMsg')).toContainText('이미 추가된 번호입니다.');
 
-    // (3) 직접 입력을 통해 짧은 번호 추가 (9자리 미만인 5자리) -> 번호 오류
-    await page.locator('#btnDirectAddStub').click();
+    // (3) 직접 입력을 통해 짧은 번호 추가 시도 (9자리 미만인 5자리) -> 모달에서 차단되어야 함
     await page.locator('#directAddNameInp').fill('번호오류자');
     await page.locator('#directAddPhoneInp').fill('12345');
     await page.locator('#btnDirectAddSubmit').click();
+    await expect(page.locator('#directAddErrorMsg')).toBeVisible();
+    await expect(page.locator('#directAddErrorMsg')).toContainText('올바른 전화번호를 입력해 주세요.');
 
-    // (4) 직접 입력을 통해 긴 번호 추가 (11자리 초과인 14자리) -> 번호 오류
-    await page.locator('#btnDirectAddStub').click();
+    // (4) 직접 입력을 통해 긴 번호 추가 시도 (11자리 초과인 14자리) -> 모달에서 차단되어야 함
     await page.locator('#directAddNameInp').fill('짧은번호자');
     await page.locator('#directAddPhoneInp').fill('010-1234-567890');
     await page.locator('#btnDirectAddSubmit').click();
+    await expect(page.locator('#directAddErrorMsg')).toBeVisible();
+    await expect(page.locator('#directAddErrorMsg')).toContainText('올바른 전화번호를 입력해 주세요.');
 
-    // (5) 수신거부 상태의 학생 강제 주입
+    // 모달 닫기
+    await page.locator('#btnDirectAddDone').click();
+
+    // (5) 수신거부 상태의 학생 강제 주입 (최다은)
     await page.evaluate(() => {
       const students = window.stateStore.db.students;
       const target = students.find(s => s.name === '최다은') || students[0];
@@ -794,8 +895,8 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     await expect(focusOverlay).toContainText('즉시발송 검토');
 
     // 5. 검토 통계 요약 검증
-    // 최다은(수신거부로 제외), 최다은중복(중복으로 제외), 번호오류자(번호오류 제외), 짧은번호자(번호오류 제외)
-    // 따라서 발송 가능 대상은 0명이어야 함
+    // 최다은(수신거부로 제외), 다른 중복/번호오류 수신자는 모달에서 추가 차단됨
+    // 따라서 전체 대상은 1명(최다은)이며, 발송 가능 대상은 0명이어야 함
     await expect(focusOverlay).toContainText('전체 대상');
     await expect(focusOverlay).toContainText('발송 가능');
     await expect(page.locator('#focusSendableCount')).toContainText('0명'); // 발송 가능 0명
@@ -803,8 +904,6 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
 
     // 제외 사유 매핑 검증
     await expect(focusOverlay).toContainText('수신거부');
-    await expect(focusOverlay).toContainText('중복 제외');
-    await expect(focusOverlay).toContainText('번호 오류');
 
     // 6. 발송 가능이 0명이므로 [이력 저장] 클릭 시 저장 차단되는지 확인
     let alertTriggered = false;
@@ -840,15 +939,16 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     await page.locator('#directAddNameInp').fill('홍길동');
     await page.locator('#directAddPhoneInp').fill('010-9876-5432');
     await page.locator('#btnDirectAddSubmit').click();
+    await page.locator('#btnDirectAddDone').click();
 
     // 즉시발송 클릭
     await page.locator('#btnReviewSend').click();
     await expect(focusOverlay).toBeVisible();
 
     // 발송 가능 대상 2명 (최다은, 홍길동)
-    // 제외 대상 3명 (최다은중복, 번호오류자, 짧은번호자)
+    // 제외 대상 0명 (중복/번호오류 등은 모달 단계에서 걸러짐)
     await expect(page.locator('#focusSendableCount')).toContainText('2명'); // 발송 가능 2명
-    await expect(focusOverlay).toContainText('3명'); // 제외 대상 3명
+    await expect(focusOverlay).toContainText('0명'); // 제외 대상 0명
 
     // 10. 최종 이력 저장
     let successAlertTriggered = false;
@@ -882,17 +982,15 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     const finalMsgLength = await page.evaluate(() => window.stateStore.db.messages.length);
     expect(finalMsgLength).toBe(initialMsgLength);
 
-    // 로그 내용 세부 검증 (recipients 2건, excludedRecipients 3건)
+    // 로그 내용 세부 검증 (recipients 2건, excludedRecipients 0건)
     const lastLog = await page.evaluate(() => window.stateStore.getOutboundMessageLogs()[0]);
     expect(lastLog.recipients.length).toBe(2);
-    expect(lastLog.excludedRecipients.length).toBe(3);
+    expect(lastLog.excludedRecipients.length).toBe(0);
     expect(lastLog.recipientCount).toBe(2);
-    expect(lastLog.originalRecipientCount).toBe(5);
+    expect(lastLog.originalRecipientCount).toBe(2);
     
-    // 제외자 사유 매핑 검증
-    expect(lastLog.excludedRecipients.some(r => r.name === '최다은중복' && r.reason === '중복 제외')).toBe(true);
-    expect(lastLog.excludedRecipients.some(r => r.name === '번호오류자' && r.reason === '번호 오류')).toBe(true);
-    expect(lastLog.excludedRecipients.some(r => r.name === '짧은번호자' && r.reason === '번호 오류')).toBe(true);
+    // 제외자 사유 매핑 검증 (모두 모달단에서 사전 차단되므로 제외자 없음)
+    expect(lastLog.excludedRecipients.length).toBe(0);
 
     // 폼과 수신자가 지워지지 않고 유지되는지 검증
     await expect(page.locator('#composeBodyInput')).toHaveValue('수신자 검증 테스트용 메시지 본문입니다.');

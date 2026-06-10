@@ -351,6 +351,26 @@ const replaceMacros = (text, recipient) => {
   return result;
 };
 
+const formatPhoneDisplay = (phone) => {
+  if (!phone) return "-";
+  const normalized = phone.replace(/[^0-9]/g, '');
+  
+  if (normalized.startsWith('02')) {
+    if (normalized.length === 9) {
+      return `${normalized.slice(0, 2)}-${normalized.slice(2, 5)}-${normalized.slice(5)}`;
+    } else if (normalized.length === 10) {
+      return `${normalized.slice(0, 2)}-${normalized.slice(2, 6)}-${normalized.slice(6)}`;
+    }
+  } else {
+    if (normalized.length === 10) {
+      return `${normalized.slice(0, 3)}-${normalized.slice(3, 6)}-${normalized.slice(6)}`;
+    } else if (normalized.length === 11) {
+      return `${normalized.slice(0, 3)}-${normalized.slice(3, 7)}-${normalized.slice(7)}`;
+    }
+  }
+  return phone;
+};
+
 const isRecipientOptedOut = (recipient) => {
   const studentId = recipient.no || recipient.studentId;
   if (studentId) {
@@ -1105,11 +1125,11 @@ export function renderMessageSend(container) {
         <span style="font-size: 12px; font-weight: 700; color: #0f766e; background: #e2f4f1; padding: 2px 9px; border-radius: 999px; margin-left: 6px; ${viewState.recipients.length === 0 ? 'display: none;' : ''}" id="totalRecipientsLabel">${viewState.recipients.length}건</span>
         
         <div style="margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap;">
+          <button id="btnDirectAddStub" style="${ghostBtnStyle} color: #fff; background: #d97706; border: 1px solid #b45309; font-weight: 800; box-shadow: 0 2px 4px rgba(217, 119, 6, 0.2);">
+            ${renderIcon('plus', 13, '#fff')} 번호 직접입력
+          </button>
           <button id="btnExcelImportStub" style="${ghostBtnStyle} color: #0f766e; background: #e2f4f1; border: 1px solid #b7e2db;">
             ${renderIcon('grid', 13, '#0f766e')} 엑셀 추가
-          </button>
-          <button id="btnDirectAddStub" style="${ghostBtnStyle} color: #b45309; background: #fef3dd; border: 1px solid #fadfa9;">
-            ${renderIcon('plus', 13, '#b45309')} 직접 입력
           </button>
           ${viewState.recipients.length > 0 ? `
             <button id="btnClearRecipients" style="${ghostBtnStyle} color: #64748b; background: #fff; border: 1px solid #e2e8f0;">
@@ -1150,7 +1170,7 @@ export function renderMessageSend(container) {
                       <span style="font-size: 12px; font-weight: 700; color: var(--text-main);">${r.name}</span>
                       <span class="message-send-chip tone-${roleTone}" style="padding: 0px 5px; font-size: 9px; border-radius: 4px; font-weight: 800;">${r.role}</span>
                     </span>
-                    <span style="display: block; font-size: 10px; color: var(--text-muted-light); margin-top: 1px;">${r.phone}</span>
+                    <span style="display: block; font-size: 10px; color: var(--text-muted-light); margin-top: 1px;">${formatPhoneDisplay(r.phone)}</span>
                   </span>
                   <button class="btn-remove-recipient" data-key="${r.key}" style="
                     width: 18px; height: 18px; border-radius: 4px; border: none; background: #f1f5f9; cursor: pointer;
@@ -2355,7 +2375,7 @@ export function renderMessageSend(container) {
                     ${sendableList.map(r => `
                       <tr style="border-bottom: 1px solid #f1f5f9;">
                         <td style="padding: 6px 8px; font-weight: 700;">${r.name}</td>
-                        <td style="padding: 6px 8px; font-family: monospace;">${r.phone}</td>
+                        <td style="padding: 6px 8px; font-family: monospace;">${formatPhoneDisplay(r.phone)}</td>
                         <td style="padding: 6px 8px; color: var(--text-muted);">${r.role || '보호자'}</td>
                         <td style="padding: 6px 8px; color: var(--text-muted);">${r.source === 'student' ? '원생연동' : r.source === 'excel' ? '엑셀' : '직접입력'}</td>
                       </tr>
@@ -2385,7 +2405,7 @@ export function renderMessageSend(container) {
                     ${excludedList.map(r => `
                       <tr style="border-bottom: 1px solid #fecaca; background: #fff8f8;">
                         <td style="padding: 6px 8px; font-weight: 700; color: #991b1b;">${r.name}</td>
-                        <td style="padding: 6px 8px; font-family: monospace; color: #991b1b;">${r.phone || '번호 없음'}</td>
+                        <td style="padding: 6px 8px; font-family: monospace; color: #991b1b;">${r.phone ? formatPhoneDisplay(r.phone) : '번호 없음'}</td>
                         <td style="padding: 6px 8px;"><span style="color: #fff; background: #ef4444; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 800;">${r.reason}</span></td>
                       </tr>
                     `).join('')}
@@ -2775,27 +2795,25 @@ export function renderMessageSend(container) {
 
         <div style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
           <div>
-            <label style="display: block; font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">이름</label>
-            <input type="text" id="directAddNameInp" placeholder="이름을 입력해 주세요" style="
+            <label style="display: block; font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">이름 (선택)</label>
+            <input type="text" id="directAddNameInp" placeholder="이름을 입력해 주세요 (미입력 시 직접입력)" style="
               width: 100%; padding: 10px 12px; font-size: 13px; border-radius: 8px; border: 1px solid var(--border-color);
               box-sizing: border-box; outline: none; transition: border-color 0.15s;
             ">
           </div>
           <div>
-            <label style="display: block; font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">휴대폰 번호</label>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">휴대폰 번호 (필수)</label>
             <input type="text" id="directAddPhoneInp" placeholder="숫자와 하이픈만 입력 (예: 010-1234-5678)" style="
               width: 100%; padding: 10px 12px; font-size: 13px; border-radius: 8px; border: 1px solid var(--border-color);
               box-sizing: border-box; outline: none; transition: border-color 0.15s;
             ">
           </div>
-          <div>
-            <label style="display: block; font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">역할 / 구분</label>
-            <input type="text" value="직접입력" disabled style="
-              width: 100%; padding: 10px 12px; font-size: 13px; border-radius: 8px; border: 1px solid var(--border-color);
-              background: #f1f5f9; color: #64748b; box-sizing: border-box; cursor: not-allowed;
-            ">
+          <div style="font-size: 11.5px; color: var(--text-muted); line-height: 1.5; font-weight: 500;">
+            • 이름 없이 번호만 입력해도 수신자에 추가됩니다.<br>
+            • 여러 명을 추가하려면 추가 후 계속 입력해 주세요.
           </div>
           <div id="directAddErrorMsg" style="display: none; font-size: 11.5px; color: var(--danger); font-weight: 700;"></div>
+          <div id="directAddSuccessMsg" style="display: none; font-size: 11.5px; color: #16a34a; font-weight: 700;"></div>
         </div>
 
         <div style="display: flex; gap: 10px; padding: 12px 20px; background: #fff; border-top: 1px solid #edf2f7; justify-content: flex-end;">
@@ -2808,6 +2826,11 @@ export function renderMessageSend(container) {
             color: #fff; background: var(--primary); border: none; border-radius: 10px; cursor: pointer;
             box-shadow: 0 4px 12px rgba(37,99,235,.2); font-family: inherit; margin-bottom: 0;
           ">추가</button>
+          <button id="btnDirectAddDone" style="
+            display: inline-flex; align-items: center; gap: 6px; padding: 10px 24px; font-size: 13.5px; font-weight: 800;
+            color: #fff; background: #0f766e; border: none; border-radius: 10px; cursor: pointer;
+            box-shadow: 0 4px 12px rgba(15,118,110,.2); font-family: inherit; margin-bottom: 0;
+          ">완료</button>
         </div>
       </div>
     `;
@@ -2820,37 +2843,49 @@ export function renderMessageSend(container) {
     block.querySelector('#btnDirectAddCloseBackdrop').addEventListener('click', closeDirect);
     block.querySelector('#btnDirectAddClose').addEventListener('click', closeDirect);
     block.querySelector('#btnDirectAddCancel').addEventListener('click', closeDirect);
+    block.querySelector('#btnDirectAddDone').addEventListener('click', closeDirect);
 
     const nameInp = block.querySelector('#directAddNameInp');
     const phoneInp = block.querySelector('#directAddPhoneInp');
     const errMsgDiv = block.querySelector('#directAddErrorMsg');
+    const successMsgDiv = block.querySelector('#directAddSuccessMsg');
 
     block.querySelector('#btnDirectAddSubmit').addEventListener('click', () => {
-      const name = nameInp.value.trim();
+      const rawName = nameInp.value.trim();
+      const name = rawName || "직접입력";
       const phone = phoneInp.value.trim();
 
-      if (!name) {
-        errMsgDiv.textContent = "이름을 입력해 주세요.";
-        errMsgDiv.style.display = 'block';
-        return;
-      }
       if (!phone) {
         errMsgDiv.textContent = "휴대폰 번호를 입력해 주세요.";
         errMsgDiv.style.display = 'block';
+        successMsgDiv.style.display = 'none';
         return;
       }
 
       const phoneRegex = /^[0-9-]+$/;
       if (!phoneRegex.test(phone)) {
-        errMsgDiv.textContent = "올바른 휴대폰 번호 형식이 아닙니다. (숫자, 하이픈만 허용)";
+        errMsgDiv.textContent = "숫자와 하이픈만 입력해 주세요.";
         errMsgDiv.style.display = 'block';
+        successMsgDiv.style.display = 'none';
         return;
       }
 
-      const alreadyExists = viewState.recipients.some(r => r.phone === phone);
-      if (viewState.dedupe && alreadyExists) {
-        viewState.directAddModalOpen = false;
-        renderDirectAddModal();
+      const normalizedPhone = phone.replace(/-/g, '');
+      if (normalizedPhone.length < 9 || normalizedPhone.length > 11) {
+        errMsgDiv.textContent = "올바른 전화번호를 입력해 주세요.";
+        errMsgDiv.style.display = 'block';
+        successMsgDiv.style.display = 'none';
+        return;
+      }
+
+      const alreadyExists = viewState.recipients.some(r => {
+        const normR = r.phone.replace(/-/g, '');
+        return normR === normalizedPhone;
+      });
+      if (alreadyExists) {
+        errMsgDiv.textContent = "이미 추가된 번호입니다.";
+        errMsgDiv.style.display = 'block';
+        successMsgDiv.style.display = 'none';
         return;
       }
 
@@ -2862,9 +2897,19 @@ export function renderMessageSend(container) {
         key: phone + "|manual"
       });
 
-      viewState.directAddModalOpen = false;
-      renderDirectAddModal();
+      // Clear values and reset error display
+      nameInp.value = "";
+      phoneInp.value = "";
+      errMsgDiv.style.display = 'none';
 
+      // Show success feedback
+      successMsgDiv.textContent = "추가되었습니다.";
+      successMsgDiv.style.display = 'block';
+
+      // Focus back to phone field
+      phoneInp.focus();
+
+      // Render updated panels
       renderRecipientList();
       renderComposePanel();
       renderSendBar();
@@ -2967,7 +3012,7 @@ export function renderMessageSend(container) {
 
       const lines = text.split('\n');
       const next = [...viewState.recipients];
-      const exist = new Set(viewState.recipients.map(r => r.phone));
+      const exist = new Set(viewState.recipients.map(r => r.phone.replace(/[^0-9]/g, '')));
       let parseErrorCount = 0;
 
       lines.forEach((line) => {
@@ -2990,11 +3035,12 @@ export function renderMessageSend(container) {
           return;
         }
 
-        if (viewState.dedupe && exist.has(phone)) {
+        const normPhone = phone.replace(/[^0-9]/g, '');
+        if (viewState.dedupe && exist.has(normPhone)) {
           return;
         }
 
-        exist.add(phone);
+        exist.add(normPhone);
         next.push({
           name,
           phone,
@@ -3078,7 +3124,7 @@ export function renderMessageSend(container) {
                 <span style="font-weight: 800; color: var(--text-main);">${r.name}</span>
                 <span style="font-size: 11px; color: var(--text-muted); font-weight: 700; background: #e2e8f0; padding: 1px 6px; border-radius: 4px;">${r.role || '보호자'}</span>
               </div>
-              <div style="font-weight: 700; color: var(--text-main); font-family: monospace;">${r.phone}</div>
+              <div style="font-weight: 700; color: var(--text-main); font-family: monospace;">${formatPhoneDisplay(r.phone)}</div>
             </div>
           `).join('')}
 
@@ -3091,7 +3137,7 @@ export function renderMessageSend(container) {
                   <span style="font-size: 11px; color: #b91c1c; font-weight: 700; background: #fee2e2; padding: 1px 6px; border-radius: 4px;">${r.role || '보호자'}</span>
                   <span style="font-size: 11px; color: #fff; background: #ef4444; padding: 1px 6px; border-radius: 4px; font-weight: 800;">${r.reason}</span>
                 </div>
-                <div style="font-weight: 700; color: #991b1b; font-family: monospace;">${r.phone || '번호 없음'}</div>
+                <div style="font-weight: 700; color: #991b1b; font-family: monospace;">${r.phone ? formatPhoneDisplay(r.phone) : '번호 없음'}</div>
               </div>
             `).join('')}
           ` : ''}
