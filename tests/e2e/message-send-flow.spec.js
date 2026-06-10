@@ -694,25 +694,46 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     expect(lastLog.previewSamples[1].recipientName).toBe('홍길동');
     expect(lastLog.previewSamples[1].body).toBe(`반갑습니다. 홍길동님, 여기는 ${academyName}입니다. 문의: ${senderNumber}`);
 
-    // 9. Verify Recent Tab card toggle button
+    // 9. Verify Recent Tab card delete button and no original toggle button
     const vaultPanel = page.locator('#messageVaultPanel');
-    const toggleOriginalBtn = vaultPanel.locator('.btn-toggle-original').first();
-    await expect(toggleOriginalBtn).toBeVisible();
-    await expect(toggleOriginalBtn).toContainText('원문 보기');
     
-    // Replaced body should be shown by default
-    await expect(vaultPanel.locator('.message-body-container').first()).toContainText(`반갑습니다. ${studentName}님, 여기는 ${academyName}입니다.`);
-    await expect(vaultPanel.locator('.message-body-container').first()).not.toContainText('#{이름}');
+    // Ensure "원문 보기" is not visible
+    const toggleOriginalBtn = vaultPanel.locator('.btn-toggle-original');
+    await expect(toggleOriginalBtn).toBeHidden();
 
-    // Click toggle button to show original
-    await toggleOriginalBtn.click();
-    await expect(toggleOriginalBtn).toContainText('치환본 보기');
-    await expect(vaultPanel.locator('.message-body-container').first()).toContainText('반갑습니다. #{이름}님, 여기는 #{학원명}입니다.');
+    // Ensure "삭제" button is visible
+    const deleteLogBtn = vaultPanel.locator('.btn-delete-log').first();
+    await expect(deleteLogBtn).toBeVisible();
+    await expect(deleteLogBtn).toContainText('삭제');
 
-    // Click again to toggle back to replaced
-    await toggleOriginalBtn.click();
-    await expect(toggleOriginalBtn).toContainText('원문 보기');
-    await expect(vaultPanel.locator('.message-body-container').first()).toContainText(`반갑습니다. ${studentName}님, 여기는 ${academyName}입니다.`);
+    // Store state lengths before deletion
+    const logsBeforeDel = await page.evaluate(() => window.stateStore.getOutboundMessageLogs().length);
+    const messagesBeforeDel = await page.evaluate(() => window.stateStore.db.messages.length);
+
+    // Click Delete -> verify confirm dialog
+    let delConfirmTriggered = false;
+    let delDialogText = '';
+    const delDialogHandler = async (dialog) => {
+      delConfirmTriggered = true;
+      delDialogText = dialog.message();
+      await dialog.accept();
+    };
+    page.once('dialog', delDialogHandler);
+    await deleteLogBtn.click();
+
+    expect(delConfirmTriggered).toBe(true);
+    expect(delDialogText).toContain('발송이력을 삭제할까요?');
+
+    // Verify recent log is removed from UI
+    await expect(vaultPanel.locator('.message-body-container')).toBeHidden();
+
+    // Verify logs count decreased in DB
+    const logsAfterDel = await page.evaluate(() => window.stateStore.getOutboundMessageLogs().length);
+    expect(logsAfterDel).toBe(logsBeforeDel - 1);
+
+    // Verify messages count in DB is untouched
+    const messagesAfterDel = await page.evaluate(() => window.stateStore.db.messages.length);
+    expect(messagesAfterDel).toBe(messagesBeforeDel);
   });
 
   test('should validate recipients, show correct statistics, exclude invalid items, and block sending if sendable count is 0 (Phase 11E)', async ({ page }) => {

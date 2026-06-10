@@ -1782,7 +1782,7 @@ export function renderMajorSchedule(container) {
     drawerFooter.innerHTML = `
       <button id="btn-student-memo" class="btn primary-action">메모</button>
       <button id="btn-student-lesson" class="btn">레슨편성</button>
-      <button id="btn-student-message" class="btn">메세지</button>
+      <button id="btn-student-message" class="btn">메시지</button>
       <button id="btn-student-close" class="btn" style="min-width: 60px;">닫기</button>
     `;
 

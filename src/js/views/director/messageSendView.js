@@ -206,7 +206,6 @@ const viewState = {
   recipientDetailModalOpen: false,
   recipientDetailLogId: null,
   expandedCardIds: new Set(),
-  showOriginalCardIds: new Set(),
   previewRecipientIndex: 0
 };
 
@@ -625,7 +624,7 @@ export function renderMessageSend(container) {
   // Render Header Actions
   const syncTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
   syncTimeContainer.innerHTML = `
-    <div class="major-schedule-clock" id="major-schedule-last-sync">마지막 동기화 ${syncTime}</div>
+    <div class="major-schedule-clock" id="message-send-last-sync">마지막 동기화 ${syncTime}</div>
     <button class="btn btn-primary" id="message-send-refresh-btn">새로고침</button>
   `;
 
@@ -1750,7 +1749,6 @@ export function renderMessageSend(container) {
         </div>
       ` : paginatedData.map(item => {
         const isRecent = viewState.vaultActiveTab === "recent";
-        const showOriginal = viewState.showOriginalCardIds.has(item.id);
         let kindLabel = item.kind || "";
         let dateLabel = item.sentAt || "";
         let typeBadge = "";
@@ -1762,13 +1760,11 @@ export function renderMessageSend(container) {
 
         if (isRecent) {
           kindLabel = item.method === "ALIMTALK" ? "알림톡" : item.method;
-          dateLabel = item.sendType === "scheduled" 
-            ? "예약: " + formatDate(item.scheduledAt) 
-            : formatDate(item.createdAt);
+          dateLabel = formatDate(item.createdAt);
 
-          const typeColor = item.sendType === "scheduled" ? "#d97706" : "#2563eb";
-          const typeBg = item.sendType === "scheduled" ? "#fef3dd" : "#eff6ff";
-          typeBadge = `<span style="font-size: 9px; font-weight: 800; color: ${typeColor}; background: ${typeBg}; padding: 2px 6px; border-radius: 6px;">${item.sendType === 'scheduled' ? '예약발송' : '즉시발송'}</span>`;
+          const typeColor = "#2563eb";
+          const typeBg = "#eff6ff";
+          typeBadge = `<span style="font-size: 9px; font-weight: 800; color: ${typeColor}; background: ${typeBg}; padding: 2px 6px; border-radius: 6px;">즉시발송</span>`;
 
           if (item.recipientCount === 1) {
             const name = item.recipients && item.recipients[0] ? item.recipients[0].name : "수신자";
@@ -1780,8 +1776,8 @@ export function renderMessageSend(container) {
             ">단체</button>`;
           }
 
-          // If we have previewSamples and we are not showing original, use the first sample
-          if (!showOriginal && item.previewSamples && item.previewSamples.length > 0) {
+          // If we have previewSamples, use the first sample
+          if (item.previewSamples && item.previewSamples.length > 0) {
             cardTitle = item.previewSamples[0].title || "";
             cardBody = item.previewSamples[0].body || "";
           }
@@ -1840,13 +1836,11 @@ export function renderMessageSend(container) {
                   display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 11.5px; font-weight: 700;
                   color: #fff; background: var(--primary); border: none; border-radius: 7px; cursor: pointer; font-family: inherit; margin-bottom: 0;
                 ">${renderIcon('check', 11, '#fff', 2.5)} 적용</button>
-                ${isRecent && item.previewSamples && item.previewSamples.length > 0 ? `
-                  <button class="btn-toggle-original" data-id="${item.id}" style="
+                ${isRecent ? `
+                  <button class="btn-delete-log" data-id="${item.id}" style="
                     display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 11.5px; font-weight: 700;
-                    color: var(--slate); background: #fff; border: 1px solid var(--border-color); border-radius: 7px; cursor: pointer; font-family: inherit; margin-bottom: 0;
-                  ">
-                    ${showOriginal ? '치환본 보기' : '원문 보기'}
-                  </button>
+                    color: var(--danger, #dc2626); background: #fff; border: 1px solid #f6c6c6; border-radius: 7px; cursor: pointer; font-family: inherit; margin-bottom: 0;
+                  ">${renderIcon('close', 11, 'var(--danger, #dc2626)')} 삭제</button>
                 ` : ''}
                 ${viewState.vaultActiveTab === "saved" ? `
                   <button class="btn-edit-template" data-id="${item.id}" style="
@@ -2033,9 +2027,8 @@ export function renderMessageSend(container) {
           if (!item) return;
 
           const isRecent = viewState.vaultActiveTab === "recent";
-          const showOriginal = viewState.showOriginalCardIds.has(item.id);
           let cardBody = item.body || "";
-          if (isRecent && !showOriginal && item.previewSamples && item.previewSamples.length > 0) {
+          if (isRecent && item.previewSamples && item.previewSamples.length > 0) {
             cardBody = item.previewSamples[0].body || "";
           }
 
@@ -2063,16 +2056,27 @@ export function renderMessageSend(container) {
         });
       });
 
-      block.querySelectorAll('.btn-toggle-original').forEach(btn => {
+      block.querySelectorAll('.btn-delete-log').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           const id = btn.dataset.id;
-          if (viewState.showOriginalCardIds.has(id)) {
-            viewState.showOriginalCardIds.delete(id);
-          } else {
-            viewState.showOriginalCardIds.add(id);
+          const item = listData.find(d => d.id === id);
+          if (!item) return;
+
+          const ok = confirm("발송이력을 삭제할까요?");
+          if (ok) {
+            stateStore.deleteOutboundMessageLog(id);
+            const logs = stateStore.getOutboundMessageLogs().filter(log => log.sendType !== "scheduled");
+            const itemsPerPage = 3;
+            const totalPages = Math.ceil(logs.length / itemsPerPage);
+            const currentPage = viewState.vaultPages["recent"] || 0;
+            if (currentPage >= totalPages && totalPages > 0) {
+              viewState.vaultPages["recent"] = totalPages - 1;
+            } else if (totalPages === 0) {
+              viewState.vaultPages["recent"] = 0;
+            }
+            renderMessageVault(true);
           }
-          renderMessageVault(false);
         });
       });
 
@@ -3067,7 +3071,7 @@ export function renderMessageSend(container) {
         </div>
 
         <div style="padding: 20px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; flex: 1;">
-          <div style="font-size: 12.5px; font-weight: 800; color: #166534; margin-bottom: 2px;">${log.sendType === "scheduled" ? "발송 예정 대상" : "발송 성공 대상"} (${log.recipientCount}명)</div>
+          <div style="font-size: 12.5px; font-weight: 800; color: #166534; margin-bottom: 2px;">발송 대상 (${log.recipientCount}명)</div>
           ${log.recipients.map(r => `
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px;">
               <div style="display: flex; align-items: center; gap: 8px;">

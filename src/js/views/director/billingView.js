@@ -499,7 +499,7 @@ export function renderPayments(container) {
 
         const modalHtml = `
             <div class="modal-header">
-                <h3 class="modal-title">메세지 받을 사람 선택</h3>
+                <h3 class="modal-title">메시지 받을 사람 선택</h3>
                 <button class="modal-close" data-close-modal>&times;</button>
             </div>
             <div style="margin-bottom: 1.5rem; text-align: center;">
@@ -565,7 +565,7 @@ export function renderPayments(container) {
                 <button class="modal-close" data-close-modal>&times;</button>
             </div>
             <div style="text-align: center; margin: 1.5rem 0; font-size: 1.05rem; line-height: 1.5;">
-                <p style="margin-bottom: 12px; font-weight: 500;">결제 요청 메세지를 보내시겠습니까?</p>
+                <p style="margin-bottom: 12px; font-weight: 500;">결제 요청 메시지를 보내시겠습니까?</p>
                 <div style="background: rgba(0,0,0,0.02); border: 1px solid var(--border-color); padding: 12px; border-radius: var(--radius-sm); font-size: 0.88rem; text-align: left; display: inline-block; width: 100%; box-sizing: border-box;">
                     <div>• <strong>수신 구분:</strong> ${receiverType === 'self' ? '본인' : '학부모'}</div>
                     <div>• <strong>연락처:</strong> ${formatPhoneNumber(receiverPhone)}</div>
