@@ -324,6 +324,86 @@ const replaceMacros = (text, recipient) => {
   return result;
 };
 
+const isRecipientOptedOut = (recipient) => {
+  const studentId = recipient.no || recipient.studentId;
+  if (studentId) {
+    const student = stateStore.getStudent(studentId);
+    if (student) {
+      return !!(student.optOut || student.smsOptOut || student.messageOptOut || student.marketingOptOut);
+    }
+  }
+  return !!(recipient.optOut || recipient.smsOptOut || recipient.messageOptOut || recipient.marketingOptOut);
+};
+
+const validateRecipients = (recipients) => {
+  const sendableList = [];
+  const excludedList = [];
+  const seenPhones = new Set();
+
+  recipients.forEach(r => {
+    const phone = (r.phone || '').trim();
+    const name = (r.name || '').trim() || "(이름 없음)";
+
+    // 1. 번호 없음
+    if (!phone) {
+      excludedList.push({
+        ...r,
+        name,
+        phone: "",
+        reason: "번호 없음"
+      });
+      return;
+    }
+
+    // 번호 정규화
+    const normalizedPhone = phone.replace(/[^0-9]/g, '');
+
+    // 2. 번호 오류 (숫자/하이픈 이외의 문자가 있거나 정규화된 숫자가 9~11자리가 아닌 경우)
+    const phoneRegex = /^[0-9-]+$/;
+    if (!phoneRegex.test(phone) || normalizedPhone.length < 9 || normalizedPhone.length > 11) {
+      excludedList.push({
+        ...r,
+        name,
+        phone,
+        reason: "번호 오류"
+      });
+      return;
+    }
+
+    // 3. 중복 제외 (normalizedPhone 기준 비교)
+    if (seenPhones.has(normalizedPhone)) {
+      excludedList.push({
+        ...r,
+        name,
+        phone,
+        reason: "중복 제외"
+      });
+      return;
+    }
+    seenPhones.add(normalizedPhone);
+
+    // 4. 수신거부
+    if (isRecipientOptedOut(r)) {
+      excludedList.push({
+        ...r,
+        name,
+        phone,
+        reason: "수신거부"
+      });
+      return;
+    }
+
+    sendableList.push({
+      ...r,
+      name,
+      phone
+    });
+  });
+
+  return { sendableList, excludedList };
+};
+
+
 // --- View rendering entry point ----------------------------------------------
 export function renderMessageSend(container) {
   // Set up common header items
@@ -1562,8 +1642,19 @@ export function renderMessageSend(container) {
 
     block.querySelector('#btnReviewSend').addEventListener('click', () => {
       viewState.focusOpen = true;
+      viewState.schedule.on = false;
       renderFocusConfirm();
     });
+
+    const reserveSendBtn = block.querySelector('#btnReserveSend');
+    if (reserveSendBtn) {
+      reserveSendBtn.addEventListener('click', () => {
+        viewState.focusOpen = true;
+        viewState.schedule.on = true;
+        renderFocusConfirm();
+      });
+    }
+
   };
 
   // 6. Column 3: Message Vault (Templates / History)
@@ -1668,10 +1759,10 @@ export function renderMessageSend(container) {
         const typeBg = kindLabel === 'SMS' ? 'var(--sky-light)' : kindLabel === 'LMS' ? 'var(--violet-light)' : kindLabel === 'MMS' ? 'var(--rose-light)' : kindLabel === 'PUSH' ? 'var(--success-light)' : 'var(--primary-light)';
         
         const isExpanded = viewState.expandedCardIds.has(item.id);
-        const showToggle = cardBody.length > 70;
+        const showToggle = cardBody.length > 150;
         let displayedBody = cardBody;
         if (showToggle && !isExpanded) {
-          displayedBody = cardBody.slice(0, 70) + "...";
+          displayedBody = cardBody.slice(0, 150) + "...";
         }
 
         return `
@@ -1681,14 +1772,14 @@ export function renderMessageSend(container) {
               ${recipientLabel}
               <span style="font-size: 9px; font-weight: 800; color: ${typeColor}; background: ${typeBg}; padding: 2px 6px; border-radius: 6px; margin-left: 2px;">${kindLabel}</span>
               ${item.ad ? `<span style="font-size: 9px; font-weight: 800; color: #b45309; background: #fef3dd; padding: 2px 6px; border-radius: 6px;">광고</span>` : ''}
-              ${isRecent ? `<span style="margin-left: auto; font-size: 10.5px; color: var(--success); font-weight: 800;">${item.recipientCount || item.count || 0}/${item.recipientCount || item.count || 0}명 발송</span>` : ''}
+              ${isRecent ? `<span style="margin-left: auto; font-size: 10.5px; color: var(--success); font-weight: 800;">${item.recipientCount !== undefined ? item.recipientCount : (item.count || 0)}/${item.originalRecipientCount !== undefined ? item.originalRecipientCount : (item.recipientCount || item.count || 0)}명 발송</span>` : ''}
             </div>
             
             <!-- Smartphone Message Bubble Style -->
             <div class="message-body-container" data-id="${item.id}" style="
               background: #f1f5f9; border-radius: 5px 12px 12px 12px; padding: 9px 12px; font-size: 11.5px;
               line-height: 1.5; color: #334155; position: relative; border-left: 3px solid ${typeColor};
-              cursor: ${showToggle ? 'pointer' : 'default'};
+              cursor: ${showToggle ? 'pointer' : 'default'}; min-height: 54px;
             ">
               ${(viewState.vaultActiveTab !== "saved" && cardTitle) ? `<div style="font-weight: 800; font-size: 11.5px; color: #000; margin-bottom: 4px;">${cardTitle}</div>` : ''}
               <div style="white-space: pre-wrap;">${displayedBody}</div>
@@ -1905,7 +1996,7 @@ export function renderMessageSend(container) {
             cardBody = item.previewSamples[0].body || "";
           }
 
-          if (cardBody.length <= 70) return;
+          if (cardBody.length <= 150) return;
           
           if (viewState.expandedCardIds.has(id)) {
             viewState.expandedCardIds.delete(id);
@@ -1977,13 +2068,13 @@ export function renderMessageSend(container) {
     hookVaultPartialListeners();
   };
 
-  const processMessageSend = (isScheduled) => {
-    if (viewState.recipients.length === 0) {
-      alert("수신자가 없습니다.");
+  const processMessageSend = (isScheduled, sendableList, excludedList) => {
+    if (sendableList.length === 0) {
+      alert("발송 가능 대상이 0명입니다.");
       return;
     }
     if (!viewState.body.trim() && !viewState.image) {
-      alert("메시지 제목이나 본문을 입력해 주세요.");
+      alert("메시지 본문을 입력해 주세요.");
       return;
     }
 
@@ -1991,7 +2082,7 @@ export function renderMessageSend(container) {
     const status = isScheduled ? "scheduled_stub" : "stub_saved";
     const method = viewState.method === "알림톡" ? "ALIMTALK" : viewState.method === "PUSH" ? "PUSH" : "SMS";
 
-    const previewSamples = viewState.recipients.slice(0, 3).map(r => ({
+    const previewSamples = sendableList.slice(0, 3).map(r => ({
       recipientName: r.name,
       title: replaceMacros(viewState.title || "", { name: r.name, studentId: r.no }),
       body: replaceMacros(viewState.body || "", { name: r.name, studentId: r.no })
@@ -2004,14 +2095,23 @@ export function renderMessageSend(container) {
       senderNumber: viewState.senderNumber || "0212345678",
       title: viewState.title || "",
       body: viewState.body || "",
-      recipients: viewState.recipients.map(r => ({
+      recipients: sendableList.map(r => ({
         name: r.name,
         phone: r.phone,
         role: r.role || "직접입력",
         studentId: r.no || null,
         source: r.source || "student"
       })),
-      recipientCount: viewState.recipients.length,
+      excludedRecipients: excludedList.map(r => ({
+        name: r.name,
+        phone: r.phone,
+        role: r.role || "직접입력",
+        studentId: r.no || null,
+        source: r.source || "student",
+        reason: r.reason
+      })),
+      recipientCount: sendableList.length,
+      originalRecipientCount: viewState.recipients.length,
       scheduledAt: isScheduled ? `${viewState.schedule.date}T${viewState.schedule.time}:00+09:00` : null,
       imageName: viewState.image,
       previewSamples
@@ -2025,12 +2125,7 @@ export function renderMessageSend(container) {
       alert("실제 발송은 아직 연동되지 않았고, 발송이력만 저장되었습니다.");
     }
 
-    viewState.recipients = [];
-    viewState.selectedStudentIds.clear();
-    viewState.title = "";
-    viewState.body = "";
-    viewState.image = null;
-    viewState.schedule.on = false;
+    // 작성 내용과 수신자 목록은 유지합니다.
     viewState.focusOpen = false;
     
     // Auto toggle to recent tab to show the new item immediately
@@ -2039,6 +2134,7 @@ export function renderMessageSend(container) {
 
     render();
   };
+
 
   // 7. Sticky bottom SendBar
   const renderSendBar = () => {
@@ -2107,12 +2203,17 @@ export function renderMessageSend(container) {
     `;
 
     block.querySelector('#btnSendBarDirect').addEventListener('click', () => {
-      processMessageSend(false);
+      viewState.focusOpen = true;
+      viewState.schedule.on = false;
+      renderFocusConfirm();
     });
 
     block.querySelector('#btnSendBarReserve').addEventListener('click', () => {
-      processMessageSend(true);
+      viewState.focusOpen = true;
+      viewState.schedule.on = true;
+      renderFocusConfirm();
     });
+
   };
 
   // 8. Focus Review Confirm Overlay Modal
@@ -2136,94 +2237,166 @@ export function renderMessageSend(container) {
     block.style.background = 'rgba(15, 23, 42, 0.42)';
     block.style.animation = 'fadeIn 0.15s ease-out';
 
-    const excluded = viewState.recipients.filter(r => r.optOut).length;
-    const sendable = viewState.recipients.length - excluded;
+    const { sendableList, excludedList } = validateRecipients(viewState.recipients);
     const kind = viewState.method === "PUSH" ? "PUSH" : viewState.method === "알림톡" ? "알림톡" : msgKind(viewState.title, viewState.body, !!viewState.image);
-    const unitPrice = kind === "SMS" ? 20 : kind === "LMS" ? 50 : kind === "MMS" ? 200 : kind === "알림톡" ? 15 : 0;
-    const cost = unitPrice * sendable;
     const chipToneClass = kind === 'SMS' ? 'sky' : kind === 'LMS' ? 'violet' : kind === 'MMS' ? 'red' : kind === 'PUSH' ? 'green' : 'blue';
 
+    // 매크로 첫 수신자 치환 미리보기
+    const firstRecipient = sendableList[0] || viewState.recipients[0];
+    const previewBody = firstRecipient 
+      ? replaceMacros(viewState.body || "", { name: firstRecipient.name, studentId: firstRecipient.no })
+      : (viewState.body || "");
+
+    const modalTitle = viewState.schedule.on ? "예약발송 검토" : "즉시발송 검토";
+
     block.innerHTML = `
-      <!-- Close overlay clicking backdrop -->
       <div id="btnFocusCloseBackdrop" style="position: absolute; inset: 0;"></div>
       
       <div style="
         position: relative; width: 680px; max-width: 100%; background: #f8fafc; border-radius: 20px;
         box-shadow: 0 30px 80px -20px rgba(16,24,40,.3); overflow: hidden; display: flex; flex-direction: column;
-        animation: popIn 0.15s ease-out; z-index: 96;
+        animation: popIn 0.15s ease-out; z-index: 96; max-height: 90vh;
       ">
         <!-- Header -->
-          <div style="display: flex; align-items: center; gap: 10px; padding: 14px 20px; background: #fff; border-bottom: 1px solid #edf2f7;">
-            <span style="width: 28px; height: 28px; border-radius: 8px; background: var(--primary-light); display: flex; align-items: center; justify-content: center;">
-              ${renderIcon('send', 14, 'var(--primary)')}
+        <div style="display: flex; align-items: center; gap: 10px; padding: 14px 20px; background: #fff; border-bottom: 1px solid #edf2f7;">
+          <span style="width: 28px; height: 28px; border-radius: 8px; background: var(--primary-light); display: flex; align-items: center; justify-content: center;">
+            ${renderIcon('send', 14, 'var(--primary)')}
+          </span>
+          <h3 style="margin: 0; font-size: 15px; font-weight: 800; color: var(--text-main);">${modalTitle}</h3>
+          <button id="btnFocusClose" style="
+            margin-left: auto; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border-color);
+            background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
+          ">${renderIcon('close', 14, '#64748b')}</button>
+        </div>
+
+        <!-- Body -->
+        <div style="padding: 20px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; flex: 1;">
+          <!-- 통계 카드 3종 -->
+          <div style="display: flex; gap: 10px;">
+            <div style="flex: 1; padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; text-align: center;">
+              <div style="font-size: 11px; color: var(--text-muted); font-weight: 700; margin-bottom: 2px;">전체 대상</div>
+              <div style="font-size: 18px; font-weight: 800; color: var(--slate);">${viewState.recipients.length}명</div>
+            </div>
+            <div style="flex: 1; padding: 10px 12px; background: #fff; border: 1px solid #c6f6d5; border-radius: 10px; text-align: center;">
+              <div style="font-size: 11px; color: #15803d; font-weight: 700; margin-bottom: 2px;">발송 가능</div>
+              <div style="font-size: 18px; font-weight: 800; color: #166534;" id="focusSendableCount">${sendableList.length}명</div>
+            </div>
+            <div style="flex: 1; padding: 10px 12px; background: #fff; border: 1px solid #fed7d7; border-radius: 10px; text-align: center;">
+              <div style="font-size: 11px; color: #b91c1c; font-weight: 700; margin-bottom: 2px;">제외 대상</div>
+              <div style="font-size: 18px; font-weight: 800; color: #991b1b;">${excludedList.length}명</div>
+            </div>
+          </div>
+
+          <!-- 예약 일시 및 발송 정보 -->
+          <div style="padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 12.5px; display: flex; flex-direction: column; gap: 4px;">
+            <div><b>발송 방식:</b> <span class="message-send-chip tone-${chipToneClass}">${kind}</span> | <b>발신 번호:</b> ${viewState.senderNumber}</div>
+            ${viewState.schedule.on ? `
+              <div style="color: var(--warning); font-weight: 700; display: flex; align-items: center; gap: 4px;">
+                ${renderIcon('clock', 12, 'var(--warning)')} 예약 발송 일시: ${viewState.schedule.date} ${viewState.schedule.time}
+              </div>
+            ` : `<div style="color: var(--primary); font-weight: 700;">즉시 발송 (가상 실행)</div>`}
+          </div>
+
+          <!-- 미리보기 패널 (원문 & 첫번째 치환본) -->
+          <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 250px; background: #fff; border: 1px solid #edf2f7; border-radius: 12px; padding: 12px;">
+              <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">메시지 원문 (매크로 미치환)</div>
+              <div style="font-size: 12px; color: #334155; white-space: pre-wrap; background: #f8fafc; border: 1px solid #e2e8f0; padding: 8px; border-radius: 6px; min-height: 100px;">${viewState.title ? `<b>[${viewState.title}]</b>\n` : ''}${viewState.body}</div>
+            </div>
+            <div style="flex: 1; min-width: 250px; background: #fff; border: 1px solid #edf2f7; border-radius: 12px; padding: 12px;">
+              <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">수신화면 미리보기 (${firstRecipient ? `${firstRecipient.name} 기준` : '대상 없음'})</div>
+              <div style="background: #eef2f6; border-radius: 10px; padding: 10px; border: 1px solid #e2e8f0; min-height: 100px;">
+                ${viewState.image ? `<div style="height: 50px; background: #cbd5e1; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #475569; margin-bottom: 6px;">[이미지 첨부됨]</div>` : ''}
+                ${viewState.title ? `<div style="font-weight: 700; font-size: 12px; color: #000; margin-bottom: 4px;">${replaceMacros(viewState.title, firstRecipient)}</div>` : ''}
+                <div style="font-size: 12px; color: #334155; line-height: 1.45; white-space: pre-wrap;">${previewBody}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 발송 가능 목록 테이블 -->
+          <div style="background: #fff; border: 1px solid #edf2f7; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 6px;">
+            <div style="font-size: 11.5px; font-weight: 800; color: #166534;">발송 가능 대상 명단 (${sendableList.length}명)</div>
+            <div style="max-height: 120px; overflow-y: auto; border: 1px solid #edf2f7; border-radius: 6px;">
+              ${sendableList.length === 0 ? `
+                <div style="padding: 12px; font-size: 12px; color: var(--text-muted); text-align: center;">발송 가능 대상이 없습니다.</div>
+              ` : `
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
+                  <thead style="background: #f8fafc; border-bottom: 1px solid #edf2f7; font-weight: 800;">
+                    <tr>
+                      <th style="padding: 6px 8px;">이름</th>
+                      <th style="padding: 6px 8px;">연락처</th>
+                      <th style="padding: 6px 8px;">역할</th>
+                      <th style="padding: 6px 8px;">경로</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${sendableList.map(r => `
+                      <tr style="border-bottom: 1px solid #f1f5f9;">
+                        <td style="padding: 6px 8px; font-weight: 700;">${r.name}</td>
+                        <td style="padding: 6px 8px; font-family: monospace;">${r.phone}</td>
+                        <td style="padding: 6px 8px; color: var(--text-muted);">${r.role || '보호자'}</td>
+                        <td style="padding: 6px 8px; color: var(--text-muted);">${r.source === 'student' ? '원생연동' : r.source === 'excel' ? '엑셀' : '직접입력'}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              `}
+            </div>
+          </div>
+
+          <!-- 제외 대상 목록 테이블 -->
+          <div style="background: #fff; border: 1px solid #edf2f7; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 6px;">
+            <div style="font-size: 11.5px; font-weight: 800; color: #991b1b;">제외 대상 명단 (${excludedList.length}명)</div>
+            <div style="max-height: 120px; overflow-y: auto; border: 1px solid #edf2f7; border-radius: 6px;">
+              ${excludedList.length === 0 ? `
+                <div style="padding: 12px; font-size: 12px; color: var(--text-muted); text-align: center;">제외 대상 없음</div>
+              ` : `
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
+                  <thead style="background: #fdf2f2; border-bottom: 1px solid #fecaca; font-weight: 800;">
+                    <tr>
+                      <th style="padding: 6px 8px; color: #991b1b;">이름</th>
+                      <th style="padding: 6px 8px; color: #991b1b;">연락처</th>
+                      <th style="padding: 6px 8px; color: #991b1b;">제외 사유</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${excludedList.map(r => `
+                      <tr style="border-bottom: 1px solid #fecaca; background: #fff8f8;">
+                        <td style="padding: 6px 8px; font-weight: 700; color: #991b1b;">${r.name}</td>
+                        <td style="padding: 6px 8px; font-family: monospace; color: #991b1b;">${r.phone || '번호 없음'}</td>
+                        <td style="padding: 6px 8px;"><span style="color: #fff; background: #ef4444; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 800;">${r.reason}</span></td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              `}
+            </div>
+          </div>
+
+          <!-- 법적의무 안내 배너 -->
+          <div style="padding: 10px 12px; background: #fff8eb; border: 1px solid #fce3b5; border-radius: 10px; display: flex; gap: 8px; align-items: flex-start;">
+            <span style="margin-top: 2px;">${renderIcon('alert', 14, 'var(--warning)', 2.2)}</span>
+            <span style="font-size: 11.5px; color: #92610f; line-height: 1.45;">
+              ${viewState.schedule.on
+                ? "현재 실제 예약발송 기능은 아직 연동되지 않았으며, 예약발송 버튼을 누르면 예약이력만 저장됩니다."
+                : "현재 실제 발송 기능은 아직 연동되지 않았으며, 발송 버튼을 누르면 발송이력만 저장됩니다."}
             </span>
-            <h3 style="margin: 0; font-size: 15px; font-weight: 800; color: var(--text-main);">발송 검토 (가상 스텁)</h3>
-            <button id="btnFocusClose" style="
-              margin-left: auto; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border-color);
-              background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
-            ">${renderIcon('close', 14, '#64748b')}</button>
-          </div>
-
-          <!-- Body -->
-          <div style="padding: 20px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; max-height: 70vh;">
-            <!-- Metrics Summary Cards -->
-            <div style="display: flex; gap: 10px;">
-              <div style="flex: 1; padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;">
-                <div style="font-size: 11px; color: var(--text-muted); font-weight: 700; margin-bottom: 2px;">수신 대상</div>
-                <div style="font-size: 16px; font-weight: 800; color: var(--text-main);" id="focusSendableCount">${sendable}명</div>
-                <div style="font-size: 9.5px; color: var(--text-muted-light); margin-top: 2px;">거부 ${excluded}명 제외</div>
-              </div>
-              <div style="flex: 1; padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;">
-                <div style="font-size: 11px; color: var(--text-muted); font-weight: 700; margin-bottom: 2px;">발송 방식</div>
-                <div style="font-size: 16px; font-weight: 800; color: ${kind === 'SMS' ? 'var(--sky)' : kind === 'LMS' ? 'var(--violet)' : kind === 'MMS' ? 'var(--rose)' : kind === 'PUSH' ? 'var(--success)' : 'var(--primary)'};">${kind}</div>
-                <div style="font-size: 9.5px; color: var(--text-muted-light); margin-top: 2px;">발신: ${viewState.senderNumber}</div>
-              </div>
-            </div>
-
-            <!-- Schedule Date/Time -->
-            <div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: ${viewState.schedule.on ? '#fff8eb' : '#f1f5f9'}; border: 1px solid ${viewState.schedule.on ? '#fadfa9' : '#e2e8f0'}; border-radius: 10px; font-size: 12.5px;">
-              ${renderIcon(viewState.schedule.on ? 'clock' : 'send', 14, viewState.schedule.on ? 'var(--warning)' : 'var(--slate)')}
-              <span style="font-weight: 700; color: var(--text-main);">
-                ${viewState.schedule.on ? `예약 발송 예정: ${viewState.schedule.date} ${viewState.schedule.time}` : '즉시 발송 (가상 실행)'}
-              </span>
-            </div>
-
-            <!-- Scoped Message bubble preview -->
-            <div style="background: #fff; border: 1px solid #edf2f7; border-radius: 12px; padding: 12px;">
-              <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 8px;">전송 내용 미리보기</div>
-              <div style="background: #eef2f6; border-radius: 10px; padding: 10px; max-width: 280px; margin: 0 auto; border: 1px solid #e2e8f0;">
-                <div style="font-size: 10px; color: var(--text-muted); border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
-                  <span>수신화면 미리보기</span>
-                  <span class="message-send-chip tone-${chipToneClass}" style="padding: 0 4px; font-size: 8px; border-radius: 3px;">${kind}</span>
-                </div>
-                ${viewState.image ? `<div style="height: 60px; background: #cbd5e1; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #475569; margin-bottom: 6px;">[이미지 첨부: ${viewState.image}]</div>` : ''}
-                ${viewState.title ? `<div style="font-weight: 700; font-size: 12px; color: #000; margin-bottom: 4px;">${viewState.title}</div>` : ''}
-                <div style="font-size: 12px; color: #334155; line-height: 1.45; white-space: pre-wrap;">${viewState.body}</div>
-              </div>
-            </div>
-            
-            <!-- Compliance check stub warning -->
-            <div style="padding: 10px 12px; background: #fff8eb; border: 1px solid #fce3b5; border-radius: 10px; display: flex; gap: 8px; align-items: flex-start;">
-              <span style="margin-top: 2px;">${renderIcon('alert', 14, 'var(--warning)', 2.2)}</span>
-              <span style="font-size: 11.5px; color: #92610f; line-height: 1.45;">
-                <b>법적 의무 점검 (가상)</b>: 실제 발송 기능이 억제되어 있으므로, 수신거부 필터링 및 광고성 필수 문구 점검 프로세스가 자동으로 보류되었습니다.
-              </span>
-            </div>
-          </div>
-
-          <!-- Footer -->
-          <div style="display: flex; gap: 10px; padding: 12px 20px; background: #fff; border-top: 1px solid #edf2f7; justify-content: flex-end;">
-            <button id="btnFocusCancel" style="
-              display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; font-size: 13.5px; font-weight: 700;
-              color: var(--slate); background: #f1f5f9; border: none; border-radius: 10px; cursor: pointer; font-family: inherit; margin-bottom: 0;
-            ">취소</button>
-            <button id="btnFocusSendConfirm" style="
-              display: inline-flex; align-items: center; gap: 6px; padding: 10px 24px; font-size: 13.5px; font-weight: 800;
-              color: #fff; background: var(--primary); border: none; border-radius: 10px; cursor: pointer;
-              box-shadow: 0 4px 12px rgba(37,99,235,.2); font-family: inherit; margin-bottom: 0;
-            ">${renderIcon('check', 14, '#fff', 2.5)} 전송하기</button>
           </div>
         </div>
+
+        <!-- Footer -->
+        <div style="display: flex; gap: 10px; padding: 12px 20px; background: #fff; border-top: 1px solid #edf2f7; justify-content: flex-end;">
+          <button id="btnFocusCancel" style="
+            display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; font-size: 13.5px; font-weight: 700;
+            color: var(--slate); background: #f1f5f9; border: none; border-radius: 10px; cursor: pointer; font-family: inherit; margin-bottom: 0;
+          ">취소</button>
+          <button id="btnFocusSendConfirm" style="
+            display: inline-flex; align-items: center; gap: 6px; padding: 10px 24px; font-size: 13.5px; font-weight: 800;
+            color: #fff; background: var(--primary); border: none; border-radius: 10px; cursor: pointer;
+            box-shadow: 0 4px 12px rgba(37,99,235,.2); font-family: inherit; margin-bottom: 0;
+          ">${renderIcon('check', 14, '#fff', 2.5)} ${viewState.schedule.on ? '예약발송' : '발송'}</button>
+        </div>
+      </div>
     `;
 
     // Hook listeners
@@ -2237,7 +2410,7 @@ export function renderMessageSend(container) {
     block.querySelector('#btnFocusCancel').addEventListener('click', closeOverlay);
     
     block.querySelector('#btnFocusSendConfirm').addEventListener('click', () => {
-      processMessageSend(viewState.schedule.on);
+      processMessageSend(viewState.schedule.on, sendableList, excludedList);
     });
   };
 
@@ -2845,10 +3018,12 @@ export function renderMessageSend(container) {
     block.style.background = 'rgba(15, 23, 42, 0.42)';
     block.style.animation = 'fadeIn 0.15s ease-out';
 
+    const totalCount = log.originalRecipientCount !== undefined ? log.originalRecipientCount : log.recipientCount;
+
     block.innerHTML = `
       <div id="btnRecipientDetailCloseBackdrop" style="position: absolute; inset: 0;"></div>
       <div style="
-        position: relative; background: #fff; border-radius: 16px; width: 100%; max-width: 460px;
+        position: relative; background: #fff; border-radius: 16px; width: 100%; max-width: 480px;
         box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
         animation: popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); display: flex; flex-direction: column; max-height: 80vh; overflow: hidden;
       ">
@@ -2856,14 +3031,15 @@ export function renderMessageSend(container) {
           <span style="width: 28px; height: 28px; border-radius: 8px; background: var(--primary-light); display: flex; align-items: center; justify-content: center;">
             ${renderIcon('user', 14, 'var(--primary)')}
           </span>
-          <h3 style="margin: 0; font-size: 15px; font-weight: 800; color: var(--text-main);">전체 수신자 목록 (${log.recipientCount}명)</h3>
+          <h3 style="margin: 0; font-size: 15px; font-weight: 800; color: var(--text-main);">전체 수신자 목록 (${totalCount}명)</h3>
           <button id="btnRecipientDetailClose" style="
             margin-left: auto; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border-color);
             background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
           ">${renderIcon('close', 14, '#64748b')}</button>
         </div>
 
-        <div style="padding: 20px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; flex: 1;">
+        <div style="padding: 20px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; flex: 1;">
+          <div style="font-size: 12.5px; font-weight: 800; color: #166534; margin-bottom: 2px;">발송 성공 대상 (${log.recipientCount}명)</div>
           ${log.recipients.map(r => `
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px;">
               <div style="display: flex; align-items: center; gap: 8px;">
@@ -2873,6 +3049,20 @@ export function renderMessageSend(container) {
               <div style="font-weight: 700; color: var(--text-main); font-family: monospace;">${r.phone}</div>
             </div>
           `).join('')}
+
+          ${log.excludedRecipients && log.excludedRecipients.length > 0 ? `
+            <div style="font-size: 12.5px; font-weight: 800; color: #991b1b; margin-top: 14px; margin-bottom: 2px;">발송 제외 대상 (${log.excludedRecipients.length}명)</div>
+            ${log.excludedRecipients.map(r => `
+              <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #fdf2f2; border: 1px solid #fecaca; border-radius: 8px; font-size: 13px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-weight: 800; color: #991b1b;">${r.name}</span>
+                  <span style="font-size: 11px; color: #b91c1c; font-weight: 700; background: #fee2e2; padding: 1px 6px; border-radius: 4px;">${r.role || '보호자'}</span>
+                  <span style="font-size: 11px; color: #fff; background: #ef4444; padding: 1px 6px; border-radius: 4px; font-weight: 800;">${r.reason}</span>
+                </div>
+                <div style="font-weight: 700; color: #991b1b; font-family: monospace;">${r.phone || '번호 없음'}</div>
+              </div>
+            `).join('')}
+          ` : ''}
         </div>
 
         <div style="display: flex; gap: 10px; padding: 12px 20px; background: #fff; border-top: 1px solid #edf2f7; justify-content: flex-end;">
