@@ -924,5 +924,156 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
       await expect(longCardToggle).toHaveText('전체보기');
     }
   });
+
+  test('should support ad text insertion, settings mapping, alert warning, deduplication and log integration (Phase 11H)', async ({ page }) => {
+    // Navigate to Message Send view
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+
+    // 1. Verify "광고 문구 삽입" button is visible
+    const adBtn = page.locator('#btnInsertAdText');
+    await expect(adBtn).toBeVisible();
+
+    // Clear settings optOut values to trigger warning alert
+    await page.evaluate(() => {
+      const settings = window.stateStore.db.settings || {};
+      delete settings.optOutNumber;
+      delete settings.unsubscribeNumber;
+      delete settings.freeOptOutNumber;
+      delete settings.smsOptOutNumber;
+      delete settings.rejectNumber;
+      window.stateStore.saveDB();
+    });
+
+    // 2. Click button when no optOutNumber is set -> verify warning alert
+    let dialogTriggered = false;
+    let dialogText = '';
+    const alertHandler = async (dialog) => {
+      dialogTriggered = true;
+      dialogText = dialog.message();
+      await dialog.accept();
+    };
+    page.once('dialog', alertHandler);
+    await adBtn.click();
+    
+    expect(dialogTriggered).toBe(true);
+    expect(dialogText).toContain('무료수신거부 번호가 설정되어 있지 않습니다. 광고성 메시지 발송 전 수신거부 안내 번호를 설정해야 합니다.');
+
+    // Retrieve academyName dynamically to match database settings
+    const settings = await page.evaluate(() => window.stateStore.getSettings() || {});
+    const academyName = settings.academyName || settings.academy || "튜링음악학원";
+
+    // Body should contain (광고) and fallback academyName, but not opt-out
+    const composeBody = page.locator('#composeBodyInput');
+    await expect(composeBody).toContainText('(광고)');
+    await expect(composeBody).toContainText(academyName);
+    await expect(composeBody).not.toContainText('무료수신거부');
+
+    // 3. Clear body, set optOutNumber in settings, and click again
+    await composeBody.fill('특별 할인 이벤트 안내입니다.');
+    await page.evaluate(() => {
+      window.stateStore.db.settings = {
+        ...window.stateStore.db.settings,
+        optOutNumber: '080-8888-9999'
+      };
+      window.stateStore.saveDB();
+    });
+
+    await adBtn.click();
+
+    // Body should contain (광고), academyName, original content, and footer
+    await expect(composeBody).toContainText('(광고)');
+    await expect(composeBody).toContainText(academyName);
+    await expect(composeBody).toContainText('특별 할인 이벤트 안내입니다.');
+    await expect(composeBody).toContainText('무료수신거부 080-8888-9999');
+
+    // 4. Duplicate insertion block check
+    const fullTextBefore = await composeBody.inputValue();
+    await adBtn.click();
+    const fullTextAfter = await composeBody.inputValue();
+    expect(fullTextBefore).toBe(fullTextAfter); // No change
+
+    // Count occurrences
+    const adCount = (fullTextAfter.match(/\(광고\)/g) || []).length;
+    const academyCount = (fullTextAfter.match(new RegExp(academyName, 'g')) || []).length;
+    const optOutCount = (fullTextAfter.match(/무료수신거부/g) || []).length;
+    expect(adCount).toBe(1);
+    expect(academyCount).toBe(1);
+    expect(optOutCount).toBe(1);
+
+    // 5. Verify live smartphone preview updates instantly
+    const phoneFrame = page.locator('.phone-frame');
+    await expect(phoneFrame).toContainText('(광고)');
+    await expect(phoneFrame).toContainText(academyName);
+    await expect(phoneFrame).toContainText('무료수신거부 080-8888-9999');
+
+    // 6. Template save & apply verification
+    await page.locator('#btnOpenSaveTemplateModal').click();
+    await page.locator('#saveModalTitleInp').fill('광고 템플릿 테스트');
+    
+    let saveDialogText = '';
+    const saveDialogHandler = async (dialog) => {
+      saveDialogText = dialog.message();
+      await dialog.accept();
+    };
+    page.once('dialog', saveDialogHandler);
+    await page.locator('#btnSaveModalSubmit').click();
+    expect(saveDialogText).toContain('임시 저장되었습니다.');
+
+    // Clear textarea
+    await composeBody.fill('');
+
+    // Apply the saved template
+    await page.locator('.btn-vault-tab[data-tab="saved"]').click();
+    await page.locator('.btn-apply-template').first().click();
+
+    // Verify compose textarea is restored with the full ad text
+    await expect(composeBody).toContainText('(광고)');
+    await expect(composeBody).toContainText('무료수신거부 080-8888-9999');
+
+    // 7. Verify outbound log logs the ad body, and no db message side-effects
+    const initialLogsLength = await page.evaluate(() => window.stateStore.getOutboundMessageLogs().length);
+    const initialMsgLength = await page.evaluate(() => window.stateStore.db.messages.length);
+
+    // Add a student to recipient list
+    await page.locator('.student-row').first().click();
+    await page.locator('#btnAddToRecipients').click();
+
+    // Open review modal
+    await page.locator('#btnReviewSend').click();
+    const focusOverlay = page.locator('#focusConfirmOverlay');
+    await expect(focusOverlay).toBeVisible();
+    await expect(focusOverlay).toContainText('(광고)');
+    await expect(focusOverlay).toContainText('무료수신거부 080-8888-9999');
+
+    let sendDialogText = '';
+    const sendDialogHandler = async (dialog) => {
+      sendDialogText = dialog.message();
+      await dialog.accept();
+    };
+    page.once('dialog', sendDialogHandler);
+    await page.locator('#btnFocusSendConfirm').click();
+    expect(sendDialogText).toContain('발송이력만 저장되었습니다.');
+
+    // Verification
+    const finalLogsLength = await page.evaluate(() => window.stateStore.getOutboundMessageLogs().length);
+    expect(finalLogsLength).toBe(initialLogsLength + 1);
+
+    const finalMsgLength = await page.evaluate(() => window.stateStore.db.messages.length);
+    expect(finalMsgLength).toBe(initialMsgLength);
+
+    const lastLog = await page.evaluate(() => window.stateStore.getOutboundMessageLogs()[0]);
+    expect(lastLog.body).toContain('(광고)');
+    expect(lastLog.body).toContain('무료수신거부 080-8888-9999');
+    expect(lastLog.complianceWarnings).toBeUndefined();
+
+    // Clean up student optOut and other changes to prevent affecting other tests
+    await page.evaluate(() => {
+      window.stateStore.db.settings = {
+        ...window.stateStore.db.settings,
+        optOutNumber: '080-1234-5678'
+      };
+      window.stateStore.saveDB();
+    });
+  });
 });
 

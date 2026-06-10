@@ -1327,7 +1327,16 @@ export function renderMessageSend(container) {
         <!-- Phone screen style compose textarea -->
         <div>
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-            <label style="font-size: 11.5px; font-weight: 700; color: var(--text-muted);">메시지 본문 입력</label>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <label style="font-size: 11.5px; font-weight: 700; color: var(--text-muted); margin-bottom: 0;">메시지 본문 입력</label>
+              <button id="btnInsertAdText" style="
+                padding: 2px 8px; font-size: 11px; font-weight: 700; color: var(--primary);
+                background: var(--primary-light); border: 1px solid #c3d4fb; border-radius: 6px; cursor: pointer;
+                display: inline-flex; align-items: center; gap: 4px; font-family: inherit; margin: 0;
+              ">
+                ${renderIcon('alert', 10, 'var(--primary)')} 광고 문구 삽입
+              </button>
+            </div>
             <span style="font-size: 11px; font-weight: 700; color: ${isOver ? 'var(--danger)' : 'var(--text-muted)'};" fontvariantnumeric="tabular-nums">
               ${bytes} / ${limit} byte ${isOver ? '· 초과' : ''}
             </span>
@@ -1634,6 +1643,41 @@ export function renderMessageSend(container) {
         viewState.saveModalBody = viewState.body;
         viewState.saveModalError = "";
         renderTemplateSaveModal();
+      });
+    }
+
+    const insertAdTextBtn = block.querySelector('#btnInsertAdText');
+    if (insertAdTextBtn) {
+      insertAdTextBtn.addEventListener('click', () => {
+        const settings = stateStore.getSettings() || {};
+        const academyName = settings.academyName || settings.academy || "튜링음악학원";
+        const optOutNum = settings.optOutNumber || settings.unsubscribeNumber || settings.freeOptOutNumber || settings.smsOptOutNumber || settings.rejectNumber || "";
+
+        let currentBody = viewState.body || "";
+        let hasAd = currentBody.includes("(광고)");
+        let hasAcad = currentBody.includes(academyName);
+        let hasOptOut = currentBody.includes("무료수신거부");
+
+        if (!optOutNum) {
+          alert("무료수신거부 번호가 설정되어 있지 않습니다. 광고성 메시지 발송 전 수신거부 안내 번호를 설정해야 합니다.");
+        }
+
+        let prefix = "";
+        if (!hasAd) {
+          prefix += "(광고)\n";
+        }
+        if (!hasAcad) {
+          prefix += `${academyName}\n`;
+        }
+
+        let suffix = "";
+        if (optOutNum && !hasOptOut) {
+          suffix = `\n\n무료수신거부 ${optOutNum}`;
+        }
+
+        viewState.body = prefix + currentBody + suffix;
+        renderComposePanel();
+        renderSendBar();
       });
     }
 
