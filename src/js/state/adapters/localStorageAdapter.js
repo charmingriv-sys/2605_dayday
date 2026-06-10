@@ -240,6 +240,18 @@ export class LocalStorageAdapter extends DataAdapter {
                     t.scheduleNotes = "";
                     migrated = true;
                 }
+                if (t.employmentStatus === undefined || t.employmentStatus === null) {
+                    t.employmentStatus = "active";
+                    migrated = true;
+                }
+                if (t.resignedAt === undefined) {
+                    t.resignedAt = null;
+                    migrated = true;
+                }
+                if (t.resignMemo === undefined) {
+                    t.resignMemo = "";
+                    migrated = true;
+                }
             });
         }
 

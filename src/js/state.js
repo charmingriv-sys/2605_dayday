@@ -33,14 +33,14 @@ const DEFAULT_DB = {
         printLayoutDefault: "one-per-page"
     },
     teachers: [
-        { id: 'T1', name: '문승현', instrument: '피아노', phone: '010-1111-1001', email: 'shmoon@turing.com', color: '#ffb3c1', scheduleNotes: "" },
-        { id: 'T2', name: '성어진', instrument: '바이올린', phone: '010-1111-1002', email: 'ejseong@turing.com', color: '#d6b3ff', scheduleNotes: "" },
-        { id: 'T3', name: '안혜림', instrument: '기타/우쿨렐레', phone: '010-1111-1003', email: 'hrahn@turing.com', color: '#ffd699', scheduleNotes: "" },
-        { id: 'T4', name: '양지숙', instrument: '보컬', phone: '010-1111-1004', email: 'jsyang@turing.com', color: '#ffcc99', scheduleNotes: "" },
-        { id: 'T5', name: '엄소연', instrument: '피아노', phone: '010-1111-1005', email: 'syeom@turing.com', color: '#b3f0e1', scheduleNotes: "" },
-        { id: 'T6', name: '이동은', instrument: '바이올린', phone: '010-1111-1006', email: 'delee@turing.com', color: '#b3f2b3', scheduleNotes: "" },
-        { id: 'T7', name: '이해원', instrument: '플루트', phone: '010-1111-1007', email: 'hwlee@turing.com', color: '#b3e0ff', scheduleNotes: "" },
-        { id: 'T8', name: '정은비', instrument: '오보에/피아노', phone: '010-1111-1008', email: 'ebjung@turing.com', color: '#99ccff', scheduleNotes: "" }
+        { id: 'T1', name: '문승현', instrument: '피아노', phone: '010-1111-1001', email: 'shmoon@turing.com', color: '#ffb3c1', scheduleNotes: "", employmentStatus: "active", resignedAt: null, resignMemo: "" },
+        { id: 'T2', name: '성어진', instrument: '바이올린', phone: '010-1111-1002', email: 'ejseong@turing.com', color: '#d6b3ff', scheduleNotes: "", employmentStatus: "active", resignedAt: null, resignMemo: "" },
+        { id: 'T3', name: '안혜림', instrument: '기타/우쿨렐레', phone: '010-1111-1003', email: 'hrahn@turing.com', color: '#ffd699', scheduleNotes: "", employmentStatus: "active", resignedAt: null, resignMemo: "" },
+        { id: 'T4', name: '양지숙', instrument: '보컬', phone: '010-1111-1004', email: 'jsyang@turing.com', color: '#ffcc99', scheduleNotes: "", employmentStatus: "active", resignedAt: null, resignMemo: "" },
+        { id: 'T5', name: '엄소연', instrument: '피아노', phone: '010-1111-1005', email: 'syeom@turing.com', color: '#b3f0e1', scheduleNotes: "", employmentStatus: "active", resignedAt: null, resignMemo: "" },
+        { id: 'T6', name: '이동은', instrument: '바이올린', phone: '010-1111-1006', email: 'delee@turing.com', color: '#b3f2b3', scheduleNotes: "", employmentStatus: "active", resignedAt: null, resignMemo: "" },
+        { id: 'T7', name: '이해원', instrument: '플루트', phone: '010-1111-1007', email: 'hwlee@turing.com', color: '#b3e0ff', scheduleNotes: "", employmentStatus: "active", resignedAt: null, resignMemo: "" },
+        { id: 'T8', name: '정은비', instrument: '오보에/피아노', phone: '010-1111-1008', email: 'ebjung@turing.com', color: '#99ccff', scheduleNotes: "", employmentStatus: "active", resignedAt: null, resignMemo: "" }
     ],
     students: [
         { id: 'S1', name: '최다은', phone: '010-9999-1111', parentPhone: '010-8888-2222', teacherId: 'T8', instrument: '피아노', fee: 150000, dueDay: 10, enrollDate: '2026-01-10', age: 10, school: '하모초등학교', scheduleNotes: "" },

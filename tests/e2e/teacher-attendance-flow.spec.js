@@ -652,4 +652,110 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
 
     expect(consoleErrors.length).toBe(0);
   });
+
+  test('should support teacher lifecycle: default active, resignation, canDelete validations, and conditional physical deletion', async ({ page }) => {
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Verify migration: default status values of existing teachers
+    const migrationCheck = await page.evaluate(() => {
+      const teachers = window.stateStore.getTeachers();
+      return teachers.every(t => t.employmentStatus === 'active' && t.resignedAt === null && t.resignMemo === '');
+    });
+    expect(migrationCheck).toBe(true);
+
+    // 3. Verify resignTeacher API
+    const resignResult = await page.evaluate(() => {
+      const res = window.stateStore.resignTeacher('T2', { resignedAt: '2026-06-10', memo: '이직으로 인한 퇴사' });
+      return {
+        id: res.id,
+        status: res.employmentStatus,
+        resignedAt: res.resignedAt,
+        memo: res.resignMemo
+      };
+    });
+    expect(resignResult.id).toBe('T2');
+    expect(resignResult.status).toBe('resigned');
+    expect(resignResult.resignedAt).toBe('2026-06-10');
+    expect(resignResult.memo).toBe('이직으로 인한 퇴사');
+
+    // 4. Verify getActiveTeachers API
+    const activeCheck = await page.evaluate(() => {
+      const activeList = window.stateStore.getActiveTeachers();
+      const hasT2 = activeList.some(t => t.id === 'T2');
+      const hasT1 = activeList.some(t => t.id === 'T1');
+      return { hasT2, hasT1, count: activeList.length };
+    });
+    expect(activeCheck.hasT2).toBe(false); // T2는 퇴사했으므로 active 목록에 없어야 함
+    expect(activeCheck.hasT1).toBe(true);  // T1은 재직 중이므로 있어야 함
+
+    // 5. Verify canDeleteTeacher checks for referenced data
+    // Case A: T1 (has attendance logs)
+    const t1Check = await page.evaluate(() => {
+      // Inject attendance log to make sure T1 is referenced
+      window.stateStore.db.teacherAttendanceLogs.push({
+        id: 'tal_life_check',
+        teacherId: 'T1',
+        date: '2026-06-03',
+        checkInAt: '2026-06-03T09:00:00+09:00',
+        checkOutAt: null,
+        source: 'tablet_pin',
+        createdAt: '2026-06-03T09:00:00+09:00',
+        updatedAt: '2026-06-03T09:00:00+09:00'
+      });
+      window.stateStore.saveDB();
+      return window.stateStore.canDeleteTeacher('T1');
+    });
+    expect(t1Check.canDelete).toBe(false);
+    expect(t1Check.reasons.length).toBeGreaterThan(0);
+    expect(t1Check.reasons[0]).toContain('출퇴근 근태 기록이 존재합니다');
+
+    // Case B: T7 (has students)
+    const t7Check = await page.evaluate(() => {
+      return window.stateStore.canDeleteTeacher('T7');
+    });
+    expect(t7Check.canDelete).toBe(false);
+    expect(t7Check.reasons).toContain('해당 강사가 배정되어 있는 담당 수강생이 존재합니다.');
+
+    // 6. Verify deleteTeacherIfUnused behaves correctly
+    // Case A: Try deleting T1 (referenced) -> deletion blocked
+    const t1DeleteResult = await page.evaluate(() => {
+      const beforeCount = window.stateStore.getTeachers().length;
+      const res = window.stateStore.deleteTeacherIfUnused('T1');
+      const afterCount = window.stateStore.getTeachers().length;
+      return { res, beforeCount, afterCount };
+    });
+    expect(t1DeleteResult.res.canDelete).toBe(false);
+    expect(t1DeleteResult.beforeCount).toBe(t1DeleteResult.afterCount); // 강사가 삭제되지 않고 유지되어야 함
+
+    // Case B: Insert fresh teacher with no references -> deletion succeeds
+    const newDeleteResult = await page.evaluate(() => {
+      // Add a clean teacher
+      window.stateStore.db.teachers.push({
+        id: 'T_NEW_TEMP',
+        name: '신입강사',
+        instrument: '피아노',
+        phone: '010-9999-9999',
+        email: 'newtemp@turing.com',
+        color: '#ffffff',
+        scheduleNotes: "",
+        employmentStatus: 'active',
+        resignedAt: null,
+        resignMemo: ''
+      });
+      window.stateStore.saveDB();
+
+      const beforeCount = window.stateStore.getTeachers().length;
+      const deleteCheck = window.stateStore.canDeleteTeacher('T_NEW_TEMP');
+      const deleteRes = window.stateStore.deleteTeacherIfUnused('T_NEW_TEMP');
+      const afterCount = window.stateStore.getTeachers().length;
+      return { deleteCheck, deleteRes, beforeCount, afterCount };
+    });
+    expect(newDeleteResult.deleteCheck.canDelete).toBe(true);
+    expect(newDeleteResult.deleteRes.canDelete).toBe(true);
+    expect(newDeleteResult.afterCount).toBe(newDeleteResult.beforeCount - 1);
+  });
 });
