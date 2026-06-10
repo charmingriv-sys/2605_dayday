@@ -368,10 +368,18 @@ export const staffMethods = {
 
         // 7. majorSchedules 검사
         const hasMajorSchedules = this.db.majorSchedules && this.db.majorSchedules.some(e => 
-            e.ownerId && e.ownerId.trim() === teacher.name.trim()
+            e.ownerId && (e.ownerId.trim() === teacher.id.trim() || e.ownerId.trim() === teacher.name.trim())
         );
         if (hasMajorSchedules) {
             reasons.push('학원 주요 일정에 담당자로 지정되어 있습니다.');
+        }
+
+        // 8. todayTasks 검사
+        const hasTodayTasks = this.db.todayTasks && this.db.todayTasks.some(task => 
+            task.relatedTeacherIds && task.relatedTeacherIds.includes(teacherId)
+        );
+        if (hasTodayTasks) {
+            reasons.push('업무 카드(Today Tasks)에 관련 강사로 연결되어 있습니다.');
         }
 
         return {
@@ -405,5 +413,21 @@ export const staffMethods = {
             canDelete: false,
             reasons: ['데이터 삭제 처리에 실패했습니다.']
         };
+    },
+
+    findTeacherByIdOrName(value) {
+        if (!value) return null;
+        const teachers = this.getTeachers();
+        let teacher = teachers.find(t => t.id === value);
+        if (teacher) return teacher;
+        teacher = teachers.find(t => t.name === value);
+        if (teacher) return teacher;
+        return null;
+    },
+
+    getTeacherDisplayName(value) {
+        if (!value) return '-';
+        const teacher = this.findTeacherByIdOrName(value);
+        return teacher ? teacher.name : value;
     }
 };

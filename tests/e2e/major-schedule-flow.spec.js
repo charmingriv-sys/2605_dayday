@@ -199,7 +199,7 @@ test.describe('Director Major Schedule CRUD & Flow', () => {
     await expect(page.locator('#form-event-type')).toHaveValue('etc');
     await expect(page.locator('#form-event-date')).toHaveValue('2026-06-20');
     await expect(page.locator('#form-due-date')).toHaveValue('2026-06-15');
-    await expect(page.locator('#form-owner-id')).toHaveValue('정은비');
+    await expect(page.locator('#form-owner-id')).toHaveValue('T8');
     await expect(page.locator('#form-place')).toHaveValue('대강당');
     await expect(page.locator('#form-memo')).toHaveValue('원생 0명 테스트');
 

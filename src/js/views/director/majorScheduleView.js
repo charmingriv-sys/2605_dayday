@@ -262,12 +262,13 @@ export function renderMajorSchedule(container) {
     return list.filter((event) => {
       const parts = adaptedStudents.filter(s => event.participantStudentIds && event.participantStudentIds.includes(s.id));
       if (activeType !== "all" && event.type !== activeType) return false;
-      if (selectedOwner !== "전체" && event.ownerId !== selectedOwner) return false;
+      const ownerName = stateStore.getTeacherDisplayName(event.ownerId);
+      if (selectedOwner !== "전체" && ownerName !== selectedOwner) return false;
       
       if (cleanQuery) {
         const eventNameMatch = event.name.toLowerCase().includes(cleanQuery);
         const eventPlaceMatch = event.place && event.place.toLowerCase().includes(cleanQuery);
-        const eventOwnerMatch = event.ownerId && event.ownerId.toLowerCase().includes(cleanQuery);
+        const eventOwnerMatch = ownerName && ownerName.toLowerCase().includes(cleanQuery);
         const anyStudentMatches = parts.some(student => matchStudent(student, cleanQuery, isChosungOnly, exactMatchExists));
         if (!eventNameMatch && !eventPlaceMatch && !eventOwnerMatch && !anyStudentMatches) return false;
       }
@@ -288,7 +289,7 @@ export function renderMajorSchedule(container) {
     const dayOfWeekKo = ["일", "월", "화", "수", "목", "금", "토"][getToday().getDay()];
     const todayLessons = dbStudents.filter(s => dbClasses.some(c => c.studentId === s.id && c.dayOfWeek === dayOfWeekKo)).length;
 
-    const owners = [...new Set(allEvents.map((event) => event.ownerId))];
+    const owners = [...new Set(allEvents.map((event) => stateStore.getTeacherDisplayName(event.ownerId)))];
 
     if (majorHeaderActions) {
       majorHeaderActions.innerHTML = `
@@ -1432,7 +1433,7 @@ export function renderMajorSchedule(container) {
               <td>${fmt(event.eventDate)}</td>
               <td><b style="color:${dday(event.eventDate) <= 7 ? "var(--red)" : "var(--ink)"}">${formatDdayLabel(dday(event.eventDate))}</b></td>
               <td>${parts.length === 0 ? "참여 없음" : `${parts.length}명`}</td>
-              <td>${event.ownerId}</td>
+              <td>${stateStore.getTeacherDisplayName(event.ownerId)}</td>
               <td>${visibilityChip(event.visible)}</td>
               <td><button class="primary btn-row-action" data-event-id="${event.id}">확인</button></td>
             </tr>
@@ -1474,7 +1475,7 @@ export function renderMajorSchedule(container) {
         <div class="avatar">${meta.label.slice(0, 2)}</div>
         <div class="drawer-student-main">
           <strong>${event.name}</strong>
-          <span>${fmt(event.eventDate)} · 진행/종료 ${formatDdayLabel(dday(event.eventDate))} · ${event.place || "-"} · ${event.ownerId}</span>
+          <span>${fmt(event.eventDate)} · 진행/종료 ${formatDdayLabel(dday(event.eventDate))} · ${event.place || "-"} · ${stateStore.getTeacherDisplayName(event.ownerId)}</span>
         </div>
       </div>
     `;
@@ -1488,7 +1489,7 @@ export function renderMajorSchedule(container) {
             <div class="detail-item"><span>진행/종료일</span><strong>${fmt(event.eventDate)} · ${formatDdayLabel(dday(event.eventDate))}</strong></div>
             <div class="detail-item"><span>접수마감</span><strong>${event.dueDate ? fmt(event.dueDate) + " · " + formatDdayLabel(dday(event.dueDate)) : "접수마감 없음"}</strong></div>
             <div class="detail-item"><span>장소</span><strong>${event.place || "-"}</strong></div>
-            <div class="detail-item"><span>담당자</span><strong>${event.ownerId}</strong></div>
+            <div class="detail-item"><span>담당자</span><strong>${stateStore.getTeacherDisplayName(event.ownerId)}</strong></div>
             <div class="detail-item"><span>공개여부</span><strong>${event.visible ? "학부모 공개" : "비공개"}</strong></div>
           </div>
           <p class="note" style="white-space: pre-wrap; font-size: 13px; color: var(--ink); margin-top: 10px; padding: 10px; border-radius: 6px; background: #f8fafc; border: 1px solid var(--line);">${event.memo || "등록된 메모가 없습니다."}</p>
@@ -1727,7 +1728,7 @@ export function renderMajorSchedule(container) {
               <div class="mini-avatar">${(eventTypes[event.type] || { label: "기" }).label[0]}</div>
               <div class="queue-main">
                 <strong>${event.name}</strong>
-                <span>${fmt(event.eventDate)} · ${formatDdayLabel(dday(event.eventDate))} · ${event.ownerId}</span>
+                <span>${fmt(event.eventDate)} · ${formatDdayLabel(dday(event.eventDate))} · ${stateStore.getTeacherDisplayName(event.ownerId)}</span>
               </div>
               ${visibilityChip(event.visible)}
             </div>
@@ -1819,7 +1820,7 @@ export function renderMajorSchedule(container) {
     const teachers = stateStore.getTeachers() || [];
     const ownerOptions = [
       `<option value="">담당자 선택</option>`,
-      ...teachers.map(t => `<option value="${t.name}" ${event && event.ownerId === t.name ? "selected" : ""}>${t.name}</option>`)
+      ...teachers.map(t => `<option value="${t.id}" ${event && (event.ownerId === t.id || event.ownerId === t.name) ? "selected" : ""}>${t.name}</option>`)
     ].join("");
 
     // Visibility toggle state

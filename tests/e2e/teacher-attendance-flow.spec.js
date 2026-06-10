@@ -758,4 +758,117 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
     expect(newDeleteResult.deleteRes.canDelete).toBe(true);
     expect(newDeleteResult.afterCount).toBe(newDeleteResult.beforeCount - 1);
   });
+
+  test('should support major schedule teacher ID normalization and todayTasks validation', async ({ page }) => {
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Inject mock schedules (one name-based, one ID-based)
+    await page.evaluate(() => {
+      window.stateStore.db.majorSchedules = [
+        {
+          id: 'ms_name_based',
+          name: '이름 기반 일정',
+          type: 'event',
+          eventDate: '2026-06-15',
+          dueDate: null,
+          ownerId: '정은비', // name-based (legacy)
+          place: '원내',
+          visible: false,
+          participantStudentIds: []
+        },
+        {
+          id: 'ms_id_based',
+          name: 'ID 기반 일정',
+          type: 'event',
+          eventDate: '2026-06-20',
+          dueDate: null,
+          ownerId: 'T8', // ID-based (new, 'T8' is '정은비')
+          place: '원내',
+          visible: false,
+          participantStudentIds: []
+        }
+      ];
+      window.stateStore.db.todayTasks = [];
+      window.stateStore.saveDB();
+    });
+
+    // 3. Go to 주요일정관리 view
+    const menuItem = page.locator('.menu-item[data-view="dir-major-schedule"]');
+    await expect(menuItem).toBeVisible();
+    await menuItem.click();
+
+    // Verify page title
+    await expect(page.locator('#page-title')).toContainText('주요일정 관리');
+
+    // 4. Verify both display "정은비" in the table
+    const rowNameBased = page.locator('#eventBody tr:has-text("이름 기반 일정")');
+    await expect(rowNameBased).toBeVisible();
+    await expect(rowNameBased.locator('td').nth(5)).toHaveText('정은비');
+
+    const rowIdBased = page.locator('#eventBody tr:has-text("ID 기반 일정")');
+    await expect(rowIdBased).toBeVisible();
+    await expect(rowIdBased.locator('td').nth(5)).toHaveText('정은비');
+
+    // 5. Open drawer for both to verify display name
+    await rowNameBased.click();
+    const drawer = page.locator('#drawer');
+    await expect(drawer).toHaveClass(/open/);
+    await expect(drawer.locator('.detail-item:has-text("담당자") strong')).toHaveText('정은비');
+    await page.locator('#btn-drawer-close').click();
+    await expect(drawer).not.toHaveClass(/open/);
+
+    await rowIdBased.click();
+    await expect(drawer).toHaveClass(/open/);
+    await expect(drawer.locator('.detail-item:has-text("담당자") strong')).toHaveText('정은비');
+    await page.locator('#btn-drawer-close').click();
+    await expect(drawer).not.toHaveClass(/open/);
+
+    // 6. Test canDeleteTeacher checks for majorSchedules (T8 / '정은비')
+    let canDeleteCheck = await page.evaluate(() => {
+      return window.stateStore.canDeleteTeacher('T8');
+    });
+    expect(canDeleteCheck.canDelete).toBe(false);
+    expect(canDeleteCheck.reasons).toContain('학원 주요 일정에 담당자로 지정되어 있습니다.');
+
+    // 7. Add a new major schedule using the UI and make sure it saves as T8
+    const addTrigger = page.locator('button:text-is("일정 추가")');
+    await addTrigger.click();
+    await expect(drawer).toHaveClass(/open/);
+
+    await page.locator('#form-event-name').fill('UI 등록 일정');
+    await page.locator('#form-event-type').selectOption('etc');
+    await page.locator('#form-event-date').fill('2026-06-25');
+    await page.locator('#form-owner-id').selectOption('정은비'); // Label is 정은비, value is T8
+    await page.locator('#btn-form-save').click();
+    await expect(drawer).not.toHaveClass(/open/);
+
+    // Check database to ensure it's saved with ownerId 'T8'
+    const storedSchedule = await page.evaluate(() => {
+      return window.stateStore.db.majorSchedules.find(e => e.name === 'UI 등록 일정');
+    });
+    expect(storedSchedule.ownerId).toBe('T8');
+
+    // 8. Test canDeleteTeacher todayTasks check
+    // Inject todayTask with relatedTeacherIds: ['T8']
+    await page.evaluate(() => {
+      // First clean up majorSchedules so they don't block deletion
+      window.stateStore.db.majorSchedules = [];
+      window.stateStore.db.todayTasks.push({
+        id: 'task_temp',
+        title: '강사 관련 업무',
+        relatedTeacherIds: ['T8']
+      });
+      window.stateStore.saveDB();
+    });
+
+    canDeleteCheck = await page.evaluate(() => {
+      return window.stateStore.canDeleteTeacher('T8');
+    });
+    expect(canDeleteCheck.canDelete).toBe(false);
+    expect(canDeleteCheck.reasons).toContain('업무 카드(Today Tasks)에 관련 강사로 연결되어 있습니다.');
+  });
 });
