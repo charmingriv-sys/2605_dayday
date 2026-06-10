@@ -1,5 +1,6 @@
 import { stateStore } from '../../state.js';
 import { formatPhoneNumber } from './shared.js';
+import { openModal, closeModal } from '../../app.js';
 
 export function renderTeacherAttendance(container) {
     const formatDate = (date) => {
@@ -7,6 +8,59 @@ export function renderTeacherAttendance(container) {
         const m = String(date.getMonth() + 1).padStart(2, '0');
         const d = String(date.getDate()).padStart(2, '0');
         return `${y}-${m}-${d}`;
+    };
+
+    const toLocalISOString = (date) => {
+        const tzOffset = -date.getTimezoneOffset();
+        const diff = tzOffset >= 0 ? '+' : '-';
+        const pad = (num) => String(num).padStart(2, '0');
+        const offsetHours = pad(Math.floor(Math.abs(tzOffset) / 60));
+        const offsetMinutes = pad(Math.abs(tzOffset) % 60);
+
+        const y = date.getFullYear();
+        const m = pad(date.getMonth() + 1);
+        const d = pad(date.getDate());
+        const h = pad(date.getHours());
+        const min = pad(date.getMinutes());
+        const s = pad(date.getSeconds());
+
+        return `${y}-${m}-${d}T${h}:${min}:${s}${diff}${offsetHours}:${offsetMinutes}`;
+    };
+
+    const decomposeTimestamp = (ts) => {
+        if (!ts) return null;
+        const date = new Date(ts);
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        const dateStr = `${y}-${m}-${d}`;
+
+        const rawHours = date.getHours();
+        const ampm = rawHours >= 12 ? '오후' : '오전';
+        let hour = rawHours % 12;
+        if (hour === 0) hour = 12;
+        const min = date.getMinutes();
+        const minStr = String(min).padStart(2, '0');
+        return {
+            dateStr,
+            ampm,
+            hourStr: String(hour),
+            minStr
+        };
+    };
+
+    const composeISOString = (dateVal, ampmVal, hourVal, minuteVal) => {
+        if (!dateVal) return '';
+        const [year, month, day] = dateVal.split('-').map(Number);
+        let hour = Number(hourVal);
+        if (ampmVal === 'PM' || ampmVal === '오후') {
+            if (hour < 12) hour += 12;
+        } else if (ampmVal === 'AM' || ampmVal === '오전') {
+            if (hour === 12) hour = 0;
+        }
+        const min = Number(minuteVal);
+        const dateObj = new Date(year, month - 1, day, hour, min, 0, 0);
+        return toLocalISOString(dateObj);
     };
 
     let selectedDate = formatDate(new Date());
@@ -519,6 +573,7 @@ export function renderTeacherAttendance(container) {
                                 <th>퇴근시각</th>
                                 <th>근무시간</th>
                                 <th>상태</th>
+                                <th>관리</th>
                             </tr>
                         </thead>
                         <tbody id="teacher-attendance-table-body">
@@ -580,6 +635,17 @@ export function renderTeacherAttendance(container) {
                             <span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span><span style="color: #e74c3c;">일</span>
                         </div>
                         <div id="ta-drawer-calendar-grid" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;">
+                            <!-- Filled dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Recent Edit History -->
+                    <div class="ta-drawer-section" id="ta-drawer-history-section" style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+                        <h4 style="font-size: 0.95rem; font-weight: 700; margin-bottom: 12px; color: var(--text-main); display: flex; align-items: center; gap: 6px; margin-top:0;">
+                            <i class="fa-solid fa-history" style="color: var(--primary);"></i>
+                            최근 수정 이력
+                        </h4>
+                        <div id="ta-drawer-history-list" style="display: flex; flex-direction: column; gap: 8px;">
                             <!-- Filled dynamically -->
                         </div>
                     </div>
@@ -952,6 +1018,59 @@ export function renderTeacherAttendance(container) {
         }
 
         grid.innerHTML = html;
+
+        // Render recent edit history for this teacher
+        const historyList = container.querySelector('#ta-drawer-history-list');
+        if (historyList) {
+            const editLogs = stateStore.getTeacherAttendanceEditLogs({ teacherId: drawerTeacherId });
+            const recentLogs = editLogs.slice(0, 5); // recent 3~5 logs
+
+            if (recentLogs.length === 0) {
+                historyList.innerHTML = `
+                    <div style="font-size: 0.78rem; color: var(--text-muted); text-align: center; padding: 16px; background: rgba(0,0,0,0.01); border: 1px dashed var(--border-color); border-radius: 6px;">
+                        수정 이력이 없습니다.
+                    </div>
+                `;
+            } else {
+                historyList.innerHTML = recentLogs.map(log => {
+                    const formatTimeShort = (iso) => {
+                        if (!iso) return '퇴근 누락';
+                        const date = new Date(iso);
+                        const h = String(date.getHours()).padStart(2, '0');
+                        const m = String(date.getMinutes()).padStart(2, '0');
+                        return `${h}:${m}`;
+                    };
+                    const beforeIn = formatTimeShort(log.before.checkInAt);
+                    const beforeOut = formatTimeShort(log.before.checkOutAt);
+                    const afterIn = formatTimeShort(log.after.checkInAt);
+                    const afterOut = formatTimeShort(log.after.checkOutAt);
+
+                    const changedDate = new Date(log.changedAt);
+                    const mm = String(changedDate.getMonth() + 1).padStart(2, '0');
+                    const dd = String(changedDate.getDate()).padStart(2, '0');
+                    const hh = String(changedDate.getHours()).padStart(2, '0');
+                    const min = String(changedDate.getMinutes()).padStart(2, '0');
+                    const changedAtStr = `${mm}-${dd} ${hh}:${min}`;
+
+                    return `
+                        <div style="background: var(--bg-body); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px; font-size: 0.78rem; display: flex; flex-direction: column; gap: 4px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; color: var(--text-muted); font-size: 0.7rem;">
+                                <span>기록 날짜: ${log.date}</span>
+                                <span>수정일: ${changedAtStr}</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--text-main); margin-top: 2px;">
+                                <span>수정 전:</span>
+                                <span style="color: var(--text-muted); font-family: monospace;">${beforeIn} ~ ${beforeOut}</span>
+                                <i class="fa-solid fa-arrow-right" style="font-size: 10px; color: var(--primary);"></i>
+                                <span>수정 후:</span>
+                                <span style="color: var(--primary); font-family: monospace;">${afterIn} ~ ${afterOut}</span>
+                            </div>
+                            ${log.note ? `<div style="color: var(--text-muted); font-size: 0.72rem; margin-top: 2px; border-top: 1px dotted var(--border-color); padding-top: 4px;">사유: ${log.note}</div>` : ''}
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
     };
 
     const updateData = () => {
@@ -1112,6 +1231,7 @@ export function renderTeacherAttendance(container) {
 
                 return {
                     id: t.id,
+                    logId: log ? log.id : null,
                     name: t.name,
                     phone: t.phone || t.mobile || t.teacherPhone || t.contact || '-',
                     instrument: t.instrument || '미지정',
@@ -1175,7 +1295,7 @@ export function renderTeacherAttendance(container) {
         if (items.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 3rem;">
+                    <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 3rem;">
                         <i class="fa-solid fa-user-slash" style="font-size: 2rem; color: rgba(255,255,255,0.05); margin-bottom: 8px; display: block;"></i>
                         일치하는 기록이 없습니다.
                     </td>
@@ -1209,9 +1329,220 @@ export function renderTeacherAttendance(container) {
                     <td style="font-family: monospace; font-size: 0.9rem;">${item.checkOutTime}</td>
                     <td style="font-weight: 500; font-size: 0.9rem;">${item.workingTime}</td>
                     <td><span class="badge ${badgeClass}">${item.status}</span></td>
+                    <td>
+                        <button type="button" class="btn btn-sm btn-outline-primary ta-edit-btn" data-log-id="${item.logId}" style="padding: 2px 8px; font-size: 0.78rem; font-weight: 600; margin: 0;">수정</button>
+                    </td>
                 </tr>
             `;
         }).join('');
+    };
+
+    const openEditModal = (logId) => {
+        if (!logId) return;
+        const logs = stateStore.getTeacherAttendanceLogs();
+        const log = logs.find(l => l.id === logId);
+        if (!log) return;
+        const teacher = stateStore.getTeacher(log.teacherId);
+        if (!teacher) return;
+
+        const decompIn = decomposeTimestamp(log.checkInAt) || {
+            dateStr: log.date,
+            ampm: '오전',
+            hourStr: '9',
+            minStr: '00'
+        };
+        const decompOut = decomposeTimestamp(log.checkOutAt) || {
+            dateStr: log.date,
+            ampm: '오후',
+            hourStr: '6',
+            minStr: '00'
+        };
+
+        const hasCheckout = !!log.checkOutAt;
+
+        const beforeInStr = log.checkInAt ? formatDetailedTimestamp(log.checkInAt, false) : '-';
+        const beforeOutStr = log.checkOutAt ? formatDetailedTimestamp(log.checkOutAt, false) : '퇴근 누락';
+
+        const modalHtml = `
+            <div class="modal-header">
+                <h3 class="modal-title">
+                    <i class="fa-solid fa-user-clock" style="color: var(--primary); margin-right: 8px;"></i>
+                    강사 근태 기록 수정
+                </h3>
+                <button class="modal-close" data-close-modal>×</button>
+            </div>
+            <div class="modal-body" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 16px;">
+                <!-- 강사 및 기록일 요약 정보 -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; background: rgba(0,0,0,0.02); padding: 12px; border-radius: 6px; border: 1px solid var(--border-color);">
+                    <div>
+                        <span style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 2px;">강사명</span>
+                        <strong style="font-size: 0.95rem; color: var(--text-main);">${teacher.name}</strong>
+                    </div>
+                    <div>
+                        <span style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 2px;">기록 날짜</span>
+                        <strong style="font-size: 0.95rem; color: var(--text-main);">${log.date}</strong>
+                    </div>
+                </div>
+
+                <!-- 기록 상태 -->
+                <div>
+                    <span style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px;">기록 상태</span>
+                    <span class="badge ${log.checkOutAt ? 'badge-success' : 'badge-warning'}" id="ta-edit-record-status-badge">
+                        ${log.checkOutAt ? '퇴근 완료' : '미퇴근'}
+                    </span>
+                </div>
+
+                <!-- 수정 전 / 수정 후 대비 테이블 또는 정보 제공 -->
+                <div style="background: rgba(230, 240, 255, 0.15); border: 1px solid rgba(9, 132, 227, 0.2); border-radius: 6px; padding: 10px 12px; font-size: 0.78rem;">
+                    <div style="font-weight: 700; color: var(--primary); margin-bottom: 6px;">수정 전 기록 정보</div>
+                    <div style="display: flex; gap: 16px; color: var(--text-main);">
+                        <div>기록된 출근시각: <strong style="font-family: monospace;">${beforeInStr}</strong></div>
+                        <div>기록된 퇴근시각: <strong style="font-family: monospace;">${beforeOutStr}</strong></div>
+                    </div>
+                </div>
+
+                <!-- 출근시각 조절 UI -->
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label style="font-size: 0.85rem; font-weight: 700; color: var(--text-main); margin-bottom: 0;">출근시각</label>
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                        <select id="ta-edit-checkin-ampm" class="form-control" style="width: 80px; margin-bottom: 0; padding: 4px 8px; height: 34px; font-size: 0.85rem; cursor: pointer;">
+                            <option value="오전" ${decompIn.ampm === '오전' ? 'selected' : ''}>오전</option>
+                            <option value="오후" ${decompIn.ampm === '오후' ? 'selected' : ''}>오후</option>
+                        </select>
+                        <select id="ta-edit-checkin-hour" class="form-control" style="width: 80px; margin-bottom: 0; padding: 4px 8px; height: 34px; font-size: 0.85rem; cursor: pointer; overflow-y: auto;">
+                            ${Array.from({ length: 12 }, (_, i) => i + 1).map(h => `<option value="${h}" ${decompIn.hourStr === String(h) ? 'selected' : ''}>${h}시</option>`).join('')}
+                        </select>
+                        <select id="ta-edit-checkin-minute" class="form-control" style="width: 80px; margin-bottom: 0; padding: 4px 8px; height: 34px; font-size: 0.85rem; cursor: pointer; overflow-y: auto;">
+                            ${Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0')).map(m => `<option value="${m}" ${decompIn.minStr === m ? 'selected' : ''}>${m}분</option>`).join('')}
+                        </select>
+                        <span style="font-size: 11px; color: var(--text-muted); font-weight: 600;"><i class="fa-solid fa-arrows-up-down"></i> 스크롤</span>
+                    </div>
+                </div>
+
+                <!-- 퇴근시각 조절 UI -->
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <label style="font-size: 0.85rem; font-weight: 700; color: var(--text-main); margin-bottom: 0;">퇴근시각</label>
+                        <label style="font-size: 0.78rem; display: flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; margin-bottom: 0; color: var(--text-main); font-weight: 600;">
+                            <input type="checkbox" id="ta-edit-no-checkout" style="margin: 0; cursor: pointer;" ${!hasCheckout ? 'checked' : ''}> 퇴근 기록 없음 (미퇴근 처리)
+                        </label>
+                    </div>
+                    <div id="ta-edit-checkout-selectors" style="display: ${hasCheckout ? 'flex' : 'none'}; gap: 6px; align-items: center;">
+                        <select id="ta-edit-checkout-ampm" class="form-control" style="width: 80px; margin-bottom: 0; padding: 4px 8px; height: 34px; font-size: 0.85rem; cursor: pointer;">
+                            <option value="오전" ${decompOut.ampm === '오전' ? 'selected' : ''}>오전</option>
+                            <option value="오후" ${decompOut.ampm === '오후' ? 'selected' : ''}>오후</option>
+                        </select>
+                        <select id="ta-edit-checkout-hour" class="form-control" style="width: 80px; margin-bottom: 0; padding: 4px 8px; height: 34px; font-size: 0.85rem; cursor: pointer; overflow-y: auto;">
+                            ${Array.from({ length: 12 }, (_, i) => i + 1).map(h => `<option value="${h}" ${decompOut.hourStr === String(h) ? 'selected' : ''}>${h}시</option>`).join('')}
+                        </select>
+                        <select id="ta-edit-checkout-minute" class="form-control" style="width: 80px; margin-bottom: 0; padding: 4px 8px; height: 34px; font-size: 0.85rem; cursor: pointer; overflow-y: auto;">
+                            ${Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0')).map(m => `<option value="${m}" ${decompOut.minStr === m ? 'selected' : ''}>${m}분</option>`).join('')}
+                        </select>
+                        <span style="font-size: 11px; color: var(--text-muted); font-weight: 600;"><i class="fa-solid fa-arrows-up-down"></i> 스크롤</span>
+                    </div>
+                </div>
+
+                <!-- 수정 사유 -->
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label for="ta-edit-reason" style="font-size: 0.85rem; font-weight: 700; color: var(--text-main); margin-bottom: 0;">수정 사유</label>
+                    <input type="text" id="ta-edit-reason" class="form-control" placeholder="예: 단말기 오작동으로 인한 출퇴근 누락 보정" style="width: 100%; margin-bottom: 0; height: 36px; padding: 6px 10px; font-size: 0.85rem;">
+                </div>
+            </div>
+            <div class="modal-footer" style="padding: 1rem 1.5rem; border-top: 1px solid var(--border-color); display: flex; gap: 8px;">
+                <button class="btn btn-secondary" data-close-modal style="flex: 1; margin-bottom: 0; justify-content: center; height: 36px; font-size: 0.88rem; font-weight: 600;">취소</button>
+                <button class="btn btn-primary" id="ta-edit-save-btn" style="flex: 1; margin-bottom: 0; justify-content: center; height: 36px; font-size: 0.88rem; font-weight: 600;">저장</button>
+            </div>
+        `;
+
+        const onInit = (contentArea) => {
+            const noCheckoutCheckbox = contentArea.querySelector('#ta-edit-no-checkout');
+            const checkoutSelectors = contentArea.querySelector('#ta-edit-checkout-selectors');
+            const saveBtn = contentArea.querySelector('#ta-edit-save-btn');
+            const reasonInput = contentArea.querySelector('#ta-edit-reason');
+            const badge = contentArea.querySelector('#ta-edit-record-status-badge');
+
+            noCheckoutCheckbox.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    checkoutSelectors.style.display = 'none';
+                    if (badge) {
+                        badge.className = 'badge badge-warning';
+                        badge.textContent = '미퇴근';
+                    }
+                } else {
+                    checkoutSelectors.style.display = 'flex';
+                    if (badge) {
+                        badge.className = 'badge badge-success';
+                        badge.textContent = '퇴근 완료';
+                    }
+                }
+            });
+
+            // Bind close buttons
+            contentArea.querySelectorAll('[data-close-modal], .modal-close').forEach(el => {
+                el.addEventListener('click', closeModal);
+            });
+
+            saveBtn.addEventListener('click', () => {
+                try {
+                    const checkinAmpm = contentArea.querySelector('#ta-edit-checkin-ampm').value;
+                    const checkinHour = contentArea.querySelector('#ta-edit-checkin-hour').value;
+                    const checkinMinute = contentArea.querySelector('#ta-edit-checkin-minute').value;
+                    const isNoCheckout = noCheckoutCheckbox.checked;
+
+                    if (!checkinAmpm || !checkinHour || !checkinMinute) {
+                        alert('출근시각을 입력해 주세요.');
+                        return;
+                    }
+
+                    const newCheckInAt = composeISOString(log.date, checkinAmpm, checkinHour, checkinMinute);
+                    let newCheckOutAt = null;
+
+                    const checkInDate = new Date(newCheckInAt);
+                    if (isNaN(checkInDate.getTime())) {
+                        alert('시간 형식을 확인해 주세요.');
+                        return;
+                    }
+
+                    if (!isNoCheckout) {
+                        const checkoutAmpm = contentArea.querySelector('#ta-edit-checkout-ampm').value;
+                        const checkoutHour = contentArea.querySelector('#ta-edit-checkout-hour').value;
+                        const checkoutMinute = contentArea.querySelector('#ta-edit-checkout-minute').value;
+
+                        if (!checkoutAmpm || !checkoutHour || !checkoutMinute) {
+                            alert('시간 형식을 확인해 주세요.');
+                            return;
+                        }
+
+                        newCheckOutAt = composeISOString(log.date, checkoutAmpm, checkoutHour, checkoutMinute);
+                        const checkOutDate = new Date(newCheckOutAt);
+                        if (isNaN(checkOutDate.getTime())) {
+                            alert('시간 형식을 확인해 주세요.');
+                            return;
+                        }
+
+                        if (checkOutDate <= checkInDate) {
+                            alert('퇴근시각은 출근시각 이후여야 합니다.');
+                            return;
+                        }
+                    }
+
+                    // Confirm check before save
+                    if (confirm('강사 근태 기록을 수정할까요?')) {
+                        stateStore.updateTeacherAttendanceLog(log.id, {
+                            checkInAt: newCheckInAt,
+                            checkOutAt: newCheckOutAt
+                        }, {
+                            note: reasonInput.value.trim()
+                        });
+                        closeModal();
+                    }
+                } catch (err) {
+                    alert(err.message || '수정 중 오류가 발생했습니다.');
+                }
+            });
+        };
+
+        openModal(modalHtml, onInit);
     };
 
     const handleDocumentClick = (e) => {
@@ -1234,6 +1565,17 @@ export function renderTeacherAttendance(container) {
     };
     container.addEventListener('click', handleTeacherLinkClick);
 
+    // Event delegation for opening edit modal when edit button is clicked
+    const handleEditBtnClick = (e) => {
+        const btn = e.target.closest('.ta-edit-btn');
+        if (btn) {
+            e.preventDefault();
+            const logId = btn.dataset.logId;
+            openEditModal(logId);
+        }
+    };
+    container.addEventListener('click', handleEditBtnClick);
+
     render();
 
     const unsubAttendance = stateStore.subscribe('TEACHER_ATTENDANCE_CHANGED', updateData);
@@ -1242,5 +1584,6 @@ export function renderTeacherAttendance(container) {
         unsubAttendance();
         document.removeEventListener('click', handleDocumentClick);
         container.removeEventListener('click', handleTeacherLinkClick);
+        container.removeEventListener('click', handleEditBtnClick);
     };
 }

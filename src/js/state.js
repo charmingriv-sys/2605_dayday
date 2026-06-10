@@ -257,7 +257,8 @@ const DEFAULT_DB = {
       { id: "msn_12", studentId: "S7", content: "06.04 학부모 상담 후보", createdAt: "2026-06-04T10:00:00.000Z", updatedAt: "2026-06-04T10:00:00.000Z" },
       { id: "msn_13", studentId: "S7", content: "06.02 입시곡 진도 양호", createdAt: "2026-06-02T10:00:00.000Z", updatedAt: "2026-06-02T10:00:00.000Z" }
     ],
-    teacherAttendanceLogs: []
+    teacherAttendanceLogs: [],
+    teacherAttendanceEditLogs: []
 };
 
 const adapter = new LocalStorageAdapter({

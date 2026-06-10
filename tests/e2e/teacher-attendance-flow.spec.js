@@ -481,4 +481,166 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
 
     expect(consoleErrors.length).toBe(0);
   });
+
+  test('should support editing teacher attendance logs with validation, confirm dialogue, and history updates', async ({ page }) => {
+    // Remove global dialog listener to prevent conflicts
+    page.removeAllListeners('dialog');
+
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // Store initial messages length to verify no side-effects
+    const initialMessagesCount = await page.evaluate(() => window.stateStore.db.messages ? window.stateStore.db.messages.length : 0);
+
+    // Inject mock log
+    await page.evaluate(() => {
+      window.stateStore.db.teacherAttendanceLogs = [
+        {
+          id: 'tal_test_edit',
+          teacherId: 'T1',
+          date: '2026-06-02',
+          checkInAt: '2026-06-02T09:00:00+09:00',
+          checkOutAt: '2026-06-02T14:30:00+09:00',
+          source: 'tablet_pin',
+          createdAt: '2026-06-02T09:00:00+09:00',
+          updatedAt: '2026-06-02T09:00:00+09:00'
+        }
+      ];
+      window.stateStore.db.teacherAttendanceEditLogs = [];
+      window.stateStore.saveDB();
+    });
+
+    // Navigate to "강사 근태관리" View
+    const dirTeacherAttendanceMenu = page.locator('.menu-item[data-view="dir-teacher-attendance"]');
+    await expect(dirTeacherAttendanceMenu).toBeVisible();
+    await dirTeacherAttendanceMenu.scrollIntoViewIfNeeded();
+    await dirTeacherAttendanceMenu.evaluate(el => el.click());
+
+    // Switch to range selector (week) to see detailed logs for June 2
+    const periodBtn = page.locator('#ta-period-btn');
+    await expect(periodBtn).toBeVisible();
+    await periodBtn.click();
+    const popover = page.locator('#ta-period-popover');
+    const presetWeek = popover.locator('.ta-preset-btn:has-text("이번주")');
+    await presetWeek.click();
+
+    // Verify row for June 2 exists
+    const row = page.locator('tr[data-testid="teacher-log-row-tal_test_edit"]');
+    await expect(row).toBeVisible();
+
+    // Find and click the 수정 button
+    const editBtn = row.locator('.ta-edit-btn');
+    await expect(editBtn).toBeVisible();
+    await editBtn.click();
+
+    // Verify modal opened
+    const modal = page.locator('.modal-overlay.show');
+    await expect(modal).toBeVisible();
+
+    // Verify neutral wording: NO "현재" in the modal
+    const modalText = await modal.innerText();
+    expect(modalText).not.toContain('현재');
+
+    // Confirm cancel behavior
+    // Setup confirm mock to cancel
+    page.once('dialog', async dialog => {
+      expect(dialog.message()).toBe('강사 근태 기록을 수정할까요?');
+      await dialog.dismiss(); // 취소
+    });
+
+    // Edit time values
+    await modal.locator('#ta-edit-checkin-ampm').selectOption('오전');
+    await modal.locator('#ta-edit-checkin-hour').selectOption('10');
+    await modal.locator('#ta-edit-checkin-minute').selectOption('05');
+
+    // Enter note
+    await modal.locator('#ta-edit-reason').fill('단말기 수정 테스트');
+
+    // Click 저장
+    await modal.locator('#ta-edit-save-btn').click();
+
+    // Modal should remain open because we clicked cancel in confirm
+    await expect(modal).toBeVisible();
+
+    // Verify that the edit logs in db is still empty
+    let editLogsCount = await page.evaluate(() => window.stateStore.db.teacherAttendanceEditLogs.length);
+    expect(editLogsCount).toBe(0);
+
+    // Confirm save behavior
+    page.once('dialog', async dialog => {
+      expect(dialog.message()).toBe('강사 근태 기록을 수정할까요?');
+      await dialog.accept(); // 확인
+    });
+
+    await modal.locator('#ta-edit-save-btn').click();
+
+    // Modal should close
+    await expect(modal).toBeHidden();
+
+    // Verify database checkInAt was updated locally and an edit history was created
+    const log = await page.evaluate(() => window.stateStore.db.teacherAttendanceLogs.find(l => l.id === 'tal_test_edit'));
+    // checkInAt should be 10:05 KST which is 2026-06-02T10:05:00+09:00
+    expect(log.checkInAt).toContain('10:05:00');
+
+    editLogsCount = await page.evaluate(() => window.stateStore.db.teacherAttendanceEditLogs.length);
+    expect(editLogsCount).toBe(1);
+
+    // Verify that KPI and tables updated immediately
+    // For T1 completed checkout in June 2: 10:05 ~ 14:30 is 4h 25m
+    const summaryCard = page.locator('.glass-card:has-text("강사별 근무시간")');
+    await expect(summaryCard).toBeVisible();
+    const sumRowT1 = summaryCard.locator('tr[data-testid="teacher-summary-row-T1"]');
+    await expect(sumRowT1.locator('td').nth(3)).toHaveText('4시간 25분');
+
+    // Click T1 name to open drawer and check recent history
+    await sumRowT1.locator('.ta-teacher-link').click();
+    const drawer = page.locator('#ta-drawer-panel');
+    await expect(drawer).toBeVisible();
+
+    const historySection = page.locator('#ta-drawer-history-section');
+    await expect(historySection).toBeVisible();
+    await expect(historySection.locator('#ta-drawer-history-list')).toContainText('사유: 단말기 수정 테스트');
+
+    // Test Validation - Edit again, set checkout time before checkin time
+    // Close drawer
+    await page.locator('#ta-drawer-close').click();
+    
+    // Open edit modal again
+    await editBtn.click();
+    await expect(modal).toBeVisible();
+
+    // Uncheck "퇴근 기록 없음" if it is checked, or keep it enabled.
+    // Set checkin to 11:00 AM, checkout to 10:00 AM
+    await modal.locator('#ta-edit-checkin-ampm').selectOption('오전');
+    await modal.locator('#ta-edit-checkin-hour').selectOption('11');
+    await modal.locator('#ta-edit-checkin-minute').selectOption('00');
+
+    await modal.locator('#ta-edit-checkout-ampm').selectOption('오전');
+    await modal.locator('#ta-edit-checkout-hour').selectOption('10');
+    await modal.locator('#ta-edit-checkout-minute').selectOption('00');
+
+    // Dialog setup for validation alert
+    page.once('dialog', async dialog => {
+      expect(dialog.message()).toBe('퇴근시각은 출근시각 이후여야 합니다.');
+      await dialog.dismiss();
+    });
+
+    await modal.locator('#ta-edit-save-btn').click();
+
+    // Modal still open
+    await expect(modal).toBeVisible();
+
+    // Close modal via cancel
+    await modal.locator('[data-close-modal]').first().click();
+    await expect(modal).toBeHidden();
+
+    // Verify messages and alerts remain unaffected
+    const messagesCount = await page.evaluate(() => window.stateStore.db.messages ? window.stateStore.db.messages.length : 0);
+    expect(messagesCount).toBe(initialMessagesCount);
+
+    expect(consoleErrors.length).toBe(0);
+  });
 });

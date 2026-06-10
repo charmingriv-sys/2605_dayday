@@ -288,6 +288,10 @@ export class LocalStorageAdapter extends DataAdapter {
             db.teacherAttendanceLogs = [];
             migrated = true;
         }
+        if (!db.teacherAttendanceEditLogs) {
+            db.teacherAttendanceEditLogs = [];
+            migrated = true;
+        }
 
         if (!db.majorSchedules) {
             db.majorSchedules = [

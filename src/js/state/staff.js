@@ -208,5 +208,90 @@ export const staffMethods = {
                 averageMinutes
             };
         });
+    },
+
+    updateTeacherAttendanceLog(logId, patch, meta = {}) {
+        if (!this.db.teacherAttendanceLogs) {
+            this.db.teacherAttendanceLogs = [];
+        }
+        const log = this.db.teacherAttendanceLogs.find(l => l.id === logId);
+        if (!log) {
+            throw new Error('근태 기록을 찾을 수 없습니다.');
+        }
+
+        const before = {
+            checkInAt: log.checkInAt,
+            checkOutAt: log.checkOutAt
+        };
+
+        const checkInAt = patch.checkInAt || null;
+        const checkOutAt = patch.checkOutAt || null;
+
+        // Validation
+        if (!checkInAt) {
+            throw new Error('출근시각을 입력해 주세요.');
+        }
+
+        const checkInDate = new Date(checkInAt);
+        if (isNaN(checkInDate.getTime())) {
+            throw new Error('시간 형식을 확인해 주세요.');
+        }
+
+        if (checkOutAt) {
+            const checkOutDate = new Date(checkOutAt);
+            if (isNaN(checkOutDate.getTime())) {
+                throw new Error('시간 형식을 확인해 주세요.');
+            }
+            if (checkOutDate <= checkInDate) {
+                throw new Error('퇴근시각은 출근시각 이후여야 합니다.');
+            }
+        }
+
+        // Apply modifications
+        log.checkInAt = checkInAt;
+        log.checkOutAt = checkOutAt;
+        log.updatedAt = new Date().toISOString();
+
+        // Create edit log
+        if (!this.db.teacherAttendanceEditLogs) {
+            this.db.teacherAttendanceEditLogs = [];
+        }
+
+        const editLogId = 'tael_' + (this.db.teacherAttendanceEditLogs.length ? Math.max(...this.db.teacherAttendanceEditLogs.map(l => parseInt(l.id.slice(5)) || 0)) + 1 : 1);
+        const editLog = {
+            id: editLogId,
+            attendanceLogId: logId,
+            teacherId: log.teacherId,
+            date: log.date,
+            before,
+            after: {
+                checkInAt,
+                checkOutAt
+            },
+            note: meta.note || '',
+            changedAt: new Date().toISOString(),
+            changedBy: 'director',
+            source: 'director_manual'
+        };
+
+        this.db.teacherAttendanceEditLogs.push(editLog);
+        this.saveDB();
+        this.notify('TEACHER_ATTENDANCE_CHANGED', this.db.teacherAttendanceLogs);
+        return log;
+    },
+
+    getTeacherAttendanceEditLogs(options = {}) {
+        if (!this.db.teacherAttendanceEditLogs) {
+            this.db.teacherAttendanceEditLogs = [];
+        }
+        let logs = this.db.teacherAttendanceEditLogs;
+        if (options.teacherId) {
+            logs = logs.filter(log => log.teacherId === options.teacherId);
+        }
+        if (options.date) {
+            logs = logs.filter(log => log.date === options.date);
+        }
+        // Return sorted by changedAt descending
+        return [...logs].sort((a, b) => b.changedAt.localeCompare(a.changedAt));
     }
 };
