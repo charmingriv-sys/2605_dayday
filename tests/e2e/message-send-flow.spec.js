@@ -461,9 +461,42 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
       await dialog.accept();
     };
     page.on('dialog', dialogHandler2);
-    await page.locator('#btnSendBarReserve').click(); // Opens review modal
+
+    await page.locator('#btnSendBarReserve').click(); // Opens reserve picker modal
+    await expect(page.locator('#reserveScheduleModalOverlay')).toBeVisible();
+
+    // Verify custom picker columns and fading indicator masks exist
+    await expect(page.locator('.picker-col-scroll').first()).toBeVisible();
+    await expect(page.locator('.picker-fade-mask').first()).toBeVisible();
+
+    // 5a. Test validation: Empty date/time inputs (clear date input)
+    await page.locator('#reserveModalDateInp').fill('');
+    await page.locator('#btnReserveModalConfirm').click();
+    await expect(page.locator('#reserveModalErrorLabel')).toContainText('예약 날짜와 시간을 입력해 주세요.');
+
+    // 5b. Test validation: Past datetime
+    await page.locator('#reserveModalDateInp').fill('2026-06-01');
+    await page.locator('.item-ampm[data-value="AM"]').click();
+    await page.locator('.item-hour[data-value="10"]').click();
+    await page.locator('.item-minute[data-value="00"]').click();
+    await page.locator('#btnReserveModalConfirm').click();
+    await expect(page.locator('#reserveModalErrorLabel')).toContainText('예약 시간은 현재 시간보다 이후여야 합니다.');
+
+    // 5c. Valid Future date
+    await page.locator('#reserveModalDateInp').fill('2026-06-20');
+    await page.locator('.item-ampm[data-value="PM"]').click();
+    await page.locator('.item-hour[data-value="03"]').click();
+    await page.locator('.item-minute[data-value="30"]').click();
+    await page.locator('#btnReserveModalConfirm').click();
+
+    // Now review modal should open
+    await expect(page.locator('#reserveScheduleModalOverlay')).toBeHidden();
     await expect(page.locator('#focusConfirmOverlay')).toBeVisible();
     await expect(page.locator('#btnFocusSendConfirm')).toContainText('예약발송');
+    
+    // Check scheduledAt display in review modal
+    await expect(page.locator('#focusConfirmOverlay')).toContainText('2026-06-20 15:30');
+
     await page.locator('#btnFocusSendConfirm').click(); // Confirms send
     page.off('dialog', dialogHandler2);
 
@@ -472,17 +505,70 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     // Clear recipients list for the next test step
     await page.locator('#btnClearRecipients').click();
 
-
     const schedLogLength = await page.evaluate(() => window.stateStore.getOutboundMessageLogs().length);
     expect(schedLogLength).toBe(finalLogLength + 1);
 
     // Verify recent log card rendering scheduled details
-    await expect(vaultPanel.locator('span').filter({ hasText: '예약' }).first()).toBeVisible();
+    await expect(vaultPanel.locator('span').filter({ hasText: '예약발송' }).first()).toBeVisible();
+    await expect(vaultPanel.locator('span').filter({ hasText: '예약: 2026-06-20 15:30' }).first()).toBeVisible();
     await expect(vaultPanel.locator('span').filter({ hasText: '1/1명 발송' }).first()).toBeVisible();
 
     // 6. Verify single recipient display on recent card
     const firstStudentName = "최다은";
     await expect(vaultPanel.locator('span').filter({ hasText: firstStudentName }).first()).toBeVisible();
+
+    // Verify reserve edit and delete functionality
+    await expect(vaultPanel.locator('.btn-edit-reserve').first()).toBeVisible();
+    await expect(vaultPanel.locator('.btn-delete-reserve').first()).toBeVisible();
+    expect(await vaultPanel.locator('.btn-edit-reserve').count()).toBe(1);
+
+    // Edit reserve
+    await vaultPanel.locator('.btn-edit-reserve').first().click();
+    await expect(page.locator('#reserveScheduleModalOverlay')).toBeVisible();
+
+    // Verify prefilled values
+    await expect(page.locator('#reserveModalDateInp')).toHaveValue('2026-06-20');
+    await expect(page.locator('.item-ampm.picker-item-active')).toHaveAttribute('data-value', 'PM');
+    await expect(page.locator('.item-hour.picker-item-active')).toHaveAttribute('data-value', '03');
+    await expect(page.locator('.item-minute.picker-item-active')).toHaveAttribute('data-value', '30');
+
+    // Test validation: Past datetime on edit
+    await page.locator('#reserveModalDateInp').fill('2026-06-01');
+    await page.locator('.item-ampm[data-value="AM"]').click();
+    await page.locator('.item-hour[data-value="10"]').click();
+    await page.locator('.item-minute[data-value="00"]').click();
+    await page.locator('#btnReserveModalConfirm').click();
+    await expect(page.locator('#reserveModalErrorLabel')).toContainText('예약 시간은 현재 시간보다 이후여야 합니다.');
+
+    // Edit to a valid future datetime (e.g. 2026-06-25 11:20)
+    await page.locator('#reserveModalDateInp').fill('2026-06-25');
+    await page.locator('.item-ampm[data-value="AM"]').click();
+    await page.locator('.item-hour[data-value="11"]').click();
+    await page.locator('.item-minute[data-value="20"]').click();
+    await page.locator('#btnReserveModalConfirm').click();
+
+    // Verify modal closes and recent card is updated
+    await expect(page.locator('#reserveScheduleModalOverlay')).toBeHidden();
+    await expect(vaultPanel.locator('span').filter({ hasText: '예약: 2026-06-25 11:20' }).first()).toBeVisible();
+
+    // Delete reserve
+    let deleteConfirmCalled = false;
+    const deleteConfirmHandler = async (dialog) => {
+      deleteConfirmCalled = true;
+      expect(dialog.message()).toContain('예약이력을 삭제할까요?');
+      await dialog.accept();
+    };
+    page.once('dialog', deleteConfirmHandler);
+    await vaultPanel.locator('.btn-delete-reserve').first().click();
+
+    // Verify that the card is removed and count of edit buttons is 0
+    await expect(vaultPanel.locator('span').filter({ hasText: '예약: 2026-06-25 11:20' }).first()).toBeHidden();
+    expect(await vaultPanel.locator('.btn-edit-reserve').count()).toBe(0);
+    expect(deleteConfirmCalled).toBe(true);
+
+    // Verify logs count in stateStore is back to initial
+    const postDeleteLogsCount = await page.evaluate(() => window.stateStore.getOutboundMessageLogs().length);
+    expect(postDeleteLogsCount).toBe(finalLogLength);
 
     // 7. Verify body expansion toggle for long body
     const initialLogsCount = await page.evaluate(() => window.stateStore.getOutboundMessageLogs().length);

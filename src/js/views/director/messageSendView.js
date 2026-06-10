@@ -169,6 +169,10 @@ const viewState = {
     date: "2026-06-08",
     time: "10:00"
   },
+  reserveModalOpen: false,
+  reserveModalDate: "",
+  reserveModalTime: "",
+  reserveModalError: "",
   title: "",
   body: "",
   image: null,
@@ -194,6 +198,7 @@ const viewState = {
   editModalBody: "",
   editModalMethod: "SMS",
   editModalError: "",
+  editingReserveLogId: null,
 
   // New modal states
   directAddModalOpen: false,
@@ -203,6 +208,29 @@ const viewState = {
   expandedCardIds: new Set(),
   showOriginalCardIds: new Set(),
   previewRecipientIndex: 0
+};
+
+// --- Time parsing & composition helpers for 3-column scroll picker ---
+const parse24To12 = (time24) => {
+  const [hStr, mStr] = (time24 || "10:00").split(':');
+  const h = parseInt(hStr) || 0;
+  const m = parseInt(mStr) || 0;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  let hour = h % 12;
+  if (hour === 0) hour = 12;
+  const minuteVal = Math.floor(m / 10) * 10;
+  return {
+    ampm,
+    hour: String(hour).padStart(2, '0'),
+    minute: String(minuteVal).padStart(2, '0')
+  };
+};
+
+const compose12To24 = (ampm, hour12, minute) => {
+  let h = parseInt(hour12) || 12;
+  if (ampm === 'PM' && h !== 12) h += 12;
+  if (ampm === 'AM' && h === 12) h = 0;
+  return `${String(h).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 };
 
 // --- Data Adapter mapping stateStore -----------------------------------------
@@ -590,6 +618,7 @@ export function renderMessageSend(container) {
       <div id="directAddModalOverlay"></div>
       <div id="excelImportModalOverlay"></div>
       <div id="recipientDetailModalOverlay"></div>
+      <div id="reserveScheduleModalOverlay"></div>
     </div>
   `;
 
@@ -619,6 +648,7 @@ export function renderMessageSend(container) {
     renderDirectAddModal();
     renderExcelImportModal();
     renderRecipientDetailModal();
+    renderReserveScheduleModal();
   };
 
   // 1. Disclaimer Yellow Box
@@ -1649,9 +1679,11 @@ export function renderMessageSend(container) {
     const reserveSendBtn = block.querySelector('#btnReserveSend');
     if (reserveSendBtn) {
       reserveSendBtn.addEventListener('click', () => {
-        viewState.focusOpen = true;
-        viewState.schedule.on = true;
-        renderFocusConfirm();
+        viewState.reserveModalOpen = true;
+        viewState.reserveModalDate = "";
+        viewState.reserveModalTime = "";
+        viewState.reserveModalError = "";
+        renderReserveScheduleModal();
       });
     }
 
@@ -1722,12 +1754,12 @@ export function renderMessageSend(container) {
         if (isRecent) {
           kindLabel = item.method === "ALIMTALK" ? "알림톡" : item.method;
           dateLabel = item.sendType === "scheduled" 
-            ? formatDate(item.scheduledAt) 
+            ? "예약: " + formatDate(item.scheduledAt) 
             : formatDate(item.createdAt);
 
           const typeColor = item.sendType === "scheduled" ? "#d97706" : "#2563eb";
           const typeBg = item.sendType === "scheduled" ? "#fef3dd" : "#eff6ff";
-          typeBadge = `<span style="font-size: 9px; font-weight: 800; color: ${typeColor}; background: ${typeBg}; padding: 2px 6px; border-radius: 6px;">${item.sendType === 'scheduled' ? '예약' : '즉시'}</span>`;
+          typeBadge = `<span style="font-size: 9px; font-weight: 800; color: ${typeColor}; background: ${typeBg}; padding: 2px 6px; border-radius: 6px;">${item.sendType === 'scheduled' ? '예약발송' : '즉시발송'}</span>`;
 
           if (item.recipientCount === 1) {
             const name = item.recipients && item.recipients[0] ? item.recipients[0].name : "수신자";
@@ -1816,6 +1848,16 @@ export function renderMessageSend(container) {
                     display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 11.5px; font-weight: 700;
                     color: var(--danger, #dc2626); background: #fff; border: 1px solid #f6c6c6; border-radius: 7px; cursor: pointer; font-family: inherit; margin-bottom: 0;
                   ">${renderIcon('close', 11, 'var(--danger, #dc2626)')} 삭제</button>
+                ` : ''}
+                ${isRecent && item.sendType === "scheduled" ? `
+                  <button class="btn-edit-reserve" data-id="${item.id}" style="
+                    display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 11.5px; font-weight: 700;
+                    color: var(--slate); background: #fff; border: 1px solid var(--border-color); border-radius: 7px; cursor: pointer; font-family: inherit; margin-bottom: 0;
+                  ">${renderIcon('edit', 11, 'var(--slate)')} 예약수정</button>
+                  <button class="btn-delete-reserve" data-id="${item.id}" style="
+                    display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 11.5px; font-weight: 700;
+                    color: var(--danger, #dc2626); background: #fff; border: 1px solid #f6c6c6; border-radius: 7px; cursor: pointer; font-family: inherit; margin-bottom: 0;
+                  ">${renderIcon('close', 11, 'var(--danger, #dc2626)')} 예약삭제</button>
                 ` : ''}
               </div>
             </div>
@@ -2034,6 +2076,64 @@ export function renderMessageSend(container) {
         });
       });
 
+      // Reserve edit handler
+      block.querySelectorAll('.btn-edit-reserve').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.id;
+          const log = listData.find(d => d.id === id);
+          if (!log) return;
+
+          viewState.editingReserveLogId = id;
+          viewState.reserveModalOpen = true;
+
+          // Parse scheduledAt
+          const dateTimeStr = log.scheduledAt;
+          let datePart = "";
+          let timePart = "";
+          if (dateTimeStr.includes('T')) {
+            const parts = dateTimeStr.split('T');
+            datePart = parts[0];
+            timePart = parts[1].slice(0, 5);
+          } else {
+            const parts = dateTimeStr.split(' ');
+            datePart = parts[0];
+            timePart = parts[1].slice(0, 5);
+          }
+
+          viewState.reserveModalDate = datePart;
+          viewState.reserveModalTime = timePart;
+          viewState.reserveModalError = "";
+
+          renderReserveScheduleModal();
+        });
+      });
+
+      // Reserve delete handler
+      block.querySelectorAll('.btn-delete-reserve').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.id;
+          const log = listData.find(d => d.id === id);
+          if (!log) return;
+
+          const ok = confirm("예약이력을 삭제할까요?");
+          if (ok) {
+            stateStore.deleteOutboundMessageLog(id);
+            const logs = stateStore.getOutboundMessageLogs();
+            const itemsPerPage = 3;
+            const totalPages = Math.ceil(logs.length / itemsPerPage);
+            const currentPage = viewState.vaultPages["recent"] || 0;
+            if (currentPage >= totalPages && totalPages > 0) {
+              viewState.vaultPages["recent"] = totalPages - 1;
+            } else if (totalPages === 0) {
+              viewState.vaultPages["recent"] = 0;
+            }
+            renderMessageVault(true);
+          }
+        });
+      });
+
       // Group recipient modal handler
       block.querySelectorAll('.btn-show-recipients-modal').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -2210,9 +2310,11 @@ export function renderMessageSend(container) {
     });
 
     block.querySelector('#btnSendBarReserve').addEventListener('click', () => {
-      viewState.focusOpen = true;
-      viewState.schedule.on = true;
-      renderFocusConfirm();
+      viewState.reserveModalOpen = true;
+      viewState.reserveModalDate = "";
+      viewState.reserveModalTime = "";
+      viewState.reserveModalError = "";
+      renderReserveScheduleModal();
     });
 
   };
@@ -2549,6 +2651,279 @@ export function renderMessageSend(container) {
         viewState.saveModalError = err.message;
         renderTemplateSaveModal();
       }
+    });
+  };
+
+  // 9-B. Reserve Schedule Picker Modal Dialog
+  const renderReserveScheduleModal = () => {
+    const block = container.querySelector('#reserveScheduleModalOverlay');
+    if (!viewState.reserveModalOpen) {
+      block.style.display = 'none';
+      block.style.position = '';
+      block.style.inset = '';
+      block.style.zIndex = '';
+      block.innerHTML = '';
+      return;
+    }
+
+    // Default calculations for date and time
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const defaultDate = `${yyyy}-${mm}-${dd}`;
+
+    let nextHours = now.getHours();
+    let nextMinutes = Math.ceil(now.getMinutes() / 10) * 10;
+    if (nextMinutes >= 60) {
+      nextMinutes = 0;
+      nextHours += 1;
+    }
+    if (nextHours >= 24) {
+      nextHours = 0;
+    }
+    const defaultTime = `${String(nextHours).padStart(2, '0')}:${String(nextMinutes).padStart(2, '0')}`;
+
+    if (!viewState.reserveModalDate) viewState.reserveModalDate = defaultDate;
+    if (!viewState.reserveModalTime) viewState.reserveModalTime = defaultTime;
+
+    const { ampm, hour, minute } = parse24To12(viewState.reserveModalTime);
+
+    block.style.display = 'flex';
+    block.style.position = 'fixed';
+    block.style.inset = '0';
+    block.style.zIndex = '100';
+    block.style.alignItems = 'center';
+    block.style.justifyContent = 'center';
+    block.style.padding = '20px';
+    block.style.background = 'rgba(15, 23, 42, 0.42)';
+    block.style.animation = 'fadeIn 0.15s ease-out';
+
+    block.innerHTML = `
+      <style>
+        .picker-col-scroll {
+          scrollbar-width: thin;
+          scrollbar-color: #cbd5e1 #f1f5f9;
+        }
+        .picker-col-scroll::-webkit-scrollbar {
+          width: 6px;
+          display: block !important;
+        }
+        .picker-col-scroll::-webkit-scrollbar-track {
+          background: #f8fafc;
+        }
+        .picker-col-scroll::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 3px;
+        }
+        .picker-col-scroll::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
+        }
+        .picker-item {
+          padding: 6px 8px;
+          font-size: 13px;
+          text-align: center;
+          cursor: pointer;
+          user-select: none;
+          font-weight: 700;
+          border-radius: 6px;
+          margin: 2px 4px;
+          color: var(--text-main);
+          transition: background 0.15s, color 0.15s;
+        }
+        .picker-item:hover {
+          background: #f1f5f9;
+        }
+        .picker-item-active {
+          background: var(--primary) !important;
+          color: #ffffff !important;
+        }
+      </style>
+      <div id="btnReserveModalCloseBackdrop" style="position: absolute; inset: 0;"></div>
+      <div style="
+        position: relative; background: #fff; border-radius: 16px; width: 100%; max-width: 400px;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+        animation: popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); display: flex; flex-direction: column; overflow: hidden;
+      ">
+        <!-- Header -->
+        <div style="display: flex; align-items: center; gap: 10px; padding: 14px 20px; background: #fff; border-bottom: 1px solid #edf2f7;">
+          <span style="width: 28px; height: 28px; border-radius: 8px; background: var(--warning-light); display: flex; align-items: center; justify-content: center;">
+            ${renderIcon('clock', 14, 'var(--warning)')}
+          </span>
+          <h3 style="margin: 0; font-size: 15px; font-weight: 800; color: var(--text-main);">${viewState.editingReserveLogId ? '예약 발송 일시 변경' : '예약 발송 일시 설정'}</h3>
+          <button id="btnReserveModalClose" style="
+            margin-left: auto; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border-color);
+            background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
+          ">${renderIcon('close', 14, '#64748b')}</button>
+        </div>
+
+        <!-- Body -->
+        <div style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+          <div>
+            <label style="display: block; font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">예약 날짜</label>
+            <input type="date" id="reserveModalDateInp" value="${viewState.reserveModalDate}" style="
+              width: 100%; padding: 10px 12px; font-size: 13px; border-radius: 8px; border: 1px solid var(--border-color);
+              box-sizing: border-box; outline: none; transition: border-color 0.15s;
+            ">
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="display: block; font-size: 12px; font-weight: 700; color: var(--text-muted);">예약 시간</label>
+            <div style="display: flex; gap: 8px; align-items: stretch;">
+              
+              <!-- Column 1: AM/PM -->
+              <div class="picker-col-container" style="position: relative; flex: 1; height: 120px; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; background: #fff;">
+                <div class="picker-col-scroll scroll-ampm" style="overflow-y: auto; height: 100%; padding: 4px 0;">
+                  <div class="picker-item item-ampm ${ampm === 'AM' ? 'picker-item-active' : ''}" data-value="AM">오전</div>
+                  <div class="picker-item item-ampm ${ampm === 'PM' ? 'picker-item-active' : ''}" data-value="PM">오후</div>
+                </div>
+                <div class="picker-fade-mask" style="position: absolute; bottom: 0; left: 0; right: 0; height: 24px; background: linear-gradient(to top, rgba(255,255,255,0.95), rgba(255,255,255,0)); pointer-events: none;"></div>
+              </div>
+
+              <!-- Column 2: Hour -->
+              <div class="picker-col-container" style="position: relative; flex: 1; height: 120px; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; background: #fff;">
+                <div class="picker-col-scroll scroll-hour" style="overflow-y: auto; height: 100%; padding: 4px 0;">
+                  ${Array.from({length: 12}, (_, i) => String(i + 1).padStart(2, '0')).map(hVal => {
+                    const isActive = hVal === hour;
+                    return `<div class="picker-item item-hour ${isActive ? 'picker-item-active' : ''}" data-value="${hVal}">${hVal}시</div>`;
+                  }).join('')}
+                </div>
+                <div class="picker-fade-mask" style="position: absolute; bottom: 0; left: 0; right: 0; height: 24px; background: linear-gradient(to top, rgba(255,255,255,0.95), rgba(255,255,255,0)); pointer-events: none;"></div>
+              </div>
+
+              <!-- Column 3: Minute -->
+              <div class="picker-col-container" style="position: relative; flex: 1; height: 120px; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; background: #fff;">
+                <div class="picker-col-scroll scroll-minute" style="overflow-y: auto; height: 100%; padding: 4px 0;">
+                  ${['00','10','20','30','40','50'].map(mVal => {
+                    const isActive = mVal === minute;
+                    return `<div class="picker-item item-minute ${isActive ? 'picker-item-active' : ''}" data-value="${mVal}">${mVal}분</div>`;
+                  }).join('')}
+                </div>
+                <div class="picker-fade-mask" style="position: absolute; bottom: 0; left: 0; right: 0; height: 24px; background: linear-gradient(to top, rgba(255,255,255,0.95), rgba(255,255,255,0)); pointer-events: none;"></div>
+              </div>
+
+            </div>
+          </div>
+          ${viewState.reserveModalError ? `<div style="font-size: 11.5px; color: var(--danger); font-weight: 700;" id="reserveModalErrorLabel">${viewState.reserveModalError}</div>` : ''}
+        </div>
+
+        <!-- Footer -->
+        <div style="display: flex; gap: 10px; padding: 12px 20px; background: #fff; border-top: 1px solid #edf2f7; justify-content: flex-end;">
+          <button id="btnReserveModalCancel" style="
+            display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; font-size: 13.5px; font-weight: 700;
+            color: var(--slate); background: #f1f5f9; border: none; border-radius: 10px; cursor: pointer; font-family: inherit; margin-bottom: 0;
+          ">취소</button>
+          <button id="btnReserveModalConfirm" style="
+            display: inline-flex; align-items: center; gap: 6px; padding: 10px 24px; font-size: 13.5px; font-weight: 800;
+            color: #fff; background: var(--primary); border: none; border-radius: 10px; cursor: pointer;
+            box-shadow: 0 4px 12px rgba(37,99,235,.2); font-family: inherit; margin-bottom: 0;
+          ">확정</button>
+        </div>
+      </div>
+    `;
+
+    const closeReserveModal = () => {
+      viewState.reserveModalOpen = false;
+      viewState.editingReserveLogId = null;
+      viewState.reserveModalError = "";
+      renderReserveScheduleModal();
+    };
+
+    block.querySelector('#btnReserveModalCloseBackdrop').addEventListener('click', closeReserveModal);
+    block.querySelector('#btnReserveModalClose').addEventListener('click', closeReserveModal);
+    block.querySelector('#btnReserveModalCancel').addEventListener('click', closeReserveModal);
+
+    const dateInp = block.querySelector('#reserveModalDateInp');
+    dateInp.addEventListener('input', (e) => {
+      viewState.reserveModalDate = e.target.value;
+    });
+
+    // Wire up column scroll list item clicks
+    block.querySelectorAll('.item-ampm').forEach(el => {
+      el.addEventListener('click', () => {
+        const activeAmpm = el.dataset.value;
+        const { hour: curHour, minute: curMinute } = parse24To12(viewState.reserveModalTime);
+        viewState.reserveModalTime = compose12To24(activeAmpm, curHour, curMinute);
+        renderReserveScheduleModal();
+      });
+    });
+
+    block.querySelectorAll('.item-hour').forEach(el => {
+      el.addEventListener('click', () => {
+        const activeHour = el.dataset.value;
+        const { ampm: curAmpm, minute: curMinute } = parse24To12(viewState.reserveModalTime);
+        viewState.reserveModalTime = compose12To24(curAmpm, activeHour, curMinute);
+        renderReserveScheduleModal();
+      });
+    });
+
+    block.querySelectorAll('.item-minute').forEach(el => {
+      el.addEventListener('click', () => {
+        const activeMinute = el.dataset.value;
+        const { ampm: curAmpm, hour: curHour } = parse24To12(viewState.reserveModalTime);
+        viewState.reserveModalTime = compose12To24(curAmpm, curHour, activeMinute);
+        renderReserveScheduleModal();
+      });
+    });
+
+    // Auto-scroll selected elements into view
+    setTimeout(() => {
+      const activeItems = block.querySelectorAll('.picker-item-active');
+      activeItems.forEach(el => {
+        el.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+      });
+    }, 0);
+
+    block.querySelector('#btnReserveModalConfirm').addEventListener('click', () => {
+      const dateVal = viewState.reserveModalDate;
+      const timeVal = viewState.reserveModalTime;
+
+      if (!dateVal || !timeVal) {
+        viewState.reserveModalError = "예약 날짜와 시간을 입력해 주세요.";
+        renderReserveScheduleModal();
+        return;
+      }
+
+      const scheduledStr = `${dateVal}T${timeVal}:00`;
+      const scheduledDate = new Date(scheduledStr);
+      const currentDate = new Date();
+
+      if (isNaN(scheduledDate.getTime())) {
+        viewState.reserveModalError = "올바른 날짜와 시간을 입력해 주세요.";
+        renderReserveScheduleModal();
+        return;
+      }
+
+      if (scheduledDate <= currentDate) {
+        viewState.reserveModalError = "예약 시간은 현재 시간보다 이후여야 합니다.";
+        renderReserveScheduleModal();
+        return;
+      }
+
+      if (viewState.editingReserveLogId) {
+        const logId = viewState.editingReserveLogId;
+        const newScheduledAt = `${dateVal}T${timeVal}:00+09:00`;
+        stateStore.updateOutboundMessageLog(logId, {
+          scheduledAt: newScheduledAt,
+          scheduleUpdatedAt: new Date().toISOString()
+        });
+        viewState.reserveModalOpen = false;
+        viewState.editingReserveLogId = null;
+        viewState.reserveModalError = "";
+        renderReserveScheduleModal();
+        renderMessageVault();
+        return;
+      }
+
+      // Valid date and time -> proceed
+      viewState.schedule.date = dateVal;
+      viewState.schedule.time = timeVal;
+      viewState.schedule.on = true;
+      viewState.reserveModalOpen = false;
+      viewState.reserveModalError = "";
+      renderReserveScheduleModal();
+
+      viewState.focusOpen = true;
+      renderFocusConfirm();
     });
   };
 
@@ -3040,7 +3415,7 @@ export function renderMessageSend(container) {
         </div>
 
         <div style="padding: 20px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; flex: 1;">
-          <div style="font-size: 12.5px; font-weight: 800; color: #166534; margin-bottom: 2px;">발송 성공 대상 (${log.recipientCount}명)</div>
+          <div style="font-size: 12.5px; font-weight: 800; color: #166534; margin-bottom: 2px;">${log.sendType === "scheduled" ? "발송 예정 대상" : "발송 성공 대상"} (${log.recipientCount}명)</div>
           ${log.recipients.map(r => `
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px;">
               <div style="display: flex; align-items: center; gap: 8px;">

@@ -170,6 +170,29 @@ export const communicationMethods = {
         return newLog;
     },
 
+    updateOutboundMessageLog(logId, patch) {
+        if (!this.db.outboundMessageLogs) return null;
+        const index = this.db.outboundMessageLogs.findIndex(l => l.id === logId);
+        if (index === -1) return null;
+        const current = this.db.outboundMessageLogs[index];
+        const updated = {
+            ...current,
+            ...patch,
+            updatedAt: new Date().toISOString()
+        };
+        this.db.outboundMessageLogs[index] = updated;
+        this.saveDB();
+        this.notify('OUTBOUND_MESSAGE_LOGS_CHANGED', this.db.outboundMessageLogs);
+        return updated;
+    },
+
+    deleteOutboundMessageLog(logId) {
+        if (!this.db.outboundMessageLogs) return;
+        this.db.outboundMessageLogs = this.db.outboundMessageLogs.filter(l => l.id !== logId);
+        this.saveDB();
+        this.notify('OUTBOUND_MESSAGE_LOGS_CHANGED', this.db.outboundMessageLogs);
+    },
+
     // --- MESSAGE TEMPLATES ---
     getMessageTemplates() {
         if (!this.db.messageTemplates) {
