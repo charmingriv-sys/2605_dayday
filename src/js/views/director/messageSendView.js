@@ -1777,9 +1777,10 @@ export function renderMessageSend(container) {
             
             <!-- Smartphone Message Bubble Style -->
             <div class="message-body-container" data-id="${item.id}" style="
-              background: #f1f5f9; border-radius: 5px 12px 12px 12px; padding: 9px 12px; font-size: 11.5px;
-              line-height: 1.5; color: #334155; position: relative; border-left: 3px solid ${typeColor};
-              cursor: ${showToggle ? 'pointer' : 'default'}; min-height: 54px;
+              background: #f1f5f9; border-radius: 8px 16px 16px 16px; padding: 10px 14px; font-size: 13px;
+              line-height: 1.5; color: #334155; position: relative; border-left: 4px solid ${typeColor};
+              cursor: ${showToggle ? 'pointer' : 'default'}; min-height: 68px; max-width: 90%;
+              box-shadow: 0 1px 2px rgba(0,0,0,0.05);
             ">
               ${(viewState.vaultActiveTab !== "saved" && cardTitle) ? `<div style="font-weight: 800; font-size: 11.5px; color: #000; margin-bottom: 4px;">${cardTitle}</div>` : ''}
               <div style="white-space: pre-wrap;">${displayedBody}</div>

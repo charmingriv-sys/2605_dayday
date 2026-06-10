@@ -885,10 +885,26 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     // 폼과 수신자가 지워지지 않고 유지되는지 검증
     await expect(page.locator('#composeBodyInput')).toHaveValue('수신자 검증 테스트용 메시지 본문입니다.');
 
-    // Phase 11E-Repair-B: 보관함 카드 본문 표시 영역 높이 및 레이아웃 검증
-    // 1. 카드의 본문 표시 영역 최소 높이 검증 (min-height가 54px인지)
-    const bodyContainers = page.locator('.message-body-container');
-    await expect(bodyContainers.first()).toHaveCSS('min-height', '54px');
+    // Phase 11E-Repair-C: 보관함 카드 본문 표시 영역 높이 및 레이아웃 검증
+    // 1. 추천/저장/최근 탭 카드 스타일의 동일 적용 여부 및 수치 검증 (64px 이상, padding, font-size, line-height)
+    const tabs = ['recommend', 'saved', 'recent'];
+    for (const tab of tabs) {
+      await page.locator(`.btn-vault-tab[data-tab="${tab}"]`).click();
+      const container = page.locator('.message-body-container').first();
+      if (await container.count() > 0) {
+        // min-height가 64px 이상인지 검증
+        const minHeight = await container.evaluate(el => el.style.minHeight);
+        const minHeightVal = parseInt(minHeight) || 0;
+        expect(minHeightVal).toBeGreaterThanOrEqual(64);
+
+        // font-size, line-height, padding 검증
+        await expect(container).toHaveCSS('font-size', '13px');
+        await expect(container).toHaveCSS('line-height', '19.5px'); // 13px * 1.5 = 19.5px
+        await expect(container).toHaveCSS('padding', '10px 14px');
+      }
+    }
+    // 최근 탭으로 복원
+    await page.locator('.btn-vault-tab[data-tab="recent"]').click();
 
     // 2. 3번째 레이어(보관함)와 중앙 메시지 작성 레이어의 높이 균형 검증 (Stretch 형태)
     const vaultBox = await page.locator('#messageVaultPanel').boundingBox();
@@ -897,6 +913,25 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
 
     // 3. 긴 메시지가 있어도 레이아웃 깨짐 없이 내부 스크롤이 적용되는지 검증 (overflow-y: auto)
     await expect(page.locator('#vaultListContainer')).toHaveCSS('overflow-y', 'auto');
+
+    // 4. 금지 문구 비노출 검증 (비용 단가 및 발송완료)
+    const vaultText = await page.innerText('#messageVaultPanel');
+    expect(vaultText).not.toContain('예상비용');
+    expect(vaultText).not.toContain('예상 비용');
+    expect(vaultText).not.toContain('소요비용');
+    expect(vaultText).not.toContain('단가');
+    expect(vaultText).not.toContain('발송완료');
+
+    // 5. 긴 메시지 전체보기/접기 기능 작동 검증
+    const longCardToggle = page.locator('.btn-toggle-body').first();
+    if (await longCardToggle.count() > 0) {
+      const initialText = await longCardToggle.innerText();
+      expect(initialText).toBe('전체보기');
+      await longCardToggle.click();
+      await expect(longCardToggle).toHaveText('접기');
+      await longCardToggle.click();
+      await expect(longCardToggle).toHaveText('전체보기');
+    }
   });
 });
 
