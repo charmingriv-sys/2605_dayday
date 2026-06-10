@@ -553,8 +553,12 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
 
     // Edit time values
     await modal.locator('#ta-edit-checkin-ampm').selectOption('오전');
-    await modal.locator('#ta-edit-checkin-hour').selectOption('10');
-    await modal.locator('#ta-edit-checkin-minute').selectOption('05');
+    await modal.locator('#ta-edit-checkin-hour').selectOption('9');
+    await modal.locator('#ta-edit-checkin-minute').selectOption('17');
+
+    await modal.locator('#ta-edit-checkout-ampm').selectOption('오후');
+    await modal.locator('#ta-edit-checkout-hour').selectOption('6');
+    await modal.locator('#ta-edit-checkout-minute').selectOption('43');
 
     // Enter note
     await modal.locator('#ta-edit-reason').fill('단말기 수정 테스트');
@@ -582,18 +586,23 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
 
     // Verify database checkInAt was updated locally and an edit history was created
     const log = await page.evaluate(() => window.stateStore.db.teacherAttendanceLogs.find(l => l.id === 'tal_test_edit'));
-    // checkInAt should be 10:05 KST which is 2026-06-02T10:05:00+09:00
-    expect(log.checkInAt).toContain('10:05:00');
+    // checkInAt should be 09:17 KST and checkOutAt should be 18:43 KST
+    expect(log.checkInAt).toContain('09:17:00');
+    expect(log.checkOutAt).toContain('18:43:00');
 
     editLogsCount = await page.evaluate(() => window.stateStore.db.teacherAttendanceEditLogs.length);
     expect(editLogsCount).toBe(1);
 
+    const editLog = await page.evaluate(() => window.stateStore.db.teacherAttendanceEditLogs[0]);
+    expect(editLog.after.checkInAt).toContain('09:17:00');
+    expect(editLog.after.checkOutAt).toContain('18:43:00');
+
     // Verify that KPI and tables updated immediately
-    // For T1 completed checkout in June 2: 10:05 ~ 14:30 is 4h 25m
+    // For T1 completed checkout in June 2: 09:17 ~ 18:43 is 9h 26m
     const summaryCard = page.locator('.glass-card:has-text("강사별 근무시간")');
     await expect(summaryCard).toBeVisible();
     const sumRowT1 = summaryCard.locator('tr[data-testid="teacher-summary-row-T1"]');
-    await expect(sumRowT1.locator('td').nth(3)).toHaveText('4시간 25분');
+    await expect(sumRowT1.locator('td').nth(3)).toHaveText('9시간 26분');
 
     // Click T1 name to open drawer and check recent history
     await sumRowT1.locator('.ta-teacher-link').click();

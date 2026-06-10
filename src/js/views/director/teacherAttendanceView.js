@@ -1413,7 +1413,7 @@ export function renderTeacherAttendance(container) {
                             ${Array.from({ length: 12 }, (_, i) => i + 1).map(h => `<option value="${h}" ${decompIn.hourStr === String(h) ? 'selected' : ''}>${h}시</option>`).join('')}
                         </select>
                         <select id="ta-edit-checkin-minute" class="form-control" style="width: 80px; margin-bottom: 0; padding: 4px 8px; height: 34px; font-size: 0.85rem; cursor: pointer; overflow-y: auto;">
-                            ${Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0')).map(m => `<option value="${m}" ${decompIn.minStr === m ? 'selected' : ''}>${m}분</option>`).join('')}
+                            ${Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0')).map(m => `<option value="${m}" ${decompIn.minStr === m ? 'selected' : ''}>${m}분</option>`).join('')}
                         </select>
                         <span style="font-size: 11px; color: var(--text-muted); font-weight: 600;"><i class="fa-solid fa-arrows-up-down"></i> 스크롤</span>
                     </div>
@@ -1436,7 +1436,7 @@ export function renderTeacherAttendance(container) {
                             ${Array.from({ length: 12 }, (_, i) => i + 1).map(h => `<option value="${h}" ${decompOut.hourStr === String(h) ? 'selected' : ''}>${h}시</option>`).join('')}
                         </select>
                         <select id="ta-edit-checkout-minute" class="form-control" style="width: 80px; margin-bottom: 0; padding: 4px 8px; height: 34px; font-size: 0.85rem; cursor: pointer; overflow-y: auto;">
-                            ${Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0')).map(m => `<option value="${m}" ${decompOut.minStr === m ? 'selected' : ''}>${m}분</option>`).join('')}
+                            ${Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0')).map(m => `<option value="${m}" ${decompOut.minStr === m ? 'selected' : ''}>${m}분</option>`).join('')}
                         </select>
                         <span style="font-size: 11px; color: var(--text-muted); font-weight: 600;"><i class="fa-solid fa-arrows-up-down"></i> 스크롤</span>
                     </div>
