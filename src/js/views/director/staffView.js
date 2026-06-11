@@ -7,6 +7,167 @@ export function renderTeachers(container) {
     let editingTeacherId = null; // Stored ID if editing, otherwise null (means add mode)
     let phoneBinder = null;
 
+    const handleDeleteAction = (id) => {
+        const teacher = stateStore.getTeacher(id);
+        if (!teacher) return;
+        
+        const check = stateStore.canDeleteTeacher(id);
+        if (check.canDelete) {
+            if (confirm(`정말로 ${teacher.name} 강사의 정보를 삭제하시겠습니까?\n삭제 후 복구할 수 없습니다.`)) {
+                stateStore.deleteTeacherIfUnused(id);
+                showKakaoTalkToast("강사 정보가 삭제되었습니다.");
+                if (editingTeacherId === id) {
+                    resetForm();
+                }
+            }
+        } else {
+            const mapReasonToUserFriendly = (reason) => {
+                if (reason.includes('teacherAttendanceLogs') || reason.includes('출퇴근 근태 기록')) {
+                    return '출퇴근 기록이 있습니다.';
+                }
+                if (reason.includes('teacherAttendanceEditLogs') || reason.includes('근태 수정')) {
+                    return '근태 수정 이력이 있습니다.';
+                }
+                if (reason.includes('teacherShifts') || reason.includes('일정(근무 시간표)') || reason.includes('근무 시간표')) {
+                    return '강사 시간표에 등록된 기록이 있습니다.';
+                }
+                if (reason.includes('students') || reason.includes('담당 수강생')) {
+                    return '담당 원생이 배정되어 있습니다.';
+                }
+                if (reason.includes('scheduleSnapshots') || reason.includes('스냅샷')) {
+                    return '수업/출결 기록에 연결되어 있습니다.';
+                }
+                if (reason.includes('scheduleOverrides') || reason.includes('오버라이드')) {
+                    return '수업 변경 이력이 있습니다.';
+                }
+                if (reason.includes('scheduleOperationLogs') || reason.includes('조작 로그')) {
+                    return '시간표 변경 이력이 있습니다.';
+                }
+                if (reason.includes('majorSchedules') || reason.includes('주요 일정')) {
+                    return '주요 일정 담당자로 연결되어 있습니다.';
+                }
+                if (reason.includes('todayTasks') || reason.includes('업무 카드')) {
+                    return '오늘 업무 카드에 연결되어 있습니다.';
+                }
+                return reason;
+            };
+
+            const reasonsHtml = check.reasons.map(r => `
+                <li style="margin-bottom: 6px; line-height: 1.45; display: flex; align-items: center; gap: 6px;">
+                    <span style="color: #dc2626;">•</span>
+                    <span>${mapReasonToUserFriendly(r)}</span>
+                </li>
+            `).join('');
+
+            const modalHtml = `
+                <div class="modal-header">
+                    <h3 class="modal-title" style="color: var(--danger, #dc2626); font-weight: 700;">
+                        <i class="fa-solid fa-triangle-exclamation" style="margin-right: 8px;"></i>
+                        강사 삭제 불가 안내
+                    </h3>
+                    <button class="modal-close" data-close-modal>×</button>
+                </div>
+                <div class="modal-body" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 16px;">
+                    <div style="font-weight: 700; color: var(--text-main); font-size: 1rem; line-height: 1.5; margin-bottom: 4px;">
+                        이 강사는 기존 기록과 연결되어 있어 삭제할 수 없습니다.
+                    </div>
+                    <div style="font-size: 0.9rem; color: var(--text-muted, #64748b); line-height: 1.5;">
+                        기록을 보존하기 위해 삭제 대신 퇴사 처리로 관리해 주세요.
+                    </div>
+                    
+                    <div style="margin-top: 8px;">
+                        <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-muted, #64748b); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                            <i class="fa-solid fa-link" style="font-size: 0.8rem;"></i> 연결된 기록
+                        </div>
+                        <div style="max-height: 100px; overflow-y: auto; padding: 12px 16px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; color: #b91c1c; font-size: 0.85rem; font-weight: 600;">
+                            <ul style="list-style: none; padding: 0; margin: 0;">
+                                ${reasonsHtml}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer" style="padding: 1rem 1.5rem; display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--border-color);">
+                    <button class="btn btn-secondary" data-close-modal style="min-width: 80px; justify-content: center;">닫기</button>
+                    <button class="btn" id="go-to-resign-btn" style="min-width: 140px; justify-content: center; background: #e28743; border-color: #e28743; color: #fff; font-weight: bold;">퇴사 처리로 이동</button>
+                </div>
+            `;
+            openModal(modalHtml, (modalArea) => {
+                const goToResignBtn = modalArea.querySelector('#go-to-resign-btn');
+                if (goToResignBtn) {
+                    goToResignBtn.addEventListener('click', () => {
+                        closeModal();
+                        setTimeout(() => {
+                            handleResignAction(id);
+                        }, 350);
+                    });
+                }
+            });
+        }
+    };
+
+    const handleResignAction = (id) => {
+        const teacher = stateStore.getTeacher(id);
+        if (!teacher) return;
+
+        const now = new Date();
+        const offset = now.getTimezoneOffset() * 60000;
+        const todayStr = new Date(now.getTime() - offset).toISOString().slice(0, 10);
+
+        const modalHtml = `
+            <div class="modal-header">
+                <h3 class="modal-title">
+                    <i class="fa-solid fa-user-slash" style="color: var(--warning, #f59e0b); margin-right: 8px;"></i>
+                    강사 퇴사 처리
+                </h3>
+                <button class="modal-close" data-close-modal>×</button>
+            </div>
+            <form id="resign-form">
+                <div class="modal-body" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 16px;">
+                    <div style="background: rgba(245, 158, 11, 0.05); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 6px; padding: 12px; font-size: 0.85rem; font-weight: 650; color: #b45309; line-height: 1.5;">
+                        퇴사 처리 시 강사는 배정 목록에서 숨김 처리되나,<br>
+                        과거의 출결 및 매출 내역 등에서는 실명으로 안전하게 보존됩니다.
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-weight: 700; font-size: 0.85rem; margin-bottom: 6px; color: var(--text-main);">퇴사일자 <span style="color: var(--danger);">*</span></label>
+                        <input type="date" id="resign-date-input" class="form-control" value="${todayStr}" required style="width: 100%;">
+                        <span id="resign-date-error" style="color: var(--danger); font-size: 0.75rem; display: none; margin-top: 4px; font-weight: bold;">퇴사일자를 입력해 주세요.</span>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-weight: 700; font-size: 0.85rem; margin-bottom: 6px; color: var(--text-main);">퇴사 메모</label>
+                        <textarea id="resign-memo-input" class="form-control" placeholder="퇴사 사유 및 인수인계 사항 등 입력 (선택)" rows="3" style="resize: vertical; width: 100%;"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer" style="padding: 1rem 1.5rem; display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--border-color);">
+                    <button type="button" class="btn btn-secondary" data-close-modal style="min-width: 80px; justify-content: center;">취소</button>
+                    <button type="submit" class="btn btn-primary" style="min-width: 100px; justify-content: center; background: #e28743; border-color: #e28743;">퇴사 완료</button>
+                </div>
+            </form>
+        `;
+
+        openModal(modalHtml, (modalArea) => {
+            const form = modalArea.querySelector('#resign-form');
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const resignedAt = modalArea.querySelector('#resign-date-input').value.trim();
+                const memo = modalArea.querySelector('#resign-memo-input').value.trim();
+                const dateError = modalArea.querySelector('#resign-date-error');
+
+                if (!resignedAt) {
+                    dateError.style.display = 'block';
+                    return;
+                }
+                dateError.style.display = 'none';
+
+                if (confirm(`정말로 ${teacher.name} 강사를 퇴사 처리하시겠습니까?`)) {
+                    stateStore.resignTeacher(id, { resignedAt, memo });
+                    showKakaoTalkToast("퇴사 처리가 완료되었습니다.");
+                    closeModal();
+                    resetForm();
+                }
+            });
+        });
+    };
+
     const render = () => {
         container.innerHTML = `
             <div style="display: grid; grid-template-columns: 1.3fr 1fr; gap: 24px;" class="teachers-layout-grid">
@@ -41,6 +202,7 @@ export function renderTeachers(container) {
                         신규 강사 등록
                     </h3>
                     <form id="teacher-form">
+                        <div id="teacher-info-banner" style="display: none;"></div>
                         <div class="form-group">
                             <label for="teacher-name-input">강사 이름 <span style="color: var(--danger);">*</span></label>
                             <input type="text" id="teacher-name-input" class="form-control" placeholder="성함 입력" required>
@@ -63,8 +225,8 @@ export function renderTeachers(container) {
                             <textarea id="teacher-notes-input" class="form-control" placeholder="예: 화요일 16시 출근, 목요일 18시 조기 퇴근 등 특이사항 입력" rows="3" style="resize: vertical;"></textarea>
                         </div>
 
-                        <div style="display: flex; gap: 12px; margin-top: 1.8rem;" id="form-buttons-container">
-                            <button type="submit" class="btn btn-primary" style="flex-grow: 1; justify-content: center; height: 42px;">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-top: 1.8rem;" id="form-buttons-container">
+                            <button type="submit" class="btn btn-primary" style="flex-grow: 1; justify-content: center; height: 42px; white-space: nowrap; word-break: keep-all; min-width: 120px;">
                                 <i class="fa-solid fa-check"></i> <span id="submit-btn-label">등록 완료</span>
                             </button>
                         </div>
@@ -136,24 +298,31 @@ export function renderTeachers(container) {
             return;
         }
 
-        tbody.innerHTML = teachers.map(t => `
-            <tr>
-                <td style="font-weight: 600; color: var(--text-main);">${t.name}</td>
-                <td><span class="badge badge-info" style="font-size: 0.8rem;">${t.instrument}</span></td>
-                <td style="font-size: 0.85rem; font-weight: 500;">${t.phone}</td>
-                <td style="font-size: 0.85rem; color: var(--text-muted);">${t.email}</td>
-                <td style="text-align: right;">
-                    <div style="display: inline-flex; gap: 8px;">
-                        <button class="btn btn-secondary btn-icon-only edit-teacher-btn" data-id="${t.id}" title="수정">
-                            <i class="fa-solid fa-pen" style="font-size: 0.85rem;"></i>
-                        </button>
-                        <button class="btn btn-danger btn-icon-only delete-teacher-btn" data-id="${t.id}" title="삭제">
-                            <i class="fa-solid fa-trash-can" style="font-size: 0.85rem;"></i>
-                        </button>
-                    </div>
-                </td>
-            </tr>
-        `).join('');
+        tbody.innerHTML = teachers.map(t => {
+            const isResigned = t.employmentStatus === 'resigned';
+            const nameHtml = isResigned 
+                ? `${t.name} <span style="display: inline-flex; align-items: center; justify-content: center; background: #e2e8f0; color: #475569; border: 1px solid #cbd5e1; border-radius: 4px; padding: 1px 5px; font-size: 11px; font-weight: 900; margin-left: 6px;">퇴사</span>`
+                : t.name;
+            const rowStyle = isResigned ? 'opacity: 0.7; background: #f8fafc;' : '';
+            return `
+                <tr style="${rowStyle}">
+                    <td style="font-weight: 600; color: var(--text-main);">${nameHtml}</td>
+                    <td><span class="badge badge-info" style="font-size: 0.8rem;">${t.instrument}</span></td>
+                    <td style="font-size: 0.85rem; font-weight: 500;">${t.phone}</td>
+                    <td style="font-size: 0.85rem; color: var(--text-muted);">${t.email}</td>
+                    <td style="text-align: right;">
+                        <div style="display: inline-flex; gap: 8px;">
+                            <button class="btn btn-secondary btn-icon-only edit-teacher-btn" data-id="${t.id}" title="수정">
+                                <i class="fa-solid fa-pen" style="font-size: 0.85rem;"></i>
+                            </button>
+                            <button class="btn btn-danger btn-icon-only delete-teacher-btn" data-id="${t.id}" title="삭제">
+                                <i class="fa-solid fa-trash-can" style="font-size: 0.85rem;"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
 
         // Action bindings
         tbody.querySelectorAll('.edit-teacher-btn').forEach(btn => {
@@ -166,13 +335,7 @@ export function renderTeachers(container) {
         tbody.querySelectorAll('.delete-teacher-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const id = e.currentTarget.dataset.id;
-                const teacher = stateStore.getTeacher(id);
-                if (confirm(`정말로 ${teacher.name} 강사의 정보를 삭제하시겠습니까?\n강사 정보 삭제 시 기존 원생 배정 및 담당 정보가 영향을 받을 수 있습니다.`)) {
-                    stateStore.deleteTeacher(id);
-                    if (editingTeacherId === id) {
-                        resetForm();
-                    }
-                }
+                handleDeleteAction(id);
             });
         });
     };
@@ -190,21 +353,103 @@ export function renderTeachers(container) {
         container.querySelector('#teacher-notes-input').value = teacher.scheduleNotes || '';
         if (phoneBinder) phoneBinder.validate();
 
+        // Update info banner if resigned
+        const infoBanner = container.querySelector('#teacher-info-banner');
+        if (infoBanner) {
+            if (teacher.employmentStatus === 'resigned') {
+                infoBanner.innerHTML = `
+                    <div style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; padding: 12px; margin-bottom: 16px; font-size: 0.85rem; display: flex; flex-direction: column; gap: 4px;">
+                        <div style="font-weight: 800; color: #475569; display: flex; align-items: center; gap: 6px;">
+                            <i class="fa-solid fa-user-slash" style="color: #64748b;"></i>
+                            퇴사한 강사 정보 수정 중
+                        </div>
+                        <div style="color: #64748b; font-weight: 600;">
+                            퇴사일: <span style="font-family: monospace; color: var(--text-main); font-weight: 750;">${teacher.resignedAt || '-'}</span>
+                        </div>
+                        ${teacher.resignMemo ? `<div style="color: #64748b; font-weight: 600;">퇴사 사유: <span style="color: var(--text-main); font-weight: 750;">${teacher.resignMemo}</span></div>` : ''}
+                    </div>
+                `;
+                infoBanner.style.display = 'block';
+            } else {
+                infoBanner.style.display = 'none';
+                infoBanner.innerHTML = '';
+            }
+        }
+
         // Change layout elements to Edit Mode style
         container.querySelector('#form-heading').innerHTML = `
             <i class="fa-solid fa-user-pen" style="color: var(--primary);"></i>
             강사 정보 수정
         `;
-        container.querySelector('#submit-btn-label').textContent = '수정 완료';
 
         const buttonsContainer = container.querySelector('#form-buttons-container');
-        if (!container.querySelector('#cancel-edit-btn')) {
+        if (buttonsContainer) {
+            buttonsContainer.innerHTML = '';
+
+            // 수정 완료 button
+            const submitBtn = document.createElement('button');
+            submitBtn.type = 'submit';
+            submitBtn.className = 'btn btn-primary';
+            submitBtn.style.flexGrow = '1';
+            submitBtn.style.justifyContent = 'center';
+            submitBtn.style.height = '42px';
+            submitBtn.style.whiteSpace = 'nowrap';
+            submitBtn.style.wordBreak = 'keep-all';
+            submitBtn.style.minWidth = '120px';
+            submitBtn.innerHTML = `<i class="fa-solid fa-check"></i> 수정 완료`;
+            buttonsContainer.appendChild(submitBtn);
+
+            // 퇴사 처리 button - only if active
+            if (teacher.employmentStatus !== 'resigned') {
+                const resignBtn = document.createElement('button');
+                resignBtn.type = 'button';
+                resignBtn.className = 'btn';
+                resignBtn.id = 'resign-teacher-btn';
+                resignBtn.style.flexGrow = '1';
+                resignBtn.style.justifyContent = 'center';
+                resignBtn.style.height = '42px';
+                resignBtn.style.background = '#e28743'; // Beautiful warm accent
+                resignBtn.style.borderColor = '#e28743';
+                resignBtn.style.color = '#fff';
+                resignBtn.style.fontWeight = 'bold';
+                resignBtn.style.whiteSpace = 'nowrap';
+                resignBtn.style.wordBreak = 'keep-all';
+                resignBtn.style.minWidth = '120px';
+                resignBtn.innerHTML = `<i class="fa-solid fa-user-slash"></i> 퇴사 처리`;
+                resignBtn.addEventListener('click', () => handleResignAction(teacherId));
+                buttonsContainer.appendChild(resignBtn);
+            }
+
+            // 삭제 button
+            const deleteBtn = document.createElement('button');
+            deleteBtn.type = 'button';
+            deleteBtn.className = 'btn';
+            deleteBtn.id = 'delete-teacher-form-btn';
+            deleteBtn.style.flexGrow = '1';
+            deleteBtn.style.justifyContent = 'center';
+            deleteBtn.style.height = '42px';
+            deleteBtn.style.background = '#dc2626'; // Soft red
+            deleteBtn.style.borderColor = '#dc2626';
+            deleteBtn.style.color = '#fff';
+            deleteBtn.style.fontWeight = 'bold';
+            deleteBtn.style.whiteSpace = 'nowrap';
+            deleteBtn.style.wordBreak = 'keep-all';
+            deleteBtn.style.minWidth = '120px';
+            deleteBtn.innerHTML = `<i class="fa-solid fa-trash-can"></i> 삭제`;
+            deleteBtn.addEventListener('click', () => handleDeleteAction(teacherId));
+            buttonsContainer.appendChild(deleteBtn);
+
+            // 취소 button
             const cancelBtn = document.createElement('button');
             cancelBtn.type = 'button';
             cancelBtn.className = 'btn btn-secondary';
             cancelBtn.id = 'cancel-edit-btn';
             cancelBtn.style.flexGrow = '1';
             cancelBtn.style.justifyContent = 'center';
+            cancelBtn.style.height = '42px';
+            cancelBtn.style.whiteSpace = 'nowrap';
+            cancelBtn.style.wordBreak = 'keep-all';
+            cancelBtn.style.minWidth = '120px';
             cancelBtn.textContent = '취소';
             cancelBtn.addEventListener('click', resetForm);
             buttonsContainer.appendChild(cancelBtn);
@@ -228,11 +473,20 @@ export function renderTeachers(container) {
             `;
         }
         
-        const label = container.querySelector('#submit-btn-label');
-        if (label) label.textContent = '등록 완료';
+        const infoBanner = container.querySelector('#teacher-info-banner');
+        if (infoBanner) {
+            infoBanner.style.display = 'none';
+            infoBanner.innerHTML = '';
+        }
 
-        const cancelBtn = container.querySelector('#cancel-edit-btn');
-        if (cancelBtn) cancelBtn.remove();
+        const buttonsContainer = container.querySelector('#form-buttons-container');
+        if (buttonsContainer) {
+            buttonsContainer.innerHTML = `
+                <button type="submit" class="btn btn-primary" style="flex-grow: 1; justify-content: center; height: 42px; white-space: nowrap; word-break: keep-all; min-width: 120px;">
+                    <i class="fa-solid fa-check"></i> <span id="submit-btn-label">등록 완료</span>
+                </button>
+            `;
+        }
     };
 
     render();

@@ -871,4 +871,170 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
     expect(canDeleteCheck.canDelete).toBe(false);
     expect(canDeleteCheck.reasons).toContain('업무 카드(Today Tasks)에 관련 강사로 연결되어 있습니다.');
   });
+
+  test('should support teacher resignation and deletion validations in UI', async ({ page }) => {
+    // Remove global dialog listener to prevent conflicts
+    page.removeAllListeners('dialog');
+
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Navigate to "강사관리" (dir-teachers)
+    const staffMenu = page.locator('.menu-item[data-view="dir-teachers"]');
+    await expect(staffMenu).toBeVisible();
+    await staffMenu.click();
+
+    // Verify heading is visible
+    await expect(page.locator('h3:has-text("학원 등록 강사 현황")')).toBeVisible();
+
+    // 3. Test deleting an active referenced teacher (T1: 문승현 has attendance logs)
+    // Find row for 문승현
+    const rowT1 = page.locator('#teachers-table-body tr:has-text("문승현")');
+    await expect(rowT1).toBeVisible();
+
+    // Click Delete button in the table row
+    const deleteBtnT1 = rowT1.locator('.delete-teacher-btn');
+    await deleteBtnT1.click();
+
+    // Verify deletion blocked modal displays reasons
+    const blockedModal = page.locator('.modal-overlay.show');
+    await expect(blockedModal).toBeVisible();
+    await expect(blockedModal.locator('.modal-title')).toContainText('강사 삭제 불가 안내');
+    
+    // Assert user-friendly mapped Korean sentences
+    await expect(blockedModal.locator('.modal-body')).toContainText('이 강사는 기존 기록과 연결되어 있어 삭제할 수 없습니다.');
+    await expect(blockedModal.locator('.modal-body')).toContainText('기록을 보존하기 위해 삭제 대신 퇴사 처리로 관리해 주세요.');
+    await expect(blockedModal.locator('.modal-body')).toContainText('연결된 기록');
+    await expect(blockedModal.locator('ul')).toContainText('강사 시간표에 등록된 기록이 있습니다.');
+    
+    // Ensure raw db tables are NOT shown
+    const modalContentText = await blockedModal.innerText();
+    expect(modalContentText).not.toContain('teacherAttendanceLogs');
+    expect(modalContentText).not.toContain('teacherShifts');
+    expect(modalContentText).not.toContain('students');
+    expect(modalContentText).not.toContain('scheduleSnapshots');
+    expect(modalContentText).not.toContain('scheduleOverrides');
+    expect(modalContentText).not.toContain('scheduleOperationLogs');
+    expect(modalContentText).not.toContain('majorSchedules');
+    expect(modalContentText).not.toContain('todayTasks');
+
+    // Click "퇴사 처리로 이동" button on the blocked modal to test transition
+    const goToResignBtn = blockedModal.locator('#go-to-resign-btn');
+    await expect(goToResignBtn).toBeVisible();
+    await goToResignBtn.click();
+
+    // The blocked modal should close, and the resign modal should open
+    await expect(blockedModal).toBeHidden();
+    const resignModal = page.locator('.modal-overlay.show');
+    await expect(resignModal).toBeVisible();
+    await expect(resignModal.locator('.modal-title')).toContainText('강사 퇴사 처리');
+
+    // Close the resign modal via the Cancel button to return to the edit form flow
+    await resignModal.locator('button:text-is("취소")').click();
+    await expect(resignModal).toBeHidden();
+    await page.waitForTimeout(500);
+
+    // 4. Click Edit button for T1
+    const editBtnT1 = rowT1.locator('.edit-teacher-btn');
+    await editBtnT1.click();
+
+    // Form title should change to "강사 정보 수정"
+    await expect(page.locator('#form-heading')).toContainText('강사 정보 수정');
+
+    // Resign and Delete buttons should be present in the form buttons container
+    const resignBtnForm = page.locator('#resign-teacher-btn');
+    const deleteBtnForm = page.locator('#delete-teacher-form-btn');
+    await expect(resignBtnForm).toBeVisible();
+    await expect(deleteBtnForm).toBeVisible();
+
+    // Verify responsive styling on the form buttons
+    await expect(resignBtnForm).toHaveCSS('white-space', 'nowrap');
+    await expect(resignBtnForm).toHaveCSS('word-break', 'keep-all');
+    await expect(resignBtnForm).toHaveCSS('min-width', '120px');
+    await expect(deleteBtnForm).toHaveCSS('white-space', 'nowrap');
+    await expect(deleteBtnForm).toHaveCSS('word-break', 'keep-all');
+    await expect(deleteBtnForm).toHaveCSS('min-width', '120px');
+
+    // 5. Test Deletion from Form button
+    await deleteBtnForm.click();
+    await expect(blockedModal).toBeVisible();
+    await expect(blockedModal.locator('ul')).toContainText('강사 시간표에 등록된 기록이 있습니다.');
+    await blockedModal.locator('[data-close-modal]').first().click();
+    await expect(blockedModal).toBeHidden();
+    await page.waitForTimeout(500);
+
+    // 6. Test Resign process
+    await resignBtnForm.click();
+
+    // Resign modal should open
+    await expect(resignModal).toBeVisible();
+    await expect(resignModal.locator('.modal-title')).toContainText('강사 퇴사 처리');
+
+    // Fill resignation info
+    const dateInput = resignModal.locator('#resign-date-input');
+    await dateInput.fill(''); // Clear date to test validation
+    
+    // Setup confirm for submit
+    page.once('dialog', async dialog => {
+      expect(dialog.message()).toBe('정말로 문승현 강사를 퇴사 처리하시겠습니까?');
+      await dialog.accept(); // Confirm resignation
+    });
+
+    await dateInput.fill('2026-06-11');
+    await resignModal.locator('#resign-memo-input').fill('개인 사정 이직');
+    await resignModal.locator('button[type="submit"]').click();
+
+    // Resign modal should close, form resets to "신규 강사 등록", and the row gets "[퇴사]" badge and styled opacity
+    await expect(resignModal).toBeHidden();
+    await page.waitForTimeout(500);
+    await expect(page.locator('#form-heading')).toContainText('신규 강사 등록');
+
+    const updatedRowT1 = page.locator('#teachers-table-body tr:has-text("문승현")');
+    await expect(updatedRowT1).toBeVisible();
+    await expect(updatedRowT1.locator('span:has-text("퇴사")')).toBeVisible();
+
+    // Click Edit button for T1 again to check info banner
+    await updatedRowT1.locator('.edit-teacher-btn').click();
+    const infoBanner = page.locator('#teacher-info-banner');
+    await expect(infoBanner).toBeVisible();
+    await expect(infoBanner).toContainText('퇴사한 강사 정보 수정 중');
+    await expect(infoBanner).toContainText('퇴사일: 2026-06-11');
+    await expect(infoBanner).toContainText('퇴사 사유: 개인 사정 이직');
+
+    // Since they are now resigned, "퇴사 처리" button should NOT be visible in the form
+    await expect(page.locator('#resign-teacher-btn')).toHaveCount(0);
+
+    // Cancel edit mode
+    await page.locator('#cancel-edit-btn').click();
+    await expect(infoBanner).toBeHidden();
+
+    // 7. Test deleting a clean teacher (register a new teacher first, then delete them)
+    // Fill the add form
+    await page.locator('#teacher-name-input').fill('임시강사');
+    await page.locator('#teacher-instrument-input').fill('우쿨렐레');
+    await page.locator('#teacher-phone-input').fill('010-9999-8888');
+    await page.locator('#teacher-email-input').fill('temp_teacher@turing.com');
+    await page.locator('button[type="submit"]').click(); // Click 등록 완료
+
+    // Verify new row in the table
+    const tempRow = page.locator('#teachers-table-body tr:has-text("임시강사")');
+    await expect(tempRow).toBeVisible();
+
+    // Click Edit to delete via Form button
+    await tempRow.locator('.edit-teacher-btn').click();
+
+    page.once('dialog', async dialog => {
+      expect(dialog.message()).toContain('정말로 임시강사 강사의 정보를 삭제하시겠습니까?');
+      await dialog.accept(); // Confirm deletion
+    });
+
+    await page.locator('#delete-teacher-form-btn').click();
+
+    // Row should disappear from table, form resets to "신규 강사 등록"
+    await expect(tempRow).not.toBeVisible();
+    await expect(page.locator('#form-heading')).toContainText('신규 강사 등록');
+  });
 });
