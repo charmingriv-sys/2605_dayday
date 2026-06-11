@@ -417,17 +417,24 @@ export const staffMethods = {
 
     findTeacherByIdOrName(value) {
         if (!value) return null;
+        const cleanValue = typeof value === 'string'
+            ? value.replace(/\s*\(퇴사\)$/, '').trim()
+            : value;
         const teachers = this.getTeachers();
-        let teacher = teachers.find(t => t.id === value);
+        let teacher = teachers.find(t => t.id === cleanValue);
         if (teacher) return teacher;
-        teacher = teachers.find(t => t.name === value);
+        teacher = teachers.find(t => t.name === cleanValue);
         if (teacher) return teacher;
         return null;
     },
 
     getTeacherDisplayName(value) {
         if (!value) return '-';
-        const teacher = this.findTeacherByIdOrName(value);
-        return teacher ? teacher.name : value;
+        const cleanValue = typeof value === 'string'
+            ? value.replace(/\s*\(퇴사\)$/, '').trim()
+            : value;
+        const teacher = this.findTeacherByIdOrName(cleanValue);
+        if (!teacher) return value;
+        return teacher.employmentStatus === 'resigned' ? `${teacher.name} (퇴사)` : teacher.name;
     }
 };

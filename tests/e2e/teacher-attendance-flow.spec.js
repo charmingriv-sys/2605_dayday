@@ -1183,4 +1183,131 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
     await expect(allBtn.locator('#count-all')).toHaveText('(8)');
     await expect(page.locator('#teachers-table-body')).toContainText('퇴사 처리된 강사가 없습니다.');
   });
+
+  test('should not contain double resigned labels like (퇴사) (퇴사) in any major screens', async ({ page }) => {
+    // Remove global dialog listener to prevent conflicts
+    page.removeAllListeners('dialog');
+
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // Go to staff view and resign "양지숙" (T4)
+    const staffMenu = page.locator('.menu-item[data-view="dir-teachers"]');
+    await staffMenu.click();
+    
+    const row = page.locator('#teachers-table-body tr:has-text("양지숙")');
+    await row.locator('.edit-teacher-btn').click();
+    await page.locator('#resign-teacher-btn').click();
+    const resignModal = page.locator('.modal-overlay.show');
+    await resignModal.locator('#resign-date-input').fill('2026-06-11');
+    await resignModal.locator('#resign-memo-input').fill('이직');
+    
+    page.once('dialog', async dialog => {
+      await dialog.accept();
+    });
+    await resignModal.locator('button[type="submit"]').click();
+    await page.waitForTimeout(500);
+
+    // Let's navigate through different views and check DOM text
+    const views = [
+      'dir-major-schedule',
+      'dir-students',
+      'dir-schedules',
+      'dir-attendance-control',
+      'dir-teacher-attendance'
+    ];
+
+    for (const view of views) {
+      const menu = page.locator(`.menu-item[data-view="${view}"]`);
+      await menu.click();
+      await page.waitForTimeout(500);
+      const text = await page.textContent('body');
+      expect(text).not.toContain('(퇴사) (퇴사)');
+      expect(text).not.toContain('(퇴사)(퇴사)');
+    }
+  });
+
+  test('should handle retired teacher shifts and student matching filters properly', async ({ page }) => {
+    page.removeAllListeners('dialog');
+
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // Add shift for retired teacher T4 on 2026-05-18 and 2026-06-11 (today) and resign them
+    await page.evaluate(() => {
+      window.stateStore.saveTeacherShift('T4', '2026-05-18', ['14:00', '14:30']);
+      window.stateStore.saveTeacherShift('T4', '2026-06-11', ['14:00', '14:30']);
+      window.stateStore.resignTeacher('T4', { resignedAt: '2026-06-11', memo: '이직' });
+    });
+
+    // Go to Schedules screen
+    await page.locator('.menu-item[data-view="dir-schedules"]').click();
+    await page.waitForTimeout(500);
+
+    // 1. Check weekly shift dropdown contains T4 with single resigned label
+    const weekSelect = page.locator('#shift-teacher-select-week');
+    await expect(weekSelect).toContainText('양지숙 (퇴사)');
+    await expect(weekSelect).not.toContainText('양지숙 (퇴사) (퇴사)');
+
+    // 2. Switch to daily shifts and verify T4 is visible on 2026-06-11
+    await page.locator('[data-testid="teacher-shift-day-view"]').click();
+    await page.locator('[data-testid="teacher-shift-date-input"]').fill('2026-06-11');
+    await page.waitForTimeout(500);
+
+    const dayShiftHeader = page.locator('[data-testid="teacher-shift-table"]');
+    await expect(dayShiftHeader).toContainText('양지숙 (퇴사)');
+    await expect(dayShiftHeader).not.toContainText('양지숙 (퇴사) (퇴사)');
+
+    // 3. Test Student Matching Filter (Problem 2)
+    // S1 (최다은) default teacher is T8 (정은비). Resign T8 first.
+    await page.evaluate(() => {
+      window.stateStore.resignTeacher('T8', { resignedAt: '2026-06-11', memo: '건강사정' });
+    });
+
+    // S1 default teacher was T8.
+    // In match view for today (2026-06-11), T8 should be visible as filter badge or column since there are classes
+    await page.locator('.menu-item[data-view="dir-schedules"]').click();
+    await page.locator('#btn-subtab-match').click();
+    await page.waitForTimeout(500);
+
+    // Navigate 4 weeks forward to a future week (e.g. week of June 15, 2026) to test future dynamic scheduling
+    for (let i = 0; i < 4; i++) {
+      await page.locator('#btn-next-week').click();
+      await page.waitForTimeout(100);
+    }
+
+    // Weekly match view: T8 (정은비) is in filter because S1 has default classes in this week (and S1 was assigned to T8)
+    const matchFilterRow = page.locator('#teacher-filter-row');
+    await expect(matchFilterRow).toContainText('정은비 (퇴사)');
+
+    // Now update S1's teacher to T1 (active). T8 should disappear from MATCH view filter badges for future/current week
+    await page.evaluate(() => {
+      const t8Students = ['S1', 'S2', 'S3', 'S4', 'S5', 'S13', 'S21'];
+      t8Students.forEach(sid => {
+        window.stateStore.updateStudent(sid, { teacherId: 'T1' });
+      });
+    });
+    await page.locator('.menu-item[data-view="dir-schedules"]').click();
+    await page.locator('#btn-subtab-match').click();
+    await page.waitForTimeout(500);
+    await expect(matchFilterRow).not.toContainText('정은비 (퇴사)');
+
+    // 4. Test Student Deletion (Problem 3)
+    // Delete student S2 (assigned to T8 in past snapshot/active). S2 should disappear from grid.
+    await page.evaluate(() => {
+      window.stateStore.deleteStudent('S2');
+    });
+    await page.locator('.menu-item[data-view="dir-schedules"]').click();
+    await page.locator('#btn-subtab-match').click();
+    await page.waitForTimeout(500);
+
+    const gridText = await page.textContent('.teacher-student-main');
+    expect(gridText).not.toContain('김제나'); // S2 name
+  });
 });

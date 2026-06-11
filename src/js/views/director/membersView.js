@@ -122,7 +122,7 @@ const printStudentRegister = () => {
         const teacher = teachers.find(t => t.id === s.teacherId);
         const birthDate = s.age ? `${2026 - s.age}-01-01` : '-';
         const ageStr = s.age ? ` (${s.age}세)` : '';
-        const teacherName = teacher ? teacher.name : '미배정';
+        const teacherName = teacher ? (teacher.employmentStatus === 'resigned' ? `${teacher.name}(퇴사)` : teacher.name) : '미배정';
         
         return `
             <tr>
@@ -864,7 +864,7 @@ const openStudentDetailModal = (studentId) => {
                 </div>
                 <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(0,0,0,0.03); padding-bottom: 6px;">
                     <span style="color: var(--text-muted);">배정 담당강사</span>
-                    <strong>${teacher ? teacher.name : '미배정'}</strong>
+                    <strong>${teacher ? (teacher.employmentStatus === 'resigned' ? `${teacher.name} (퇴사)` : teacher.name) : '미배정'}</strong>
                 </div>
                 <div style="display: flex; justify-content: space-between; padding-bottom: 2px;">
                     <span style="color: var(--text-muted);">주간 고정 수업 시간표</span>
@@ -1095,11 +1095,16 @@ const openStudentModal = (studentId = null) => {
     }
 
     // Build teacher list selections
-    const teacherOptionsHtml = teachers.map(t => `
-        <option value="${t.id}" ${student && student.teacherId === t.id ? 'selected' : ''}>
-            ${t.name} (${t.instrument})
-        </option>
-    `).join('');
+    const teacherOptionsHtml = teachers
+        .filter(t => t.employmentStatus !== 'resigned' || (student && student.teacherId === t.id))
+        .map(t => {
+            const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
+            return `
+                <option value="${t.id}" ${student && student.teacherId === t.id ? 'selected' : ''}>
+                    ${t.name}${resignedSuffix} (${t.instrument})
+                </option>
+            `;
+        }).join('');
 
     // Dynamic subjects selection (filter active or matches student's current instrument)
     const subjects = stateStore.getSubjects();
@@ -2374,6 +2379,7 @@ export function renderStudents(container) {
 
     const render = () => {
         const teachers = stateStore.getTeachers();
+        const students = stateStore.getStudents() || [];
 
         container.innerHTML = `
             <!-- Filter Bar Card -->
@@ -2389,7 +2395,10 @@ export function renderStudents(container) {
                         <!-- Teacher filter -->
                         <select id="student-teacher-filter" class="form-control" style="min-width: 160px; margin-bottom: 0;">
                             <option value="">강사 전체</option>
-                            ${teachers.map(t => `<option value="${t.id}" ${filterTeacherId === t.id ? 'selected' : ''}>${t.name} (${t.instrument})</option>`).join('')}
+                            ${teachers.filter(t => t.employmentStatus !== 'resigned' || filterTeacherId === t.id || students.some(s => s.teacherId === t.id)).map(t => {
+                                const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
+                                return `<option value="${t.id}" ${filterTeacherId === t.id ? 'selected' : ''}>${t.name}${resignedSuffix} (${t.instrument})</option>`;
+                            }).join('')}
                         </select>
 
                         <!-- Day filter -->
@@ -2652,7 +2661,7 @@ export function renderStudents(container) {
                     <!-- 5. 담당 강사 -->
                     <td style="word-break: break-word;">
                         <div style="font-weight: 600; color: var(--accent); font-size: 0.9rem;">${s.instrument}</div>
-                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">강사: ${teacher ? teacher.name : '<span style="color:var(--danger)">미지정</span>'}</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">강사: ${teacher ? (teacher.employmentStatus === 'resigned' ? `${teacher.name} (퇴사)` : teacher.name) : '<span style="color:var(--danger)">미지정</span>'}</div>
                     </td>
                     <!-- 6. 수업 시간표 -->
                     <td style="word-break: break-word;">

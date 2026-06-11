@@ -509,7 +509,10 @@ export function renderTeacherAttendance(container) {
                         <label for="filter-teacher" style="font-weight: 600; font-size: 0.8rem;">강사 선택</label>
                         <select id="filter-teacher" class="form-control" style="padding: 8px 12px; font-size: 0.88rem;">
                             <option value="">전체 강사</option>
-                            ${stateStore.getTeachers().map(t => `<option value="${t.id}" ${t.id === selectedTeacherId ? 'selected' : ''}>${t.name}</option>`).join('')}
+                            ${stateStore.getTeachers().filter(t => t.employmentStatus !== 'resigned' || selectedTeacherId === t.id).map(t => {
+                                const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
+                                return `<option value="${t.id}" ${t.id === selectedTeacherId ? 'selected' : ''}>${t.name}${resignedSuffix}</option>`;
+                            }).join('')}
                         </select>
                     </div>
                     <div class="form-group" style="margin-bottom: 0; flex-grow: 1; min-width: 150px;">
@@ -1129,6 +1132,7 @@ export function renderTeacherAttendance(container) {
         const endDate = rangeDates[rangeDates.length - 1];
 
         const summaries = stateStore.getTeacherWorkHourSummary(startDate, endDate);
+        const teachers = stateStore.getTeachers();
 
         // Filter: only show teachers with at least 1 check-in in the selected range
         let filteredSummaries = summaries.filter(s => s.checkInDays >= 1);
@@ -1169,7 +1173,7 @@ export function renderTeacherAttendance(container) {
             return `
                 <tr data-testid="teacher-summary-row-${s.teacherId}">
                     <td style="font-weight: 600; color: var(--text-main);">
-                        <a href="#" class="ta-teacher-link" data-teacher-id="${s.teacherId}" style="text-decoration: underline; color: var(--primary); font-weight: 700; cursor: pointer;">${s.teacherName}</a>
+                        <a href="#" class="ta-teacher-link" data-teacher-id="${s.teacherId}" style="text-decoration: underline; color: var(--primary); font-weight: 700; cursor: pointer;">${s.teacherName}${teachers.find(t => t.id === s.teacherId)?.employmentStatus === 'resigned' ? ' (퇴사)' : ''}</a>
                     </td>
                     <td><span class="badge badge-info" style="font-size: 0.8rem; background: rgba(9, 132, 227, 0.08); color: var(--primary);">${s.instrument}</span></td>
                     <td style="font-weight: 500;">${s.checkInDays}일</td>
@@ -1195,7 +1199,7 @@ export function renderTeacherAttendance(container) {
 
         if (selectedRangeMode === 'today') {
             const logs = stateStore.getTeacherAttendanceLogs({ date: selectedDate });
-            items = teachers.map(t => {
+            items = teachers.filter(t => t.employmentStatus !== 'resigned' || logs.some(l => l.teacherId === t.id)).map(t => {
                 const log = logs.find(l => l.teacherId === t.id);
                 let checkInTime = '-';
                 let checkOutTime = '-';
@@ -1232,7 +1236,7 @@ export function renderTeacherAttendance(container) {
                 return {
                     id: t.id,
                     logId: log ? log.id : null,
-                    name: t.name,
+                    name: t.name + (t.employmentStatus === 'resigned' ? ' (퇴사)' : ''),
                     phone: t.phone || t.mobile || t.teacherPhone || t.contact || '-',
                     instrument: t.instrument || '미지정',
                     checkInTime,
@@ -1274,7 +1278,7 @@ export function renderTeacherAttendance(container) {
                 return {
                     id: t.id,
                     logId: log.id,
-                    name: t.name,
+                    name: t.name + (t.employmentStatus === 'resigned' ? ' (퇴사)' : ''),
                     phone: t.phone || t.mobile || t.teacherPhone || t.contact || '-',
                     instrument: t.instrument || '미지정',
                     checkInTime,

@@ -1820,7 +1820,12 @@ export function renderMajorSchedule(container) {
     const teachers = stateStore.getTeachers() || [];
     const ownerOptions = [
       `<option value="">담당자 선택</option>`,
-      ...teachers.map(t => `<option value="${t.id}" ${event && (event.ownerId === t.id || event.ownerId === t.name) ? "selected" : ""}>${t.name}</option>`)
+      ...teachers
+        .filter(t => t.employmentStatus !== 'resigned' || (event && (event.ownerId === t.id || event.ownerId === t.name || stateStore.findTeacherByIdOrName(event.ownerId)?.id === t.id)))
+        .map(t => {
+          const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
+          return `<option value="${t.id}" ${event && (event.ownerId === t.id || event.ownerId === t.name || stateStore.findTeacherByIdOrName(event.ownerId)?.id === t.id) ? "selected" : ""}>${t.name}${resignedSuffix}</option>`;
+        })
     ].join("");
 
     // Visibility toggle state

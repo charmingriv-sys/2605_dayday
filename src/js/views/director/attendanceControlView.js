@@ -466,8 +466,10 @@ export function renderDirectorAttendanceControl(container) {
             absentCount,
             lateCount,
             monthRate,
-            className: stud ? stud.instrument : '피아노',
-            teacher: stud ? (teachersList.find(t => t.id === stud.teacherId)?.name || '미배정') : '미배정',
+            teacher: stud ? (() => {
+                const t = teachersList.find(t => t.id === stud.teacherId);
+                return t ? (t.employmentStatus === 'resigned' ? `${t.name} (퇴사)` : t.name) : '미배정';
+            })() : '미배정',
             status: stud ? (absentCount > 1 ? '결석' : '출석') : '예정',
             reason: absentCount > 1 ? '결석 (사유 확인필요)' : '정상 수업',
             warningLabel: absentCount > 1 ? '연속 결석' : '',
@@ -795,7 +797,7 @@ export function renderDirectorAttendanceControl(container) {
                                         </div>
                                     </td>
                                     <td>${item.student.instrument || '미지정'}</td>
-                                    <td>${item.teacher ? item.teacher.name : '미배정'}</td>
+                                    <td>${item.teacher ? (item.teacher.employmentStatus === 'resigned' ? `${item.teacher.name} (퇴사)` : item.teacher.name) : '미배정'}</td>
                                     <td>${item.stats.total}회</td>
                                     <td>${item.stats.present}회</td>
                                     <td>${item.stats.late}회</td>
@@ -904,7 +906,7 @@ export function renderDirectorAttendanceControl(container) {
         const renderTeacherGroups = () => {
             const teacherGroups = {};
             filteredStudents.forEach(item => {
-                const tName = item.teacher ? item.teacher.name : '미배정';
+                const tName = item.teacher ? (item.teacher.employmentStatus === 'resigned' ? `${item.teacher.name} (퇴사)` : item.teacher.name) : '미배정';
                 const tId = item.teacher ? item.teacher.id : 'unassigned';
                 if (!teacherGroups[tId]) {
                     teacherGroups[tId] = {
@@ -2090,9 +2092,10 @@ export function renderDirectorAttendanceControl(container) {
 
                     <select id="ac-teacher-select" class="form-control" style="width: 130px; height:36px;">
                         <option value="전체">전체 강사</option>
-                        ${teachers.map(t => `
-                            <option value="${t.id}" ${selectedTeacherId === t.id ? 'selected' : ''}>${t.name}</option>
-                        `).join('')}
+                        ${teachers.filter(t => t.employmentStatus !== 'resigned' || selectedTeacherId === t.id || dailyClasses.some(c => c.teacher && c.teacher.id === t.id)).map(t => {
+                            const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
+                            return `<option value="${t.id}" ${selectedTeacherId === t.id ? 'selected' : ''}>${t.name}${resignedSuffix}</option>`;
+                        }).join('')}
                     </select>
 
                     <div class="ac-search-combo">
@@ -2266,7 +2269,7 @@ export function renderDirectorAttendanceControl(container) {
                                                         </div>
                                                     </td>
                                                     <td>${row.student.instrument || '-'}</td>
-                                                    <td>${row.teacher ? row.teacher.name : '미배정'}</td>
+                                                    <td>${row.teacher ? (row.teacher.employmentStatus === 'resigned' ? `${row.teacher.name} (퇴사)` : row.teacher.name) : '미배정'}</td>
                                                     <td>${statusBadge}</td>
                                                     <td style="font-weight: 600; font-size: 0.8rem;">${timeText}</td>
                                                     <td style="font-size: 0.78rem;">${msgText}</td>
@@ -3006,7 +3009,8 @@ export function renderDirectorAttendanceControl(container) {
         };
 
         const teachersList = stateStore.getTeachers();
-        const teacherName = student ? (teachersList.find(t => t.id === student.teacherId)?.name || '미배정') : '미배정';
+        const teacherObj = student ? teachersList.find(t => t.id === student.teacherId) : null;
+        const teacherName = teacherObj ? (teacherObj.employmentStatus === 'resigned' ? `${teacherObj.name} (퇴사)` : teacherObj.name) : '미배정';
 
         // 1. Profile information
         const avatar = container.querySelector('#ac-inspector-avatar');

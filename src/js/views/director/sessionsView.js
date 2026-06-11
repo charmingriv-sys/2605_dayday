@@ -611,7 +611,10 @@ export function renderSchedules(container) {
                         <thead>
                             <tr style="background-color: #f1f5f9;">
                                 <th style="border: 1px solid #111; padding: 6px; text-align: center; width: 80px;">시간</th>
-                                ${filteredTeachers.map(t => `<th style="border: 1px solid #111; padding: 6px; text-align: center;">${t.name} (${t.instrument})</th>`).join('')}
+                                ${filteredTeachers.map(t => {
+                                    const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
+                                    return `<th style="border: 1px solid #111; padding: 6px; text-align: center;">${t.name}${resignedSuffix} (${t.instrument})</th>`;
+                                }).join('')}
                             </tr>
                         </thead>
                         <tbody>
@@ -638,7 +641,10 @@ export function renderSchedules(container) {
                 if (showNotes) {
                     const notesList = filteredTeachers.filter(t => t.scheduleNotes);
                     const noteContent = notesList.length > 0 
-                        ? notesList.map(t => `<div style="margin-bottom: 4px;"><strong>${t.name} T:</strong> ${t.scheduleNotes.replace(/\n/g, '<br>')}</div>`).join('')
+                        ? notesList.map(t => {
+                            const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
+                            return `<div style="margin-bottom: 4px;"><strong>${t.name}${resignedSuffix} T:</strong> ${t.scheduleNotes.replace(/\n/g, '<br>')}</div>`;
+                        }).join('')
                         : '<div style="color: #666; font-style: italic;">등록된 특이사항이 없습니다.</div>';
                     notesHtml = `
                         <div class="print-notes-card" data-testid="schedule-print-notes" style="border: 1px solid #111; padding: 12px; border-radius: 4px; font-size: 0.85rem; width: 100%; box-sizing: border-box;">
@@ -685,13 +691,14 @@ export function renderSchedules(container) {
                                             const filteredClasses = currentFilterTeacherId ? dayClasses.filter(c => c.teacherId === currentFilterTeacherId) : dayClasses;
                                             
                                             const content = filteredClasses.map(c => {
-                                                const s = students.find(std => std.id === c.studentId) || { name: '알수없음' };
-                                                const t = teachers.find(tchr => tchr.id === c.teacherId);
-                                                const teacherNameText = (t && t.name !== '알수없음') ? ` (${t.name})` : '';
+                                                const s = students.find(std => std.id === c.studentId);
+                                                if (!s) return '';
+                                                const displayName = stateStore.getTeacherDisplayName(c.teacherId);
+                                                const teacherNameText = displayName && displayName !== '-' ? ` (${displayName})` : '';
                                                 return `<div style="padding: 2px; font-weight: 500; font-size: 0.8rem; background-color: #f8fafc; border: 1px solid #e2e8f0; margin-bottom: 2px; border-radius: 2px;">
                                                     ${s.name}${teacherNameText}
                                                 </div>`;
-                                            }).join('');
+                                            }).filter(Boolean).join('');
                                             return `
                                                 <td style="border: 1px solid #111; padding: 6px; vertical-align: top;">
                                                     ${content}
@@ -716,7 +723,7 @@ export function renderSchedules(container) {
                     const noteContent = studentNotesList.length > 0
                         ? studentNotesList.map(s => {
                             const teacher = teachers.find(t => t.id === s.teacherId);
-                            const teacherName = teacher ? teacher.name : '미지정';
+                            const teacherName = teacher ? stateStore.getTeacherDisplayName(teacher.id) : '미지정';
                             return `<div style="margin-bottom: 8px;"><strong>${s.name} · ${teacherName}</strong><br><span style="font-size: 0.8rem; color: #333;">${s.scheduleNotes.replace(/\n/g, '<br>')}</span></div>`;
                         }).join('')
                         : '<div style="color: #666; font-style: italic;">등록된 특이사항이 없습니다.</div>';
@@ -756,7 +763,10 @@ export function renderSchedules(container) {
                         <thead>
                             <tr style="background-color: #f1f5f9;">
                                 <th style="border: 1px solid #111; padding: 6px; text-align: center; width: 80px;">시간</th>
-                                ${activeTeachers.map(t => `<th style="border: 1px solid #111; padding: 6px; text-align: center;">${t.name} (${t.instrument})</th>`).join('')}
+                                ${activeTeachers.map(t => {
+                                    const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
+                                    return `<th style="border: 1px solid #111; padding: 6px; text-align: center;">${t.name}${resignedSuffix} (${t.instrument})</th>`;
+                                }).join('')}
                             </tr>
                         </thead>
                         <tbody>
@@ -767,9 +777,10 @@ export function renderSchedules(container) {
                                         ${activeTeachers.map(t => {
                                             const cellClasses = todayClasses.filter(c => c.teacherId === t.id && c.time === time);
                                             const cellContent = cellClasses.map(c => {
-                                                const s = students.find(std => std.id === c.studentId) || { name: '알수없음' };
+                                                const s = students.find(std => std.id === c.studentId);
+                                                if (!s) return '';
                                                 return `<div style="font-weight: bold; font-size: 0.85rem; color: #1e293b;">${s.name}</div>`;
-                                            }).join('');
+                                            }).filter(Boolean).join('');
                                             return `
                                                 <td style="border: 1px solid #111; padding: 6px; text-align: center; vertical-align: middle;">
                                                     ${cellContent}
@@ -794,7 +805,7 @@ export function renderSchedules(container) {
                     const noteContent = studentNotesList.length > 0
                         ? studentNotesList.map(s => {
                             const teacher = teachers.find(t => t.id === s.teacherId);
-                            const teacherName = teacher ? teacher.name : '미지정';
+                            const teacherName = teacher ? stateStore.getTeacherDisplayName(teacher.id) : '미지정';
                             return `<div style="margin-bottom: 8px;"><strong>${s.name} · ${teacherName}</strong><br><span style="font-size: 0.8rem; color: #333;">${s.scheduleNotes.replace(/\n/g, '<br>')}</span></div>`;
                         }).join('')
                         : '<div style="color: #666; font-style: italic;">등록된 특이사항이 없습니다.</div>';
@@ -1390,6 +1401,14 @@ export function renderSchedules(container) {
 
         if (shiftViewMode === 'week') {
             const selectedTeacher = teachers.find(t => t.id === selectedTeacherId) || teachers[0] || { id: '', name: '', instrument: '', scheduleNotes: '' };
+            const weekDatesStr = weekDates.map(wd => wd.dateStr);
+            const weeklyLogs = stateStore.getTeacherAttendanceLogs() || [];
+            const includedTeachers = teachers.filter(t => 
+                t.employmentStatus !== 'resigned' || 
+                selectedTeacher.id === t.id || 
+                shifts.some(ts => ts.teacherId === t.id && ts.slots && ts.slots.length > 0 && weekDatesStr.includes(ts.date)) ||
+                weeklyLogs.some(log => log.teacherId === t.id && weekDatesStr.includes(log.date))
+            );
             
             ws.innerHTML = `
                 <div class="glass-card" style="padding: 1.8rem; overflow-x: auto; width: 100%;">
@@ -1399,7 +1418,10 @@ export function renderSchedules(container) {
                         <div style="display: flex; align-items: center; gap: 12px; min-width: 250px;">
                             <label for="shift-teacher-select-week" style="font-weight: 600; font-size: 0.95rem; color: var(--text-muted); white-space: nowrap; margin-bottom: 0;">강사 선택:</label>
                             <select id="shift-teacher-select-week" class="form-control" style="margin-bottom: 0;" data-testid="teacher-shift-teacher-filter">
-                                ${teachers.map(t => `<option value="${t.id}" ${t.id === selectedTeacher.id ? 'selected' : ''}>${t.name} (${t.instrument})</option>`).join('')}
+                                ${includedTeachers.map(t => {
+                                    const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
+                                    return `<option value="${t.id}" ${t.id === selectedTeacher.id ? 'selected' : ''}>${t.name}${resignedSuffix} (${t.instrument})</option>`;
+                                }).join('')}
                             </select>
                         </div>
                         <h4 style="font-weight: 700; margin: 0; color: var(--primary);">${selectedTeacher.name} 강사 주간 출근표</h4>
@@ -1503,12 +1525,20 @@ export function renderSchedules(container) {
 
         } else {
             // 일간 보기
-            let filteredTeachers = teachers;
+            const dailyLogs = stateStore.getTeacherAttendanceLogs({ date: selectedDateStr }) || [];
+            let filteredTeachers = teachers.filter(t => 
+                t.employmentStatus !== 'resigned' || 
+                shifts.some(ts => ts.teacherId === t.id && ts.date === selectedDateStr && ts.slots && ts.slots.length > 0) ||
+                dailyLogs.some(log => log.teacherId === t.id)
+            );
             
             if (filterType === 'active') {
-                filteredTeachers = teachers.filter(t => shifts.some(ts => ts.teacherId === t.id && ts.date === selectedDateStr && ts.slots.length > 0));
+                filteredTeachers = filteredTeachers.filter(t => 
+                    shifts.some(ts => ts.teacherId === t.id && ts.date === selectedDateStr && ts.slots && ts.slots.length > 0) ||
+                    dailyLogs.some(log => log.teacherId === t.id)
+                );
             } else if (filterType !== 'all') {
-                filteredTeachers = teachers.filter(t => t.instrument.includes(filterType));
+                filteredTeachers = filteredTeachers.filter(t => t.instrument.includes(filterType));
             }
 
             if (filterSearchQuery.trim() !== '') {
@@ -1538,7 +1568,7 @@ export function renderSchedules(container) {
                         <div style="display: flex; align-items: center; gap: 8px; flex-grow: 1; max-width: 280px; position: relative;">
                             <input type="text" id="shift-search-input" list="shift-teachers-list" class="form-control" style="margin-bottom:0; font-size: 0.85rem; padding: 4px 8px; padding-right: 28px; width: 100%;" placeholder="강사명 검색" value="${filterSearchQuery}" data-composing="false">
                             <datalist id="shift-teachers-list">
-                                ${teachers.map(t => `<option value="${t.name}"></option>`).join('')}
+                                ${teachers.filter(t => t.employmentStatus !== 'resigned' || shifts.some(ts => ts.teacherId === t.id && ts.date === selectedDateStr && ts.slots && ts.slots.length > 0) || dailyLogs.some(log => log.teacherId === t.id)).map(t => `<option value="${t.name}"></option>`).join('')}
                             </datalist>
                             ${filterSearchQuery ? `
                                 <button id="btn-clear-shift-search" style="
@@ -1568,12 +1598,15 @@ export function renderSchedules(container) {
                             <!-- Headers -->
                             <div style="display: grid; grid-template-columns: 80px repeat(${Math.max(1, filteredTeachers.length)}, 1fr); border-bottom: 2px solid var(--border-color); background: var(--primary-light); padding: 12px 0; border-radius: var(--radius-md) var(--radius-md) 0 0; margin: -16px -16px 8px -16px;">
                                 <div style="font-weight: 700; text-align: center; color: var(--text-muted); font-size: 0.85rem; display: flex; align-items: center; justify-content: center;"><i class="fa-regular fa-clock"></i></div>
-                                ${filteredTeachers.length > 0 ? filteredTeachers.map(t => `
+                                ${filteredTeachers.length > 0 ? filteredTeachers.map(t => {
+                                    const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
+                                    return `
                                     <div style="font-weight: 700; text-align: center; font-size: 0.9rem; color: var(--text-main); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;">
-                                        <span>${t.name}</span>
+                                        <span>${t.name}${resignedSuffix}</span>
                                         <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: normal;">${t.instrument}</span>
                                     </div>
-                                `).join('') : '<div style="text-align:center; font-size:0.85rem; color:var(--text-muted); padding: 4px; grid-column: 2 / span 1;">출근 강사 없음</div>'}
+                                    `;
+                                }).join('') : '<div style="text-align:center; font-size:0.85rem; color:var(--text-muted); padding: 4px; grid-column: 2 / span 1;">출근 강사 없음</div>'}
                             </div>
 
                             <div style="display: flex; position: relative; height: 500px; margin-top: 8px;">
@@ -1783,7 +1816,10 @@ export function renderSchedules(container) {
 
         const activeWeekDates = weekDates.filter(wd => scheduleDays.includes(wd.dayEn));
 
-        const teacherOptions = teachers.map(t => `<option value="${t.id}" ${t.id === selectedTeacherId ? 'selected' : ''}>${t.name} (${t.instrument})</option>`).join('');
+        const teacherOptions = teachers.filter(t => t.employmentStatus !== 'resigned' || t.id === selectedTeacherId).map(t => {
+            const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
+            return `<option value="${t.id}" ${t.id === selectedTeacherId ? 'selected' : ''}>${t.name}${resignedSuffix} (${t.instrument})</option>`;
+        }).join('');
 
         ws.innerHTML = `
             <div class="glass-card" style="padding: 1.8rem; width: 100%;">
@@ -2005,7 +2041,17 @@ export function renderSchedules(container) {
 
         if (matchViewMode === 'week') {
             // 주간 보기
-            const teacherBadgesHtml = teachers.map(t => `
+            const studentIds = new Set(students.map(s => s.id));
+            const activeTeacherIdsInWeek = new Set(
+                weekClasses
+                    .filter(c => studentIds.has(c.studentId))
+                    .map(c => c.teacherId)
+                    .filter(Boolean)
+            );
+            const filteredMatchTeachers = teachers.filter(t => t.employmentStatus !== 'resigned' || activeTeacherIdsInWeek.has(t.id));
+            const teacherBadgesHtml = filteredMatchTeachers.map(t => {
+                const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
+                return `
                 <button class="btn btn-filter-teacher" 
                     data-id="${t.id}" 
                     style="
@@ -2018,9 +2064,10 @@ export function renderSchedules(container) {
                         transition: var(--transition);
                         font-size: 0.8rem;
                     ">
-                    ${t.name}
+                    ${t.name}${resignedSuffix}
                 </button>
-            `).join('');
+                `;
+            }).join('');
 
             // Filtered student notes for panel
             const activeStudents = currentFilterTeacherId 
@@ -2142,6 +2189,26 @@ export function renderSchedules(container) {
             `;
         } else {
             // 일간 보기
+            const studentIds = new Set(students.map(s => s.id));
+            const daySchedule = stateStore.getTeacherStudentScheduleForDate(matchSelectedDateStr);
+
+            const targetDateObj = new Date(matchSelectedDateStr);
+            const targetDayIdx = targetDateObj.getDay(); // 0 is Sunday, 1 is Monday
+            const targetDayKo = daysOfWeekKo[targetDayIdx === 0 ? 6 : targetDayIdx - 1]; // 월~일
+
+            const activeTeacherIds = new Set();
+            daySchedule.forEach(c => {
+                if (c.teacherId && studentIds.has(c.studentId)) {
+                    activeTeacherIds.add(c.teacherId);
+                }
+            });
+            const dayShifts = stateStore.getTeacherShifts() || [];
+            dayShifts.forEach(s => {
+                if (s.teacherId && s.date === matchSelectedDateStr) {
+                    activeTeacherIds.add(s.teacherId);
+                }
+            });
+
             const filterRowHtml = `
                 <div style="display: flex; gap: 12px; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: center; background: var(--primary-light); padding: 12px; border-radius: var(--radius-sm);">
                     <div style="display: flex; align-items: center; gap: 8px;">
@@ -2160,7 +2227,7 @@ export function renderSchedules(container) {
                     <div style="display: flex; align-items: center; gap: 8px; flex-grow: 1; max-width: 280px; position: relative;">
                         <input type="text" id="match-search-input" list="match-teachers-list" class="form-control" style="margin-bottom:0; font-size: 0.85rem; padding: 4px 8px; padding-right: 28px; width: 100%;" placeholder="강사명 검색" value="${matchSearchQuery}" data-testid="teacher-student-search-input" data-composing="false">
                         <datalist id="match-teachers-list">
-                            ${teachers.map(t => `<option value="${t.name}"></option>`).join('')}
+                            ${teachers.filter(t => t.employmentStatus !== 'resigned' || activeTeacherIds.has(t.id)).map(t => `<option value="${t.name}"></option>`).join('')}
                         </datalist>
                         ${matchSearchQuery ? `
                             <button id="btn-clear-match-search" style="
@@ -2185,24 +2252,6 @@ export function renderSchedules(container) {
                 </div>
             `;
 
-            const targetDateObj = new Date(matchSelectedDateStr);
-            const targetDayIdx = targetDateObj.getDay(); // 0 is Sunday, 1 is Monday
-            const targetDayKo = daysOfWeekKo[targetDayIdx === 0 ? 6 : targetDayIdx - 1]; // 월~일
-
-            const daySchedule = stateStore.getTeacherStudentScheduleForDate(matchSelectedDateStr);
-
-            const activeTeacherIds = new Set();
-            daySchedule.forEach(c => {
-                if (c.teacherId) {
-                    activeTeacherIds.add(c.teacherId);
-                }
-            });
-            const dayShifts = stateStore.getTeacherShifts() || [];
-            dayShifts.forEach(s => {
-                if (s.teacherId && s.date === matchSelectedDateStr) {
-                    activeTeacherIds.add(s.teacherId);
-                }
-            });
             let filteredTeachers = teachers.filter(t => activeTeacherIds.has(t.id));
 
             if (matchInstrumentFilter !== 'all') {
@@ -2239,12 +2288,15 @@ export function renderSchedules(container) {
                                 <thead>
                                     <tr style="border-bottom: 2px solid var(--border-color); background: var(--primary-light);">
                                         <th style="width: 70px; text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 12px 4px; font-weight: bold;"><i class="fa-regular fa-clock"></i></th>
-                                        ${filteredTeachers.length > 0 ? filteredTeachers.map(t => `
-                                            <th style="text-align: center; font-size: 0.85rem; padding: 12px 6px;">
-                                                ${t.name}
-                                                <span style="display: block; font-size: 0.72rem; color: var(--text-muted); font-weight: normal; margin-top: 4px;">${t.instrument}</span>
-                                            </th>
-                                        `).join('') : '<th style="text-align: center; color: var(--text-muted); font-size: 0.85rem;">해당 조건 강사 없음</th>'}
+                                        ${filteredTeachers.length > 0 ? filteredTeachers.map(t => {
+                                            const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
+                                            return `
+                                                <th style="text-align: center; font-size: 0.85rem; padding: 12px 6px;">
+                                                    ${t.name}${resignedSuffix}
+                                                    <span style="display: block; font-size: 0.72rem; color: var(--text-muted); font-weight: normal; margin-top: 4px;">${t.instrument}</span>
+                                                </th>
+                                            `;
+                                        }).join('') : '<th style="text-align: center; color: var(--text-muted); font-size: 0.85rem;">해당 조건 강사 없음</th>'}
                                     </tr>
                                 </thead>
                                 <tbody>
