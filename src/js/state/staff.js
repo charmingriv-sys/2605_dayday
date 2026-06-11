@@ -26,9 +26,33 @@ export const staffMethods = {
     },
 
     deleteTeacher(id) {
+        const check = this.canDeleteTeacher(id);
+        if (!check.canDelete) {
+            return {
+                canDelete: false,
+                success: false,
+                reasons: check.reasons
+            };
+        }
+
+        const initialLength = this.db.teachers.length;
         this.db.teachers = this.db.teachers.filter(t => t.id !== id);
-        this.saveDB();
-        this.notify('TEACHERS_CHANGED', this.db.teachers);
+        
+        if (this.db.teachers.length < initialLength) {
+            this.saveDB();
+            this.notify('TEACHERS_CHANGED', this.db.teachers);
+            return {
+                canDelete: true,
+                success: true,
+                reasons: []
+            };
+        }
+
+        return {
+            canDelete: false,
+            success: false,
+            reasons: ['데이터 삭제 처리에 실패했습니다.']
+        };
     },
 
     // --- TEACHER SHIFTS ---
@@ -123,8 +147,30 @@ export const staffMethods = {
         if (!this.db.teacherAttendanceLogs) {
             this.db.teacherAttendanceLogs = [];
         }
-        const teachers = this.db.teachers || [];
+        const allTeachers = this.db.teachers || [];
         const logsToday = this.db.teacherAttendanceLogs.filter(log => log.date === date);
+
+        const teachers = allTeachers.filter(t => {
+            if (t.employmentStatus !== 'resigned') return true;
+            const hasLog = logsToday.some(log => log.teacherId === t.id);
+            const shifts = this.db.teacherShifts || [];
+            const hasShift = shifts.some(s => s.teacherId === t.id && s.date === date && Array.isArray(s.slots) && s.slots.length > 0);
+            const hasClass = typeof this.getTeacherStudentScheduleForDate === 'function' &&
+                this.getTeacherStudentScheduleForDate(date).some(c => {
+                    if (c.teacherId !== t.id) return false;
+                    const student = (this.db.students || []).find(s => s.id === c.studentId);
+                    if (!student) return false;
+                    if (c.source === 'override') return true;
+                    
+                    const now = new Date();
+                    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                    if (date >= todayStr) {
+                        return student.teacherId === t.id;
+                    }
+                    return true;
+                });
+            return hasLog || hasShift || hasClass;
+        });
 
         const checkedInCount = logsToday.filter(log => log.checkInAt).length;
         const absentCount = teachers.length - checkedInCount;
@@ -143,8 +189,47 @@ export const staffMethods = {
         if (!this.db.teacherAttendanceLogs) {
             this.db.teacherAttendanceLogs = [];
         }
-        const teachers = this.db.teachers || [];
+        const allTeachers = this.db.teachers || [];
         const logsInRange = this.db.teacherAttendanceLogs.filter(log => log.date >= startDate && log.date <= endDate);
+
+        const teachers = allTeachers.filter(t => {
+            if (t.employmentStatus !== 'resigned') return true;
+            const hasLog = logsInRange.some(log => log.teacherId === t.id);
+            const shifts = this.db.teacherShifts || [];
+            const hasShift = shifts.some(s => s.teacherId === t.id && s.date >= startDate && s.date <= endDate && Array.isArray(s.slots) && s.slots.length > 0);
+            
+            let hasClass = false;
+            if (typeof this.getTeacherStudentScheduleForDate === 'function') {
+                const [sy, sm, sd] = startDate.split('-').map(Number);
+                const [ey, em, ed] = endDate.split('-').map(Number);
+                const start = new Date(sy, sm - 1, sd);
+                const end = new Date(ey, em - 1, ed);
+                const curr = new Date(start);
+                while (curr <= end) {
+                    const dateStr = curr.toISOString().slice(0, 10);
+                    const classesToday = this.getTeacherStudentScheduleForDate(dateStr) || [];
+                    const found = classesToday.some(c => {
+                        if (c.teacherId !== t.id) return false;
+                        const student = (this.db.students || []).find(s => s.id === c.studentId);
+                        if (!student) return false;
+                        if (c.source === 'override') return true;
+                        
+                        const now = new Date();
+                        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                        if (dateStr >= todayStr) {
+                            return student.teacherId === t.id;
+                        }
+                        return true;
+                    });
+                    if (found) {
+                        hasClass = true;
+                        break;
+                    }
+                    curr.setDate(curr.getDate() + 1);
+                }
+            }
+            return hasLog || hasShift || hasClass;
+        });
 
         const [sy, sm, sd] = startDate.split('-').map(Number);
         const [ey, em, ed] = endDate.split('-').map(Number);
@@ -389,30 +474,7 @@ export const staffMethods = {
     },
 
     deleteTeacherIfUnused(teacherId) {
-        const check = this.canDeleteTeacher(teacherId);
-        if (!check.canDelete) {
-            return {
-                canDelete: false,
-                reasons: check.reasons
-            };
-        }
-
-        const initialLength = this.db.teachers.length;
-        this.db.teachers = this.db.teachers.filter(t => t.id !== teacherId);
-        
-        if (this.db.teachers.length < initialLength) {
-            this.saveDB();
-            this.notify('TEACHERS_CHANGED', this.db.teachers);
-            return {
-                canDelete: true,
-                reasons: []
-            };
-        }
-
-        return {
-            canDelete: false,
-            reasons: ['데이터 삭제 처리에 실패했습니다.']
-        };
+        return this.deleteTeacher(teacherId);
     },
 
     findTeacherByIdOrName(value) {

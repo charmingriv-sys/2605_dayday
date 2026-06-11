@@ -2533,9 +2533,24 @@ export function renderStudents(container) {
 
         // Apply filtering logic
         const filteredStudents = students.filter(s => {
+            let teacherName = '';
+            let teacherDispName = '';
+            if (s.teacherId || s.teacher) {
+                const teacherObj = stateStore.findTeacherByIdOrName(s.teacherId || s.teacher);
+                if (teacherObj) {
+                    teacherName = teacherObj.name;
+                    teacherDispName = teacherObj.employmentStatus === 'resigned' ? `${teacherObj.name} (퇴사)` : teacherObj.name;
+                } else if (typeof s.teacher === 'string') {
+                    teacherName = s.teacher;
+                    teacherDispName = s.teacher;
+                }
+            }
+
             const queryMatch = !filterQuery || 
                 s.name.toLowerCase().includes(filterQuery.toLowerCase()) || 
-                s.instrument.toLowerCase().includes(filterQuery.toLowerCase());
+                s.instrument.toLowerCase().includes(filterQuery.toLowerCase()) ||
+                (teacherName && teacherName.toLowerCase().includes(filterQuery.toLowerCase())) ||
+                (teacherDispName && teacherDispName.toLowerCase().includes(filterQuery.toLowerCase()));
 
             const teacherMatch = !filterTeacherId || s.teacherId === filterTeacherId;
 

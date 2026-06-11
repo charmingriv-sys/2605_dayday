@@ -52,7 +52,8 @@ export const sessionsMethods = {
                 dayOfWeek: dayOfWeekKo,
                 time: entry.startTime,
                 teacherId: entry.teacherId,
-                source: entry.source || 'default'
+                source: entry.source || 'default',
+                date: date
             }));
         } else {
             // 미래 날짜: 기본 시간표 + 날짜별 override 동적 생성
@@ -71,7 +72,8 @@ export const sessionsMethods = {
                         dayOfWeek: dayOfWeekKo,
                         time: ovr.toStartTime,
                         teacherId: ovr.toTeacherId,
-                        source: 'override'
+                        source: 'override',
+                        date: date
                     };
                 }
 
@@ -81,7 +83,8 @@ export const sessionsMethods = {
                     dayOfWeek: dayOfWeekKo,
                     time: c.time,
                     teacherId: defaultTeacherId,
-                    source: 'default'
+                    source: 'default',
+                    date: date
                 };
             });
         }

@@ -591,7 +591,12 @@ export function renderSchedules(container) {
                 filterSummaryText = `요일: ${dayKo}요일`;
 
                 const shifts = stateStore.getTeacherShifts();
+                const dailyLogs = stateStore.getTeacherAttendanceLogs({ date: selectedDateStr }) || [];
                 const filteredTeachers = teachers.filter(t => {
+                    if (t.employmentStatus === 'resigned') {
+                        const hasLog = dailyLogs.some(log => log.teacherId === t.id);
+                        if (!hasLog) return false;
+                    }
                     if (filterType !== 'all') {
                         if (filterType === 'active') {
                             const dayShift = shifts.find(s => s.teacherId === t.id && s.date === selectedDateStr);
@@ -745,6 +750,26 @@ export function renderSchedules(container) {
                 const todayClasses = stateStore.getTeacherStudentScheduleForDate(matchSelectedDateStr) || [];
                 
                 activeTeachers = teachers.filter(t => {
+                    if (t.employmentStatus === 'resigned') {
+                        const hasActiveShift = dayShifts.some(s => s.teacherId === t.id && s.slots && s.slots.length > 0);
+                        const dailyLogs = stateStore.getTeacherAttendanceLogs({ date: matchSelectedDateStr }) || [];
+                        const hasLog = dailyLogs.some(log => log.teacherId === t.id);
+                        const hasClass = todayClasses.some(c => {
+                            if (c.teacherId !== t.id) return false;
+                            const student = students.find(s => s.id === c.studentId);
+                            if (!student) return false;
+                            if (c.source === 'override') return true;
+                            
+                            const now = new Date();
+                            const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                            const isCurrentOrFuture = matchSelectedDateStr >= todayStr;
+                            if (isCurrentOrFuture) {
+                                return student.teacherId === t.id;
+                            }
+                            return true;
+                        });
+                        if (!hasActiveShift && !hasLog && !hasClass) return false;
+                    }
                     if (matchFilterActiveOnly) {
                         const hasClassToday = todayClasses.some(c => c.teacherId === t.id);
                         if (!hasClassToday) return false;
@@ -779,6 +804,15 @@ export function renderSchedules(container) {
                                             const cellContent = cellClasses.map(c => {
                                                 const s = students.find(std => std.id === c.studentId);
                                                 if (!s) return '';
+                                                if (t.employmentStatus === 'resigned') {
+                                                    const isOverride = c.source === 'override';
+                                                    const now = new Date();
+                                                    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                                                    const isCurrentOrFuture = matchSelectedDateStr >= todayStr;
+                                                    if (isCurrentOrFuture && !isOverride && s.teacherId !== t.id) {
+                                                        return '';
+                                                    }
+                                                }
                                                 return `<div style="font-weight: bold; font-size: 0.85rem; color: #1e293b;">${s.name}</div>`;
                                             }).filter(Boolean).join('');
                                             return `
@@ -1281,6 +1315,7 @@ export function renderSchedules(container) {
     // TAB 1: Shift View (통합 주간 출근 현황판)
     const renderShiftView = (ws) => {
         const teachers = stateStore.getTeachers();
+        const students = stateStore.getStudents();
         const shifts = stateStore.getTeacherShifts();
         const settings = stateStore.getSettings() || {};
         
@@ -1526,11 +1561,14 @@ export function renderSchedules(container) {
         } else {
             // 일간 보기
             const dailyLogs = stateStore.getTeacherAttendanceLogs({ date: selectedDateStr }) || [];
-            let filteredTeachers = teachers.filter(t => 
-                t.employmentStatus !== 'resigned' || 
-                shifts.some(ts => ts.teacherId === t.id && ts.date === selectedDateStr && ts.slots && ts.slots.length > 0) ||
-                dailyLogs.some(log => log.teacherId === t.id)
-            );
+            
+            const isTeacherVisibleOnDate = (t, dateStr) => {
+                if (t.employmentStatus !== 'resigned') return true;
+                const hasLog = dailyLogs.some(log => log.teacherId === t.id);
+                return hasLog;
+            };
+
+            let filteredTeachers = teachers.filter(t => isTeacherVisibleOnDate(t, selectedDateStr));
             
             if (filterType === 'active') {
                 filteredTeachers = filteredTeachers.filter(t => 
@@ -1568,7 +1606,7 @@ export function renderSchedules(container) {
                         <div style="display: flex; align-items: center; gap: 8px; flex-grow: 1; max-width: 280px; position: relative;">
                             <input type="text" id="shift-search-input" list="shift-teachers-list" class="form-control" style="margin-bottom:0; font-size: 0.85rem; padding: 4px 8px; padding-right: 28px; width: 100%;" placeholder="강사명 검색" value="${filterSearchQuery}" data-composing="false">
                             <datalist id="shift-teachers-list">
-                                ${teachers.filter(t => t.employmentStatus !== 'resigned' || shifts.some(ts => ts.teacherId === t.id && ts.date === selectedDateStr && ts.slots && ts.slots.length > 0) || dailyLogs.some(log => log.teacherId === t.id)).map(t => `<option value="${t.name}"></option>`).join('')}
+                                ${teachers.filter(t => isTeacherVisibleOnDate(t, selectedDateStr)).map(t => `<option value="${t.name}"></option>`).join('')}
                             </datalist>
                             ${filterSearchQuery ? `
                                 <button id="btn-clear-shift-search" style="
@@ -2041,14 +2079,39 @@ export function renderSchedules(container) {
 
         if (matchViewMode === 'week') {
             // 주간 보기
-            const studentIds = new Set(students.map(s => s.id));
-            const activeTeacherIdsInWeek = new Set(
-                weekClasses
-                    .filter(c => studentIds.has(c.studentId))
-                    .map(c => c.teacherId)
-                    .filter(Boolean)
-            );
-            const filteredMatchTeachers = teachers.filter(t => t.employmentStatus !== 'resigned' || activeTeacherIdsInWeek.has(t.id));
+            const activeTeacherIdsInWeek = new Set();
+            teachers.forEach(t => {
+                if (t.employmentStatus !== 'resigned') {
+                    activeTeacherIdsInWeek.add(t.id);
+                }
+            });
+
+            const weekDatesStr = activeWeekDates.map(wd => wd.dateStr);
+            const weeklyShifts = stateStore.getTeacherShifts().filter(s => weekDatesStr.includes(s.date));
+            const weeklyLogs = stateStore.getTeacherAttendanceLogs().filter(log => weekDatesStr.includes(log.date));
+
+            teachers.filter(t => t.employmentStatus === 'resigned').forEach(t => {
+                const hasShift = weeklyShifts.some(s => s.teacherId === t.id && s.slots && s.slots.length > 0);
+                const hasLog = weeklyLogs.some(log => log.teacherId === t.id);
+                const hasClass = weekClasses.some(c => {
+                    if (c.teacherId !== t.id) return false;
+                    const student = students.find(s => s.id === c.studentId);
+                    if (!student) return false;
+                    if (c.source === 'override') return true;
+                    
+                    const now = new Date();
+                    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                    const isCurrentOrFuture = c.date && c.date >= todayStr;
+                    if (isCurrentOrFuture) {
+                        return student.teacherId === t.id;
+                    }
+                    return true;
+                });
+                if (hasShift || hasLog || hasClass) {
+                    activeTeacherIdsInWeek.add(t.id);
+                }
+            });
+            const filteredMatchTeachers = teachers.filter(t => activeTeacherIdsInWeek.has(t.id));
             const teacherBadgesHtml = filteredMatchTeachers.map(t => {
                 const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
                 return `
@@ -2199,13 +2262,39 @@ export function renderSchedules(container) {
             const activeTeacherIds = new Set();
             daySchedule.forEach(c => {
                 if (c.teacherId && studentIds.has(c.studentId)) {
+                    const teacher = teachers.find(t => t.id === c.teacherId);
+                    if (teacher && teacher.employmentStatus === 'resigned') {
+                        const student = students.find(s => s.id === c.studentId);
+                        const isOverride = c.source === 'override';
+                        
+                        const now = new Date();
+                        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                        const isCurrentOrFuture = matchSelectedDateStr >= todayStr;
+                        if (isCurrentOrFuture) {
+                            const isCurrentTeacher = student && student.teacherId === teacher.id;
+                            if (!isOverride && !isCurrentTeacher) {
+                                return; // Exclude stale default entries
+                            }
+                        }
+                    }
                     activeTeacherIds.add(c.teacherId);
                 }
             });
             const dayShifts = stateStore.getTeacherShifts() || [];
             dayShifts.forEach(s => {
-                if (s.teacherId && s.date === matchSelectedDateStr) {
+                if (
+                    s.teacherId && 
+                    s.date === matchSelectedDateStr && 
+                    Array.isArray(s.slots) && 
+                    s.slots.length > 0
+                ) {
                     activeTeacherIds.add(s.teacherId);
+                }
+            });
+            const dailyLogs = stateStore.getTeacherAttendanceLogs({ date: matchSelectedDateStr }) || [];
+            dailyLogs.forEach(log => {
+                if (log.teacherId) {
+                    activeTeacherIds.add(log.teacherId);
                 }
             });
 
@@ -2310,6 +2399,15 @@ export function renderSchedules(container) {
                                                     cellClasses.forEach(c => {
                                                         const student = students.find(s => s.id === c.studentId && c.teacherId === t.id);
                                                         if (student) {
+                                                            if (t.employmentStatus === 'resigned') {
+                                                                const isOverride = c.source === 'override';
+                                                                const now = new Date();
+                                                                const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                                                                const isCurrentOrFuture = matchSelectedDateStr >= todayStr;
+                                                                if (isCurrentOrFuture && !isOverride && student.teacherId !== t.id) {
+                                                                    return;
+                                                                }
+                                                            }
 
 
                                                             pillsHtml += `

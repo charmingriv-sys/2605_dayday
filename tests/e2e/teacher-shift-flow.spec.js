@@ -107,4 +107,84 @@ test.describe('Director Teacher Shift Flow Checks', () => {
     await expect(page.locator('[data-testid="teacher-shift-table"] >> text=정은비')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('[data-testid="teacher-shift-table"] >> text=문승현')).toBeVisible({ timeout: 5000 });
   });
+
+  test('should switch to daily shifts view and render successfully even with resigned teachers present', async ({ page }) => {
+    // 1. Resign T4 (양지숙) to simulate retired teacher presence in the database
+    await page.evaluate(() => {
+      window.stateStore.resignTeacher('T4', { resignedAt: '2026-05-18', memo: '퇴사 테스트' });
+    });
+
+    // 2. Navigate to "강사 출근 및 시간표 관리"
+    await navigateDirectorView(page, 'dir-schedules');
+
+    // 3. Switch view to daily shifts
+    const dayViewBtn = page.locator('[data-testid="teacher-shift-day-view"]');
+    await expect(dayViewBtn).toBeVisible({ timeout: 5000 });
+    await dayViewBtn.click();
+
+    // 4. Verify day view button is active and table grid is visible
+    await expect(dayViewBtn).toHaveClass(/btn-primary/);
+    const shiftTable = page.locator('[data-testid="teacher-shift-table"]');
+    await expect(shiftTable).toBeVisible({ timeout: 5000 });
+
+    // 5. Fill date '2026-05-20'
+    const dateInput = page.locator('[data-testid="teacher-shift-date-input"]');
+    await dateInput.fill('2026-05-20');
+    await page.waitForTimeout(500);
+
+    // Scenario 1: Retired teacher + no slots + no logs -> HIDDEN in daily shift view
+    await page.evaluate(() => {
+      // Ensure T4 has empty slots and no logs on 2026-05-20
+      window.stateStore.saveTeacherShift('T4', '2026-05-20', []);
+      window.stateStore.db.teacherAttendanceLogs = window.stateStore.db.teacherAttendanceLogs.filter(l => l.teacherId !== 'T4' || l.date !== '2026-05-20');
+      window.stateStore.saveDB();
+    });
+    await page.reload();
+    await navigateDirectorView(page, 'dir-schedules');
+    await expect(dayViewBtn).toBeVisible({ timeout: 5000 });
+    await dayViewBtn.click();
+    await dateInput.fill('2026-05-20');
+    await page.waitForTimeout(500);
+    // T4 (양지숙) should be hidden
+    await expect(shiftTable).not.toContainText('양지숙');
+    // Active teachers (e.g. 정은비 T8) should be visible
+    await expect(shiftTable).toContainText('정은비');
+
+    // Scenario 2: Retired teacher + slots.length > 0 + no logs -> HIDDEN in daily shift view
+    await page.evaluate(() => {
+      window.stateStore.saveTeacherShift('T4', '2026-05-20', ['15:00', '15:30']);
+      window.stateStore.saveDB();
+    });
+    await page.reload();
+    await navigateDirectorView(page, 'dir-schedules');
+    await expect(dayViewBtn).toBeVisible({ timeout: 5000 });
+    await dayViewBtn.click();
+    await dateInput.fill('2026-05-20');
+    await page.waitForTimeout(500);
+    // T4 (양지숙) should be hidden because there are no logs
+    await expect(shiftTable).not.toContainText('양지숙');
+
+    // Scenario 3: Retired teacher + has check-in logs -> VISIBLE in daily shift view
+    await page.evaluate(() => {
+      window.stateStore.db.teacherAttendanceLogs.push({
+        id: 'tal_e2e_t4_resigned',
+        teacherId: 'T4',
+        date: '2026-05-20',
+        checkInAt: '2026-05-20T15:00:00+09:00',
+        checkOutAt: null,
+        source: 'tablet_pin',
+        createdAt: '2026-05-20T15:00:00+09:00',
+        updatedAt: '2026-05-20T15:00:00+09:00'
+      });
+      window.stateStore.saveDB();
+    });
+    await page.reload();
+    await navigateDirectorView(page, 'dir-schedules');
+    await expect(dayViewBtn).toBeVisible({ timeout: 5000 });
+    await dayViewBtn.click();
+    await dateInput.fill('2026-05-20');
+    await page.waitForTimeout(500);
+    // T4 should now be visible because of the log
+    await expect(shiftTable).toContainText('양지숙 (퇴사)');
+  });
 });

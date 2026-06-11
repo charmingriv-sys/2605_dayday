@@ -720,15 +720,20 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
     expect(t7Check.canDelete).toBe(false);
     expect(t7Check.reasons).toContain('해당 강사가 배정되어 있는 담당 수강생이 존재합니다.');
 
-    // 6. Verify deleteTeacherIfUnused behaves correctly
+    // 6. Verify deleteTeacher behaves correctly (both raw deleteTeacher and deleteTeacherIfUnused)
     // Case A: Try deleting T1 (referenced) -> deletion blocked
     const t1DeleteResult = await page.evaluate(() => {
       const beforeCount = window.stateStore.getTeachers().length;
-      const res = window.stateStore.deleteTeacherIfUnused('T1');
+      const resUnused = window.stateStore.deleteTeacherIfUnused('T1');
+      const resRaw = window.stateStore.deleteTeacher('T1');
       const afterCount = window.stateStore.getTeachers().length;
-      return { res, beforeCount, afterCount };
+      return { resUnused, resRaw, beforeCount, afterCount };
     });
-    expect(t1DeleteResult.res.canDelete).toBe(false);
+    expect(t1DeleteResult.resUnused.canDelete).toBe(false);
+    expect(t1DeleteResult.resUnused.reasons.length).toBeGreaterThan(0);
+    expect(t1DeleteResult.resRaw.canDelete).toBe(false);
+    expect(t1DeleteResult.resRaw.success).toBe(false);
+    expect(t1DeleteResult.resRaw.reasons.length).toBeGreaterThan(0);
     expect(t1DeleteResult.beforeCount).toBe(t1DeleteResult.afterCount); // 강사가 삭제되지 않고 유지되어야 함
 
     // Case B: Insert fresh teacher with no references -> deletion succeeds
@@ -750,12 +755,13 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
 
       const beforeCount = window.stateStore.getTeachers().length;
       const deleteCheck = window.stateStore.canDeleteTeacher('T_NEW_TEMP');
-      const deleteRes = window.stateStore.deleteTeacherIfUnused('T_NEW_TEMP');
+      const deleteRes = window.stateStore.deleteTeacher('T_NEW_TEMP');
       const afterCount = window.stateStore.getTeachers().length;
       return { deleteCheck, deleteRes, beforeCount, afterCount };
     });
     expect(newDeleteResult.deleteCheck.canDelete).toBe(true);
     expect(newDeleteResult.deleteRes.canDelete).toBe(true);
+    expect(newDeleteResult.deleteRes.success).toBe(true);
     expect(newDeleteResult.afterCount).toBe(newDeleteResult.beforeCount - 1);
   });
 
@@ -1255,14 +1261,13 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
     await expect(weekSelect).toContainText('양지숙 (퇴사)');
     await expect(weekSelect).not.toContainText('양지숙 (퇴사) (퇴사)');
 
-    // 2. Switch to daily shifts and verify T4 is visible on 2026-06-11
+    // 2. Switch to daily shifts and verify T4 is not visible on 2026-06-11 (because retired and has slots but no logs)
     await page.locator('[data-testid="teacher-shift-day-view"]').click();
     await page.locator('[data-testid="teacher-shift-date-input"]').fill('2026-06-11');
     await page.waitForTimeout(500);
 
     const dayShiftHeader = page.locator('[data-testid="teacher-shift-table"]');
-    await expect(dayShiftHeader).toContainText('양지숙 (퇴사)');
-    await expect(dayShiftHeader).not.toContainText('양지숙 (퇴사) (퇴사)');
+    await expect(dayShiftHeader).not.toContainText('양지숙');
 
     // 3. Test Student Matching Filter (Problem 2)
     // S1 (최다은) default teacher is T8 (정은비). Resign T8 first.
@@ -1309,5 +1314,209 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
 
     const gridText = await page.textContent('.teacher-student-main');
     expect(gridText).not.toContain('김제나'); // S2 name
+
+    // 5. Test Student Search by Teacher Name (Repair-B Item 1)
+    await page.locator('.menu-item[data-view="dir-students"]').click();
+    await page.waitForTimeout(500);
+
+    // Create a temporary teacher "테스트333" (resigned) and assign student S22 (윤하은) to them
+    await page.evaluate(() => {
+      const t = window.stateStore.addTeacher({ name: '테스트333', instrument: '피아노' });
+      window.stateStore.resignTeacher(t.id, { resignedAt: '2026-06-11', memo: '이직' });
+      window.stateStore.updateStudent('S22', { teacherId: t.id });
+    });
+
+    // Search by teacher name
+    const searchInput = page.locator('#student-search-input');
+    await searchInput.fill('테스트333');
+    await page.waitForTimeout(500);
+
+    const studentTable = page.locator('#students-table-body');
+    await expect(studentTable).toContainText('윤하은');
+
+    // Clean search
+    await searchInput.fill('');
+    await page.waitForTimeout(500);
+
+    // 6. Test Daily Match View Empty Shift Filter (Repair-B Item 2)
+    await page.locator('.menu-item[data-view="dir-schedules"]').click();
+    await page.locator('#btn-subtab-match').click();
+    await page.locator('[data-testid="teacher-student-day-view"]').click();
+    await page.locator('[data-testid="teacher-student-date-input"]').fill('2026-06-11');
+    await page.waitForTimeout(500);
+
+    const dailyMatchTable = page.locator('[data-testid="teacher-student-schedule-table"]');
+    await expect(dailyMatchTable).toContainText('양지숙 (퇴사)');
+
+    // Now clear T4's shifts for today (make slots empty)
+    await page.evaluate(() => {
+      window.stateStore.saveTeacherShift('T4', '2026-06-11', []);
+    });
+
+    await page.locator('.menu-item[data-view="dir-schedules"]').click();
+    await page.locator('#btn-subtab-match').click();
+    await page.waitForTimeout(500);
+    // Since T4 has slots: [], they should not show up in the headers anymore
+    await expect(dailyMatchTable).not.toContainText('양지숙 (퇴사)');
+
+    // 7. Verify Retired Teacher Daily View Policy (Repair-B Policy Update)
+    // T_TARGET (테스트333) is a resigned teacher (created in step 5).
+    // Ensure T_TARGET has no students, no shifts, no logs initially.
+    const targetTeacherId = await page.evaluate(() => {
+      const teacher = window.stateStore.getTeachers().find(t => t.name === '테스트333');
+      if (!teacher) throw new Error('테스트333 강사를 찾을 수 없습니다.');
+      const tId = teacher.id;
+      // Clear T_TARGET's shifts, overrides, classes, and logs for today (2026-06-03)
+      window.stateStore.db.teacherShifts = window.stateStore.db.teacherShifts.filter(s => s.teacherId !== tId);
+      window.stateStore.db.teacherAttendanceLogs = window.stateStore.db.teacherAttendanceLogs.filter(l => l.teacherId !== tId);
+      window.stateStore.db.classes = window.stateStore.db.classes.filter(c => c.teacherId !== tId);
+      window.stateStore.db.scheduleSnapshots = window.stateStore.db.scheduleSnapshots.filter(s => s.date !== '2026-06-03');
+      // Set S22's teacher back to T1 to ensure T_TARGET has no assigned students
+      window.stateStore.updateStudent('S22', { teacherId: 'T1' });
+      window.stateStore.saveDB();
+      return tId;
+    });
+
+    // Sub-test 1: Retired teacher + no students + empty shift (slots: []) -> Hidden everywhere
+    await page.evaluate((tId) => {
+      window.stateStore.saveTeacherShift(tId, '2026-06-03', []);
+    }, targetTeacherId);
+    // A. Verify hidden on Teacher attendance daily view
+    await page.locator('.menu-item[data-view="dir-teacher-attendance"]').click();
+    await page.waitForTimeout(500);
+    const attendanceTable = page.locator('#teacher-attendance-table-body');
+    await expect(attendanceTable).not.toContainText('테스트333');
+
+    // B. Verify hidden on Teacher-student match daily view
+    await page.locator('.menu-item[data-view="dir-schedules"]').click();
+    await page.locator('#btn-subtab-match').click();
+    await page.locator('[data-testid="teacher-student-day-view"]').click();
+    await page.locator('[data-testid="teacher-student-date-input"]').fill('2026-06-03');
+    await page.waitForTimeout(500);
+    await expect(dailyMatchTable).not.toContainText('테스트333');
+
+    // Sub-test 2: Retired teacher + has active slots -> Visible in Attendance table and Match view
+    await page.evaluate((tId) => {
+      window.stateStore.saveTeacherShift(tId, '2026-06-03', ['15:00', '15:30']);
+    }, targetTeacherId);
+    // A. Verify visible in Attendance
+    await page.locator('.menu-item[data-view="dir-teacher-attendance"]').click();
+    await page.waitForTimeout(500);
+    await expect(attendanceTable).toContainText('테스트333 (퇴사)');
+
+    // B. Verify visible in Match view (since slots > 0)
+    await page.locator('.menu-item[data-view="dir-schedules"]').click();
+    await page.locator('#btn-subtab-match').click();
+    await page.locator('[data-testid="teacher-student-day-view"]').click();
+    await page.locator('[data-testid="teacher-student-date-input"]').fill('2026-06-03');
+    await page.waitForTimeout(500);
+    await expect(dailyMatchTable).toContainText('테스트333 (퇴사)');
+
+    // Sub-test 3: Retired teacher + has active student assignment -> Visible in Match view
+    // Reset shifts to empty, but add a class snapshot entry for today.
+    await page.evaluate((tId) => {
+      window.stateStore.saveTeacherShift(tId, '2026-06-03', []);
+      window.stateStore.ensureScheduleSnapshotForDate('2026-06-03');
+      const snap = window.stateStore.db.scheduleSnapshots.find(s => s.date === '2026-06-03');
+      snap.entries.push({
+        id: `ENTRY_2026-06-03_S22_${tId}_E2E`,
+        studentId: 'S22',
+        teacherId: tId,
+        startTime: '16:00',
+        endTime: '16:30',
+        subjectId: '피아노',
+        source: 'override'
+      });
+      window.stateStore.saveDB();
+    }, targetTeacherId);
+    // A. Verify visible in Match view
+    await page.locator('.menu-item[data-view="dir-schedules"]').click();
+    await page.locator('#btn-subtab-match').click();
+    await page.locator('[data-testid="teacher-student-day-view"]').click();
+    await page.locator('[data-testid="teacher-student-date-input"]').fill('2026-06-03');
+    await page.waitForTimeout(500);
+    await expect(dailyMatchTable).toContainText('테스트333 (퇴사)');
+
+    // B. Verify hidden in Attendance table (since slots are empty and no check-in logs)
+    await page.locator('.menu-item[data-view="dir-teacher-attendance"]').click();
+    await page.waitForTimeout(500);
+    await expect(attendanceTable).not.toContainText('테스트333');
+
+    // Sub-test 4: Retired teacher + no records -> Hidden everywhere
+    await page.evaluate((tId) => {
+      window.stateStore.db.teacherShifts = window.stateStore.db.teacherShifts.filter(s => s.teacherId !== tId);
+      window.stateStore.db.scheduleSnapshots = window.stateStore.db.scheduleSnapshots.filter(s => s.date !== '2026-06-03');
+      window.stateStore.saveDB();
+    }, targetTeacherId);
+    // A. Verify hidden on Teacher attendance
+    await page.locator('.menu-item[data-view="dir-teacher-attendance"]').click();
+    await page.waitForTimeout(500);
+    await expect(attendanceTable).not.toContainText('테스트333');
+
+    // B. Verify hidden on Match view
+    await page.locator('.menu-item[data-view="dir-schedules"]').click();
+    await page.locator('#btn-subtab-match').click();
+    await page.locator('[data-testid="teacher-student-day-view"]').click();
+    await page.locator('[data-testid="teacher-student-date-input"]').fill('2026-06-03');
+    await page.waitForTimeout(500);
+    await expect(dailyMatchTable).not.toContainText('테스트333');
+
+    // Sub-test 5: Retired teacher + stale default snapshot on past date vs current date (Repair-C Verification)
+    // 1. Create a default class snapshot on 2026-06-02 (past date) and 2026-06-03 (current date) with S22 under T_TARGET.
+    // 2. Set S22's current teacher to T1.
+    // 3. Ensure target has no shifts, no logs on both dates.
+    await page.evaluate((tId) => {
+      window.stateStore.db.teacherShifts = window.stateStore.db.teacherShifts.filter(s => s.teacherId !== tId);
+      window.stateStore.db.teacherAttendanceLogs = window.stateStore.db.teacherAttendanceLogs.filter(l => l.teacherId !== tId);
+      window.stateStore.db.classes = window.stateStore.db.classes.filter(c => c.teacherId !== tId);
+      window.stateStore.db.scheduleSnapshots = window.stateStore.db.scheduleSnapshots.filter(s => s.date !== '2026-06-02' && s.date !== '2026-06-03');
+
+      // Create snapshot on past date (2026-06-02) with source === 'default'
+      window.stateStore.ensureScheduleSnapshotForDate('2026-06-02');
+      const snapPast = window.stateStore.db.scheduleSnapshots.find(s => s.date === '2026-06-02');
+      snapPast.entries.push({
+        id: `ENTRY_2026-06-02_S22_${tId}_E2E`,
+        studentId: 'S22',
+        teacherId: tId,
+        startTime: '16:00',
+        endTime: '16:30',
+        subjectId: '피아노',
+        source: 'default'
+      });
+
+      // Create snapshot on current date (2026-06-03) with source === 'default'
+      window.stateStore.ensureScheduleSnapshotForDate('2026-06-03');
+      const snapCurrent = window.stateStore.db.scheduleSnapshots.find(s => s.date === '2026-06-03');
+      snapCurrent.entries.push({
+        id: `ENTRY_2026-06-03_S22_${tId}_E2E`,
+        studentId: 'S22',
+        teacherId: tId,
+        startTime: '16:00',
+        endTime: '16:30',
+        subjectId: '피아노',
+        source: 'default'
+      });
+
+      // Set S22's current teacher to T1 (so T_TARGET is stale)
+      window.stateStore.updateStudent('S22', { teacherId: 'T1' });
+      window.stateStore.saveDB();
+    }, targetTeacherId);
+
+    // A. View 2026-06-02 (past date) -> 테스트333 should be VISIBLE because it is a past date record
+    await page.locator('[data-testid="teacher-student-date-input"]').fill('2026-06-02');
+    await page.waitForTimeout(500);
+    await expect(dailyMatchTable).toContainText('테스트333 (퇴사)');
+
+    // B. View 2026-06-03 (current date) -> 테스트333 should be HIDDEN because it is current/future and snapshot is stale
+    await page.locator('[data-testid="teacher-student-date-input"]').fill('2026-06-03');
+    await page.waitForTimeout(500);
+    await expect(dailyMatchTable).not.toContainText('테스트333');
+
+    // Clean up temporary database modifications
+    await page.evaluate((tId) => {
+      window.stateStore.db.scheduleSnapshots = window.stateStore.db.scheduleSnapshots.filter(s => s.date !== '2026-06-02' && s.date !== '2026-06-03');
+      window.stateStore.db.teachers = window.stateStore.db.teachers.filter(t => t.id !== tId);
+      window.stateStore.saveDB();
+    }, targetTeacherId);
   });
 });

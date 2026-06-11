@@ -586,6 +586,27 @@ export function renderDirectorAttendanceControl(container) {
             const dailySchedule = stateStore.getTeacherStudentScheduleForDate(date) || [];
             
             const classesForDate = dailySchedule
+                .filter(entry => {
+                    if (entry.teacherId) {
+                        const teacher = teachers.find(t => t.id === entry.teacherId);
+                        if (teacher && teacher.employmentStatus === 'resigned') {
+                            const student = students.find(s => s.id === entry.studentId);
+                            if (!student) return false;
+                            const isOverride = entry.source === 'override';
+                            
+                            const now = new Date();
+                            const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                            const isCurrentOrFuture = date >= todayStr;
+                            if (isCurrentOrFuture) {
+                                const isCurrentTeacher = student.teacherId === teacher.id;
+                                if (!isOverride && !isCurrentTeacher) {
+                                    return false; // Filter out stale default classes for resigned teachers
+                                }
+                            }
+                        }
+                    }
+                    return true;
+                })
                 .map(entry => {
                     const s = students.find(stud => stud.id === entry.studentId);
                     const t = teachers.find(teach => teach.id === entry.teacherId) || (s ? teachers.find(teach => teach.id === s.teacherId) : null);
@@ -2092,7 +2113,36 @@ export function renderDirectorAttendanceControl(container) {
 
                     <select id="ac-teacher-select" class="form-control" style="width: 130px; height:36px;">
                         <option value="전체">전체 강사</option>
-                        ${teachers.filter(t => t.employmentStatus !== 'resigned' || selectedTeacherId === t.id || dailyClasses.some(c => c.teacher && c.teacher.id === t.id)).map(t => {
+                        ${teachers.filter(t => {
+                            if (t.employmentStatus !== 'resigned') return true;
+                            if (selectedTeacherId === t.id) return true;
+                            
+                            const dates = getRangeDates(selectedDate, selectedRangeMode);
+                            const shifts = stateStore.getTeacherShifts() || [];
+                            const logs = stateStore.getTeacherAttendanceLogs() || [];
+                            
+                            const hasLog = logs.some(log => log.teacherId === t.id && dates.includes(log.date));
+                            const hasShift = shifts.some(s => s.teacherId === t.id && dates.includes(s.date) && s.slots && s.slots.length > 0);
+                            const hasClass = dates.some(d => {
+                                const todayClasses = stateStore.getTeacherStudentScheduleForDate(d) || [];
+                                return todayClasses.some(c => {
+                                    if (c.teacherId !== t.id) return false;
+                                    const student = students.find(s => s.id === c.studentId);
+                                    if (!student) return false;
+                                    if (c.source === 'override') return true;
+                                    
+                                    const now = new Date();
+                                    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                                    const isCurrentOrFuture = d >= todayStr;
+                                    if (isCurrentOrFuture) {
+                                        return student.teacherId === t.id;
+                                    }
+                                    return true;
+                                });
+                            });
+                            
+                            return hasLog || hasShift || hasClass;
+                        }).map(t => {
                             const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
                             return `<option value="${t.id}" ${selectedTeacherId === t.id ? 'selected' : ''}>${t.name}${resignedSuffix}</option>`;
                         }).join('')}

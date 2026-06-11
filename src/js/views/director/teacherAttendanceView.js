@@ -509,7 +509,36 @@ export function renderTeacherAttendance(container) {
                         <label for="filter-teacher" style="font-weight: 600; font-size: 0.8rem;">강사 선택</label>
                         <select id="filter-teacher" class="form-control" style="padding: 8px 12px; font-size: 0.88rem;">
                             <option value="">전체 강사</option>
-                            ${stateStore.getTeachers().filter(t => t.employmentStatus !== 'resigned' || selectedTeacherId === t.id).map(t => {
+                            ${stateStore.getTeachers().filter(t => {
+                                if (t.employmentStatus !== 'resigned') return true;
+                                if (selectedTeacherId === t.id) return true;
+                                
+                                const rangeDates = getRangeDates(selectedDate, selectedRangeMode);
+                                const shifts = stateStore.getTeacherShifts() || [];
+                                const logs = stateStore.getTeacherAttendanceLogs() || [];
+                                
+                                const hasLog = logs.some(log => log.teacherId === t.id && rangeDates.includes(log.date));
+                                const hasShift = shifts.some(s => s.teacherId === t.id && rangeDates.includes(s.date) && s.slots && s.slots.length > 0);
+                                const hasClass = rangeDates.some(date => {
+                                    const todayClasses = stateStore.getTeacherStudentScheduleForDate(date) || [];
+                                    return todayClasses.some(c => {
+                                        if (c.teacherId !== t.id) return false;
+                                        const student = stateStore.getStudents().find(s => s.id === c.studentId);
+                                        if (!student) return false;
+                                        if (c.source === 'override') return true;
+                                        
+                                        const now = new Date();
+                                        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                                        const isCurrentOrFuture = date >= todayStr;
+                                        if (isCurrentOrFuture) {
+                                            return student.teacherId === t.id;
+                                        }
+                                        return true;
+                                    });
+                                });
+                                
+                                return hasLog || hasShift || hasClass;
+                            }).map(t => {
                                 const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
                                 return `<option value="${t.id}" ${t.id === selectedTeacherId ? 'selected' : ''}>${t.name}${resignedSuffix}</option>`;
                             }).join('')}
@@ -1199,7 +1228,30 @@ export function renderTeacherAttendance(container) {
 
         if (selectedRangeMode === 'today') {
             const logs = stateStore.getTeacherAttendanceLogs({ date: selectedDate });
-            items = teachers.filter(t => t.employmentStatus !== 'resigned' || logs.some(l => l.teacherId === t.id)).map(t => {
+            const shiftsToday = (stateStore.getTeacherShifts() || []).filter(s => s.date === selectedDate && Array.isArray(s.slots) && s.slots.length > 0);
+            const shiftTeacherIds = new Set(shiftsToday.map(s => s.teacherId));
+
+            items = teachers.filter(t => {
+                if (t.employmentStatus !== 'resigned') return true;
+                const hasLog = logs.some(l => l.teacherId === t.id);
+                const hasShift = shiftTeacherIds.has(t.id);
+                const todayClasses = stateStore.getTeacherStudentScheduleForDate(selectedDate) || [];
+                const hasClass = todayClasses.some(c => {
+                    if (c.teacherId !== t.id) return false;
+                    const student = stateStore.getStudents().find(s => s.id === c.studentId);
+                    if (!student) return false;
+                    if (c.source === 'override') return true;
+                    
+                    const now = new Date();
+                    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                    const isCurrentOrFuture = selectedDate >= todayStr;
+                    if (isCurrentOrFuture) {
+                        return student.teacherId === t.id;
+                    }
+                    return true;
+                });
+                return hasLog || hasShift || hasClass;
+            }).map(t => {
                 const log = logs.find(l => l.teacherId === t.id);
                 let checkInTime = '-';
                 let checkOutTime = '-';
@@ -1244,7 +1296,7 @@ export function renderTeacherAttendance(container) {
                     workingTime,
                     status
                 };
-            }).filter(item => item.status !== '미출근');
+            }).filter(item => item.status !== '미출근' || shiftTeacherIds.has(item.id));
         } else {
             const logs = stateStore.getTeacherAttendanceLogs().filter(log => log.date >= startDate && log.date <= endDate);
             
