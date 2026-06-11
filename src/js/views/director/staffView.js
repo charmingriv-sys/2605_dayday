@@ -6,6 +6,8 @@ import { formatPhoneNumber, showKakaoTalkToast, showLocalConfirm } from './share
 export function renderTeachers(container) {
     let editingTeacherId = null; // Stored ID if editing, otherwise null (means add mode)
     let phoneBinder = null;
+    let currentFilter = 'active'; // 'active' | 'resigned' | 'all'
+    let searchQuery = '';
 
     const handleDeleteAction = (id) => {
         const teacher = stateStore.getTeacher(id);
@@ -177,6 +179,29 @@ export function renderTeachers(container) {
                         <i class="fa-solid fa-user-group" style="color: var(--primary);"></i>
                         학원 등록 강사 현황
                     </h3>
+
+                    <!-- Search and Filter controls -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;">
+                        <!-- Left: Status Filter Buttons -->
+                        <div style="display: flex; gap: 4px; background: rgba(0, 0, 0, 0.05); padding: 4px; border-radius: 8px;" id="teacher-status-filter-group">
+                            <button type="button" class="filter-btn active" data-status="active" style="padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: 700; border: none; cursor: pointer; transition: all 0.2s;">
+                                재직 <span id="count-active" style="font-size: 0.75rem; font-weight: 800; margin-left: 2px;">(0)</span>
+                            </button>
+                            <button type="button" class="filter-btn" data-status="resigned" style="padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: 700; border: none; cursor: pointer; transition: all 0.2s;">
+                                퇴사 <span id="count-resigned" style="font-size: 0.75rem; font-weight: 800; margin-left: 2px;">(0)</span>
+                            </button>
+                            <button type="button" class="filter-btn" data-status="all" style="padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; font-weight: 700; border: none; cursor: pointer; transition: all 0.2s;">
+                                전체 <span id="count-all" style="font-size: 0.75rem; font-weight: 800; margin-left: 2px;">(0)</span>
+                            </button>
+                        </div>
+                        
+                        <!-- Right: Search input -->
+                        <div style="position: relative; flex-grow: 1; max-width: 280px; min-width: 180px;">
+                            <input type="text" id="teacher-search-input" class="form-control" placeholder="이름 또는 과목 검색..." style="width: 100%; padding-left: 36px; height: 34px; font-size: 0.85rem; border-radius: 8px; border: 1px solid var(--border-color, #cbd5e1); margin-bottom: 0;">
+                            <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted, #64748b); font-size: 0.85rem;"></i>
+                        </div>
+                    </div>
+
                     <div class="table-wrapper" style="margin-top: 0; flex-grow: 1;">
                         <table class="custom-table" id="teachers-table">
                             <thead>
@@ -240,6 +265,15 @@ export function renderTeachers(container) {
                         grid-template-columns: 1fr !important;
                     }
                 }
+                #teacher-status-filter-group .filter-btn {
+                    background: transparent;
+                    color: var(--text-main, #334155);
+                }
+                #teacher-status-filter-group .filter-btn.active {
+                    background: var(--primary, #3b82f6);
+                    color: #fff;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                }
             </style>
         `;
 
@@ -251,6 +285,34 @@ export function renderTeachers(container) {
             phoneBinder.destroy();
         }
         phoneBinder = PhoneNumberInput.bind(phoneInput, phoneError);
+
+        // Bind Search/Filter Listeners
+        const searchInput = container.querySelector('#teacher-search-input');
+        if (searchInput) {
+            searchInput.value = searchQuery; // Preserve query across renders if any
+            searchInput.addEventListener('input', (e) => {
+                searchQuery = e.target.value.trim();
+                renderTableBody();
+            });
+        }
+
+        const filterGroup = container.querySelector('#teacher-status-filter-group');
+        if (filterGroup) {
+            // Restore active state based on currentFilter
+            filterGroup.querySelectorAll('.filter-btn').forEach(btn => {
+                if (btn.dataset.status === currentFilter) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+                btn.addEventListener('click', (e) => {
+                    filterGroup.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                    e.currentTarget.classList.add('active');
+                    currentFilter = e.currentTarget.dataset.status;
+                    renderTableBody();
+                });
+            });
+        }
 
         form.addEventListener('submit', (e) => {
             e.preventDefault();
@@ -286,19 +348,59 @@ export function renderTeachers(container) {
 
         const teachers = stateStore.getTeachers();
 
-        if (teachers.length === 0) {
+        // 1. Calculate and update counts
+        const countActive = teachers.filter(t => t.employmentStatus !== 'resigned').length;
+        const countResigned = teachers.filter(t => t.employmentStatus === 'resigned').length;
+        const countAll = teachers.length;
+
+        const activeBadge = container.querySelector('#count-active');
+        const resignedBadge = container.querySelector('#count-resigned');
+        const allBadge = container.querySelector('#count-all');
+
+        if (activeBadge) activeBadge.textContent = `(${countActive})`;
+        if (resignedBadge) resignedBadge.textContent = `(${countResigned})`;
+        if (allBadge) allBadge.textContent = `(${countAll})`;
+
+        // 2. Filter by employmentStatus
+        let filtered = teachers;
+        if (currentFilter === 'active') {
+            filtered = filtered.filter(t => t.employmentStatus !== 'resigned');
+        } else if (currentFilter === 'resigned') {
+            filtered = filtered.filter(t => t.employmentStatus === 'resigned');
+        }
+
+        // 3. Filter by search query (name or instrument)
+        if (searchQuery) {
+            const query = searchQuery.toLowerCase();
+            filtered = filtered.filter(t => 
+                t.name.toLowerCase().includes(query) || 
+                (t.instrument && t.instrument.toLowerCase().includes(query))
+            );
+        }
+
+        // 4. Handle empty state messages
+        if (filtered.length === 0) {
+            let emptyMessage = '등록된 강사가 없습니다.';
+            if (searchQuery) {
+                emptyMessage = '검색 결과가 없습니다.';
+            } else if (currentFilter === 'active') {
+                emptyMessage = '재직 강사가 없습니다.';
+            } else if (currentFilter === 'resigned') {
+                emptyMessage = '퇴사 처리된 강사가 없습니다.';
+            }
+
             tbody.innerHTML = `
                 <tr>
                     <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 3rem;">
                         <i class="fa-solid fa-user-slash" style="font-size: 2rem; color: rgba(255,255,255,0.05); margin-bottom: 8px; display: block;"></i>
-                        등록된 강사가 없습니다.
+                        ${emptyMessage}
                     </td>
                 </tr>
             `;
             return;
         }
 
-        tbody.innerHTML = teachers.map(t => {
+        tbody.innerHTML = filtered.map(t => {
             const isResigned = t.employmentStatus === 'resigned';
             const nameHtml = isResigned 
                 ? `${t.name} <span style="display: inline-flex; align-items: center; justify-content: center; background: #e2e8f0; color: #475569; border: 1px solid #cbd5e1; border-radius: 4px; padding: 1px 5px; font-size: 11px; font-weight: 900; margin-left: 6px;">퇴사</span>`

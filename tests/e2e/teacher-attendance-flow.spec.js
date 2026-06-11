@@ -987,12 +987,16 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
     await resignModal.locator('#resign-memo-input').fill('개인 사정 이직');
     await resignModal.locator('button[type="submit"]').click();
 
-    // Resign modal should close, form resets to "신규 강사 등록", and the row gets "[퇴사]" badge and styled opacity
+    // Resign modal should close, form resets to "신규 강사 등록", and T1 is hidden under the default active filter
     await expect(resignModal).toBeHidden();
     await page.waitForTimeout(500);
     await expect(page.locator('#form-heading')).toContainText('신규 강사 등록');
 
     const updatedRowT1 = page.locator('#teachers-table-body tr:has-text("문승현")');
+    await expect(updatedRowT1).toBeHidden(); // T1 should be hidden from active list
+
+    // Switch to resigned filter to see T1
+    await page.locator('#teacher-status-filter-group button[data-status="resigned"]').click();
     await expect(updatedRowT1).toBeVisible();
     await expect(updatedRowT1.locator('span:has-text("퇴사")')).toBeVisible();
 
@@ -1011,6 +1015,9 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
     await page.locator('#cancel-edit-btn').click();
     await expect(infoBanner).toBeHidden();
 
+    // Switch back to active filter to proceed with registering and deleting a clean teacher
+    await page.locator('#teacher-status-filter-group button[data-status="active"]').click();
+
     // 7. Test deleting a clean teacher (register a new teacher first, then delete them)
     // Fill the add form
     await page.locator('#teacher-name-input').fill('임시강사');
@@ -1019,7 +1026,7 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
     await page.locator('#teacher-email-input').fill('temp_teacher@turing.com');
     await page.locator('button[type="submit"]').click(); // Click 등록 완료
 
-    // Verify new row in the table
+    // Verify new row in the table under active filter
     const tempRow = page.locator('#teachers-table-body tr:has-text("임시강사")');
     await expect(tempRow).toBeVisible();
 
@@ -1036,5 +1043,144 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
     // Row should disappear from table, form resets to "신규 강사 등록"
     await expect(tempRow).not.toBeVisible();
     await expect(page.locator('#form-heading')).toContainText('신규 강사 등록');
+  });
+
+  test('should support teacher active/resigned status filters and search combination in UI', async ({ page }) => {
+    page.removeAllListeners('dialog');
+
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Navigate to "강사관리" (dir-teachers)
+    const staffMenu = page.locator('.menu-item[data-view="dir-teachers"]');
+    await expect(staffMenu).toBeVisible();
+    await staffMenu.click();
+
+    // Verify heading is visible
+    await expect(page.locator('h3:has-text("학원 등록 강사 현황")')).toBeVisible();
+
+    // 3. Verify status filter group exists and active is selected by default
+    const filterGroup = page.locator('#teacher-status-filter-group');
+    await expect(filterGroup).toBeVisible();
+    const activeBtn = filterGroup.locator('button[data-status="active"]');
+    const resignedBtn = filterGroup.locator('button[data-status="resigned"]');
+    const allBtn = filterGroup.locator('button[data-status="all"]');
+
+    await expect(activeBtn).toHaveClass(/active/);
+    await expect(resignedBtn).not.toHaveClass(/active/);
+    await expect(allBtn).not.toHaveClass(/active/);
+
+    // Verify initial count badges on filters
+    await expect(activeBtn.locator('#count-active')).toHaveText('(8)');
+    await expect(resignedBtn.locator('#count-resigned')).toHaveText('(0)');
+    await expect(allBtn.locator('#count-all')).toHaveText('(8)');
+
+    // Verify active teachers list is visible
+    await expect(page.locator('#teachers-table-body tr')).toHaveCount(8);
+
+    // 4. Click Resigned filter button
+    await resignedBtn.click();
+    await expect(resignedBtn).toHaveClass(/active/);
+    await expect(activeBtn).not.toHaveClass(/active/);
+
+    // Verify empty state for resigned status
+    await expect(page.locator('#teachers-table-body')).toContainText('퇴사 처리된 강사가 없습니다.');
+
+    // 5. Click All filter button
+    await allBtn.click();
+    await expect(allBtn).toHaveClass(/active/);
+    await expect(page.locator('#teachers-table-body tr')).toHaveCount(8);
+
+    // 6. Switch back to Active filter, test search query combination
+    await activeBtn.click();
+    const searchInput = page.locator('#teacher-search-input');
+    await expect(searchInput).toBeVisible();
+
+    // Search for "피아노"
+    await searchInput.fill('피아노');
+    // Active piano teachers: 문승현, 엄소연, 정은비 (3 teachers)
+    await expect(page.locator('#teachers-table-body tr')).toHaveCount(3);
+    await expect(page.locator('#teachers-table-body tr:has-text("문승현")')).toBeVisible();
+    await expect(page.locator('#teachers-table-body tr:has-text("엄소연")')).toBeVisible();
+    await expect(page.locator('#teachers-table-body tr:has-text("정은비")')).toBeVisible();
+
+    // Search for a specific name "성어진"
+    await searchInput.fill('성어진');
+    await expect(page.locator('#teachers-table-body tr')).toHaveCount(1);
+    await expect(page.locator('#teachers-table-body tr:has-text("성어진")')).toBeVisible();
+
+    // Search for non-existing query
+    await searchInput.fill('없는강사명');
+    await expect(page.locator('#teachers-table-body')).toContainText('검색 결과가 없습니다.');
+
+    // Clear search
+    await searchInput.fill('');
+    await expect(page.locator('#teachers-table-body tr')).toHaveCount(8);
+
+    // 7. Add a clean teacher, resign them, then physically delete them
+    // Register new teacher "테스트강사"
+    await page.locator('#teacher-name-input').fill('테스트강사');
+    await page.locator('#teacher-instrument-input').fill('첼로');
+    await page.locator('#teacher-phone-input').fill('010-5555-5555');
+    await page.locator('button[type="submit"]').click();
+
+    // Verify active count increases
+    await expect(activeBtn.locator('#count-active')).toHaveText('(9)');
+    await expect(resignedBtn.locator('#count-resigned')).toHaveText('(0)');
+    await expect(allBtn.locator('#count-all')).toHaveText('(9)');
+    await expect(page.locator('#teachers-table-body tr')).toHaveCount(9);
+
+    const testRow = page.locator('#teachers-table-body tr:has-text("테스트강사")');
+    await expect(testRow).toBeVisible();
+
+    // Resign "테스트강사"
+    await testRow.locator('.edit-teacher-btn').click();
+    await expect(page.locator('#form-heading')).toContainText('강사 정보 수정');
+    await page.locator('#resign-teacher-btn').click();
+
+    const resignModal = page.locator('.modal-overlay.show');
+    await expect(resignModal).toBeVisible();
+
+    page.once('dialog', async dialog => {
+      expect(dialog.message()).toBe('정말로 테스트강사 강사를 퇴사 처리하시겠습니까?');
+      await dialog.accept();
+    });
+
+    await resignModal.locator('#resign-date-input').fill('2026-06-11');
+    await resignModal.locator('#resign-memo-input').fill('개인 연구');
+    await resignModal.locator('button[type="submit"]').click();
+    await expect(resignModal).toBeHidden();
+    await page.waitForTimeout(500);
+
+    // Verify they disappeared from active list
+    await expect(testRow).toBeHidden();
+    await expect(activeBtn.locator('#count-active')).toHaveText('(8)');
+    await expect(resignedBtn.locator('#count-resigned')).toHaveText('(1)');
+    await expect(allBtn.locator('#count-all')).toHaveText('(9)');
+
+    // Go to Resigned filter, verify they are there
+    await resignedBtn.click();
+    await expect(testRow).toBeVisible();
+    await expect(testRow.locator('span:has-text("퇴사")')).toBeVisible();
+
+    // Click edit on testRow, delete physically (as they have no connected records)
+    await testRow.locator('.edit-teacher-btn').click();
+    
+    page.once('dialog', async dialog => {
+      expect(dialog.message()).toContain('정말로 테스트강사 강사의 정보를 삭제하시겠습니까?');
+      await dialog.accept();
+    });
+
+    await page.locator('#delete-teacher-form-btn').click();
+    await page.waitForTimeout(500);
+
+    // Verify they are physically deleted and counts return to original
+    await expect(resignedBtn.locator('#count-resigned')).toHaveText('(0)');
+    await expect(activeBtn.locator('#count-active')).toHaveText('(8)');
+    await expect(allBtn.locator('#count-all')).toHaveText('(8)');
+    await expect(page.locator('#teachers-table-body')).toContainText('퇴사 처리된 강사가 없습니다.');
   });
 });
