@@ -1519,4 +1519,109 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
       window.stateStore.saveDB();
     }, targetTeacherId);
   });
+
+  test('should support teacher reinstatement / 퇴사 취소 workflow', async ({ page }) => {
+    page.removeAllListeners('dialog');
+
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // Go to staff view
+    await page.locator('.menu-item[data-view="dir-teachers"]').click();
+    await page.waitForTimeout(500);
+
+    // Pick an active teacher e.g. "문승현" (T1) and verify "퇴사 취소" button is NOT visible
+    const rowT1 = page.locator('#teachers-table-body tr:has-text("문승현")');
+    await rowT1.locator('.edit-teacher-btn').click();
+    await page.waitForTimeout(200);
+    await expect(page.locator('#restore-teacher-btn')).not.toBeVisible();
+    await expect(page.locator('#resign-teacher-btn')).toBeVisible();
+
+    // Now resign "문승현" first
+    await page.locator('#resign-teacher-btn').click();
+    const resignModal = page.locator('.modal-overlay.show');
+    await resignModal.locator('#resign-date-input').fill('2026-06-11');
+    await resignModal.locator('#resign-memo-input').fill('일시퇴사');
+    page.once('dialog', async dialog => {
+      await dialog.accept();
+    });
+    await resignModal.locator('button[type="submit"]').click();
+    await page.waitForTimeout(500);
+
+    // Set filter to "퇴사" (resigned)
+    const resignedBtn = page.locator('#teacher-status-filter-group button[data-status="resigned"]');
+    await resignedBtn.click();
+    await page.waitForTimeout(200);
+
+    // Open resigned teacher "문승현" details
+    const resignedRow = page.locator('#teachers-table-body tr:has-text("문승현")');
+    await resignedRow.locator('.edit-teacher-btn').click();
+    await page.waitForTimeout(200);
+
+    // Verify "퇴사 취소" button is visible, and "퇴사 처리" button is NOT visible
+    await expect(page.locator('#restore-teacher-btn')).toBeVisible();
+    await expect(page.locator('#resign-teacher-btn')).not.toBeVisible();
+
+    // Verify info banner is visible with resigned memo/date
+    await expect(page.locator('#teacher-info-banner')).toContainText('퇴사한 강사 정보 수정 중');
+    await expect(page.locator('#teacher-info-banner')).toContainText('퇴사일: 2026-06-11');
+    await expect(page.locator('#teacher-info-banner')).toContainText('퇴사 사유: 일시퇴사');
+
+    // Confirm cancel behavior (clicking "퇴사 취소" and dismissing prompt)
+    page.once('dialog', async dialog => {
+      expect(dialog.message()).toBe('이 강사를 재직 상태로 되돌릴까요?');
+      await dialog.dismiss();
+    });
+    await page.locator('#restore-teacher-btn').click();
+    await page.waitForTimeout(200);
+
+    // Verify status remains resigned
+    const teacherBefore = await page.evaluate(() => {
+      return window.stateStore.getTeachers().find(t => t.name === '문승현');
+    });
+    expect(teacherBefore.employmentStatus).toBe('resigned');
+
+    // Confirm accept behavior (clicking "퇴사 취소" and accepting prompt)
+    page.once('dialog', async dialog => {
+      expect(dialog.message()).toBe('이 강사를 재직 상태로 되돌릴까요?');
+      await dialog.accept();
+    });
+    await page.locator('#restore-teacher-btn').click();
+    await page.waitForTimeout(500);
+
+    // Since we were in "퇴사" filter, the restored teacher should disappear from the list
+    // and the form should be reset (no restore button visible, heading says "신규 강사 등록")
+    await expect(page.locator('#teachers-table-body tr:has-text("문승현")')).not.toBeVisible();
+    await expect(page.locator('#form-heading')).toContainText('신규 강사 등록');
+    await expect(page.locator('#restore-teacher-btn')).not.toBeVisible();
+
+    // Verify database status in stateStore
+    const teacherAfter = await page.evaluate(() => {
+      return window.stateStore.getTeachers().find(t => t.name === '문승현');
+    });
+    expect(teacherAfter.employmentStatus).toBe('active');
+    expect(teacherAfter.resignedAt).toBeNull();
+    expect(teacherAfter.resignMemo).toBe('');
+
+    // Go to "재직" filter, "문승현" should be visible
+    const activeBtn = page.locator('#teacher-status-filter-group button[data-status="active"]');
+    await activeBtn.click();
+    await page.waitForTimeout(200);
+    await expect(page.locator('#teachers-table-body tr:has-text("문승현")')).toBeVisible();
+
+    // Verify the reinstated teacher is included in Student Assign Dropdown select option list
+    await page.locator('.menu-item[data-view="dir-students"]').click();
+    await page.waitForTimeout(500);
+
+    // Click edit on student "최다은" (S1)
+    const studentRow = page.locator('#students-table-body tr:has-text("최다은")');
+    await studentRow.locator('.edit-student-btn').click();
+    await page.waitForTimeout(200);
+
+    const studentTeacherSelect = page.locator('#modal-student-teacher');
+    await expect(studentTeacherSelect).toContainText('문승현');
+  });
 });

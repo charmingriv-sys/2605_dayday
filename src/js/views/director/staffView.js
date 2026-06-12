@@ -170,6 +170,25 @@ export function renderTeachers(container) {
         });
     };
 
+    const handleRestoreAction = (id) => {
+        const teacher = stateStore.getTeacher(id);
+        if (!teacher) return;
+
+        if (confirm("이 강사를 재직 상태로 되돌릴까요?")) {
+            const res = stateStore.restoreTeacher(id);
+            if (res.success) {
+                showKakaoTalkToast("복직 처리가 완료되었습니다.");
+                if (currentFilter === 'resigned') {
+                    resetForm();
+                } else {
+                    startEditMode(id);
+                }
+            } else {
+                alert(res.message || "오류가 발생했습니다.");
+            }
+        }
+    };
+
     const render = () => {
         container.innerHTML = `
             <div style="display: grid; grid-template-columns: 1.3fr 1fr; gap: 24px;" class="teachers-layout-grid">
@@ -520,6 +539,27 @@ export function renderTeachers(container) {
                 resignBtn.innerHTML = `<i class="fa-solid fa-user-slash"></i> 퇴사 처리`;
                 resignBtn.addEventListener('click', () => handleResignAction(teacherId));
                 buttonsContainer.appendChild(resignBtn);
+            }
+
+            // 퇴사 취소 button - only if resigned
+            if (teacher.employmentStatus === 'resigned') {
+                const restoreBtn = document.createElement('button');
+                restoreBtn.type = 'button';
+                restoreBtn.className = 'btn';
+                restoreBtn.id = 'restore-teacher-btn';
+                restoreBtn.style.flexGrow = '1';
+                restoreBtn.style.justifyContent = 'center';
+                restoreBtn.style.height = '42px';
+                restoreBtn.style.background = '#10b981'; // Emerald Green
+                restoreBtn.style.borderColor = '#10b981';
+                restoreBtn.style.color = '#fff';
+                restoreBtn.style.fontWeight = 'bold';
+                restoreBtn.style.whiteSpace = 'nowrap';
+                restoreBtn.style.wordBreak = 'keep-all';
+                restoreBtn.style.minWidth = '120px';
+                restoreBtn.innerHTML = `<i class="fa-solid fa-user-check"></i> 퇴사 취소`;
+                restoreBtn.addEventListener('click', () => handleRestoreAction(teacherId));
+                buttonsContainer.appendChild(restoreBtn);
             }
 
             // 삭제 button

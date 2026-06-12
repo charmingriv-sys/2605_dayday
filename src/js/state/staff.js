@@ -401,6 +401,20 @@ export const staffMethods = {
         return teacher;
     },
 
+    restoreTeacher(teacherId, payload = {}) {
+        const teacher = this.db.teachers.find(t => t.id === teacherId);
+        if (!teacher) {
+            return { success: false, message: '강사를 찾을 수 없습니다.' };
+        }
+        teacher.employmentStatus = 'active';
+        teacher.resignedAt = null;
+        teacher.resignMemo = '';
+        teacher.updatedAt = new Date().toISOString();
+        this.saveDB();
+        this.notify('TEACHERS_CHANGED', this.db.teachers);
+        return { success: true, teacher };
+    },
+
     canDeleteTeacher(teacherId) {
         const teacher = this.db.teachers.find(t => t.id === teacherId);
         if (!teacher) {
