@@ -58,6 +58,7 @@ export function renderSchedules(container) {
     let matchFilterActiveOnly = false; // "당일 수업 있는 강사만" 필터
     let matchInstrumentFilter = 'all'; // 과목/악기 필터
     let matchSearchQuery = ''; // 강사명 검색
+    let matchShowResigned = false; // "퇴사 강사 보기" 필터 토글 상태 (기본 off)
     let matchStatusText = ''; // 일정 이동 성공/실패 텍스트
     let matchStatusColor = ''; // 일정 이동 성공/실패 텍스트 색상
     
@@ -617,8 +618,9 @@ export function renderSchedules(container) {
                             <tr style="background-color: #f1f5f9;">
                                 <th style="border: 1px solid #111; padding: 6px; text-align: center; width: 80px;">시간</th>
                                 ${filteredTeachers.map(t => {
+                                    const cleanName = t.name.replace(/\s*\(퇴사\)/g, '').trim();
                                     const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
-                                    return `<th style="border: 1px solid #111; padding: 6px; text-align: center;">${t.name}${resignedSuffix} (${t.instrument})</th>`;
+                                    return `<th style="border: 1px solid #111; padding: 6px; text-align: center;">${cleanName}${resignedSuffix} (${t.instrument})</th>`;
                                 }).join('')}
                             </tr>
                         </thead>
@@ -647,8 +649,9 @@ export function renderSchedules(container) {
                     const notesList = filteredTeachers.filter(t => t.scheduleNotes);
                     const noteContent = notesList.length > 0 
                         ? notesList.map(t => {
+                            const cleanName = t.name.replace(/\s*\(퇴사\)/g, '').trim();
                             const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
-                            return `<div style="margin-bottom: 4px;"><strong>${t.name}${resignedSuffix} T:</strong> ${t.scheduleNotes.replace(/\n/g, '<br>')}</div>`;
+                            return `<div style="margin-bottom: 4px;"><strong>${cleanName}${resignedSuffix} T:</strong> ${t.scheduleNotes.replace(/\n/g, '<br>')}</div>`;
                         }).join('')
                         : '<div style="color: #666; font-style: italic;">등록된 특이사항이 없습니다.</div>';
                     notesHtml = `
@@ -789,8 +792,9 @@ export function renderSchedules(container) {
                             <tr style="background-color: #f1f5f9;">
                                 <th style="border: 1px solid #111; padding: 6px; text-align: center; width: 80px;">시간</th>
                                 ${activeTeachers.map(t => {
+                                    const cleanName = t.name.replace(/\s*\(퇴사\)/g, '').trim();
                                     const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
-                                    return `<th style="border: 1px solid #111; padding: 6px; text-align: center;">${t.name}${resignedSuffix} (${t.instrument})</th>`;
+                                    return `<th style="border: 1px solid #111; padding: 6px; text-align: center;">${cleanName}${resignedSuffix} (${t.instrument})</th>`;
                                 }).join('')}
                             </tr>
                         </thead>
@@ -1454,8 +1458,9 @@ export function renderSchedules(container) {
                             <label for="shift-teacher-select-week" style="font-weight: 600; font-size: 0.95rem; color: var(--text-muted); white-space: nowrap; margin-bottom: 0;">강사 선택:</label>
                             <select id="shift-teacher-select-week" class="form-control" style="margin-bottom: 0;" data-testid="teacher-shift-teacher-filter">
                                 ${includedTeachers.map(t => {
+                                    const cleanName = t.name.replace(/\s*\(퇴사\)/g, '').trim();
                                     const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
-                                    return `<option value="${t.id}" ${t.id === selectedTeacher.id ? 'selected' : ''}>${t.name}${resignedSuffix} (${t.instrument})</option>`;
+                                    return `<option value="${t.id}" ${t.id === selectedTeacher.id ? 'selected' : ''}>${cleanName}${resignedSuffix} (${t.instrument})</option>`;
                                 }).join('')}
                             </select>
                         </div>
@@ -1637,10 +1642,11 @@ export function renderSchedules(container) {
                             <div style="display: grid; grid-template-columns: 80px repeat(${Math.max(1, filteredTeachers.length)}, 1fr); border-bottom: 2px solid var(--border-color); background: var(--primary-light); padding: 12px 0; border-radius: var(--radius-md) var(--radius-md) 0 0; margin: -16px -16px 8px -16px;">
                                 <div style="font-weight: 700; text-align: center; color: var(--text-muted); font-size: 0.85rem; display: flex; align-items: center; justify-content: center;"><i class="fa-regular fa-clock"></i></div>
                                 ${filteredTeachers.length > 0 ? filteredTeachers.map(t => {
+                                    const cleanName = t.name.replace(/\s*\(퇴사\)/g, '').trim();
                                     const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
                                     return `
                                     <div style="font-weight: 700; text-align: center; font-size: 0.9rem; color: var(--text-main); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;">
-                                        <span>${t.name}${resignedSuffix}</span>
+                                        <span>${cleanName}${resignedSuffix}</span>
                                         <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: normal;">${t.instrument}</span>
                                     </div>
                                     `;
@@ -1855,8 +1861,9 @@ export function renderSchedules(container) {
         const activeWeekDates = weekDates.filter(wd => scheduleDays.includes(wd.dayEn));
 
         const teacherOptions = teachers.filter(t => t.employmentStatus !== 'resigned' || t.id === selectedTeacherId).map(t => {
+            const cleanName = t.name.replace(/\s*\(퇴사\)/g, '').trim();
             const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
-            return `<option value="${t.id}" ${t.id === selectedTeacherId ? 'selected' : ''}>${t.name}${resignedSuffix} (${t.instrument})</option>`;
+            return `<option value="${t.id}" ${t.id === selectedTeacherId ? 'selected' : ''}>${cleanName}${resignedSuffix} (${t.instrument})</option>`;
         }).join('');
 
         ws.innerHTML = `
@@ -2090,29 +2097,32 @@ export function renderSchedules(container) {
             const weeklyShifts = stateStore.getTeacherShifts().filter(s => weekDatesStr.includes(s.date));
             const weeklyLogs = stateStore.getTeacherAttendanceLogs().filter(log => weekDatesStr.includes(log.date));
 
-            teachers.filter(t => t.employmentStatus === 'resigned').forEach(t => {
-                const hasShift = weeklyShifts.some(s => s.teacherId === t.id && s.slots && s.slots.length > 0);
-                const hasLog = weeklyLogs.some(log => log.teacherId === t.id);
-                const hasClass = weekClasses.some(c => {
-                    if (c.teacherId !== t.id) return false;
-                    const student = students.find(s => s.id === c.studentId);
-                    if (!student) return false;
-                    if (c.source === 'override') return true;
-                    
-                    const now = new Date();
-                    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-                    const isCurrentOrFuture = c.date && c.date >= todayStr;
-                    if (isCurrentOrFuture) {
-                        return student.teacherId === t.id;
+            if (matchShowResigned) {
+                teachers.filter(t => t.employmentStatus === 'resigned').forEach(t => {
+                    const hasShift = weeklyShifts.some(s => s.teacherId === t.id && s.slots && s.slots.length > 0);
+                    const hasLog = weeklyLogs.some(log => log.teacherId === t.id);
+                    const hasClass = weekClasses.some(c => {
+                        if (c.teacherId !== t.id) return false;
+                        const student = students.find(s => s.id === c.studentId);
+                        if (!student) return false;
+                        if (c.source === 'override') return true;
+                        
+                        const now = new Date();
+                        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                        const isCurrentOrFuture = c.date && c.date >= todayStr;
+                        if (isCurrentOrFuture) {
+                            return student.teacherId === t.id;
+                        }
+                        return true;
+                    });
+                    if (hasShift || hasLog || hasClass) {
+                        activeTeacherIdsInWeek.add(t.id);
                     }
-                    return true;
                 });
-                if (hasShift || hasLog || hasClass) {
-                    activeTeacherIdsInWeek.add(t.id);
-                }
-            });
+            }
             const filteredMatchTeachers = teachers.filter(t => activeTeacherIdsInWeek.has(t.id));
             const teacherBadgesHtml = filteredMatchTeachers.map(t => {
+                const cleanName = t.name.replace(/\s*\(퇴사\)/g, '').trim();
                 const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
                 return `
                 <button class="btn btn-filter-teacher" 
@@ -2127,7 +2137,7 @@ export function renderSchedules(container) {
                         transition: var(--transition);
                         font-size: 0.8rem;
                     ">
-                    ${t.name}${resignedSuffix}
+                    ${cleanName}${resignedSuffix}
                 </button>
                 `;
             }).join('');
@@ -2143,7 +2153,11 @@ export function renderSchedules(container) {
 
                     <div style="display: flex; gap: 8px; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: center;" id="teacher-filter-row" data-testid="teacher-student-teacher-filter">
                         ${teacherBadgesHtml}
-                        <button class="btn btn-secondary" id="btn-clear-match-filter" style="border-radius: 20px; font-weight: 600; padding: 5px 12px; font-size: 0.8rem;">필터 초기화</button>
+                        <button class="btn btn-secondary" id="btn-clear-match-filter" style="border-radius: 20px; font-weight: 600; padding: 5px 12px; font-size: 0.8rem; margin-right: 8px;">필터 초기화</button>
+                        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer; user-select: none; margin-bottom: 0; color: var(--text-main);">
+                            <input type="checkbox" id="chk-show-resigned-teachers" style="width: 14px; height: 14px; cursor: pointer; margin: 0;" ${matchShowResigned ? 'checked' : ''}>
+                            퇴사 강사 보기
+                        </label>
                     </div>
 
                     <div class="teacher-student-layout" style="display: flex; gap: 20px; flex-wrap: nowrap; align-items: flex-start; width: 100%;">
@@ -2264,6 +2278,8 @@ export function renderSchedules(container) {
                 if (c.teacherId && studentIds.has(c.studentId)) {
                     const teacher = teachers.find(t => t.id === c.teacherId);
                     if (teacher && teacher.employmentStatus === 'resigned') {
+                        if (!matchShowResigned) return;
+                        
                         const student = students.find(s => s.id === c.studentId);
                         const isOverride = c.source === 'override';
                         
@@ -2288,12 +2304,20 @@ export function renderSchedules(container) {
                     Array.isArray(s.slots) && 
                     s.slots.length > 0
                 ) {
+                    const teacher = teachers.find(t => t.id === s.teacherId);
+                    if (teacher && teacher.employmentStatus === 'resigned' && !matchShowResigned) {
+                        return;
+                    }
                     activeTeacherIds.add(s.teacherId);
                 }
             });
             const dailyLogs = stateStore.getTeacherAttendanceLogs({ date: matchSelectedDateStr }) || [];
             dailyLogs.forEach(log => {
                 if (log.teacherId) {
+                    const teacher = teachers.find(t => t.id === log.teacherId);
+                    if (teacher && teacher.employmentStatus === 'resigned' && !matchShowResigned) {
+                        return;
+                    }
                     activeTeacherIds.add(log.teacherId);
                 }
             });
@@ -2338,6 +2362,10 @@ export function renderSchedules(container) {
                             </button>
                         ` : ''}
                     </div>
+                    <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer; user-select: none; margin-bottom: 0; color: var(--text-main); margin-left: auto;">
+                        <input type="checkbox" id="chk-show-resigned-teachers" style="width: 14px; height: 14px; cursor: pointer; margin: 0;" ${matchShowResigned ? 'checked' : ''}>
+                        퇴사 강사 보기
+                    </label>
                 </div>
             `;
 
@@ -2378,10 +2406,11 @@ export function renderSchedules(container) {
                                     <tr style="border-bottom: 2px solid var(--border-color); background: var(--primary-light);">
                                         <th style="width: 70px; text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 12px 4px; font-weight: bold;"><i class="fa-regular fa-clock"></i></th>
                                         ${filteredTeachers.length > 0 ? filteredTeachers.map(t => {
+                                            const cleanName = t.name.replace(/\s*\(퇴사\)/g, '').trim();
                                             const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
                                             return `
                                                 <th style="text-align: center; font-size: 0.85rem; padding: 12px 6px;">
-                                                    ${t.name}${resignedSuffix}
+                                                    ${cleanName}${resignedSuffix}
                                                     <span style="display: block; font-size: 0.72rem; color: var(--text-muted); font-weight: normal; margin-top: 4px;">${t.instrument}</span>
                                                 </th>
                                             `;
@@ -2553,6 +2582,23 @@ export function renderSchedules(container) {
         if (printMatchesBtn) {
             printMatchesBtn.addEventListener('click', () => {
                 openPrintPreview('matches');
+            });
+        }
+
+        const chkShowResigned = ws.querySelector('#chk-show-resigned-teachers');
+        if (chkShowResigned) {
+            chkShowResigned.addEventListener('change', (e) => {
+                matchShowResigned = e.target.checked;
+                
+                // 이미 퇴사 강사 필터가 선택된 상태에서 토글 off로 바뀌면 선택을 초기화
+                if (!matchShowResigned && currentFilterTeacherId) {
+                    const teacher = teachers.find(t => t.id === currentFilterTeacherId);
+                    if (teacher && teacher.employmentStatus === 'resigned') {
+                        currentFilterTeacherId = '';
+                        tempClassOverrides = {}; // Reset overrides on filter reset
+                    }
+                }
+                render();
             });
         }
 

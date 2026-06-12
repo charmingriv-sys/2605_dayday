@@ -187,4 +187,104 @@ test.describe('Director Teacher Shift Flow Checks', () => {
     // T4 should now be visible because of the log
     await expect(shiftTable).toContainText('양지숙 (퇴사)');
   });
+
+  test('should support hiding resigned teachers by default and toggling their visibility in matching view', async ({ page }) => {
+    page.removeAllListeners('dialog');
+
+    // 1. Resign T4 (양지숙) and set up an override class on 2026-05-18 to make them eligible in match view
+    await page.evaluate(() => {
+      window.stateStore.resignTeacher('T4', { resignedAt: '2026-05-18', memo: '퇴사' });
+      window.stateStore.ensureScheduleSnapshotForDate('2026-05-18');
+      const snap = window.stateStore.db.scheduleSnapshots.find(s => s.date === '2026-05-18');
+      snap.entries.push({
+        id: 'ENTRY_2026-05-18_S1_T4_E2E',
+        studentId: 'S1',
+        teacherId: 'T4',
+        startTime: '14:00',
+        endTime: '14:30',
+        subjectId: '보컬',
+        source: 'override'
+      });
+      window.stateStore.saveDB();
+    });
+
+    // 2. Navigate to Schedules View
+    await navigateDirectorView(page, 'dir-schedules');
+    await page.locator('#btn-subtab-match').click();
+    await page.waitForTimeout(500);
+
+    const filterRow = page.locator('#teacher-filter-row');
+    const chkShowResigned = page.locator('#chk-show-resigned-teachers');
+
+    // 3. Verify T4 is NOT visible in the filter chips by default
+    await expect(filterRow).not.toContainText('양지숙');
+    await expect(chkShowResigned).not.toBeChecked();
+
+    // 4. Check "퇴사 강사 보기" toggle
+    await chkShowResigned.check();
+    await page.waitForTimeout(200);
+
+    // 5. Verify T4 is now visible in the filter chips and displays "(퇴사)" exactly once
+    await expect(filterRow).toContainText('양지숙 (퇴사)');
+    await expect(filterRow).not.toContainText('양지숙 (퇴사) (퇴사)');
+
+    // 6. Click the T4 filter chip to filter by them
+    const t4Chip = filterRow.locator('button:has-text("양지숙")');
+    await expect(t4Chip).toHaveAttribute('data-id', 'T4'); // Verify internal data-id is preserved as T4
+    await t4Chip.click();
+    await page.waitForTimeout(200);
+
+    // 7. Uncheck the "퇴사 강사 보기" toggle
+    await chkShowResigned.uncheck();
+    await page.waitForTimeout(200);
+
+    // 8. Verify T4 is hidden again and the filter is reset
+    await expect(filterRow).not.toContainText('양지숙');
+    // In week view, filter reset is verified by student match pills having full opacity (no opacity: 0.12)
+    const firstPill = page.locator('.student-match-pill').first();
+    const opacity = await firstPill.evaluate(el => window.getComputedStyle(el).opacity);
+    expect(opacity).not.toBe('0.12');
+
+    // 9. Switch to Daily Match View
+    await page.locator('#btn-match-mode-day').click();
+    await page.locator('[data-testid="teacher-student-date-input"]').fill('2026-05-18');
+    await page.waitForTimeout(500);
+
+    const dailyMatchTable = page.locator('[data-testid="teacher-student-schedule-table"]');
+    const dailyChkShowResigned = page.locator('#chk-show-resigned-teachers');
+
+    // T4 should be hidden by default
+    await expect(dailyMatchTable).not.toContainText('양지숙');
+    await expect(dailyChkShowResigned).not.toBeChecked();
+
+    // Check "퇴사 강사 보기" in daily view
+    await dailyChkShowResigned.check();
+    await page.waitForTimeout(200);
+
+    // T4 should be visible now
+    await expect(dailyMatchTable).toContainText('양지숙 (퇴사)');
+  });
+
+  test('should render weekly match view without crash and check elements', async ({ page }) => {
+    // 1. Navigate to Schedules View
+    await navigateDirectorView(page, 'dir-schedules');
+    
+    // 2. Click match subtab
+    const matchSubTab = page.locator('#btn-subtab-match');
+    await expect(matchSubTab).toBeVisible({ timeout: 5000 });
+    await matchSubTab.click();
+    await page.waitForTimeout(500);
+
+    // 3. Verify weekly match table is visible
+    const matchTable = page.locator('[data-testid="teacher-student-schedule-table"]');
+    await expect(matchTable).toBeVisible({ timeout: 5000 });
+
+    // 4. Verify weekly filter row is visible
+    const filterRow = page.locator('#teacher-filter-row');
+    await expect(filterRow).toBeVisible({ timeout: 5000 });
+
+    // 5. Verify "퇴사 강사 보기" toggle checkbox exists
+    const chkShowResigned = page.locator('#chk-show-resigned-teachers');
+    await expect(chkShowResigned).toBeVisible({ timeout: 5000 });
+  });
 });

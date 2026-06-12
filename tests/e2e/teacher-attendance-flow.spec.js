@@ -1289,6 +1289,8 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
 
     // Weekly match view: T8 (정은비) is in filter because S1 has default classes in this week (and S1 was assigned to T8)
     const matchFilterRow = page.locator('#teacher-filter-row');
+    await page.locator('#chk-show-resigned-teachers').check();
+    await page.waitForTimeout(200);
     await expect(matchFilterRow).toContainText('정은비 (퇴사)');
 
     // Now update S1's teacher to T1 (active). T8 should disappear from MATCH view filter badges for future/current week
@@ -1301,6 +1303,8 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
     await page.locator('.menu-item[data-view="dir-schedules"]').click();
     await page.locator('#btn-subtab-match').click();
     await page.waitForTimeout(500);
+    await page.locator('#chk-show-resigned-teachers').check();
+    await page.waitForTimeout(200);
     await expect(matchFilterRow).not.toContainText('정은비 (퇴사)');
 
     // 4. Test Student Deletion (Problem 3)
@@ -1346,6 +1350,8 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
     await page.waitForTimeout(500);
 
     const dailyMatchTable = page.locator('[data-testid="teacher-student-schedule-table"]');
+    await page.locator('#chk-show-resigned-teachers').check();
+    await page.waitForTimeout(200);
     await expect(dailyMatchTable).toContainText('양지숙 (퇴사)');
 
     // Now clear T4's shifts for today (make slots empty)
@@ -1410,6 +1416,8 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
     await page.locator('[data-testid="teacher-student-day-view"]').click();
     await page.locator('[data-testid="teacher-student-date-input"]').fill('2026-06-03');
     await page.waitForTimeout(500);
+    await page.locator('#chk-show-resigned-teachers').check();
+    await page.waitForTimeout(200);
     await expect(dailyMatchTable).toContainText('테스트333 (퇴사)');
 
     // Sub-test 3: Retired teacher + has active student assignment -> Visible in Match view
@@ -1435,6 +1443,8 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
     await page.locator('[data-testid="teacher-student-day-view"]').click();
     await page.locator('[data-testid="teacher-student-date-input"]').fill('2026-06-03');
     await page.waitForTimeout(500);
+    await page.locator('#chk-show-resigned-teachers').check();
+    await page.waitForTimeout(200);
     await expect(dailyMatchTable).toContainText('테스트333 (퇴사)');
 
     // B. Verify hidden in Attendance table (since slots are empty and no check-in logs)
@@ -1505,6 +1515,8 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
     // A. View 2026-06-02 (past date) -> 테스트333 should be VISIBLE because it is a past date record
     await page.locator('[data-testid="teacher-student-date-input"]').fill('2026-06-02');
     await page.waitForTimeout(500);
+    await page.locator('#chk-show-resigned-teachers').check();
+    await page.waitForTimeout(200);
     await expect(dailyMatchTable).toContainText('테스트333 (퇴사)');
 
     // B. View 2026-06-03 (current date) -> 테스트333 should be HIDDEN because it is current/future and snapshot is stale
