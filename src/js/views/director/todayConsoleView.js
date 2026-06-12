@@ -16,6 +16,7 @@ export function renderTodayConsole(container) {
     let editingTaskId = null; // Track editing task ID
     let selectedDateStr = null; // Track clicked calendar date
     let activeTab = 'active'; // Tab state: active, done, hidden, all
+    let selectedCategoryFilter = 'all'; // Filter by category: 'all', 'overdue', 'staff_warning', 'absent', 'schedule', 'billing', 'attendance_warning', 'book_check', 'book_billing', 'memo'
 
     const isSystemCheck = (item) => {
         if (!item) return false;
@@ -358,8 +359,61 @@ export function renderTodayConsole(container) {
         const todayTasksAll = stateStore.getTodayTasks().filter(isTodayTaskDetailed);
         const activeTasksList = todayTasksAll.filter(t => t.status === 'open' || (t.status === 'snoozed' && new Date(t.snoozedUntil).getTime() <= Date.now()));
         const doneTasksList = todayTasksAll.filter(t => t.status === 'done');
-        const hiddenTasksList = todayTasksAll.filter(t => t.status === 'dismissed' || (t.status === 'snoozed' && new Date(t.snoozedUntil).getTime() > Date.now()));
+        const hiddenTasksList = todayTasksAll.filter(t => t.status === 'dismissed' || (t.snoozedUntil && new Date(t.snoozedUntil).getTime() > Date.now()));
         const allTasksList = todayTasksAll;
+
+        // ==========================================
+        // Placeholder counts for Phase 13B ~ 13E domain integrations
+        // ==========================================
+        const getOverdueCount = () => 0; // TODO: Phase 13D - 미수납 확인 연동 (수납일 경과 후 미수납 전환)
+        const getStaffWarningCount = () => 0; // TODO: Phase 13C - 특이근태 연동 (레슨 있음 + 강사 미출근 / 퇴근 누락)
+        const getAbsentCount = () => 0; // TODO: Phase 13C - 결석 확인 연동 (수업 종료 후 결석 판정)
+        const getScheduleCount = () => 0; // TODO: Phase 13C/D - 일정확인 연동 (D-3 일정 확인)
+        const getBillingCount = () => 0; // TODO: Phase 13D - 수납확인 연동 (오늘 수납 예정)
+        const getAttendanceWarningCount = () => 0; // TODO: Phase 13C - 특이출결 연동 (하원 누락 / 연속결석 / 지각률)
+        const getBookCheckCount = () => 0; // TODO: Phase 13E - 교재 확인 연동 (지급 승인 대기)
+        const getBookBillingCount = () => 0; // TODO: Phase 13E - 교재 결제 확인 연동 (교재비 결제대기)
+        const getMemoCount = () => {
+            return activeTasksList.filter(t => {
+                let cat = t.category || 'memo';
+                if (t.source === 'system' || t.source === 'auto') {
+                    if (t.type === 'billing') cat = 'overdue';
+                    else if (t.type === 'attendance') cat = 'attendance_warning';
+                }
+                return cat === 'memo';
+            }).length;
+        };
+
+        const cardsData = [
+            { id: 'overdue', label: '미수납 확인', count: getOverdueCount(), color: 'var(--danger)', icon: 'fa-file-invoice-dollar' },
+            { id: 'staff_warning', label: '특이근태', count: getStaffWarningCount(), color: '#f1c40f', icon: 'fa-user-clock' },
+            { id: 'absent', label: '결석 확인', count: getAbsentCount(), color: 'var(--danger)', icon: 'fa-user-slash' },
+            { id: 'schedule', label: '일정확인', count: getScheduleCount(), color: 'var(--primary)', icon: 'fa-calendar-day' },
+            { id: 'billing', label: '수납확인', count: getBillingCount(), color: 'var(--success)', icon: 'fa-receipt' },
+            { id: 'attendance_warning', label: '특이출결', count: getAttendanceWarningCount(), color: 'var(--danger)', icon: 'fa-triangle-exclamation' },
+            { id: 'book_check', label: '교재 확인', count: getBookCheckCount(), color: '#a55eea', icon: 'fa-book' },
+            { id: 'book_billing', label: '교재 결제 확인', count: getBookBillingCount(), color: '#f1c40f', icon: 'fa-wallet' },
+            { id: 'memo', label: '운영메모', count: getMemoCount(), color: 'var(--primary)', icon: 'fa-note-sticky' }
+        ];
+
+        const chipsHtml = cardsData.map(card => {
+            const isSelected = selectedCategoryFilter === card.id;
+            const borderStyle = isSelected ? `border: 2px solid ${card.color}; background: rgba(255,255,255,0.06);` : 'border: 1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.01);';
+            const textClass = isSelected ? 'color: var(--text-main); font-weight: 800;' : 'color: var(--text-muted); font-weight: 600;';
+            const countBadgeStyle = card.count > 0 
+                ? `background-color: ${card.color}; color: #fff; font-weight: 700;` 
+                : `background-color: rgba(255,255,255,0.08); color: var(--text-muted);`;
+
+            return `
+                <div class="kpi-chip-card" data-filter-id="${card.id}" title="${card.id === 'memo' ? '오늘 등록된 운영 메모 및 할 일 수' : `${card.label} (향후 비즈니스 연동 예정)`}" style="box-sizing: border-box; flex: 1 1 140px; min-width: 130px; padding: 12px 14px; border-radius: 8px; cursor: pointer; transition: all 0.2s ease-in-out; display: flex; align-items: center; justify-content: space-between; gap: 8px; ${borderStyle}" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
+                    <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                        <i class="fa-solid ${card.icon}" style="color: ${card.color}; font-size: 0.95rem; flex-shrink: 0;"></i>
+                        <span style="font-size: 0.76rem; ${textClass} overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${card.label}</span>
+                    </div>
+                    <span class="badge" style="font-size: 0.72rem; padding: 3px 7px; border-radius: 12px; margin: 0; flex-shrink: 0; ${countBadgeStyle}">${card.count}</span>
+                </div>
+            `;
+        }).join('');
 
         let filteredTasks = [];
         if (activeTab === 'active') {
@@ -370,6 +424,18 @@ export function renderTodayConsole(container) {
             filteredTasks = hiddenTasksList;
         } else {
             filteredTasks = allTasksList;
+        }
+
+        // Apply selectedCategoryFilter for Phase 13A-1 UI skeleton
+        if (selectedCategoryFilter !== 'all') {
+            filteredTasks = filteredTasks.filter(task => {
+                let cat = task.category || 'memo';
+                if (task.source === 'system' || task.source === 'auto') {
+                    if (task.type === 'billing') cat = 'overdue';
+                    else if (task.type === 'attendance') cat = 'attendance_warning';
+                }
+                return cat === selectedCategoryFilter;
+            });
         }
 
         // Apply startAt/dueAt time-based sorting policy for Phase 8C-3E
@@ -598,8 +664,6 @@ export function renderTodayConsole(container) {
         }
 
         // Custom Priority badge helper (mapped to Categories for Phase 8C-3A)
-
-        // Custom Priority badge helper (mapped to Categories for Phase 8C-3A)
         const getPriorityBadge = (task) => {
             if (isSystemCheck(task)) {
                 return '<span class="badge" style="padding: 4px 10px; font-weight: 700; background-color: #a55eea; color: #ffffff;">추천확인</span>';
@@ -613,22 +677,11 @@ export function renderTodayConsole(container) {
             }
             switch (priority) {
                 case 'today':
-                    return '<span class="badge badge-info" style="padding: 4px 10px; font-weight: 700; background-color: var(--primary); color: #ffffff;">상담예약</span>';
+                     return '<span class="badge badge-info" style="padding: 4px 10px; font-weight: 700; background-color: var(--primary); color: #ffffff;">상담예약</span>';
                 case 'info':
                     return '<span class="badge badge-success" style="padding: 4px 10px; font-weight: 700;">메모</span>';
                 default:
                     return `<span class="badge" style="padding: 4px 10px; font-weight: 700; background-color: var(--text-muted); color: #ffffff;">${safePriority}</span>`;
-            }
-        };
-
-        // Date format helper
-        const formatTime = (isoString) => {
-            if (!isoString) return '';
-            try {
-                const date = new Date(isoString);
-                return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-            } catch (e) {
-                return escapeHtml(isoString);
             }
         };
 
@@ -786,20 +839,31 @@ export function renderTodayConsole(container) {
                     </h2>
                     <p style="margin: 0; color: var(--text-muted); font-size: 0.88rem;">오늘 처리할 운영 업무를 확인합니다.</p>
                 </div>
-                <div style="display: flex; gap: 12px;">
-                    <div class="glass-card" style="padding: 8px 16px; min-width: 100px; text-align: center; border-color: rgba(255,255,255,0.06); background: rgba(255,255,255,0.02);">
-                        <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">총 업무</div>
-                        <div style="font-size: 1.5rem; font-weight: 800; color: var(--text-main); margin-top: 4px;">${totalCount}개</div>
-                    </div>
-                    <div class="glass-card" style="padding: 8px 16px; min-width: 100px; text-align: center; border-color: var(--success-light); background: rgba(46, 204, 113, 0.05);">
-                        <div style="font-size: 0.75rem; color: var(--success); font-weight: 600;">완료 업무</div>
-                        <div style="font-size: 1.5rem; font-weight: 800; color: var(--success); margin-top: 4px;">${doneCount}개</div>
-                    </div>
-                    <div class="glass-card" style="padding: 8px 16px; min-width: 100px; text-align: center; border-color: var(--danger-light); background: rgba(235, 94, 85, 0.05);">
-                        <div style="font-size: 0.75rem; color: var(--danger); font-weight: 600;">확인필요</div>
-                        <div style="font-size: 1.5rem; font-weight: 800; color: var(--danger); margin-top: 4px;">${urgentCount}개</div>
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <button type="button" id="btn-reset-filters" class="btn btn-secondary" style="padding: 8px 16px; font-size: 0.82rem; font-weight: 700; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px; margin: 0; background: ${selectedCategoryFilter === 'all' ? 'rgba(255,255,255,0.03)' : 'var(--primary)'}; color: ${selectedCategoryFilter === 'all' ? 'var(--text-muted)' : '#fff'}; border: 1px solid rgba(255,255,255,0.06);">
+                        <i class="fa-solid fa-arrows-rotate"></i> 필터 초기화 (전체보기)
+                    </button>
+                    
+                    <div style="display: flex; gap: 8px; margin-left: 8px;">
+                        <div class="glass-card" style="padding: 6px 12px; min-width: 70px; text-align: center; border-color: rgba(255,255,255,0.06); background: rgba(255,255,255,0.02); margin: 0;">
+                            <div style="font-size: 0.65rem; color: var(--text-muted); font-weight: 600;">총 업무</div>
+                            <div style="font-size: 1.15rem; font-weight: 800; color: var(--text-main); margin-top: 2px;">${totalCount}개</div>
+                        </div>
+                        <div class="glass-card" style="padding: 6px 12px; min-width: 70px; text-align: center; border-color: var(--success-light); background: rgba(46, 204, 113, 0.05); margin: 0;">
+                            <div style="font-size: 0.65rem; color: var(--success); font-weight: 600;">완료</div>
+                            <div style="font-size: 1.15rem; font-weight: 800; color: var(--success); margin-top: 2px;">${doneCount}개</div>
+                        </div>
+                        <div class="glass-card" style="padding: 6px 12px; min-width: 70px; text-align: center; border-color: var(--danger-light); background: rgba(235, 94, 85, 0.05); margin: 0;">
+                            <div style="font-size: 0.65rem; color: var(--danger); font-weight: 600;">확인필요</div>
+                            <div style="font-size: 1.15rem; font-weight: 800; color: var(--danger); margin-top: 2px;">${urgentCount}개</div>
+                        </div>
                     </div>
                 </div>
+            </div>
+
+            <!-- Upper 9 Work KPI Card Chips Row -->
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 24px; width: 100%; box-sizing: border-box;" id="kpi-chips-row-container">
+                ${chipsHtml}
             </div>
 
             <!-- Main Grid Layout (Parallel Columns: Form & Calendar) -->
@@ -944,10 +1008,10 @@ export function renderTodayConsole(container) {
                 <!-- Filter Tabs for Phase 8C-5B -->
                 <div class="queue-filter-tabs" style="display: flex; gap: 8px; margin-bottom: 1.25rem; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 12px; flex-wrap: wrap;">
                     <button type="button" class="tab-btn ${activeTab === 'active' ? 'active' : ''}" data-tab="active" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 4px; font-weight: 600; cursor: pointer; transition: all 0.2s; border: 1px solid ${activeTab === 'active' ? 'var(--primary)' : 'rgba(255,255,255,0.05)'}; background: ${activeTab === 'active' ? 'rgba(9, 132, 227, 0.15)' : 'rgba(255,255,255,0.01)'}; color: ${activeTab === 'active' ? 'var(--primary)' : 'var(--text-muted)'}; margin: 0;">
-                        대기 (${activeTasksList.length})
+                        대기 (${activeTasks.length})
                     </button>
                     <button type="button" class="tab-btn ${activeTab === 'done' ? 'active' : ''}" data-tab="done" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 4px; font-weight: 600; cursor: pointer; transition: all 0.2s; border: 1px solid ${activeTab === 'done' ? 'var(--success)' : 'rgba(255,255,255,0.05)'}; background: ${activeTab === 'done' ? 'rgba(46, 204, 113, 0.15)' : 'rgba(255,255,255,0.01)'}; color: ${activeTab === 'done' ? 'var(--success)' : 'var(--text-muted)'}; margin: 0;">
-                        완료 (${doneTasksList.length})
+                        완료 (${doneTasks.length})
                     </button>
                     <button type="button" class="tab-btn ${activeTab === 'hidden' ? 'active' : ''}" data-tab="hidden" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 4px; font-weight: 600; cursor: pointer; transition: all 0.2s; border: 1px solid ${activeTab === 'hidden' ? 'var(--accent)' : 'rgba(255,255,255,0.05)'}; background: ${activeTab === 'hidden' ? 'rgba(165, 94, 234, 0.15)' : 'rgba(255,255,255,0.01)'}; color: ${activeTab === 'hidden' ? 'var(--accent)' : 'var(--text-muted)'}; margin: 0;">
                         숨김/보류 (${hiddenTasksList.length})
@@ -973,34 +1037,20 @@ export function renderTodayConsole(container) {
                                 ${filteredTasks.map(task => {
                                     const safeId = escapeHtml(task.id);
                                     const safeTitle = escapeHtml(task.title);
-                                    
-                                    // Extract preview description (everything after the title line if duplicated)
-                                    let previewDescription = '';
-                                    if (task.description) {
-                                        const descLines = task.description.split('\n');
-                                        if (descLines.length > 0 && descLines[0].trim() === task.title.trim()) {
-                                            previewDescription = descLines.slice(1).join('\n').trim();
-                                        } else {
-                                            previewDescription = task.description.trim();
-                                        }
-                                    }
-                                    const safeDescription = escapeHtml(previewDescription);
-                                    const safeType = escapeHtml(task.type);
- 
+
                                     const isDone = task.status === 'done';
                                     const isDismissed = task.status === 'dismissed';
                                     const isSnoozed = task.status === 'snoozed' && new Date(task.snoozedUntil).getTime() > Date.now();
                                     const isRestorable = isDone || isDismissed || isSnoozed;
- 
-                                    // Card styles based on status
+
                                     const cardStyle = isRestorable
                                         ? `padding: 1rem 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-color: rgba(255,255,255,0.04); transition: all 0.2s ease-in-out; background: rgba(255,255,255,0.01); opacity: 0.55;`
                                         : `padding: 1rem 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-color: rgba(255,255,255,0.06); transition: all 0.2s ease-in-out; background: rgba(255,255,255,0.01);`;
- 
+
                                     const titleStyle = isDone
                                         ? `font-weight: 700; color: var(--text-muted); font-size: 0.95rem; text-decoration: line-through;`
                                         : `font-weight: 700; color: var(--text-main); font-size: 0.95rem;`;
- 
+
                                     let badgeHtml = '';
                                     if (isDone) {
                                         badgeHtml = `<span class="badge badge-success" style="padding: 4px 10px; font-weight: 700; background-color: var(--success); color: #ffffff;">완료</span>`;
@@ -1011,18 +1061,18 @@ export function renderTodayConsole(container) {
                                     } else {
                                         badgeHtml = getPriorityBadge(task);
                                     }
- 
+
                                     let timeText = '';
                                     if (task.startAt) {
                                         timeText = formatTaskDateTimeRange(task.startAt, task.endAt);
                                     } else {
                                         timeText = formatTaskDateTime(task.dueAt);
                                     }
- 
+
                                     const todayBadge = isTodayTask(task) && !isRestorable
                                         ? `<span class="badge-today" style="display: inline-block; font-size: 0.58rem; background: var(--accent); color: #fff; padding: 2px 5px; border-radius: 3px; font-weight: 700; margin-bottom: 2px; text-align: center; white-space: nowrap; flex-shrink: 0; width: fit-content; margin-left: auto;">TODAY</span>`
                                         : '';
- 
+
                                     let timeTextHtml = '';
                                     if (isDone) {
                                         timeTextHtml = `<div style="font-size: 0.8rem; font-weight: 600; color: var(--success);"><i class="fa-solid fa-circle-check" style="margin-right: 4px;"></i>${formatTaskDateTime(task.completedAt)} 완료</div>`;
@@ -1036,7 +1086,7 @@ export function renderTodayConsole(container) {
                                             <div style="font-size: 0.8rem; font-weight: 600; color: var(--accent); white-space: nowrap;"><i class="fa-regular fa-clock" style="margin-right: 4px;"></i>${timeText}</div>
                                            </div>`;
                                     }
- 
+
                                     let actionsHtml = '';
                                     if (isRestorable) {
                                         actionsHtml = `
@@ -1057,24 +1107,34 @@ export function renderTodayConsole(container) {
                                             </button>
                                         `;
                                     }
- 
+
+                                    let previewDescription = '';
+                                    if (task.description) {
+                                        const descLines = task.description.split('\n');
+                                        if (descLines.length > 0 && descLines[0].trim() === task.title.trim()) {
+                                            previewDescription = descLines.slice(1).join('\n').trim();
+                                        } else {
+                                            previewDescription = task.description.trim();
+                                        }
+                                    }
+                                    const safeDescription = escapeHtml(previewDescription);
+
                                     return `
                                         <div class="glass-card" style="${cardStyle}" ${!isRestorable ? `onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='rgba(255,255,255,0.01)'"` : ''}>
-                                            <div style="display: flex; align-items: center; gap: 16px; flex-grow: 1; cursor: pointer;" class="task-card-click-zone" data-id="${safeId}">
+                                            <div style="display: flex; align-items: center; gap: 16px; flex-grow: 1; cursor: ${!isSystemCheck(task) ? 'pointer' : 'default'};" class="${!isSystemCheck(task) ? 'task-card-click-zone' : ''}" data-id="${safeId}">
                                                 <div style="flex-shrink: 0;">
                                                     ${badgeHtml}
                                                 </div>
-                                                <div style="display: flex; flex-direction: column; gap: 4px;">
+                                                <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0;">
                                                     <div style="${titleStyle}" class="card-title-text">${safeTitle}</div>
                                                     ${previewDescription ? `<div style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.4; white-space: pre-wrap;">${safeDescription}</div>` : ''}
                                                 </div>
                                             </div>
-                                            
                                             <!-- Right side actions & metadata -->
                                             <div style="display: flex; align-items: center; gap: 20px; flex-shrink: 0;" class="task-action-wrapper">
                                                 <div style="text-align: right; display: flex; flex-direction: column; gap: 4px; min-width: 80px;">
                                                     ${timeTextHtml}
-                                                    <div style="font-size: 0.72rem; color: var(--text-muted);">${safeType}</div>
+                                                    <div style="font-size: 0.72rem; color: var(--text-muted);">${escapeHtml(task.type)}</div>
                                                 </div>
                                                 
                                                 <div style="display: flex; gap: 6px;">
@@ -1268,6 +1328,27 @@ export function renderTodayConsole(container) {
 
         // Click actions
         if (e.type === 'click') {
+            // Intercept KPI chip filter click
+            const chip = e.target.closest('.kpi-chip-card');
+            if (chip) {
+                const filterId = chip.dataset.filterId;
+                if (selectedCategoryFilter === filterId) {
+                    selectedCategoryFilter = 'all'; // Toggle back to all
+                } else {
+                    selectedCategoryFilter = filterId;
+                }
+                render();
+                return;
+            }
+
+            // Reset filters click
+            const btnReset = e.target.closest('#btn-reset-filters');
+            if (btnReset) {
+                selectedCategoryFilter = 'all';
+                render();
+                return;
+            }
+
             // Intercept task card click zone to trigger Edit mode
             const clickZone = e.target.closest('.task-card-click-zone');
             if (clickZone) {
@@ -1316,12 +1397,12 @@ export function renderTodayConsole(container) {
                 return;
             }
 
-            // Intercept calendar event chip click first to open its day's popover (Phase 8C-3D-Repair-F)
-            const chip = e.target.closest('.calendar-event-chip');
-            if (chip) {
+            // Intercept calendar event chip click first to open its day's popover
+            const calendarChip = e.target.closest('.calendar-event-chip');
+            if (calendarChip) {
                 e.stopPropagation();
                 e.preventDefault();
-                const cell = chip.closest('.calendar-day-cell');
+                const cell = calendarChip.closest('.calendar-day-cell');
                 if (cell) {
                     const clickedDateStr = cell.dataset.date;
                     selectedDateStr = clickedDateStr;
@@ -1335,18 +1416,14 @@ export function renderTodayConsole(container) {
                         if (startDateInput && clickedDateStr) {
                             const oldStartVal = startDateInput.value;
                             startDateInput.value = clickedDateStr;
-                            
-                            // Dispatch change event to let start time listener trigger auto end time calculations
                             startDateInput.dispatchEvent(new Event('change', { bubbles: true }));
                             
-                            // Also if the end date was same as old start date, update end date to clicked date
                             if (endDateInput && endDateInput.value === oldStartVal) {
                                 endDateInput.value = clickedDateStr;
                                 endDateInput.dispatchEvent(new Event('change', { bubbles: true }));
                             }
                         }
                     }
-                    // Since a chip exists, dayEvents.length is guaranteed to be > 0. Open the popover.
                     showDayEventsPopover(clickedDateStr);
                 }
                 return;
@@ -1365,8 +1442,6 @@ export function renderTodayConsole(container) {
                         if (!isSystemCheck(task)) {
                             editingTaskId = eventId;
                             render();
-                        } else {
-                            // System recommendations cannot be edited
                         }
                     }
                 } else {
@@ -1415,18 +1490,14 @@ export function renderTodayConsole(container) {
                 if (startDateInput && clickedDateStr) {
                     const oldStartVal = startDateInput.value;
                     startDateInput.value = clickedDateStr;
-                    
-                    // Dispatch change event to let start time listener trigger auto end time calculations
                     startDateInput.dispatchEvent(new Event('change', { bubbles: true }));
                     
-                    // Also if the end date was same as old start date, update end date to clicked date
                     if (endDateInput && endDateInput.value === oldStartVal) {
                         endDateInput.value = clickedDateStr;
                         endDateInput.dispatchEvent(new Event('change', { bubbles: true }));
                     }
                 }
                 
-                // Show pop-over for the clicked day's events if it has at least one event
                 const [y, m, d] = clickedDateStr.split('-').map(Number);
                 const cellStart = new Date(y, m - 1, d, 0, 0, 0, 0);
                 const cellEnd = new Date(y, m - 1, d, 23, 59, 59, 999);
@@ -1495,12 +1566,18 @@ export function renderTodayConsole(container) {
     container.addEventListener('click', handleEvents);
     container.addEventListener('change', handleEvents);
 
-    // Subscribe to TodayTask store changes to reflect real-time queue states
+    // Subscribe to TodayTask, Payments, StudentBooks, and Attendance store changes to reflect real-time queue states
     const unsubTodayTasks = stateStore.subscribe('TODAY_TASKS_CHANGED', render);
+    const unsubPayments = stateStore.subscribe('PAYMENTS_CHANGED', render);
+    const unsubStudentBooks = stateStore.subscribe('STUDENT_BOOKS_CHANGED', render);
+    const unsubAttendance = stateStore.subscribe('ATTENDANCE_CHANGED', render);
 
     // View cleanup to prevent event listener and subscriber memory leaks
     return () => {
         unsubTodayTasks();
+        unsubPayments();
+        unsubStudentBooks();
+        unsubAttendance();
         container.removeEventListener('submit', handleEvents);
         container.removeEventListener('click', handleEvents);
         container.removeEventListener('change', handleEvents);
