@@ -65,16 +65,16 @@ export function renderTeachers(container) {
                 <div class="modal-header">
                     <h3 class="modal-title" style="color: var(--danger, #dc2626); font-weight: 700;">
                         <i class="fa-solid fa-triangle-exclamation" style="margin-right: 8px;"></i>
-                        강사 삭제 불가 안내
+                        강사 정보 삭제 제한 안내
                     </h3>
                     <button class="modal-close" data-close-modal>×</button>
                 </div>
                 <div class="modal-body" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 16px;">
                     <div style="font-weight: 700; color: var(--text-main); font-size: 1rem; line-height: 1.5; margin-bottom: 4px;">
-                        이 강사는 기존 기록과 연결되어 있어 삭제할 수 없습니다.
+                        이 강사는 기존 근태/시간표 기록이 존재하여 삭제할 수 없습니다.
                     </div>
                     <div style="font-size: 0.9rem; color: var(--text-muted, #64748b); line-height: 1.5;">
-                        기록을 보존하기 위해 삭제 대신 퇴사 처리로 관리해 주세요.
+                        기록을 안전하게 보존하기 위해 삭제 대신 '퇴사 처리'로 관리해 주세요.
                     </div>
                     
                     <div style="margin-top: 8px;">
@@ -90,7 +90,7 @@ export function renderTeachers(container) {
                 </div>
                 <div class="modal-footer" style="padding: 1rem 1.5rem; display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--border-color);">
                     <button class="btn btn-secondary" data-close-modal style="min-width: 80px; justify-content: center;">닫기</button>
-                    <button class="btn" id="go-to-resign-btn" style="min-width: 140px; justify-content: center; background: #e28743; border-color: #e28743; color: #fff; font-weight: bold;">퇴사 처리로 이동</button>
+                    <button class="btn" id="go-to-resign-btn" style="min-width: 140px; justify-content: center; background: #e28743; border-color: #e28743; color: #fff; font-weight: bold;">퇴사 처리하기</button>
                 </div>
             `;
             openModal(modalHtml, (modalArea) => {
@@ -160,9 +160,9 @@ export function renderTeachers(container) {
                 }
                 dateError.style.display = 'none';
 
-                if (confirm(`정말로 ${teacher.name} 강사를 퇴사 처리하시겠습니까?`)) {
+                if (confirm(`정말로 ${teacher.name} 강사를 퇴사 처리하시겠습니까?\n퇴사 처리 후에는 새 배정 선택 목록에서 제외됩니다.`)) {
                     stateStore.resignTeacher(id, { resignedAt, memo });
-                    showKakaoTalkToast("퇴사 처리가 완료되었습니다.");
+                    showKakaoTalkToast("강사 퇴사 처리가 완료되었습니다.");
                     closeModal();
                     resetForm();
                 }
@@ -174,10 +174,10 @@ export function renderTeachers(container) {
         const teacher = stateStore.getTeacher(id);
         if (!teacher) return;
 
-        if (confirm("이 강사를 재직 상태로 되돌릴까요?")) {
+        if (confirm("이 강사를 복직(재직) 처리하시겠습니까?")) {
             const res = stateStore.restoreTeacher(id);
             if (res.success) {
-                showKakaoTalkToast("복직 처리가 완료되었습니다.");
+                showKakaoTalkToast("강사 복직(재직 전환) 처리가 완료되었습니다.");
                 if (currentFilter === 'resigned') {
                     resetForm();
                 } else {

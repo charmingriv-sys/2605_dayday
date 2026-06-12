@@ -620,7 +620,7 @@ export function renderSchedules(container) {
                                 ${filteredTeachers.map(t => {
                                     const cleanName = t.name.replace(/\s*\(퇴사\)/g, '').trim();
                                     const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
-                                    return `<th style="border: 1px solid #111; padding: 6px; text-align: center;">${cleanName}${resignedSuffix} (${t.instrument})</th>`;
+                                    return `<th style="border: 1px solid #111; padding: 6px; text-align: center; ${t.employmentStatus === 'resigned' ? 'opacity: 0.65; font-style: italic;' : ''}">${cleanName}${resignedSuffix} (${t.instrument})</th>`;
                                 }).join('')}
                             </tr>
                         </thead>
@@ -794,7 +794,7 @@ export function renderSchedules(container) {
                                 ${activeTeachers.map(t => {
                                     const cleanName = t.name.replace(/\s*\(퇴사\)/g, '').trim();
                                     const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
-                                    return `<th style="border: 1px solid #111; padding: 6px; text-align: center;">${cleanName}${resignedSuffix} (${t.instrument})</th>`;
+                                    return `<th style="border: 1px solid #111; padding: 6px; text-align: center; ${t.employmentStatus === 'resigned' ? 'opacity: 0.65; font-style: italic;' : ''}">${cleanName}${resignedSuffix} (${t.instrument})</th>`;
                                 }).join('')}
                             </tr>
                         </thead>
@@ -1645,12 +1645,12 @@ export function renderSchedules(container) {
                                     const cleanName = t.name.replace(/\s*\(퇴사\)/g, '').trim();
                                     const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
                                     return `
-                                    <div style="font-weight: 700; text-align: center; font-size: 0.9rem; color: var(--text-main); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;">
+                                    <div style="font-weight: 700; text-align: center; font-size: 0.9rem; color: var(--text-main); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; ${t.employmentStatus === 'resigned' ? 'opacity: 0.65; font-style: italic;' : ''}">
                                         <span>${cleanName}${resignedSuffix}</span>
                                         <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: normal;">${t.instrument}</span>
                                     </div>
                                     `;
-                                }).join('') : '<div style="text-align:center; font-size:0.85rem; color:var(--text-muted); padding: 4px; grid-column: 2 / span 1;">출근 강사 없음</div>'}
+                                }).join('') : '<div style="text-align:center; font-size:0.85rem; color:var(--text-muted); padding: 4px; grid-column: 2 / span 1;">출근한 강사가 없습니다.</div>'}
                             </div>
 
                             <div style="display: flex; position: relative; height: 500px; margin-top: 8px;">
@@ -2136,6 +2136,7 @@ export function renderSchedules(container) {
                         border: 2px solid transparent;
                         transition: var(--transition);
                         font-size: 0.8rem;
+                        ${t.employmentStatus === 'resigned' ? 'opacity: 0.6; font-style: italic;' : ''}
                     ">
                     ${cleanName}${resignedSuffix}
                 </button>
@@ -2156,7 +2157,7 @@ export function renderSchedules(container) {
                         <button class="btn btn-secondary" id="btn-clear-match-filter" style="border-radius: 20px; font-weight: 600; padding: 5px 12px; font-size: 0.8rem; margin-right: 8px;">필터 초기화</button>
                         <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer; user-select: none; margin-bottom: 0; color: var(--text-main);">
                             <input type="checkbox" id="chk-show-resigned-teachers" style="width: 14px; height: 14px; cursor: pointer; margin: 0;" ${matchShowResigned ? 'checked' : ''}>
-                            퇴사 강사 보기
+                            퇴사한 강사 포함
                         </label>
                     </div>
 
@@ -2364,7 +2365,7 @@ export function renderSchedules(container) {
                     </div>
                     <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer; user-select: none; margin-bottom: 0; color: var(--text-main); margin-left: auto;">
                         <input type="checkbox" id="chk-show-resigned-teachers" style="width: 14px; height: 14px; cursor: pointer; margin: 0;" ${matchShowResigned ? 'checked' : ''}>
-                        퇴사 강사 보기
+                        퇴사한 강사 포함
                     </label>
                 </div>
             `;
@@ -2409,12 +2410,12 @@ export function renderSchedules(container) {
                                             const cleanName = t.name.replace(/\s*\(퇴사\)/g, '').trim();
                                             const resignedSuffix = t.employmentStatus === 'resigned' ? ' (퇴사)' : '';
                                             return `
-                                                <th style="text-align: center; font-size: 0.85rem; padding: 12px 6px;">
+                                                <th style="text-align: center; font-size: 0.85rem; padding: 12px 6px; ${t.employmentStatus === 'resigned' ? 'opacity: 0.65; font-style: italic;' : ''}">
                                                     ${cleanName}${resignedSuffix}
                                                     <span style="display: block; font-size: 0.72rem; color: var(--text-muted); font-weight: normal; margin-top: 4px;">${t.instrument}</span>
                                                 </th>
                                             `;
-                                        }).join('') : '<th style="text-align: center; color: var(--text-muted); font-size: 0.85rem;">해당 조건 강사 없음</th>'}
+                                        }).join('') : '<th style="text-align: center; color: var(--text-muted); font-size: 0.85rem;">일치하는 강사가 없습니다.</th>'}
                                     </tr>
                                 </thead>
                                 <tbody>

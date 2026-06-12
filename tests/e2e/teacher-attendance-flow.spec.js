@@ -346,8 +346,8 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
     // 1. Verify Tooltip accessibility & content
     const tooltipContainer = page.locator('.ta-tooltip-container');
     await expect(tooltipContainer).toBeVisible();
-    await expect(tooltipContainer).toHaveAttribute('title', '미퇴근 시 총 근무시간에 산정되지 않습니다.');
-    await expect(tooltipContainer.locator('.ta-tooltip-text')).toHaveText('미퇴근 시 총 근무시간에 산정되지 않습니다.');
+    await expect(tooltipContainer).toHaveAttribute('title', '퇴근 기록이 누락된 근무는 총 근무시간 합산에서 제외됩니다.');
+    await expect(tooltipContainer.locator('.ta-tooltip-text')).toHaveText('퇴근 기록이 누락된 근무는 총 근무시간 합산에서 제외됩니다.');
 
     // Trigger hover on tooltip to ensure it is styled and visible (positions below the header text)
     await tooltipContainer.hover();
@@ -548,7 +548,7 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
     // Confirm cancel behavior
     // Setup confirm mock to cancel
     page.once('dialog', async dialog => {
-      expect(dialog.message()).toBe('강사 근태 기록을 수정할까요?');
+      expect(dialog.message()).toBe('이 근무 기록을 수정하시겠습니까?');
       await dialog.dismiss(); // 취소
     });
 
@@ -576,7 +576,7 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
 
     // Confirm save behavior
     page.once('dialog', async dialog => {
-      expect(dialog.message()).toBe('강사 근태 기록을 수정할까요?');
+      expect(dialog.message()).toBe('이 근무 기록을 수정하시겠습니까?');
       await dialog.accept(); // 확인
     });
 
@@ -909,11 +909,11 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
     // Verify deletion blocked modal displays reasons
     const blockedModal = page.locator('.modal-overlay.show');
     await expect(blockedModal).toBeVisible();
-    await expect(blockedModal.locator('.modal-title')).toContainText('강사 삭제 불가 안내');
+    await expect(blockedModal.locator('.modal-title')).toContainText('강사 정보 삭제 제한 안내');
     
     // Assert user-friendly mapped Korean sentences
-    await expect(blockedModal.locator('.modal-body')).toContainText('이 강사는 기존 기록과 연결되어 있어 삭제할 수 없습니다.');
-    await expect(blockedModal.locator('.modal-body')).toContainText('기록을 보존하기 위해 삭제 대신 퇴사 처리로 관리해 주세요.');
+    await expect(blockedModal.locator('.modal-body')).toContainText('이 강사는 기존 근태/시간표 기록이 존재하여 삭제할 수 없습니다.');
+    await expect(blockedModal.locator('.modal-body')).toContainText('기록을 안전하게 보존하기 위해 삭제 대신 \'퇴사 처리\'로 관리해 주세요.');
     await expect(blockedModal.locator('.modal-body')).toContainText('연결된 기록');
     await expect(blockedModal.locator('ul')).toContainText('강사 시간표에 등록된 기록이 있습니다.');
     
@@ -986,7 +986,7 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
     
     // Setup confirm for submit
     page.once('dialog', async dialog => {
-      expect(dialog.message()).toBe('정말로 문승현 강사를 퇴사 처리하시겠습니까?');
+      expect(dialog.message()).toBe('정말로 문승현 강사를 퇴사 처리하시겠습니까?\n퇴사 처리 후에는 새 배정 선택 목록에서 제외됩니다.');
       await dialog.accept(); // Confirm resignation
     });
 
@@ -1152,7 +1152,7 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
     await expect(resignModal).toBeVisible();
 
     page.once('dialog', async dialog => {
-      expect(dialog.message()).toBe('정말로 테스트강사 강사를 퇴사 처리하시겠습니까?');
+      expect(dialog.message()).toBe('정말로 테스트강사 강사를 퇴사 처리하시겠습니까?\n퇴사 처리 후에는 새 배정 선택 목록에서 제외됩니다.');
       await dialog.accept();
     });
 
@@ -1585,7 +1585,7 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
 
     // Confirm cancel behavior (clicking "퇴사 취소" and dismissing prompt)
     page.once('dialog', async dialog => {
-      expect(dialog.message()).toBe('이 강사를 재직 상태로 되돌릴까요?');
+      expect(dialog.message()).toBe('이 강사를 복직(재직) 처리하시겠습니까?');
       await dialog.dismiss();
     });
     await page.locator('#restore-teacher-btn').click();
@@ -1599,7 +1599,7 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
 
     // Confirm accept behavior (clicking "퇴사 취소" and accepting prompt)
     page.once('dialog', async dialog => {
-      expect(dialog.message()).toBe('이 강사를 재직 상태로 되돌릴까요?');
+      expect(dialog.message()).toBe('이 강사를 복직(재직) 처리하시겠습니까?');
       await dialog.accept();
     });
     await page.locator('#restore-teacher-btn').click();
@@ -1770,7 +1770,7 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
 
     // Save confirm accept
     page.once('dialog', async dialog => {
-      expect(dialog.message()).toBe('강사 근무 기록을 추가할까요?');
+      expect(dialog.message()).toBe('이 강사의 근무 기록을 새로 추가하시겠습니까?');
       await dialog.accept();
     });
     await modal.locator('#ta-add-save-btn').click();
@@ -1799,7 +1799,7 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
     page.on('dialog', async dialog => {
       dialogCount++;
       if (dialogCount === 1) {
-        expect(dialog.message()).toBe('강사 근무 기록을 추가할까요?');
+        expect(dialog.message()).toBe('이 강사의 근무 기록을 새로 추가하시겠습니까?');
         await dialog.accept();
       } else if (dialogCount === 2) {
         expect(dialog.message()).toBe('이미 해당 날짜의 근태 기록이 있습니다. 기존 기록을 수정해 주세요.');

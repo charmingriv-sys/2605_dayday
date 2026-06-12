@@ -945,9 +945,9 @@ export function renderTeacherAttendance(container) {
                                 <th>평균 근무시간</th>
                                 <th style="position: relative;">
                                     미퇴근 횟수
-                                    <span class="ta-tooltip-container" title="미퇴근 시 총 근무시간에 산정되지 않습니다." aria-label="미퇴근 시 총 근무시간에 산정되지 않습니다." style="display: inline-block; cursor: pointer; font-size: 11px; margin-left: 4px; color: var(--text-muted);">
+                                    <span class="ta-tooltip-container" title="퇴근 기록이 누락된 근무는 총 근무시간 합산에서 제외됩니다." aria-label="퇴근 기록이 누락된 근무는 총 근무시간 합산에서 제외됩니다." style="display: inline-block; cursor: pointer; font-size: 11px; margin-left: 4px; color: var(--text-muted);">
                                         <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
-                                        <span class="ta-tooltip-text" role="tooltip">미퇴근 시 총 근무시간에 산정되지 않습니다.</span>
+                                        <span class="ta-tooltip-text" role="tooltip">퇴근 기록이 누락된 근무는 총 근무시간 합산에서 제외됩니다.</span>
                                     </span>
                                 </th>
                             </tr>
@@ -1810,7 +1810,7 @@ export function renderTeacherAttendance(container) {
             <div class="modal-header">
                 <h3 class="modal-title">
                     <i class="fa-solid fa-user-clock" style="color: var(--primary); margin-right: 8px;"></i>
-                    강사 근태 기록 수정
+                    근무 기록 수정
                 </h3>
                 <button class="modal-close" data-close-modal>×</button>
             </div>
@@ -1888,7 +1888,7 @@ export function renderTeacherAttendance(container) {
                 <!-- 수정 사유 -->
                 <div style="display: flex; flex-direction: column; gap: 6px;">
                     <label for="ta-edit-reason" style="font-size: 0.85rem; font-weight: 700; color: var(--text-main); margin-bottom: 0;">수정 사유</label>
-                    <input type="text" id="ta-edit-reason" class="form-control" placeholder="예: 단말기 오작동으로 인한 출퇴근 누락 보정" style="width: 100%; margin-bottom: 0; height: 36px; padding: 6px 10px; font-size: 0.85rem;">
+                    <input type="text" id="ta-edit-reason" class="form-control" placeholder="수정 사유 입력 (예: 태블릿 오작동 보정)" style="width: 100%; margin-bottom: 0; height: 36px; padding: 6px 10px; font-size: 0.85rem;">
                 </div>
             </div>
             <div class="modal-footer" style="padding: 1rem 1.5rem; border-top: 1px solid var(--border-color); display: flex; gap: 8px;">
@@ -1970,7 +1970,7 @@ export function renderTeacherAttendance(container) {
                     }
 
                     // Confirm check before save
-                    if (confirm('강사 근태 기록을 수정할까요?')) {
+                    if (confirm('이 근무 기록을 수정하시겠습니까?')) {
                         stateStore.updateTeacherAttendanceLog(log.id, {
                             checkInAt: newCheckInAt,
                             checkOutAt: newCheckOutAt
@@ -1996,7 +1996,7 @@ export function renderTeacherAttendance(container) {
             <div class="modal-header">
                 <h3 class="modal-title">
                     <i class="fa-solid fa-user-plus" style="color: var(--primary); margin-right: 8px;"></i>
-                    강사 근무 추가
+                    근무 기록 추가
                 </h3>
                 <button class="modal-close" data-close-modal>×</button>
             </div>
@@ -2060,7 +2060,7 @@ export function renderTeacherAttendance(container) {
                 <!-- 메모 -->
                 <div style="display: flex; flex-direction: column; gap: 6px;">
                     <label for="ta-add-note" style="font-size: 0.85rem; font-weight: 700; color: var(--text-main); margin-bottom: 0;">메모</label>
-                    <input type="text" id="ta-add-note" class="form-control" placeholder="예: 태블릿 출근 체크 누락으로 인한 수동 추가" style="width: 100%; margin-bottom: 0; height: 36px; padding: 6px 10px; font-size: 0.85rem;">
+                    <input type="text" id="ta-add-note" class="form-control" placeholder="수동 추가 사유 입력 (예: 태블릿 체크 누락)" style="width: 100%; margin-bottom: 0; height: 36px; padding: 6px 10px; font-size: 0.85rem;">
                 </div>
             </div>
             <div class="modal-footer" style="padding: 1rem 1.5rem; border-top: 1px solid var(--border-color); display: flex; gap: 8px;">
@@ -2146,7 +2146,7 @@ export function renderTeacherAttendance(container) {
                     }
 
                     // Confirm check before save
-                    if (confirm('강사 근무 기록을 추가할까요?')) {
+                    if (confirm('이 강사의 근무 기록을 새로 추가하시겠습니까?')) {
                         const res = stateStore.addTeacherAttendanceLog({
                             teacherId: teacherIdVal,
                             date: dateVal,
