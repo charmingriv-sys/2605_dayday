@@ -554,6 +554,11 @@ export function renderTeacherAttendance(container) {
                             <option value="미퇴근" ${selectedStatus === '미퇴근' ? 'selected' : ''}>미퇴근</option>
                         </select>
                     </div>
+                    <div class="form-group" style="margin-bottom: 0; margin-left: auto; display: flex; align-items: flex-end; height: 36px; padding-top: 20px;">
+                        <button type="button" id="ta-add-log-btn" class="btn btn-primary" style="height: 36px; font-size: 0.85rem; font-weight: 600; padding: 0 16px; display: flex; align-items: center; gap: 6px; cursor: pointer; border-radius: 4px;">
+                            <i class="fa-solid fa-plus"></i> 근무 추가
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -696,6 +701,14 @@ export function renderTeacherAttendance(container) {
             selectedStatus = e.target.value;
             updateData();
         });
+
+        const addLogBtn = container.querySelector('#ta-add-log-btn');
+        if (addLogBtn) {
+            addLogBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                openAddModal();
+            });
+        }
 
         updateData();
     };
@@ -1594,6 +1607,196 @@ export function renderTeacherAttendance(container) {
                     }
                 } catch (err) {
                     alert(err.message || '수정 중 오류가 발생했습니다.');
+                }
+            });
+        };
+
+        openModal(modalHtml, onInit);
+    };
+
+    const openAddModal = () => {
+        const activeTeachers = stateStore.getActiveTeachers() || [];
+        const todayStr = selectedDate;
+
+        const modalHtml = `
+            <div class="modal-header">
+                <h3 class="modal-title">
+                    <i class="fa-solid fa-user-plus" style="color: var(--primary); margin-right: 8px;"></i>
+                    강사 근무 추가
+                </h3>
+                <button class="modal-close" data-close-modal>×</button>
+            </div>
+            <div class="modal-body" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 16px;">
+                <!-- 날짜 선택 -->
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label for="ta-add-date" style="font-size: 0.85rem; font-weight: 700; color: var(--text-main); margin-bottom: 0;">날짜</label>
+                    <input type="date" id="ta-add-date" class="form-control" value="${todayStr}" style="width: 100%; margin-bottom: 0; height: 36px; padding: 6px 10px; font-size: 0.85rem;">
+                </div>
+
+                <!-- 강사 선택 -->
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label for="ta-add-teacher" style="font-size: 0.85rem; font-weight: 700; color: var(--text-main); margin-bottom: 0;">강사 선택</label>
+                    <select id="ta-add-teacher" class="form-control" style="width: 100%; margin-bottom: 0; padding: 4px 8px; height: 36px; font-size: 0.85rem; cursor: pointer;">
+                        <option value="">강사를 선택하세요</option>
+                        ${activeTeachers.map(t => `<option value="${t.id}">${t.name}</option>`).join('')}
+                    </select>
+                </div>
+
+                <!-- 출근시각 조절 UI -->
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label style="font-size: 0.85rem; font-weight: 700; color: var(--text-main); margin-bottom: 0;">출근시각</label>
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                        <select id="ta-add-checkin-ampm" class="form-control" style="width: 80px; margin-bottom: 0; padding: 4px 8px; height: 34px; font-size: 0.85rem; cursor: pointer;">
+                            <option value="오전" selected>오전</option>
+                            <option value="오후">오후</option>
+                        </select>
+                        <select id="ta-add-checkin-hour" class="form-control" style="width: 80px; margin-bottom: 0; padding: 4px 8px; height: 34px; font-size: 0.85rem; cursor: pointer; overflow-y: auto;">
+                            ${Array.from({ length: 12 }, (_, i) => i + 1).map(h => `<option value="${h}" ${h === 9 ? 'selected' : ''}>${h}시</option>`).join('')}
+                        </select>
+                        <select id="ta-add-checkin-minute" class="form-control" style="width: 80px; margin-bottom: 0; padding: 4px 8px; height: 34px; font-size: 0.85rem; cursor: pointer; overflow-y: auto;">
+                            ${Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0')).map(m => `<option value="${m}" ${m === '00' ? 'selected' : ''}>${m}분</option>`).join('')}
+                        </select>
+                        <span style="font-size: 11px; color: var(--text-muted); font-weight: 600;"><i class="fa-solid fa-arrows-up-down"></i> 스크롤</span>
+                    </div>
+                </div>
+
+                <!-- 퇴근시각 조절 UI -->
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <label style="font-size: 0.85rem; font-weight: 700; color: var(--text-main); margin-bottom: 0;">퇴근시각</label>
+                        <label style="font-size: 0.78rem; display: flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; margin-bottom: 0; color: var(--text-main); font-weight: 600;">
+                            <input type="checkbox" id="ta-add-no-checkout" style="margin: 0; cursor: pointer;"> 퇴근 기록 없음 (미퇴근 처리)
+                        </label>
+                    </div>
+                    <div id="ta-add-checkout-selectors" style="display: flex; gap: 6px; align-items: center;">
+                        <select id="ta-add-checkout-ampm" class="form-control" style="width: 80px; margin-bottom: 0; padding: 4px 8px; height: 34px; font-size: 0.85rem; cursor: pointer;">
+                            <option value="오전">오전</option>
+                            <option value="오후" selected>오후</option>
+                        </select>
+                        <select id="ta-add-checkout-hour" class="form-control" style="width: 80px; margin-bottom: 0; padding: 4px 8px; height: 34px; font-size: 0.85rem; cursor: pointer; overflow-y: auto;">
+                            ${Array.from({ length: 12 }, (_, i) => i + 1).map(h => `<option value="${h}" ${h === 6 ? 'selected' : ''}>${h}시</option>`).join('')}
+                        </select>
+                        <select id="ta-add-checkout-minute" class="form-control" style="width: 80px; margin-bottom: 0; padding: 4px 8px; height: 34px; font-size: 0.85rem; cursor: pointer; overflow-y: auto;">
+                            ${Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0')).map(m => `<option value="${m}" ${m === '00' ? 'selected' : ''}>${m}분</option>`).join('')}
+                        </select>
+                        <span style="font-size: 11px; color: var(--text-muted); font-weight: 600;"><i class="fa-solid fa-arrows-up-down"></i> 스크롤</span>
+                    </div>
+                </div>
+
+                <!-- 메모 -->
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label for="ta-add-note" style="font-size: 0.85rem; font-weight: 700; color: var(--text-main); margin-bottom: 0;">메모</label>
+                    <input type="text" id="ta-add-note" class="form-control" placeholder="예: 태블릿 출근 체크 누락으로 인한 수동 추가" style="width: 100%; margin-bottom: 0; height: 36px; padding: 6px 10px; font-size: 0.85rem;">
+                </div>
+            </div>
+            <div class="modal-footer" style="padding: 1rem 1.5rem; border-top: 1px solid var(--border-color); display: flex; gap: 8px;">
+                <button class="btn btn-secondary" data-close-modal style="flex: 1; margin-bottom: 0; justify-content: center; height: 36px; font-size: 0.88rem; font-weight: 600;">취소</button>
+                <button class="btn btn-primary" id="ta-add-save-btn" style="flex: 1; margin-bottom: 0; justify-content: center; height: 36px; font-size: 0.88rem; font-weight: 600;">저장</button>
+            </div>
+        `;
+
+        const onInit = (contentArea) => {
+            const noCheckoutCheckbox = contentArea.querySelector('#ta-add-no-checkout');
+            const checkoutSelectors = contentArea.querySelector('#ta-add-checkout-selectors');
+            const saveBtn = contentArea.querySelector('#ta-add-save-btn');
+            const dateInput = contentArea.querySelector('#ta-add-date');
+            const teacherSelect = contentArea.querySelector('#ta-add-teacher');
+            const noteInput = contentArea.querySelector('#ta-add-note');
+
+            noCheckoutCheckbox.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    checkoutSelectors.style.display = 'none';
+                } else {
+                    checkoutSelectors.style.display = 'flex';
+                }
+            });
+
+            // Bind close buttons
+            contentArea.querySelectorAll('[data-close-modal], .modal-close').forEach(el => {
+                el.addEventListener('click', closeModal);
+            });
+
+            saveBtn.addEventListener('click', () => {
+                try {
+                    const dateVal = dateInput.value;
+                    const teacherIdVal = teacherSelect.value;
+                    const checkinAmpm = contentArea.querySelector('#ta-add-checkin-ampm').value;
+                    const checkinHour = contentArea.querySelector('#ta-add-checkin-hour').value;
+                    const checkinMinute = contentArea.querySelector('#ta-add-checkin-minute').value;
+                    const isNoCheckout = noCheckoutCheckbox.checked;
+
+                    if (!dateVal) {
+                        alert('날짜를 선택해 주세요.');
+                        return;
+                    }
+                    if (!teacherIdVal) {
+                        alert('강사를 선택해 주세요.');
+                        return;
+                    }
+
+                    if (!checkinAmpm || !checkinHour || !checkinMinute) {
+                        alert('출근시각을 입력해 주세요.');
+                        return;
+                    }
+
+                    const newCheckInAt = composeISOString(dateVal, checkinAmpm, checkinHour, checkinMinute);
+                    let newCheckOutAt = null;
+
+                    const checkInDate = new Date(newCheckInAt);
+                    if (isNaN(checkInDate.getTime())) {
+                        alert('시간 형식을 확인해 주세요.');
+                        return;
+                    }
+
+                    if (!isNoCheckout) {
+                        const checkoutAmpm = contentArea.querySelector('#ta-add-checkout-ampm').value;
+                        const checkoutHour = contentArea.querySelector('#ta-add-checkout-hour').value;
+                        const checkoutMinute = contentArea.querySelector('#ta-add-checkout-minute').value;
+
+                        if (!checkoutAmpm || !checkoutHour || !checkoutMinute) {
+                            alert('시간 형식을 확인해 주세요.');
+                            return;
+                        }
+
+                        newCheckOutAt = composeISOString(dateVal, checkoutAmpm, checkoutHour, checkoutMinute);
+                        const checkOutDate = new Date(newCheckOutAt);
+                        if (isNaN(checkOutDate.getTime())) {
+                            alert('시간 형식을 확인해 주세요.');
+                            return;
+                        }
+
+                        if (checkOutDate <= checkInDate) {
+                            alert('퇴근시각은 출근시각 이후여야 합니다.');
+                            return;
+                        }
+                    }
+
+                    // Confirm check before save
+                    if (confirm('강사 근무 기록을 추가할까요?')) {
+                        const res = stateStore.addTeacherAttendanceLog({
+                            teacherId: teacherIdVal,
+                            date: dateVal,
+                            checkInAt: newCheckInAt,
+                            checkOutAt: newCheckOutAt,
+                            note: noteInput.value.trim()
+                        });
+
+                        if (res.success) {
+                            closeModal();
+                            const rangeDates = getRangeDates(selectedDate, selectedRangeMode);
+                            if (!rangeDates.includes(dateVal)) {
+                                alert('선택한 날짜에 기록이 추가되었습니다.');
+                            }
+                        } else {
+                            if (res.message === '이미 해당 날짜의 근태 기록이 있습니다.') {
+                                alert('이미 해당 날짜의 근태 기록이 있습니다. 기존 기록을 수정해 주세요.');
+                            } else {
+                                alert(res.message || '저장 중 오류가 발생했습니다.');
+                            }
+                        }
+                    }
+                } catch (err) {
+                    alert(err.message || '추가 중 오류가 발생했습니다.');
                 }
             });
         };

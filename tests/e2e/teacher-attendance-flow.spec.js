@@ -1636,4 +1636,185 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
     const studentTeacherSelect = page.locator('#modal-student-teacher');
     await expect(studentTeacherSelect).toContainText('문승현');
   });
+
+  test('should support manually adding teacher attendance logs, validating input values, preventing duplicates, and ensuring no side-effects', async ({ page }) => {
+    // Dismiss custom dialog logic to handle dialogs natively or with page.on
+    page.removeAllListeners('dialog');
+
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // Store initial messages length to verify no side-effects
+    const initialMessagesCount = await page.evaluate(() => window.stateStore.db.messages ? window.stateStore.db.messages.length : 0);
+
+    // Navigate to "강사 근태관리" View
+    const dirTeacherAttendanceMenu = page.locator('.menu-item[data-view="dir-teacher-attendance"]');
+    await expect(dirTeacherAttendanceMenu).toBeVisible();
+    await dirTeacherAttendanceMenu.scrollIntoViewIfNeeded();
+    await dirTeacherAttendanceMenu.evaluate(el => el.click());
+
+    // Switch to range selector (week) to see detailed logs for June 2
+    const periodBtn = page.locator('#ta-period-btn');
+    await expect(periodBtn).toBeVisible();
+    await periodBtn.click();
+    const popover = page.locator('#ta-period-popover');
+    const presetWeek = popover.locator('.ta-preset-btn:has-text("이번주")');
+    await presetWeek.click();
+
+    // Verify "근무 추가" button is visible and click it
+    const addBtn = page.locator('#ta-add-log-btn');
+    await expect(addBtn).toBeVisible();
+    await expect(addBtn).toHaveText(/근무 추가/);
+    await addBtn.click();
+
+    // Verify modal is shown
+    const modal = page.locator('.modal-overlay.show');
+    await expect(modal).toBeVisible();
+
+    // Verify resigned teachers are not in the select option
+    await page.evaluate(() => {
+      window.stateStore.resignTeacher('T2', { resignedAt: '2026-06-01', memo: '퇴사' });
+      window.stateStore.saveDB();
+    });
+
+    // Re-render modal by closing and opening again to fetch fresh active teachers
+    await modal.locator('[data-close-modal]').first().click();
+    await expect(modal).toBeHidden();
+    await expect(page.locator('#modal-content-area')).toBeEmpty();
+    await addBtn.click();
+    await expect(modal).toBeVisible();
+
+    const teacherSelect = modal.locator('#ta-add-teacher');
+    const optionsText = await teacherSelect.innerText();
+    expect(optionsText).not.toContain('김민수');
+
+    // Test Validation - Teacher missing
+    await teacherSelect.selectOption('');
+    page.once('dialog', async dialog => {
+      expect(dialog.message()).toBe('강사를 선택해 주세요.');
+      await dialog.dismiss();
+    });
+    await modal.locator('#ta-add-save-btn').click();
+
+    // Re-open modal to test Date missing validation
+    await modal.locator('[data-close-modal]').first().click();
+    await expect(modal).toBeHidden();
+    await expect(page.locator('#modal-content-area')).toBeEmpty();
+    await addBtn.click();
+    await expect(modal).toBeVisible();
+
+    // Select T1 (문승현)
+    await teacherSelect.selectOption('T1');
+
+    // Test Validation - Date missing
+    await modal.locator('#ta-add-date').fill('');
+    page.once('dialog', async dialog => {
+      expect(dialog.message()).toBe('날짜를 선택해 주세요.');
+      await dialog.dismiss();
+    });
+    await modal.locator('#ta-add-save-btn').click();
+
+    // Re-open modal to perform successful addition
+    await modal.locator('[data-close-modal]').first().click();
+    await expect(modal).toBeHidden();
+    await expect(page.locator('#modal-content-area')).toBeEmpty();
+    await addBtn.click();
+    await expect(modal).toBeVisible();
+
+    // Select T1 (문승현) again and select date June 2
+    await teacherSelect.selectOption('T1');
+    await modal.locator('#ta-add-date').fill('2026-06-02');
+
+    // Test Validation - Checkout before checkin
+    const noCheckoutCheckbox = modal.locator('#ta-add-no-checkout');
+    const checkoutSelectors = modal.locator('#ta-add-checkout-selectors');
+    
+    // Verify default state (unchecked, selectors visible)
+    await expect(noCheckoutCheckbox).not.toBeChecked();
+    await expect(checkoutSelectors).toBeVisible();
+    
+    // Toggle check to verify hide/show behavior
+    await noCheckoutCheckbox.check();
+    await expect(checkoutSelectors).toBeHidden();
+    await noCheckoutCheckbox.uncheck();
+    await expect(checkoutSelectors).toBeVisible();
+    
+    await modal.locator('#ta-add-checkin-ampm').selectOption('오전');
+    await modal.locator('#ta-add-checkin-hour').selectOption('11');
+    await modal.locator('#ta-add-checkin-minute').selectOption('00');
+
+    await modal.locator('#ta-add-checkout-ampm').selectOption('오전');
+    await modal.locator('#ta-add-checkout-hour').selectOption('10');
+    await modal.locator('#ta-add-checkout-minute').selectOption('00');
+
+    page.once('dialog', async dialog => {
+      expect(dialog.message()).toBe('퇴근시각은 출근시각 이후여야 합니다.');
+      await dialog.dismiss();
+    });
+    await modal.locator('#ta-add-save-btn').click();
+
+    // Success check: manual insert checkIn 09:30 AM, checkOut 06:45 PM
+    await modal.locator('#ta-add-checkin-ampm').selectOption('오전');
+    await modal.locator('#ta-add-checkin-hour').selectOption('9');
+    await modal.locator('#ta-add-checkin-minute').selectOption('30');
+
+    await modal.locator('#ta-add-checkout-ampm').selectOption('오후');
+    await modal.locator('#ta-add-checkout-hour').selectOption('6');
+    await modal.locator('#ta-add-checkout-minute').selectOption('45');
+
+    await modal.locator('#ta-add-note').fill('E2E 수동 추가 테스트');
+
+    // Save confirm accept
+    page.once('dialog', async dialog => {
+      expect(dialog.message()).toBe('강사 근무 기록을 추가할까요?');
+      await dialog.accept();
+    });
+    await modal.locator('#ta-add-save-btn').click();
+    await expect(modal).toBeHidden();
+    await expect(page.locator('#modal-content-area')).toBeEmpty();
+
+    // Verify row added and calculated correctly
+    const summaryCard = page.locator('.glass-card:has-text("강사별 근무시간")');
+    await expect(summaryCard).toBeVisible();
+    const sumRowT1 = summaryCard.locator('tr[data-testid="teacher-summary-row-T1"]');
+    await expect(sumRowT1.locator('td').nth(3)).toHaveText('9시간 15분');
+
+    const logInDb = await page.evaluate(() => {
+      return window.stateStore.db.teacherAttendanceLogs.find(l => l.teacherId === 'T1' && l.date === '2026-06-02');
+    });
+    expect(logInDb.source).toBe('director_manual');
+    expect(logInDb.note).toBe('E2E 수동 추가 테스트');
+
+    // Test Duplicate prevention
+    await addBtn.click();
+    await expect(modal).toBeVisible();
+    await modal.locator('#ta-add-date').fill('2026-06-02');
+    await teacherSelect.selectOption('T1');
+    
+    let dialogCount = 0;
+    page.on('dialog', async dialog => {
+      dialogCount++;
+      if (dialogCount === 1) {
+        expect(dialog.message()).toBe('강사 근무 기록을 추가할까요?');
+        await dialog.accept();
+      } else if (dialogCount === 2) {
+        expect(dialog.message()).toBe('이미 해당 날짜의 근태 기록이 있습니다. 기존 기록을 수정해 주세요.');
+        await dialog.dismiss();
+      }
+    });
+    await modal.locator('#ta-add-save-btn').click();
+    page.removeAllListeners('dialog');
+
+    await expect(modal).toBeVisible();
+
+    await modal.locator('[data-close-modal]').first().click();
+    await expect(modal).toBeHidden();
+    await expect(page.locator('#modal-content-area')).toBeEmpty();
+
+    const messagesCount = await page.evaluate(() => window.stateStore.db.messages ? window.stateStore.db.messages.length : 0);
+    expect(messagesCount).toBe(initialMessagesCount);
+  });
 });

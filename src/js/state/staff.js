@@ -143,6 +143,95 @@ export const staffMethods = {
         }
     },
 
+    addTeacherAttendanceLog(payload) {
+        if (!this.db.teacherAttendanceLogs) {
+            this.db.teacherAttendanceLogs = [];
+        }
+
+        const { teacherId, date, checkInTime, checkOutTime, checkInAt, checkOutAt, note } = payload;
+
+        if (!teacherId) {
+            return { success: false, message: '강사를 선택해 주세요.' };
+        }
+        if (!date) {
+            return { success: false, message: '날짜를 선택해 주세요.' };
+        }
+
+        // Helper to convert date & time to KST/Local ISO String
+        const toLocalISOString = (dateObj) => {
+            const tzOffset = -dateObj.getTimezoneOffset();
+            const diff = tzOffset >= 0 ? '+' : '-';
+            const pad = (num) => String(num).padStart(2, '0');
+            const offsetHours = pad(Math.floor(Math.abs(tzOffset) / 60));
+            const offsetMinutes = pad(Math.abs(tzOffset) % 60);
+
+            const y = dateObj.getFullYear();
+            const m = pad(dateObj.getMonth() + 1);
+            const d = pad(dateObj.getDate());
+            const h = pad(dateObj.getHours());
+            const min = pad(dateObj.getMinutes());
+            const s = pad(dateObj.getSeconds());
+
+            return `${y}-${m}-${d}T${h}:${min}:${s}${diff}${offsetHours}:${offsetMinutes}`;
+        };
+
+        const composeFromTime = (dateStr, timeStr) => {
+            if (!dateStr || !timeStr) return null;
+            const [year, month, day] = dateStr.split('-').map(Number);
+            const [hour, min] = timeStr.split(':').map(Number);
+            const dateObj = new Date(year, month - 1, day, hour, min, 0, 0);
+            return toLocalISOString(dateObj);
+        };
+
+        const resolvedCheckInAt = checkInAt || composeFromTime(date, checkInTime);
+        if (!resolvedCheckInAt) {
+            return { success: false, message: '출근시각을 입력해 주세요.' };
+        }
+
+        const resolvedCheckOutAt = checkOutAt || composeFromTime(date, checkOutTime);
+
+        // Validate checkOutAt is after checkInAt
+        if (resolvedCheckOutAt) {
+            const checkInDate = new Date(resolvedCheckInAt);
+            const checkOutDate = new Date(resolvedCheckOutAt);
+            if (isNaN(checkInDate.getTime()) || isNaN(checkOutDate.getTime())) {
+                return { success: false, message: '시간 형식을 확인해 주세요.' };
+            }
+            if (checkOutDate <= checkInDate) {
+                return { success: false, message: '퇴근시각은 출근시각 이후여야 합니다.' };
+            }
+        }
+
+        // Check duplicate
+        const existing = this.db.teacherAttendanceLogs.find(log => log.teacherId === teacherId && log.date === date);
+        if (existing) {
+            return { success: false, message: '이미 해당 날짜의 근태 기록이 있습니다.' };
+        }
+
+        // Generate ID
+        const id = 'tal_' + (this.db.teacherAttendanceLogs.length ? Math.max(...this.db.teacherAttendanceLogs.map(log => parseInt(log.id.slice(4)) || 0)) + 1 : 1);
+
+        const now = toLocalISOString(new Date());
+
+        const newLog = {
+            id,
+            teacherId,
+            date,
+            checkInAt: resolvedCheckInAt,
+            checkOutAt: resolvedCheckOutAt || null,
+            source: 'director_manual',
+            note: note || '',
+            createdAt: now,
+            updatedAt: now
+        };
+
+        this.db.teacherAttendanceLogs.push(newLog);
+        this.saveDB();
+        this.notify('TEACHER_ATTENDANCE_CHANGED', this.db.teacherAttendanceLogs);
+
+        return { success: true, log: newLog };
+    },
+
     getTeacherAttendanceSummary(date) {
         if (!this.db.teacherAttendanceLogs) {
             this.db.teacherAttendanceLogs = [];
