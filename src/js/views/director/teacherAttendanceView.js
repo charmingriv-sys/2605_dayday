@@ -763,6 +763,15 @@ export function renderTeacherAttendance(container) {
                     flex-direction: column;
                     gap: 10px;
                 }
+                @media (max-width: 480px) {
+                    .ta-filter-actions {
+                        justify-content: stretch !important;
+                    }
+                    .ta-filter-actions button {
+                        flex: 1;
+                        justify-content: center;
+                    }
+                }
             </style>
 
             <!-- 1. KPI Cards Grid -->
@@ -806,8 +815,8 @@ export function renderTeacherAttendance(container) {
             </div>
 
             <!-- 2. Filters Card -->
-            <div class="glass-card ta-filters-card" style="margin-bottom: 2rem; padding: 1.2rem 1.8rem;">
-                <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center;">
+            <div class="glass-card ta-filters-card" style="margin-bottom: 2rem; padding: 1.2rem 1.8rem; display: flex; flex-direction: column; gap: 12px;">
+                <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center; width: 100%;">
                     
                     <!-- Period selector -->
                     <div class="form-group ta-period-selector" style="margin-bottom: 0; flex-grow: 1; min-width: 260px; position: relative;">
@@ -908,14 +917,14 @@ export function renderTeacherAttendance(container) {
                             <option value="미퇴근" ${selectedStatus === '미퇴근' ? 'selected' : ''}>미퇴근</option>
                         </select>
                     </div>
-                    <div class="form-group" style="margin-bottom: 0; margin-left: auto; display: flex; align-items: flex-end; height: 36px; padding-top: 20px; gap: 8px;">
-                        <button type="button" id="ta-download-excel-btn" class="btn btn-outline-primary" style="height: 36px; font-size: 0.85rem; font-weight: 600; padding: 0 16px; display: flex; align-items: center; gap: 6px; cursor: pointer; border-radius: 4px;">
-                            <i class="fa-solid fa-file-excel"></i> 엑셀 다운로드
-                        </button>
-                        <button type="button" id="ta-add-log-btn" class="btn btn-primary" style="height: 36px; font-size: 0.85rem; font-weight: 600; padding: 0 16px; display: flex; align-items: center; gap: 6px; cursor: pointer; border-radius: 4px;">
-                            <i class="fa-solid fa-plus"></i> 근무 추가
-                        </button>
-                    </div>
+                </div>
+                <div class="ta-filter-actions" style="display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; width: 100%; margin-top: 4px;">
+                    <button type="button" id="ta-download-excel-btn" class="btn btn-outline-primary" style="height: 36px; font-size: 0.85rem; font-weight: 600; padding: 0 16px; display: flex; align-items: center; gap: 6px; cursor: pointer; border-radius: 4px; white-space: nowrap;">
+                        <i class="fa-solid fa-file-excel"></i> 엑셀 다운로드
+                    </button>
+                    <button type="button" id="ta-add-log-btn" class="btn btn-primary" style="height: 36px; font-size: 0.85rem; font-weight: 600; padding: 0 16px; display: flex; align-items: center; gap: 6px; cursor: pointer; border-radius: 4px; white-space: nowrap;">
+                        <i class="fa-solid fa-plus"></i> 근무 추가
+                    </button>
                 </div>
             </div>
 

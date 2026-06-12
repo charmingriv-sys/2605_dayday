@@ -1993,4 +1993,64 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
     expect(messagesCountAfter).toBe(messagesCountBefore);
     expect(outboundLogsCountAfter).toBe(outboundLogsCountBefore);
   });
+
+  test('should layout download and manual add buttons correctly without overlapping on desktop and mobile viewports', async ({ page }) => {
+    // 1. 로그인 진행
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. 강사 근태관리 탭으로 이동
+    const dirTeacherAttendanceMenu = page.locator('.menu-item[data-view="dir-teacher-attendance"]');
+    await expect(dirTeacherAttendanceMenu).toBeVisible();
+    await dirTeacherAttendanceMenu.scrollIntoViewIfNeeded();
+    await dirTeacherAttendanceMenu.evaluate(el => el.click());
+
+    const excelBtn = page.locator('#ta-download-excel-btn');
+    const addBtn = page.locator('#ta-add-log-btn');
+
+    await expect(excelBtn).toBeVisible();
+    await expect(addBtn).toBeVisible();
+
+    // 3. 데스크톱 뷰포트(1280x720) 겹침 검증
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.waitForTimeout(200);
+
+    const boxExcel = await excelBtn.boundingBox();
+    const boxAdd = await addBtn.boundingBox();
+
+    expect(boxExcel).not.toBeNull();
+    expect(boxAdd).not.toBeNull();
+
+    // 데스크톱에서는 가로로 나열되므로 X축 좌표가 달라야 하고 겹치지 않아야 함
+    // excelBtn가 좌측에 있으므로 excelBtn.x + width <= addBtn.x 임을 확인
+    expect(boxExcel.x + boxExcel.width).toBeLessThanOrEqual(boxAdd.x + 1); // gap 오차 감안
+    // Y축 높이가 거의 같거나 겹치지 않는지 확인
+    expect(Math.abs(boxExcel.y - boxAdd.y)).toBeLessThan(10); 
+
+    // 4. 모바일 뷰포트(375x667) 겹침 및 균등분할 가시성 검증
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.waitForTimeout(200);
+
+    const mobileExcel = await excelBtn.boundingBox();
+    const mobileAdd = await addBtn.boundingBox();
+
+    expect(mobileExcel).not.toBeNull();
+    expect(mobileAdd).not.toBeNull();
+
+    // 모바일 뷰포트에서는 flex: 1 균등배치 혹은 가로 너비 wrap이 일어나도 서로 사각형 영역이 침범하지 않아야 함
+    // 겹치는지 체크하는 헬퍼 함수
+    const isOverlapping = (rect1, rect2) => {
+      return !(rect1.x + rect1.width <= rect2.x ||
+               rect2.x + rect2.width <= rect1.x ||
+               rect1.y + rect1.height <= rect2.y ||
+               rect2.y + rect2.height <= rect1.y);
+    };
+
+    expect(isOverlapping(mobileExcel, mobileAdd)).toBe(false);
+
+    // 복구
+    await page.setViewportSize({ width: 1280, height: 720 });
+  });
 });
