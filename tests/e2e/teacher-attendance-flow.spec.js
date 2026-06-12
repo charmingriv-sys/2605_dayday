@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import fs from 'fs';
 
 // Mock time for consistency (2026-06-03 09:00:00 KST)
 const mockTime = new Date('2026-06-03T09:00:00+09:00').getTime();
@@ -1816,5 +1817,180 @@ test.describe('Teacher Kiosk Attendance and Director Dashboard Flow', () => {
 
     const messagesCount = await page.evaluate(() => window.stateStore.db.messages ? window.stateStore.db.messages.length : 0);
     expect(messagesCount).toBe(initialMessagesCount);
+  });
+
+  test('should support Excel download with correct file name, sheets structure, data integrity, escaping, and no side-effects', async ({ page }) => {
+    // 1. 로그인 진행
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. 가상 테스트 데이터 구성 주입
+    await page.evaluate(() => {
+      // 강사 데이터 (T1 재직, T2 퇴사-기록없음, T3 재직-기록없음, T4 퇴사-기록있음 및 특수문자명)
+      window.stateStore.db.teachers = [
+        {
+          id: 'T1',
+          name: '문승현',
+          instrument: '피아노',
+          phone: '010-1111-1001',
+          employmentStatus: 'active',
+          resignedAt: null,
+          resignMemo: ''
+        },
+        {
+          id: 'T2',
+          name: '김민수',
+          instrument: '드럼',
+          phone: '010-1111-1002',
+          employmentStatus: 'resigned',
+          resignedAt: '2026-06-01',
+          resignMemo: '퇴사'
+        },
+        {
+          id: 'T3',
+          name: '홍길동',
+          instrument: '플루트',
+          phone: '010-1111-1003',
+          employmentStatus: 'active',
+          resignedAt: null,
+          resignMemo: ''
+        },
+        {
+          id: 'T4',
+          name: '강사 & <Test>:/\\[]*',
+          instrument: '바이올린',
+          phone: '010-1111-1004',
+          employmentStatus: 'resigned',
+          resignedAt: '2026-06-02',
+          resignMemo: '퇴사'
+        }
+      ];
+
+      // 근태 기록 목록
+      window.stateStore.db.teacherAttendanceLogs = [
+        {
+          id: 'tal_t1_1',
+          teacherId: 'T1',
+          date: '2026-06-02',
+          checkInAt: '2026-06-02T09:00:00+09:00',
+          checkOutAt: '2026-06-02T18:00:00+09:00', // 9시간 근무
+          source: 'tablet_pin',
+          createdAt: '2026-06-02T09:00:00+09:00',
+          updatedAt: '2026-06-02T18:00:00+09:00'
+        },
+        {
+          id: 'tal_t1_2',
+          teacherId: 'T1',
+          date: '2026-06-01',
+          checkInAt: '2026-06-01T10:00:00+09:00',
+          checkOutAt: null, // 미퇴근 (근무시간 합산 제외)
+          source: 'tablet_pin',
+          createdAt: '2026-06-01T10:00:00+09:00',
+          updatedAt: '2026-06-01T10:00:00+09:00'
+        },
+        {
+          id: 'tal_t4_1',
+          teacherId: 'T4',
+          date: '2026-06-01',
+          checkInAt: '2026-06-01T09:30:00+09:00',
+          checkOutAt: '2026-06-01T18:30:00+09:00', // 9시간 근무
+          source: 'director_manual', // 수동추가
+          note: '특수문자 & <메모>',
+          createdAt: '2026-06-01T09:30:00+09:00',
+          updatedAt: '2026-06-01T18:30:00+09:00'
+        }
+      ];
+
+      // 에딧로그/메시지/알림 리셋
+      window.stateStore.db.teacherAttendanceEditLogs = [];
+      window.stateStore.db.messages = [];
+      window.stateStore.db.outboundMessageLogs = [];
+      window.stateStore.saveDB();
+    });
+
+    // 3. 강사 근태관리 탭으로 이동
+    const dirTeacherAttendanceMenu = page.locator('.menu-item[data-view="dir-teacher-attendance"]');
+    await expect(dirTeacherAttendanceMenu).toBeVisible();
+    await dirTeacherAttendanceMenu.scrollIntoViewIfNeeded();
+    await dirTeacherAttendanceMenu.evaluate(el => el.click());
+
+    // 4. 기간 필터 설정 ("이번달")
+    const periodBtn = page.locator('#ta-period-btn');
+    await expect(periodBtn).toBeVisible();
+    await periodBtn.click();
+    const popover = page.locator('#ta-period-popover');
+    const presetMonth = popover.locator('.ta-preset-btn:has-text("이번달")');
+    await presetMonth.click();
+    await expect(page.locator('#ta-period-label')).toHaveText('이번달: 2026-06-01 ~ 2026-06-30');
+
+    // 5. DB 상태 백업 (다운로드 전 길이 확인)
+    const logsCountBefore = await page.evaluate(() => window.stateStore.db.teacherAttendanceLogs.length);
+    const messagesCountBefore = await page.evaluate(() => (window.stateStore.db.messages || []).length);
+    const outboundLogsCountBefore = await page.evaluate(() => (window.stateStore.db.outboundMessageLogs || []).length);
+
+    // 6. 다운로드 버튼 대기 및 클릭
+    const downloadExcelBtn = page.locator('#ta-download-excel-btn');
+    await expect(downloadExcelBtn).toBeVisible();
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      downloadExcelBtn.click()
+    ]);
+
+    // 7. 파일 이름 및 확장자 검증
+    const filename = download.suggestedFilename();
+    expect(filename).toBe('teacher-attendance-2026-06.xls');
+
+    // 8. 파일 내용 로드 및 XML 정합성 검증
+    const path = await download.path();
+    const content = fs.readFileSync(path, 'utf8');
+
+    // (1) XML 선언 및 Workbook 태그 검증
+    expect(content).toContain('<?xml version="1.0" encoding="utf-8"?>');
+    expect(content).toContain('<Workbook');
+
+    // (2) Worksheet "월간 합산" 및 "강사별 시트" 검증
+    expect(content).toContain('<Worksheet ss:Name="월간 합산">');
+    // T4 강사명: 강사 & <Test>:/\\[]* -> Sanitize: '강사 & <Test>' -> XML Escape: '강사 &amp; &lt;Test&gt;'
+    expect(content).toContain('<Worksheet ss:Name="강사 &amp; &lt;Test&gt;">');
+
+    // (3) 미기록 강사 Worksheet가 포함되지 않았는지 검증
+    expect(content).not.toContain('ss:Name="김민수"');
+    expect(content).not.toContain('ss:Name="홍길동"');
+
+    // (4) 월간 합산 컬럼 및 데이터 검증
+    expect(content).toContain('기간');
+    expect(content).toContain('출근일수');
+    expect(content).toContain('퇴근완료일수');
+    expect(content).toContain('미퇴근횟수');
+    expect(content).toContain('총 근무시간');
+    expect(content).toContain('평균 근무시간');
+    expect(content).toContain('수동추가횟수');
+    expect(content).toContain('태블릿기록횟수');
+
+    expect(content).toContain('문승현');
+    expect(content).toContain('강사 &amp; &lt;Test&gt;');
+    expect(content).not.toContain('김민수');
+    expect(content).not.toContain('홍길동');
+
+    // (5) 일별 근무 기록 및 계산 정합성 검증
+    // T1(문승현)의 정상 1일(9시간)과 미퇴근 1일(0시간) 합산 결과:
+    // 총 근무시간: 9시간 0분, 미퇴근횟수: 1회
+    expect(content).toContain('9시간 0분'); // 총 근무시간 합계
+    expect(content).toContain('<Data ss:Type="Number">1</Data>'); // 출근일수 2일, 퇴근완료 1일, 미퇴근 1회
+    expect(content).toContain('태블릿'); // T1 기록 방식
+    expect(content).toContain('수동추가'); // T4 기록 방식
+    expect(content).toContain('특수문자 &amp; &lt;메모&gt;'); // T4 이스케이프 메모
+
+    // 9. DB 무영향성 검증 (길이 불변 비교)
+    const logsCountAfter = await page.evaluate(() => window.stateStore.db.teacherAttendanceLogs.length);
+    const messagesCountAfter = await page.evaluate(() => (window.stateStore.db.messages || []).length);
+    const outboundLogsCountAfter = await page.evaluate(() => (window.stateStore.db.outboundMessageLogs || []).length);
+
+    expect(logsCountAfter).toBe(logsCountBefore);
+    expect(messagesCountAfter).toBe(messagesCountBefore);
+    expect(outboundLogsCountAfter).toBe(outboundLogsCountBefore);
   });
 });

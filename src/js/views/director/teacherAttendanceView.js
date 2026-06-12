@@ -208,6 +208,360 @@ export function renderTeacherAttendance(container) {
         };
     };
 
+    const downloadExcel = () => {
+        const rangeDates = getRangeDates(selectedDate, selectedRangeMode);
+        const startDate = rangeDates[0];
+        const endDate = rangeDates[rangeDates.length - 1];
+
+        let fileName = '';
+        if (selectedRangeMode === 'custom' && customRangeStart && customRangeEnd) {
+            fileName = `teacher-attendance-${customRangeStart}_${customRangeEnd}.xls`;
+        } else {
+            fileName = `teacher-attendance-${selectedDate.slice(0, 7)}.xls`;
+        }
+
+        const escapeXml = (unsafe) => {
+            if (unsafe === null || unsafe === undefined) return '';
+            return String(unsafe)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&apos;');
+        };
+
+        const getDayOfWeekKo = (dateStr) => {
+            const days = ['일', '월', '화', '수', '목', '금', '토'];
+            return days[new Date(dateStr).getDay()];
+        };
+
+        const formatTimeOnly = (iso) => {
+            if (!iso) return '-';
+            const date = new Date(iso);
+            const hh = String(date.getHours()).padStart(2, '0');
+            const mm = String(date.getMinutes()).padStart(2, '0');
+            const ss = String(date.getSeconds()).padStart(2, '0');
+            return `${hh}:${mm}:${ss}`;
+        };
+
+        const formatDuration = (mins) => {
+            if (mins <= 0) return '0분';
+            const hrs = Math.floor(mins / 60);
+            const m = mins % 60;
+            return hrs > 0 ? `${hrs}시간 ${m}분` : `${m}분`;
+        };
+
+        const teachers = stateStore.getTeachers();
+        const logs = stateStore.getTeacherAttendanceLogs().filter(log => log.date >= startDate && log.date <= endDate);
+
+        // Filter teachers who have at least one attendance log in this period
+        const activeAndLogTeachers = teachers.filter(t => {
+            const hasLog = logs.some(log => log.teacherId === t.id && log.checkInAt);
+            return hasLog;
+        });
+
+        // Initialize unique sheet name generator
+        const sheetNameMap = new Map();
+        const sanitizeSheetName = (name) => {
+            let clean = name.replace(/[\\/?*\[\]:]/g, '');
+            if (clean.length > 31) clean = clean.slice(0, 31);
+            return clean || '강사';
+        };
+        const getUniqueSheetName = (originalName) => {
+            const base = sanitizeSheetName(originalName);
+            if (!sheetNameMap.has(base)) {
+                sheetNameMap.set(base, 1);
+                return base;
+            } else {
+                const count = sheetNameMap.get(base) + 1;
+                sheetNameMap.set(base, count);
+                const uniqueName = `${base}_${count}`;
+                if (uniqueName.length > 31) {
+                    return uniqueName.slice(uniqueName.length - 31);
+                }
+                return uniqueName;
+            }
+        };
+
+        // XML Template starts
+        let xml = `<?xml version="1.0" encoding="utf-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
+  <Author>DayDay</Author>
+  <Created>${new Date().toISOString()}</Created>
+ </DocumentProperties>
+ <Styles>
+  <Style ss:ID="Default" ss:Name="Normal">
+   <Alignment ss:Vertical="Bottom"/>
+   <Borders/>
+   <Font ss:FontName="Malgun Gothic" x:CharSet="129" x:Family="Modern" ss:Size="11" ss:Color="#000000"/>
+   <Interior/>
+   <NumberFormat/>
+   <Protection/>
+  </Style>
+  <Style ss:ID="Title">
+   <Font ss:FontName="Malgun Gothic" x:CharSet="129" x:Family="Modern" ss:Size="16" ss:Bold="1" ss:Color="#2d3436"/>
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+  </Style>
+  <Style ss:ID="TableHeader">
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#b2bec3"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#b2bec3"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#b2bec3"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#b2bec3"/>
+   </Borders>
+   <Font ss:FontName="Malgun Gothic" x:CharSet="129" x:Family="Modern" ss:Size="10" ss:Bold="1" ss:Color="#ffffff"/>
+   <Interior ss:Color="#0984e3" ss:Pattern="Solid"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+  </Style>
+  <Style ss:ID="TableCell">
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#dfe6e9"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#dfe6e9"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#dfe6e9"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#dfe6e9"/>
+   </Borders>
+   <Font ss:FontName="Malgun Gothic" x:CharSet="129" x:Family="Modern" ss:Size="10"/>
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+  </Style>
+  <Style ss:ID="TableCellLeft">
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#dfe6e9"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#dfe6e9"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#dfe6e9"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#dfe6e9"/>
+   </Borders>
+   <Font ss:FontName="Malgun Gothic" x:CharSet="129" x:Family="Modern" ss:Size="10"/>
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+  </Style>
+  <Style ss:ID="SummaryLabel">
+   <Font ss:FontName="Malgun Gothic" x:CharSet="129" x:Family="Modern" ss:Size="10" ss:Bold="1" ss:Color="#636e72"/>
+   <Interior ss:Color="#f5f6fa" ss:Pattern="Solid"/>
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+  </Style>
+  <Style ss:ID="SummaryValue">
+   <Font ss:FontName="Malgun Gothic" x:CharSet="129" x:Family="Modern" ss:Size="10" ss:Bold="1" ss:Color="#2d3436"/>
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+  </Style>
+ </Styles>
+`;
+
+        // 1. 월간 합산 Worksheet
+        xml += ` <Worksheet ss:Name="월간 합산">
+  <Table ss:ExpandedColumnCount="11" x:FullColumns="1" x:FullRows="1" ss:DefaultRowHeight="20">
+   <Column ss:Width="160"/>
+   <Column ss:Width="100"/>
+   <Column ss:Width="80"/>
+   <Column ss:Width="100"/>
+   <Column ss:Width="80"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="80"/>
+   <Column ss:Width="100"/>
+   <Column ss:Width="100"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="100"/>
+   <Row ss:AutoFitHeight="0" ss:Height="30">
+    <Cell ss:StyleID="Title" ss:MergeAcross="10"><Data ss:Type="String">강사별 월간 근태 합산 리포트 (${startDate} ~ ${endDate})</Data></Cell>
+   </Row>
+   <Row ss:Index="3" ss:AutoFitHeight="0" ss:Height="24">
+    <Cell ss:StyleID="TableHeader"><Data ss:Type="String">기간</Data></Cell>
+    <Cell ss:StyleID="TableHeader"><Data ss:Type="String">강사명</Data></Cell>
+    <Cell ss:StyleID="TableHeader"><Data ss:Type="String">재직상태</Data></Cell>
+    <Cell ss:StyleID="TableHeader"><Data ss:Type="String">담당 악기/과목</Data></Cell>
+    <Cell ss:StyleID="TableHeader"><Data ss:Type="String">출근일수</Data></Cell>
+    <Cell ss:StyleID="TableHeader"><Data ss:Type="String">퇴근완료일수</Data></Cell>
+    <Cell ss:StyleID="TableHeader"><Data ss:Type="String">미퇴근횟수</Data></Cell>
+    <Cell ss:StyleID="TableHeader"><Data ss:Type="String">총 근무시간</Data></Cell>
+    <Cell ss:StyleID="TableHeader"><Data ss:Type="String">평균 근무시간</Data></Cell>
+    <Cell ss:StyleID="TableHeader"><Data ss:Type="String">수동추가횟수</Data></Cell>
+    <Cell ss:StyleID="TableHeader"><Data ss:Type="String">태블릿기록횟수</Data></Cell>
+   </Row>
+`;
+
+        const periodStr = `${startDate} ~ ${endDate}`;
+        activeAndLogTeachers.forEach(t => {
+            const teacherLogs = logs.filter(log => log.teacherId === t.id);
+            
+            let checkInDays = 0;
+            let completedDays = 0;
+            let openDays = 0;
+            let totalMins = 0;
+            let manualCount = 0;
+            let tabletCount = 0;
+
+            teacherLogs.forEach(log => {
+                if (log.checkInAt) {
+                    checkInDays++;
+                    if (log.checkOutAt) {
+                        completedDays++;
+                        const diffMs = new Date(log.checkOutAt) - new Date(log.checkInAt);
+                        totalMins += Math.max(0, Math.floor(diffMs / (1000 * 60)));
+                    } else {
+                        openDays++;
+                    }
+                    if (log.source === 'director_manual') {
+                        manualCount++;
+                    } else if (log.source === 'tablet_pin') {
+                        tabletCount++;
+                    }
+                }
+            });
+
+            const avgMins = completedDays > 0 ? Math.round(totalMins / completedDays) : 0;
+            const statusKo = t.employmentStatus === 'resigned' ? '퇴사' : '재직';
+
+            xml += `   <Row ss:AutoFitHeight="0" ss:Height="20">
+    <Cell ss:StyleID="TableCell"><Data ss:Type="String">${escapeXml(periodStr)}</Data></Cell>
+    <Cell ss:StyleID="TableCell"><Data ss:Type="String">${escapeXml(t.name)}</Data></Cell>
+    <Cell ss:StyleID="TableCell"><Data ss:Type="String">${escapeXml(statusKo)}</Data></Cell>
+    <Cell ss:StyleID="TableCell"><Data ss:Type="String">${escapeXml(t.instrument || '미지정')}</Data></Cell>
+    <Cell ss:StyleID="TableCell"><Data ss:Type="Number">${checkInDays}</Data></Cell>
+    <Cell ss:StyleID="TableCell"><Data ss:Type="Number">${completedDays}</Data></Cell>
+    <Cell ss:StyleID="TableCell"><Data ss:Type="Number">${openDays}</Data></Cell>
+    <Cell ss:StyleID="TableCell"><Data ss:Type="String">${escapeXml(formatDuration(totalMins))}</Data></Cell>
+    <Cell ss:StyleID="TableCell"><Data ss:Type="String">${escapeXml(completedDays > 0 ? formatDuration(avgMins) : '-')}</Data></Cell>
+    <Cell ss:StyleID="TableCell"><Data ss:Type="Number">${manualCount}</Data></Cell>
+    <Cell ss:StyleID="TableCell"><Data ss:Type="Number">${tabletCount}</Data></Cell>
+   </Row>
+`;
+        });
+
+        xml += `  </Table>
+ </Worksheet>
+`;
+
+        // 2. 강사별 개별 Worksheet
+        activeAndLogTeachers.forEach(t => {
+            const sheetName = getUniqueSheetName(t.name);
+            const teacherLogs = logs.filter(log => log.teacherId === t.id);
+            teacherLogs.sort((a, b) => a.date.localeCompare(b.date));
+
+            let checkInDays = 0;
+            let completedDays = 0;
+            let openDays = 0;
+            let totalMins = 0;
+            let manualCount = 0;
+            let tabletCount = 0;
+
+            teacherLogs.forEach(log => {
+                if (log.checkInAt) {
+                    checkInDays++;
+                    if (log.checkOutAt) {
+                        completedDays++;
+                        const diffMs = new Date(log.checkOutAt) - new Date(log.checkInAt);
+                        totalMins += Math.max(0, Math.floor(diffMs / (1000 * 60)));
+                    } else {
+                        openDays++;
+                    }
+                    if (log.source === 'director_manual') {
+                        manualCount++;
+                    } else if (log.source === 'tablet_pin') {
+                        tabletCount++;
+                    }
+                }
+            });
+
+            const avgMins = completedDays > 0 ? Math.round(totalMins / completedDays) : 0;
+            const statusKo = t.employmentStatus === 'resigned' ? '퇴사' : '재직';
+
+            xml += ` <Worksheet ss:Name="${escapeXml(sheetName)}">
+  <Table ss:ExpandedColumnCount="8" x:FullColumns="1" x:FullRows="1" ss:DefaultRowHeight="20">
+   <Column ss:Width="110"/>
+   <Column ss:Width="60"/>
+   <Column ss:Width="120"/>
+   <Column ss:Width="120"/>
+   <Column ss:Width="100"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="200"/>
+   <Row ss:AutoFitHeight="0" ss:Height="24">
+    <Cell ss:StyleID="SummaryLabel"><Data ss:Type="String">강사명</Data></Cell>
+    <Cell ss:StyleID="SummaryValue"><Data ss:Type="String">${escapeXml(t.name)}</Data></Cell>
+    <Cell ss:StyleID="SummaryLabel"><Data ss:Type="String">기간</Data></Cell>
+    <Cell ss:StyleID="SummaryValue" ss:MergeAcross="1"><Data ss:Type="String">${escapeXml(periodStr)}</Data></Cell>
+    <Cell ss:StyleID="SummaryLabel"><Data ss:Type="String">재직상태</Data></Cell>
+    <Cell ss:StyleID="SummaryValue" ss:MergeAcross="1"><Data ss:Type="String">${escapeXml(statusKo)}</Data></Cell>
+   </Row>
+   <Row ss:AutoFitHeight="0" ss:Height="24">
+    <Cell ss:StyleID="SummaryLabel"><Data ss:Type="String">담당 과목</Data></Cell>
+    <Cell ss:StyleID="SummaryValue"><Data ss:Type="String">${escapeXml(t.instrument || '미지정')}</Data></Cell>
+    <Cell ss:StyleID="SummaryLabel"><Data ss:Type="String">출근일수</Data></Cell>
+    <Cell ss:StyleID="SummaryValue"><Data ss:Type="String">${checkInDays}일</Data></Cell>
+    <Cell ss:StyleID="SummaryLabel"><Data ss:Type="String">퇴근완료</Data></Cell>
+    <Cell ss:StyleID="SummaryValue"><Data ss:Type="String">${completedDays}일</Data></Cell>
+    <Cell ss:StyleID="SummaryLabel"><Data ss:Type="String">미퇴근횟수</Data></Cell>
+    <Cell ss:StyleID="SummaryValue"><Data ss:Type="String">${openDays}회</Data></Cell>
+   </Row>
+   <Row ss:AutoFitHeight="0" ss:Height="24">
+    <Cell ss:StyleID="SummaryLabel"><Data ss:Type="String">총 근무시간</Data></Cell>
+    <Cell ss:StyleID="SummaryValue" ss:MergeAcross="1"><Data ss:Type="String">${escapeXml(formatDuration(totalMins))}</Data></Cell>
+    <Cell ss:StyleID="SummaryLabel"><Data ss:Type="String">평균 근무시간</Data></Cell>
+    <Cell ss:StyleID="SummaryValue"><Data ss:Type="String">${escapeXml(completedDays > 0 ? formatDuration(avgMins) : '-')}</Data></Cell>
+    <Cell ss:StyleID="SummaryLabel"><Data ss:Type="String">수동/태블릿</Data></Cell>
+    <Cell ss:StyleID="SummaryValue" ss:MergeAcross="1"><Data ss:Type="String">수동 ${manualCount}회 / 태블릿 ${tabletCount}회</Data></Cell>
+   </Row>
+   <Row ss:Height="20"/>
+   <Row ss:AutoFitHeight="0" ss:Height="24">
+    <Cell ss:StyleID="TableHeader"><Data ss:Type="String">날짜</Data></Cell>
+    <Cell ss:StyleID="TableHeader"><Data ss:Type="String">요일</Data></Cell>
+    <Cell ss:StyleID="TableHeader"><Data ss:Type="String">출근시각</Data></Cell>
+    <Cell ss:StyleID="TableHeader"><Data ss:Type="String">퇴근시각</Data></Cell>
+    <Cell ss:StyleID="TableHeader"><Data ss:Type="String">근무시간</Data></Cell>
+    <Cell ss:StyleID="TableHeader"><Data ss:Type="String">상태</Data></Cell>
+    <Cell ss:StyleID="TableHeader"><Data ss:Type="String">기록 방식</Data></Cell>
+    <Cell ss:StyleID="TableHeader"><Data ss:Type="String">메모</Data></Cell>
+   </Row>
+`;
+
+            teacherLogs.forEach(log => {
+                let durationStr = '-';
+                if (log.checkInAt && log.checkOutAt) {
+                    const diffMs = new Date(log.checkOutAt) - new Date(log.checkInAt);
+                    const diffMins = Math.max(0, Math.floor(diffMs / (1000 * 60)));
+                    durationStr = formatDuration(diffMins);
+                } else if (log.checkInAt) {
+                    durationStr = '0시간';
+                }
+
+                const statusKo = log.checkOutAt ? '퇴근완료' : '미퇴근';
+                const sourceKo = log.source === 'director_manual' ? '수동추가' : (log.source === 'tablet_pin' ? '태블릿' : '기타');
+
+                xml += `   <Row ss:AutoFitHeight="0" ss:Height="20">
+    <Cell ss:StyleID="TableCell"><Data ss:Type="String">${escapeXml(log.date)}</Data></Cell>
+    <Cell ss:StyleID="TableCell"><Data ss:Type="String">${escapeXml(getDayOfWeekKo(log.date))}</Data></Cell>
+    <Cell ss:StyleID="TableCell"><Data ss:Type="String">${escapeXml(formatTimeOnly(log.checkInAt))}</Data></Cell>
+    <Cell ss:StyleID="TableCell"><Data ss:Type="String">${escapeXml(formatTimeOnly(log.checkOutAt))}</Data></Cell>
+    <Cell ss:StyleID="TableCell"><Data ss:Type="String">${escapeXml(durationStr)}</Data></Cell>
+    <Cell ss:StyleID="TableCell"><Data ss:Type="String">${escapeXml(statusKo)}</Data></Cell>
+    <Cell ss:StyleID="TableCell"><Data ss:Type="String">${escapeXml(sourceKo)}</Data></Cell>
+    <Cell ss:StyleID="TableCellLeft"><Data ss:Type="String">${escapeXml(log.note || '')}</Data></Cell>
+   </Row>
+`;
+            });
+
+            xml += `  </Table>
+ </Worksheet>
+`;
+        });
+
+        xml += `</Workbook>`;
+
+        const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', fileName);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
+
     const render = () => {
         container.innerHTML = `
             <style>
@@ -554,7 +908,10 @@ export function renderTeacherAttendance(container) {
                             <option value="미퇴근" ${selectedStatus === '미퇴근' ? 'selected' : ''}>미퇴근</option>
                         </select>
                     </div>
-                    <div class="form-group" style="margin-bottom: 0; margin-left: auto; display: flex; align-items: flex-end; height: 36px; padding-top: 20px;">
+                    <div class="form-group" style="margin-bottom: 0; margin-left: auto; display: flex; align-items: flex-end; height: 36px; padding-top: 20px; gap: 8px;">
+                        <button type="button" id="ta-download-excel-btn" class="btn btn-outline-primary" style="height: 36px; font-size: 0.85rem; font-weight: 600; padding: 0 16px; display: flex; align-items: center; gap: 6px; cursor: pointer; border-radius: 4px;">
+                            <i class="fa-solid fa-file-excel"></i> 엑셀 다운로드
+                        </button>
                         <button type="button" id="ta-add-log-btn" class="btn btn-primary" style="height: 36px; font-size: 0.85rem; font-weight: 600; padding: 0 16px; display: flex; align-items: center; gap: 6px; cursor: pointer; border-radius: 4px;">
                             <i class="fa-solid fa-plus"></i> 근무 추가
                         </button>
@@ -707,6 +1064,14 @@ export function renderTeacherAttendance(container) {
             addLogBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 openAddModal();
+            });
+        }
+
+        const downloadExcelBtn = container.querySelector('#ta-download-excel-btn');
+        if (downloadExcelBtn) {
+            downloadExcelBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                downloadExcel();
             });
         }
 
