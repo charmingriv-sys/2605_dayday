@@ -21,6 +21,16 @@ function escapeHtml(str) {
         .replace(/'/g, "&#039;");
 }
 
+// Helper: get current teacher ID dynamically
+function getCurrentTeacherId() {
+    const user = stateStore.getCurrentUser();
+    if (user && user.role === 'teacher') {
+        const teacher = stateStore.getTeachers().find(t => t.phone === user.phone || t.name === user.name);
+        if (teacher) return teacher.id;
+    }
+    return 'T1';
+}
+
 // Keep track of unsaved input changes in attendance tab to prevent loss of focus or data on re-render
 // Key: `${studentId}_${selectedDate}`
 const pendingAttendanceEdits = {};
@@ -87,7 +97,7 @@ export function renderAttendance(container) {
         updateFilterButtons();
 
         // Get all students assigned to T1 (default teacher)
-        const t1Students = stateStore.getStudents().filter(s => s.teacherId === 'T1');
+        const t1Students = stateStore.getStudents().filter(s => s.teacherId === getCurrentTeacherId());
         let filteredStudents = [];
 
         if (currentFilter === 'today') {
@@ -342,73 +352,115 @@ export function renderAttendance(container) {
  * Review previous remarks and write new detailed lesson reports for students, writing to student lesson history.
  */
 export function renderLessons(container) {
-    const t1Students = stateStore.getStudents().filter(s => s.teacherId === 'T1');
+    const currentTeacherId = getCurrentTeacherId();
+    const currentTeacher = stateStore.getTeachers().find(t => t.id === currentTeacherId);
+    const isResigned = currentTeacher && currentTeacher.employmentStatus === 'resigned';
+    const t1Students = stateStore.getStudents().filter(s => s.teacherId === currentTeacherId);
     let selectedStudentId = t1Students.length > 0 ? t1Students[0].id : '';
     let searchQuery = '';
+
+    // Helper to trigger kakaotalk-alert toast
+    const showToast = (message) => {
+        const event = new CustomEvent('kakaotalk-alert', { detail: { message } });
+        window.dispatchEvent(event);
+    };
 
     // Main layout shell
     container.innerHTML = `
         <div class="lessons-layout" style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start;">
-            <!-- Left Column: Writing Form -->
-            <div class="glass-card">
-                <h3 style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 8px;">
-                    <i class="fa-solid fa-pen-to-square" style="color: var(--primary);"></i> 수업일지 작성
-                </h3>
-                <form id="lesson-form">
-                    <div class="form-group">
-                        <label for="student-select">원생 선택</label>
-                        <select id="student-select" class="form-control">
-                            ${t1Students.map(s => `<option value="${s.id}">${s.name} (${s.instrument})</option>`).join('')}
-                        </select>
-                    </div>
-                    <div class="form-row">
+            <!-- Left Column: Writing Form & Book Issue Form -->
+            <div style="display: flex; flex-direction: column; gap: 24px;">
+                <!-- 수업일지 작성 -->
+                <div class="glass-card">
+                    <h3 style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-pen-to-square" style="color: var(--primary);"></i> 수업일지 작성
+                    </h3>
+                    <form id="lesson-form">
                         <div class="form-group">
-                            <label for="lesson-date">수업 일자</label>
-                            <input type="date" id="lesson-date" class="form-control" value="${new Date().toISOString().slice(0, 10)}">
-                        </div>
-                        <div class="form-group">
-                            <label for="lesson-time">수업 시간</label>
-                            <input type="text" id="lesson-time" class="form-control" placeholder="15:00" value="${getCurrentTimeStr()}">
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="lesson-status">수업 상태</label>
-                        <select id="lesson-status" class="form-control">
-                            <option value="present">출석</option>
-                            <option value="late">지각</option>
-                            <option value="absent">결석</option>
-                            <option value="none">수업 없음 (취소)</option>
-                        </select>
-                    </div>
-                    <div class="form-row" style="margin-bottom: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="lesson-video">📹 연주 동영상 첨부 (선택)</label>
-                            <select id="lesson-video" class="form-control" style="margin-bottom: 0;">
-                                <option value="">동영상 첨부 안 함</option>
-                                <option value="/refer_0525.mp4">🎹 바이엘 1권 완곡 연주.mp4</option>
-                                <option value="/refer_0525.mp4">🎹 소나티네 3악장 연습 과정.mp4</option>
-                                <option value="/refer_0525.mp4">🎻 바이올린 기초 수업.mp4</option>
+                            <label for="student-select">원생 선택</label>
+                            <select id="student-select" class="form-control">
+                                ${t1Students.map(s => `<option value="${s.id}">${s.name} (${s.instrument})</option>`).join('')}
                             </select>
                         </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="lesson-photos">🖼️ 사진 첨부 (선택)</label>
-                            <select id="lesson-photos" class="form-control" style="margin-bottom: 0;">
-                                <option value="0">사진 첨부 안 함</option>
-                                <option value="1">🖼️ 사진 1장</option>
-                                <option value="3">🖼️ 사진 3장</option>
-                                <option value="5">🖼️ 사진 5장</option>
-                                <option value="8">🖼️ 사진 8장 (최대)</option>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="lesson-date">수업 일자</label>
+                                <input type="date" id="lesson-date" class="form-control" value="${new Date().toISOString().slice(0, 10)}">
+                            </div>
+                            <div class="form-group">
+                                <label for="lesson-time">수업 시간</label>
+                                <input type="text" id="lesson-time" class="form-control" placeholder="15:00" value="${getCurrentTimeStr()}">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="lesson-status">수업 상태</label>
+                            <select id="lesson-status" class="form-control">
+                                <option value="present">출석</option>
+                                <option value="late">지각</option>
+                                <option value="absent">결석</option>
+                                <option value="none">수업 없음 (취소)</option>
                             </select>
                         </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="lesson-note">피드백 및 수업 내용</label>
-                        <textarea id="lesson-note" class="form-control" rows="5" placeholder="수업 진행 사항, 연습 과제, 태도 등을 자세히 기록해주세요." style="resize: none;"></textarea>
-                    </div>
-                    <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;">
-                        <i class="fa-solid fa-floppy-disk"></i> 일지 저장하기
-                    </button>
-                </form>
+                        <div class="form-row" style="margin-bottom: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="lesson-video">📹 연주 동영상 첨부 (선택)</label>
+                                <select id="lesson-video" class="form-control" style="margin-bottom: 0;">
+                                    <option value="">동영상 첨부 안 함</option>
+                                    <option value="/refer_0525.mp4">🎹 바이엘 1권 완곡 연주.mp4</option>
+                                    <option value="/refer_0525.mp4">🎹 소나티네 3악장 연습 과정.mp4</option>
+                                    <option value="/refer_0525.mp4">🎻 바이올린 기초 수업.mp4</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="lesson-photos">🖼️ 사진 첨부 (선택)</label>
+                                <select id="lesson-photos" class="form-control" style="margin-bottom: 0;">
+                                    <option value="0">사진 첨부 안 함</option>
+                                    <option value="1">🖼️ 사진 1장</option>
+                                    <option value="3">🖼️ 사진 3장</option>
+                                    <option value="5">🖼️ 사진 5장</option>
+                                    <option value="8">🖼️ 사진 8장 (최대)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="lesson-note">피드백 및 수업 내용</label>
+                            <textarea id="lesson-note" class="form-control" rows="5" placeholder="수업 진행 사항, 연습 과제, 태도 등을 자세히 기록해주세요." style="resize: none;"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;">
+                            <i class="fa-solid fa-floppy-disk"></i> 일지 저장하기
+                        </button>
+                    </form>
+                </div>
+
+                <!-- 교재 지급 등록 -->
+                ${isResigned ? '' : `
+                <div class="glass-card" id="book-issue-section">
+                    <h3 style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-book" style="color: var(--primary);"></i> 교재 지급 등록
+                    </h3>
+                    <form id="book-issue-form">
+                        <div class="form-group">
+                            <label for="book-issue-student-select">원생 선택</label>
+                            <select id="book-issue-student-select" class="form-control">
+                                <!-- Will be populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="book-select">교재 선택</label>
+                            <select id="book-select" class="form-control">
+                                <!-- Will be populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="book-issue-memo">메모 (선택)</label>
+                            <input type="text" id="book-issue-memo" class="form-control" placeholder="지급 사유나 관련 메모를 입력하세요." value="">
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;">
+                            <i class="fa-solid fa-plus"></i> 교재 지급 등록
+                        </button>
+                    </form>
+                </div>
+                `}
             </div>
 
             <!-- Right Column: History Timeline -->
@@ -438,10 +490,54 @@ export function renderLessons(container) {
     const historySearchInput = container.querySelector('#history-search');
     const historyTimeline = container.querySelector('#history-timeline');
 
+    const bookIssueForm = container.querySelector('#book-issue-form');
+    const bookIssueStudentSelect = container.querySelector('#book-issue-student-select');
+    const bookSelect = container.querySelector('#book-select');
+    const bookIssueMemoInput = container.querySelector('#book-issue-memo');
+
+    // Populate dropdowns function
+    const updateBookFormDropdowns = () => {
+        const curTeacherId = getCurrentTeacherId();
+        const currentTStudents = stateStore.getStudents().filter(s => s.teacherId === curTeacherId);
+        const activeBooks = stateStore.getBooks().filter(b => b.status === 'active');
+
+        if (bookIssueStudentSelect) {
+            const submitBtn = bookIssueForm ? bookIssueForm.querySelector('button[type="submit"]') : null;
+            if (currentTStudents.length === 0) {
+                bookIssueStudentSelect.innerHTML = `<option value="">담당 원생이 없습니다.</option>`;
+                bookIssueStudentSelect.disabled = true;
+                if (submitBtn) submitBtn.disabled = true;
+            } else {
+                bookIssueStudentSelect.disabled = false;
+                if (submitBtn) submitBtn.disabled = false;
+                const prevVal = bookIssueStudentSelect.value;
+                bookIssueStudentSelect.innerHTML = currentTStudents.map(s => `<option value="${s.id}">${s.name} (${s.instrument})</option>`).join('');
+                if (currentTStudents.some(s => s.id === prevVal)) {
+                    bookIssueStudentSelect.value = prevVal;
+                } else if (currentTStudents.length > 0) {
+                    bookIssueStudentSelect.value = currentTStudents[0].id;
+                }
+            }
+        }
+
+        if (bookSelect) {
+            const prevVal = bookSelect.value;
+            bookSelect.innerHTML = `<option value="">교재를 선택하세요</option>` + activeBooks.map(b => `<option value="${b.id}">${b.name} (${b.price.toLocaleString()}원)</option>`).join('');
+            if (activeBooks.some(b => b.id === prevVal)) {
+                bookSelect.value = prevVal;
+            } else {
+                bookSelect.value = '';
+            }
+        }
+    };
+
     // Sync default select value
     if (selectedStudentId) {
         studentSelect.value = selectedStudentId;
     }
+
+    // Initial populate for book dropdowns
+    updateBookFormDropdowns();
 
     // Function to render timeline history
     const renderTimeline = () => {
@@ -513,18 +609,22 @@ export function renderLessons(container) {
     // Subscriptions
     const unsubscribeAttendance = stateStore.subscribe('ATTENDANCE_CHANGED', renderTimeline);
     const unsubscribeStudents = stateStore.subscribe('STUDENTS_CHANGED', () => {
-        const currentT1Students = stateStore.getStudents().filter(s => s.teacherId === 'T1');
+        const curTeacherId = getCurrentTeacherId();
+        const currentTStudents = stateStore.getStudents().filter(s => s.teacherId === curTeacherId);
         const prevValue = studentSelect.value;
         
-        studentSelect.innerHTML = currentT1Students.map(s => `<option value="${s.id}">${s.name} (${s.instrument})</option>`).join('');
+        studentSelect.innerHTML = currentTStudents.map(s => `<option value="${s.id}">${s.name} (${s.instrument})</option>`).join('');
         
-        if (currentT1Students.some(s => s.id === prevValue)) {
+        if (currentTStudents.some(s => s.id === prevValue)) {
             studentSelect.value = prevValue;
-        } else if (currentT1Students.length > 0) {
-            studentSelect.value = currentT1Students[0].id;
+        } else if (currentTStudents.length > 0) {
+            studentSelect.value = currentTStudents[0].id;
         }
+        
+        updateBookFormDropdowns();
         renderTimeline();
     });
+    const unsubscribeBooks = stateStore.subscribe('BOOKS_CHANGED', updateBookFormDropdowns);
 
     // Action handlers
     const handleStudentChange = () => {
@@ -586,11 +686,64 @@ export function renderLessons(container) {
         }
     };
 
+    const handleBookIssueSubmit = (e) => {
+        e.preventDefault();
+        const studentId = bookIssueStudentSelect.value;
+        const bookId = bookSelect.value;
+        const memo = bookIssueMemoInput.value.trim();
+
+        if (!studentId) {
+            showToast('원생을 선택해주세요.');
+            return;
+        }
+        if (!bookId) {
+            showToast('교재를 선택해주세요.');
+            return;
+        }
+
+        const student = stateStore.getStudent(studentId);
+        const book = stateStore.getBook(bookId);
+        if (!student || !book) {
+            showToast('원생 또는 교재 정보를 찾을 수 없습니다.');
+            return;
+        }
+
+        const confirmed = confirm(`[${student.name}] 원생에게 [${book.name}] 교재 지급 요청을 등록하시겠습니까?`);
+        if (!confirmed) return;
+
+        try {
+            const curTeacherId = getCurrentTeacherId();
+            stateStore.addBookIssueRequest({
+                teacherId: curTeacherId,
+                studentId: studentId,
+                bookId: bookId,
+                bookNameSnapshot: book.name,
+                amountSnapshot: book.price,
+                status: 'requested',
+                requestedAt: new Date().toISOString().slice(0, 10),
+                memo: memo,
+                paymentId: null,
+                studentBookId: null
+            });
+
+            showToast(`${student.name} 원생에게 ${book.name} 교재 지급 요청이 등록되었습니다.`);
+            
+            // Reset fields
+            bookSelect.value = '';
+            bookIssueMemoInput.value = '';
+        } catch (err) {
+            showToast(err.message);
+        }
+    };
+
     // Attach listeners
     studentSelect.addEventListener('change', handleStudentChange);
     historySearchInput.addEventListener('input', handleSearchInput);
     form.addEventListener('submit', handleFormSubmit);
     historyTimeline.addEventListener('click', handleTimelineClick);
+    if (bookIssueForm) {
+        bookIssueForm.addEventListener('submit', handleBookIssueSubmit);
+    }
 
     // Initial render
     renderTimeline();
@@ -599,10 +752,14 @@ export function renderLessons(container) {
     return () => {
         unsubscribeAttendance();
         unsubscribeStudents();
+        unsubscribeBooks();
         studentSelect.removeEventListener('change', handleStudentChange);
         historySearchInput.removeEventListener('input', handleSearchInput);
         form.removeEventListener('submit', handleFormSubmit);
         historyTimeline.removeEventListener('click', handleTimelineClick);
+        if (bookIssueForm) {
+            bookIssueForm.removeEventListener('submit', handleBookIssueSubmit);
+        }
     };
 }
 
@@ -614,7 +771,7 @@ export function renderLessons(container) {
 export function renderSchedule(container) {
     const updateSchedule = () => {
         // Find teacher T1 students and classes
-        const t1Students = stateStore.getStudents().filter(s => s.teacherId === 'T1');
+        const t1Students = stateStore.getStudents().filter(s => s.teacherId === getCurrentTeacherId());
         const t1StudentIds = t1Students.map(s => s.id);
         const t1Classes = stateStore.getClasses().filter(c => t1StudentIds.includes(c.studentId));
 

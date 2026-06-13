@@ -214,16 +214,32 @@ export const catalogMethods = {
         if (!this.db.bookIssueRequests) {
             this.db.bookIssueRequests = [];
         }
+        const requestedAt = req.requestedAt || new Date().toISOString().slice(0, 10);
+        const teacherId = req.teacherId || null;
+        const studentId = req.studentId;
+        const bookId = req.bookId;
+
+        // Duplicate prevention check
+        const isDuplicate = this.db.bookIssueRequests.some(r => 
+            r.studentId === studentId &&
+            r.bookId === bookId &&
+            r.requestedAt === requestedAt &&
+            (r.status === 'requested' || r.status === 'confirmed' || r.status === 'payment_requested')
+        );
+        if (isDuplicate) {
+            throw new Error('동일한 원생에게 동일한 교재가 이미 지급 요청 또는 등록되어 있습니다.');
+        }
+
         const id = 'BIR' + (this.db.bookIssueRequests.length ? Math.max(...this.db.bookIssueRequests.map(b => parseInt(b.id.slice(3)) || 0)) + 1 : 1);
         const newReq = {
             id,
-            teacherId: req.teacherId || null,
-            studentId: req.studentId,
-            bookId: req.bookId,
+            teacherId,
+            studentId,
+            bookId,
             bookNameSnapshot: req.bookNameSnapshot || '',
             amountSnapshot: req.amountSnapshot || 0,
             status: req.status || 'requested',
-            requestedAt: req.requestedAt || new Date().toISOString().slice(0, 10),
+            requestedAt,
             confirmedAt: req.confirmedAt || null,
             paymentRequestedAt: req.paymentRequestedAt || null,
             paidAt: req.paidAt || null,
@@ -234,8 +250,14 @@ export const catalogMethods = {
             outboundMessageLogId: req.outboundMessageLogId || null
         };
         this.db.bookIssueRequests.push(newReq);
+
+        if (typeof this.syncSystemRecommendations === 'function') {
+            this.syncSystemRecommendations();
+        }
+
         this.saveDB();
         this.notify('BOOK_ISSUE_REQUESTS_CHANGED', this.db.bookIssueRequests);
+        this.notify('TODAY_TASKS_CHANGED', this.db.todayTasks || []);
         return newReq;
     },
 
