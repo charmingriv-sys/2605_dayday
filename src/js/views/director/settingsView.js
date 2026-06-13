@@ -28,6 +28,12 @@ export function renderAcademyInfo(container) {
     let cleanupFn = null;
 
     const renderEditForm = () => {
+        const generateMinuteOptions = (selectedValue) => {
+            return Array.from({length: 19}, (_, i) => i * 5).map(m => `
+                <option value="${m}" ${selectedValue === m ? 'selected' : ''}>${String(m).padStart(2, '0')}분</option>
+            `).join('');
+        };
+
         container.innerHTML = `
             <div class="glass-card" style="padding: 2.2rem; max-width: 700px; margin: 0 auto; min-height: 500px;">
                 <h3 style="font-size: 1.35rem; font-weight: 700; color: var(--text-main); margin: 0 0 8px 0; display: flex; align-items: center; gap: 8px;">
@@ -86,19 +92,98 @@ export function renderAcademyInfo(container) {
                         </div>
                     </div>
 
-                    <div class="form-group" style="margin-bottom: 0;">
-                        <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 6px; color: var(--text-main);">지각 판정 기준</label>
-                        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-                            <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
-                                <input type="checkbox" id="acad-late-detection-enabled" ${stateStore.getLateDetectionEnabled() ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
-                                지각판정 사용
-                            </label>
-                            <select id="acad-late-threshold" class="form-control" style="width: 100px; margin-bottom: 0; display: inline-block;">
-                                ${[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60].map(m => `
-                                    <option value="${m}" ${stateStore.getLateThresholdMinutes() === m ? 'selected' : ''}>${String(m).padStart(2, '0')}분</option>
-                                `).join('')}
-                            </select>
-                            <span id="acad-late-threshold-text" style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">수업 시작 후 10분 초과 시 지각 처리</span>
+                    <div style="border-top: 1px solid var(--border-color); padding-top: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5rem;">
+                        <h4 style="font-weight: 700; font-size: 1rem; color: var(--text-main); margin-bottom: 1.2rem; display: flex; align-items: center; gap: 8px;">
+                            <i class="fa-solid fa-bell" style="color: var(--warning);"></i> 자동 워닝 및 출결/근태 판정 설정
+                        </h4>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr; gap: 1.2rem;">
+                            <!-- 1. 원생 지각 판정 -->
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 6px; color: var(--text-main);">원생 지각 판정</label>
+                                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                                    <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                        <input type="checkbox" id="acad-late-detection-enabled" ${stateStore.getLateDetectionEnabled() ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                        사용함
+                                    </label>
+                                    <select id="acad-late-threshold" class="form-control" style="width: 100px; margin-bottom: 0; display: inline-block;">
+                                        ${generateMinuteOptions(stateStore.getLateThresholdMinutes())}
+                                    </select>
+                                    <span id="acad-late-threshold-text" style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">수업 시작 후 설정한 시간이 지나면 지각으로 표시합니다.</span>
+                                </div>
+                            </div>
+
+                            <!-- 2. 결석 확인 -->
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 6px; color: var(--text-main);">결석 확인</label>
+                                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                                    <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                        <input type="checkbox" id="acad-student-absence-warning-enabled" ${stateStore.getStudentAbsenceWarningEnabled() ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                        사용함
+                                    </label>
+                                    <span id="acad-student-absence-warning-text" style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">수업 종료 후에도 출석 기록이 없으면 확인이 필요한 결석으로 표시합니다.</span>
+                                </div>
+                            </div>
+
+                            <!-- 3. 하원누락 -->
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 6px; color: var(--text-main);">하원누락</label>
+                                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                                    <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                        <input type="checkbox" id="acad-student-checkout-missing-warning-enabled" ${stateStore.getStudentCheckoutMissingWarningEnabled() ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                        사용함
+                                    </label>
+                                    <select id="acad-student-checkout-missing-grace-minutes" class="form-control" style="width: 100px; margin-bottom: 0; display: inline-block;">
+                                        ${generateMinuteOptions(stateStore.getStudentCheckoutMissingGraceMinutes())}
+                                    </select>
+                                    <span id="acad-student-checkout-missing-grace-minutes-text" style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">출석한 원생이 수업 종료 후 설정한 시간까지 하원 기록이 없으면 표시합니다.</span>
+                                </div>
+                            </div>
+
+                            <!-- 4. 강사 지각 -->
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 6px; color: var(--text-main);">강사 지각</label>
+                                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                                    <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                        <input type="checkbox" id="acad-teacher-late-warning-enabled" ${stateStore.getTeacherLateWarningEnabled() ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                        사용함
+                                    </label>
+                                    <select id="acad-teacher-late-warning-grace-minutes" class="form-control" style="width: 100px; margin-bottom: 0; display: inline-block;">
+                                        ${generateMinuteOptions(stateStore.getTeacherLateWarningGraceMinutes())}
+                                    </select>
+                                    <span id="acad-teacher-late-warning-grace-minutes-text" style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">출근 예정시간 후 설정한 시간이 지나면 지각으로 표시합니다.</span>
+                                </div>
+                            </div>
+
+                            <!-- 5. 강사 미출근 -->
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 6px; color: var(--text-main);">강사 미출근</label>
+                                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                                    <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                        <input type="checkbox" id="acad-teacher-no-show-warning-enabled" ${stateStore.getTeacherNoShowWarningEnabled() ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                        사용함
+                                    </label>
+                                    <select id="acad-teacher-no-show-warning-grace-minutes" class="form-control" style="width: 100px; margin-bottom: 0; display: inline-block;">
+                                        ${generateMinuteOptions(stateStore.getTeacherNoShowWarningGraceMinutes())}
+                                    </select>
+                                    <span id="acad-teacher-no-show-warning-grace-minutes-text" style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">출근 예정시간 후 설정한 시간이 지나도 출근 기록이 없으면 미출근으로 표시합니다.</span>
+                                </div>
+                            </div>
+
+                            <!-- 6. 강사 퇴근누락 -->
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 6px; color: var(--text-main);">강사 퇴근누락</label>
+                                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                                    <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                        <input type="checkbox" id="acad-teacher-checkout-missing-warning-enabled" ${stateStore.getTeacherCheckoutMissingWarningEnabled() ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                        사용함
+                                    </label>
+                                    <select id="acad-teacher-checkout-missing-grace-minutes" class="form-control" style="width: 100px; margin-bottom: 0; display: inline-block;">
+                                        ${generateMinuteOptions(stateStore.getTeacherCheckoutMissingGraceMinutes())}
+                                    </select>
+                                    <span id="acad-teacher-checkout-missing-grace-minutes-text" style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">마지막 근무 종료 후 설정한 시간까지 퇴근 기록이 없으면 표시합니다.</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -149,25 +234,84 @@ export function renderAcademyInfo(container) {
         const tabPwError = container.querySelector('#acad-tab-pw-error');
         const form = container.querySelector('#academy-info-form');
 
-        const lateDetectionCheckbox = container.querySelector('#acad-late-detection-enabled');
-        const lateThresholdSelect = container.querySelector('#acad-late-threshold');
-        const lateThresholdText = container.querySelector('#acad-late-threshold-text');
-        if (lateThresholdSelect && lateThresholdText && lateDetectionCheckbox) {
-            const updateText = () => {
-                if (lateDetectionCheckbox.checked) {
-                    lateThresholdSelect.disabled = false;
-                    const val = lateThresholdSelect.value;
-                    const displayVal = String(val).padStart(2, '0');
-                    lateThresholdText.textContent = `수업 시작 후 ${displayVal}분 초과 시 지각 처리`;
-                } else {
-                    lateThresholdSelect.disabled = true;
-                    lateThresholdText.textContent = '지각판정을 사용하지 않음';
-                }
-            };
-            lateThresholdSelect.addEventListener('change', updateText);
-            lateDetectionCheckbox.addEventListener('change', updateText);
-            updateText();
-        }
+        const setupWarningControl = (checkboxId, selectId, helperTextId, activeFormat, inactiveText) => {
+            const checkbox = container.querySelector(checkboxId);
+            const select = selectId ? container.querySelector(selectId) : null;
+            const helperText = container.querySelector(helperTextId);
+            
+            if (checkbox && helperText) {
+                const update = () => {
+                    if (checkbox.checked) {
+                        if (select) select.disabled = false;
+                        const val = select ? select.value : 0;
+                        const displayVal = String(val).padStart(2, '0');
+                        helperText.textContent = activeFormat(displayVal);
+                        helperText.style.color = 'var(--text-main)';
+                    } else {
+                        if (select) select.disabled = true;
+                        helperText.textContent = inactiveText;
+                        helperText.style.color = 'var(--text-muted)';
+                    }
+                };
+                if (select) select.addEventListener('change', update);
+                checkbox.addEventListener('change', update);
+                update();
+            }
+        };
+
+        // 1. 원생 지각
+        setupWarningControl(
+            '#acad-late-detection-enabled', 
+            '#acad-late-threshold', 
+            '#acad-late-threshold-text',
+            (val) => `수업 시작 후 ${val}분 초과 시 지각 처리 (워닝 표시)`,
+            '지각판정을 사용하지 않음'
+        );
+
+        // 2. 결석 확인
+        setupWarningControl(
+            '#acad-student-absence-warning-enabled',
+            null,
+            '#acad-student-absence-warning-text',
+            () => '수업 종료 후에도 출석 기록이 없으면 확인이 필요한 결석으로 표시합니다.',
+            '결석 확인을 사용하지 않음'
+        );
+
+        // 3. 하원누락
+        setupWarningControl(
+            '#acad-student-checkout-missing-warning-enabled',
+            '#acad-student-checkout-missing-grace-minutes',
+            '#acad-student-checkout-missing-grace-minutes-text',
+            (val) => `수업 종료 후 ${val}분 초과 시 하원누락 워닝 표시`,
+            '하원누락 워닝을 사용하지 않음'
+        );
+
+        // 4. 강사 지각
+        setupWarningControl(
+            '#acad-teacher-late-warning-enabled',
+            '#acad-teacher-late-warning-grace-minutes',
+            '#acad-teacher-late-warning-grace-minutes-text',
+            (val) => `출근 예정시간 후 ${val}분 초과 시 지각 처리 (워닝 표시)`,
+            '강사 지각판정을 사용하지 않음'
+        );
+
+        // 5. 강사 미출근
+        setupWarningControl(
+            '#acad-teacher-no-show-warning-enabled',
+            '#acad-teacher-no-show-warning-grace-minutes',
+            '#acad-teacher-no-show-warning-grace-minutes-text',
+            (val) => `출근 예정시간 후 ${val}분 초과 시 미출근 워닝 표시`,
+            '강사 미출근 워닝을 사용하지 않음'
+        );
+
+        // 6. 강사 퇴근누락
+        setupWarningControl(
+            '#acad-teacher-checkout-missing-warning-enabled',
+            '#acad-teacher-checkout-missing-grace-minutes',
+            '#acad-teacher-checkout-missing-grace-minutes-text',
+            (val) => `마지막 근무 종료 후 ${val}분 초과 시 퇴근누락 워닝 표시`,
+            '강사 퇴근누락 워닝을 사용하지 않음'
+        );
 
         let uploadedSignatureDataUrl = academy.directorSignature || '';
 
@@ -308,6 +452,34 @@ export function renderAcademyInfo(container) {
 
                 const lateThresholdVal = parseInt(container.querySelector('#acad-late-threshold').value);
                 stateStore.setLateThresholdMinutes(lateThresholdVal);
+
+                // 결석 확인
+                const studentAbsenceWarningEnabled = container.querySelector('#acad-student-absence-warning-enabled').checked;
+                stateStore.setStudentAbsenceWarningEnabled(studentAbsenceWarningEnabled);
+
+                // 하원누락
+                const studentCheckoutMissingWarningEnabled = container.querySelector('#acad-student-checkout-missing-warning-enabled').checked;
+                stateStore.setStudentCheckoutMissingWarningEnabled(studentCheckoutMissingWarningEnabled);
+                const studentCheckoutMissingGraceMinutes = parseInt(container.querySelector('#acad-student-checkout-missing-grace-minutes').value);
+                stateStore.setStudentCheckoutMissingGraceMinutes(studentCheckoutMissingGraceMinutes);
+
+                // 강사 지각
+                const teacherLateWarningEnabled = container.querySelector('#acad-teacher-late-warning-enabled').checked;
+                stateStore.setTeacherLateWarningEnabled(teacherLateWarningEnabled);
+                const teacherLateWarningGraceMinutes = parseInt(container.querySelector('#acad-teacher-late-warning-grace-minutes').value);
+                stateStore.setTeacherLateWarningGraceMinutes(teacherLateWarningGraceMinutes);
+
+                // 강사 미출근
+                const teacherNoShowWarningEnabled = container.querySelector('#acad-teacher-no-show-warning-enabled').checked;
+                stateStore.setTeacherNoShowWarningEnabled(teacherNoShowWarningEnabled);
+                const teacherNoShowWarningGraceMinutes = parseInt(container.querySelector('#acad-teacher-no-show-warning-grace-minutes').value);
+                stateStore.setTeacherNoShowWarningGraceMinutes(teacherNoShowWarningGraceMinutes);
+
+                // 강사 퇴근누락
+                const teacherCheckoutMissingWarningEnabled = container.querySelector('#acad-teacher-checkout-missing-warning-enabled').checked;
+                stateStore.setTeacherCheckoutMissingWarningEnabled(teacherCheckoutMissingWarningEnabled);
+                const teacherCheckoutMissingGraceMinutes = parseInt(container.querySelector('#acad-teacher-checkout-missing-grace-minutes').value);
+                stateStore.setTeacherCheckoutMissingGraceMinutes(teacherCheckoutMissingGraceMinutes);
 
                 stateStore.updateAcademy(academy.id, {
                     name: nameInput.value.trim(),
