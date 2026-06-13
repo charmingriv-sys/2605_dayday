@@ -75,6 +75,7 @@ test.describe('Student Attendance Warning Engine E2E Flow', () => {
         store.db.scheduleSnapshots = [];
         store.db.scheduleOverrides = [];
         store.db.attendance = [];
+        store.db.payments = [];
 
         // Apply settings overrides if specified
         if (opts.settings) {
@@ -410,7 +411,7 @@ test.describe('Student Attendance Warning Engine E2E Flow', () => {
     await page.locator('.menu-item[data-view="dir-today-console"]').click();
 
     const absentCard = page.locator('.kpi-chip-card[data-filter-id="absent"]');
-    await expect(absentCard.locator('.badge')).toContainText('1');
+    await expect(absentCard.locator('.badge')).toContainText('2');
 
     const listItems = page.locator('#tasks-list-container .glass-card');
     await expect(listItems).toHaveCount(2);

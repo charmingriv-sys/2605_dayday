@@ -365,46 +365,53 @@ export function renderTodayConsole(container) {
         // ==========================================
         // Placeholder counts for Phase 13B ~ 13E domain integrations
         // ==========================================
-        const getOverdueCount = () => 0; // TODO: Phase 13D - 미수납 확인 연동 (수납일 경과 후 미수납 전환)
+        const getOverdueCount = () => {
+            return activeTasksList.filter(t => {
+                let cat = t.category;
+                if (t.source === 'system' || t.source === 'auto') {
+                    if (t.type === 'billing' && t.category === 'overdue') {
+                        cat = 'overdue';
+                    }
+                }
+                return cat === 'overdue';
+            }).length;
+        };
         const getStaffWarningCount = () => {
-            const teacherIds = new Set();
-            activeTasksList.forEach(t => {
+            return activeTasksList.filter(t => {
                 let cat = t.category;
                 if (t.source === 'system' || t.source === 'auto') {
                     if (t.type === 'attendance' && t.category === 'staff_warning') {
                         cat = 'staff_warning';
                     }
                 }
-                if (cat === 'staff_warning') {
-                    if (t.relatedTeacherIds && t.relatedTeacherIds.length > 0) {
-                        t.relatedTeacherIds.forEach(id => teacherIds.add(id));
-                    }
-                }
-            });
-            return teacherIds.size;
+                return cat === 'staff_warning';
+            }).length;
         };
         const getAbsentCount = () => {
-            const studentIds = new Set();
-            activeTasksList.forEach(t => {
+            return activeTasksList.filter(t => {
                 let cat = t.category;
                 if (t.source === 'system' || t.source === 'auto') {
                     if (t.type === 'attendance' && t.category === 'absent') {
                         cat = 'absent';
                     }
                 }
-                if (cat === 'absent') {
-                    if (t.relatedStudentIds && t.relatedStudentIds.length > 0) {
-                        t.relatedStudentIds.forEach(id => studentIds.add(id));
-                    }
-                }
-            });
-            return studentIds.size;
+                return cat === 'absent';
+            }).length;
         };
         const getScheduleCount = () => 0; // TODO: Phase 13C/D - 일정확인 연동 (D-3 일정 확인)
-        const getBillingCount = () => 0; // TODO: Phase 13D - 수납확인 연동 (오늘 수납 예정)
+        const getBillingCount = () => {
+            return activeTasksList.filter(t => {
+                let cat = t.category;
+                if (t.source === 'system' || t.source === 'auto') {
+                    if (t.type === 'billing' && t.category === 'billing') {
+                        cat = 'billing';
+                    }
+                }
+                return cat === 'billing';
+            }).length;
+        };
         const getAttendanceWarningCount = () => {
-            const studentIds = new Set();
-            activeTasksList.forEach(t => {
+            return activeTasksList.filter(t => {
                 let cat = t.category;
                 if (t.source === 'system' || t.source === 'auto') {
                     if (t.type === 'attendance') {
@@ -413,13 +420,8 @@ export function renderTodayConsole(container) {
                         }
                     }
                 }
-                if (cat === 'attendance_warning') {
-                    if (t.relatedStudentIds && t.relatedStudentIds.length > 0) {
-                        t.relatedStudentIds.forEach(id => studentIds.add(id));
-                    }
-                }
-            });
-            return studentIds.size;
+                return cat === 'attendance_warning';
+            }).length;
         };
         const getBookCheckCount = () => 0; // TODO: Phase 13E - 교재 확인 연동 (지급 승인 대기)
         const getBookBillingCount = () => 0; // TODO: Phase 13E - 교재 결제 확인 연동 (교재비 결제대기)
@@ -427,7 +429,10 @@ export function renderTodayConsole(container) {
             return activeTasksList.filter(t => {
                 let cat = t.category || 'memo';
                 if (t.source === 'system' || t.source === 'auto') {
-                    if (t.type === 'billing') cat = 'overdue';
+                    if (t.type === 'billing') {
+                        if (t.category === 'billing') cat = 'billing';
+                        else cat = 'overdue';
+                    }
                     else if (t.type === 'attendance') {
                         if (t.category === 'absent') cat = 'absent';
                         else if (t.category === 'staff_warning') cat = 'staff_warning';
@@ -485,7 +490,10 @@ export function renderTodayConsole(container) {
             filteredTasks = filteredTasks.filter(task => {
                 let cat = task.category || 'memo';
                 if (task.source === 'system' || task.source === 'auto') {
-                    if (task.type === 'billing') cat = 'overdue';
+                    if (task.type === 'billing') {
+                        if (task.category === 'billing') cat = 'billing';
+                        else cat = 'overdue';
+                    }
                     else if (task.type === 'attendance') {
                         if (task.category === 'absent') cat = 'absent';
                         else if (task.category === 'staff_warning') cat = 'staff_warning';

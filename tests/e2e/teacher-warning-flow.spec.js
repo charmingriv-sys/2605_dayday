@@ -71,6 +71,7 @@ test.describe('Teacher Attendance Warning Engine E2E Flow', () => {
         store.db.todayTasks = [];
         store.db.teacherShifts = [];
         store.db.teacherAttendanceLogs = [];
+        store.db.payments = [];
 
         // Apply settings overrides if specified
         if (opts.settings) {

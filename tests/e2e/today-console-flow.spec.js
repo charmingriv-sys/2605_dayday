@@ -632,6 +632,7 @@ test.describe('Director Today Console Flow Checks', () => {
     await page.evaluate(() => {
       window.stateStore.clearMockCalendarEvents();
       window.stateStore.db.todayTasks = [];
+      window.stateStore.db.payments = [];
     });
 
     // 2. Add tasks with specific times to test the sorting order
@@ -1024,8 +1025,8 @@ test.describe('Director Today Console Flow Checks', () => {
     expect(chipRight).toBeLessThanOrEqual(cellRight + 1);
   });
 
-    // TODO: Phase 13B~13E 자동 워닝 및 수납/교재 자동 추천 로직 구현 시 이 테스트를 다시 활성화(skip 해제)하여 검증을 복구해야 합니다.
-  test('should display system recommendations on console load, prevent duplicate generation, and support auto-resolution (Phase 13B~13E 자동 워닝 로직 구현 시 복구 예정)', async ({ page }) => {
+    // Note: 교재 관련 워닝 및 결제 추천 기능은 Phase 13E 대상이므로 이 테스트에서는 제외됨.
+  test('should display system recommendations on console load, prevent duplicate generation, and support auto-resolution', async ({ page }) => {
     // 1. Seed base data to trigger recommendations
     await page.evaluate(() => {
       window.stateStore.clearMockCalendarEvents();
@@ -1072,7 +1073,8 @@ test.describe('Director Today Console Flow Checks', () => {
     await expect(page.locator('#page-title')).toContainText('오늘 원장 콘솔');
 
     // 3. Verify recommendations are displayed in tasks list
-    const billingTitle = '김추천 원생 수강료 미납 확인 필요';
+    const testNow = new Date();
+    const billingTitle = `[미수납] 김추천 원생 ${testNow.getFullYear()}년 ${testNow.getMonth() + 1}월 수강료`;
     const attendanceTitle = '김추천 원생 결석 확인 필요';
 
     await expect(page.locator(`#tasks-list-container :text("${billingTitle}")`)).toBeVisible();
