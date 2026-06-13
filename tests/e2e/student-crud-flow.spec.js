@@ -99,10 +99,48 @@ test.describe('Student Registration and Persistence Flow', () => {
 
     // 6. Verify modal is closed (it takes 300ms transition for modal to hide/remove classes)
     await expect(page.locator('#common-modal')).not.toHaveClass(/show/);
+    // Wait for the modal close transition and cleanup setTimeout (300ms) to complete
+    await page.waitForTimeout(400);
 
     // 7. Verify new student is displayed in the list
     const studentCell = page.locator(`.student-name-link:has-text("${testStudentName}")`);
     await expect(studentCell).toBeVisible({ timeout: 5000 });
+
+    // 7-1. Click student name to open detail modal
+    await studentCell.click();
+    await expect(page.locator('#common-modal')).toBeVisible();
+
+    // 7-2. Verify defaultClassDuration is displayed as 50분 in detail modal
+    await expect(page.locator('#common-modal')).toContainText('기본 수업시간');
+    await expect(page.locator('#common-modal')).toContainText('50분');
+
+    // 7-3. Click Edit Student button in detail modal
+    await page.locator('#btn-edit-student-from-detail').click();
+    
+    // 7-4. Verify duration select default is 50
+    const durationSelect = page.locator('#modal-student-default-class-duration');
+    await expect(durationSelect).toBeVisible();
+    await expect(durationSelect).toHaveValue('50');
+
+    // 7-5. Change duration to 60
+    await durationSelect.selectOption('60');
+
+    // 7-6. Submit the form
+    await page.locator('#btn-student-submit').click();
+    await expect(page.locator('#common-modal')).not.toHaveClass(/show/);
+    // Wait for the modal close transition and cleanup setTimeout to complete
+    await page.waitForTimeout(400);
+
+    // 7-7. Re-open detail modal to verify it was updated to 60분
+    await studentCell.click();
+    await expect(page.locator('#common-modal')).toBeVisible();
+    await expect(page.locator('#common-modal')).toContainText('60분');
+
+    // 7-8. Close modal to continue with reload verification
+    await page.locator('#common-modal [data-close-modal]').first().click();
+    await expect(page.locator('#common-modal')).not.toHaveClass(/show/);
+    // Wait for the modal close transition and cleanup setTimeout to complete
+    await page.waitForTimeout(400);
 
     // 8. Reload Page & verify persistence
     await page.reload();

@@ -8,7 +8,7 @@ function getDayOfWeekKo(dateStr) {
     return days[d.getDay()];
 }
 
-function calculateEndTime(startTimeStr, slotMinutes) {
+export function calculateEndTime(startTimeStr, slotMinutes) {
     if (!startTimeStr || typeof startTimeStr !== 'string' || !startTimeStr.includes(':')) {
         return startTimeStr || '';
     }
@@ -46,15 +46,21 @@ export const sessionsMethods = {
                 snapshot = this.ensureScheduleSnapshotForDate(date, options);
             }
             
-            entries = snapshot.entries.map(entry => ({
-                id: entry.id,
-                studentId: entry.studentId,
-                dayOfWeek: dayOfWeekKo,
-                time: entry.startTime,
-                teacherId: entry.teacherId,
-                source: entry.source || 'default',
-                date: date
-            }));
+            entries = snapshot.entries.map(entry => {
+                const student = this.db.students.find(s => s.id === entry.studentId);
+                const classDuration = entry.classDuration || (student ? student.defaultClassDuration : 50) || 50;
+                return {
+                    id: entry.id,
+                    studentId: entry.studentId,
+                    dayOfWeek: dayOfWeekKo,
+                    time: entry.startTime,
+                    endTime: entry.endTime || calculateEndTime(entry.startTime, classDuration),
+                    classDuration: classDuration,
+                    teacherId: entry.teacherId,
+                    source: entry.source || 'default',
+                    date: date
+                };
+            });
         } else {
             // 미래 날짜: 기본 시간표 + 날짜별 override 동적 생성
             const baseClasses = this.db.classes.filter(c => c.dayOfWeek === dayOfWeekKo);
@@ -64,6 +70,7 @@ export const sessionsMethods = {
                 const student = this.db.students.find(s => s.id === c.studentId);
                 const defaultTeacherId = student ? student.teacherId : null;
                 const ovr = overrides.find(o => o.studentId === c.studentId);
+                const duration = student ? (student.defaultClassDuration || 50) : 50;
 
                 if (ovr) {
                     return {
@@ -71,6 +78,8 @@ export const sessionsMethods = {
                         studentId: c.studentId,
                         dayOfWeek: dayOfWeekKo,
                         time: ovr.toStartTime,
+                        endTime: calculateEndTime(ovr.toStartTime, duration),
+                        classDuration: duration,
                         teacherId: ovr.toTeacherId,
                         source: 'override',
                         date: date
@@ -82,6 +91,8 @@ export const sessionsMethods = {
                     studentId: c.studentId,
                     dayOfWeek: dayOfWeekKo,
                     time: c.time,
+                    endTime: calculateEndTime(c.time, duration),
+                    classDuration: duration,
                     teacherId: defaultTeacherId,
                     source: 'default',
                     date: date
@@ -118,6 +129,7 @@ export const sessionsMethods = {
             const student = this.db.students.find(s => s.id === c.studentId);
             const defaultTeacherId = student ? student.teacherId : null;
             const ovr = overrides.find(o => o.studentId === c.studentId);
+            const duration = student ? (student.defaultClassDuration || 50) : slotMinutes;
 
             if (ovr) {
                 return {
@@ -125,7 +137,8 @@ export const sessionsMethods = {
                     studentId: c.studentId,
                     teacherId: ovr.toTeacherId,
                     startTime: ovr.toStartTime,
-                    endTime: calculateEndTime(ovr.toStartTime, slotMinutes),
+                    endTime: calculateEndTime(ovr.toStartTime, duration),
+                    classDuration: duration,
                     subjectId: student ? student.instrument : '',
                     source: 'override'
                 };
@@ -136,7 +149,8 @@ export const sessionsMethods = {
                 studentId: c.studentId,
                 teacherId: defaultTeacherId,
                 startTime: c.time,
-                endTime: calculateEndTime(c.time, slotMinutes),
+                endTime: calculateEndTime(c.time, duration),
+                classDuration: duration,
                 subjectId: student ? student.instrument : '',
                 source: 'default'
             };
@@ -163,6 +177,8 @@ export const sessionsMethods = {
         
         // 2. Find target entry in snapshot
         const entry = snapshot.entries.find(e => e.studentId === movePayload.studentId);
+        const student = this.db.students.find(s => s.id === movePayload.studentId);
+        const duration = student ? (student.defaultClassDuration || 50) : 30;
         
         let beforeTeacherId = null;
         let beforeStartTime = null;
@@ -174,13 +190,13 @@ export const sessionsMethods = {
             // Update entry in snapshot
             entry.teacherId = movePayload.toTeacherId;
             entry.startTime = movePayload.toStartTime;
-            entry.endTime = calculateEndTime(movePayload.toStartTime, (this.db.settings && this.db.settings.scheduleSlotMinutes) || 30);
+            entry.endTime = calculateEndTime(movePayload.toStartTime, duration);
+            entry.classDuration = duration;
             entry.source = 'override';
             snapshot.updatedAt = new Date().toISOString();
         } else {
             // Entry not found in snapshot (e.g. this student didn't have classes originally scheduled on this day)
             // Create a new entry
-            const student = this.db.students.find(s => s.id === movePayload.studentId);
             beforeTeacherId = student ? student.teacherId : null;
             beforeStartTime = movePayload.fromStartTime || '14:00';
 
@@ -189,7 +205,8 @@ export const sessionsMethods = {
                 studentId: movePayload.studentId,
                 teacherId: movePayload.toTeacherId,
                 startTime: movePayload.toStartTime,
-                endTime: calculateEndTime(movePayload.toStartTime, (this.db.settings && this.db.settings.scheduleSlotMinutes) || 30),
+                endTime: calculateEndTime(movePayload.toStartTime, duration),
+                classDuration: duration,
                 subjectId: student ? student.instrument : '',
                 source: 'override'
             };

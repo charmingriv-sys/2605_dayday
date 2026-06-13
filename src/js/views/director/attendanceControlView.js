@@ -1,4 +1,5 @@
 import { stateStore } from '../../state.js';
+import { calculateEndTime } from '../../state/sessions.js';
 import { formatPhoneNumber, showKakaoTalkToast, openStudentDetailModalRef } from './shared.js';
 import { openModal, closeModal } from '../../app.js';
 
@@ -647,6 +648,7 @@ export function renderDirectorAttendanceControl(container) {
                         date: date,
                         dayOfWeek: dayKo,
                         time: entry.time,
+                        endTime: entry.endTime || (s ? calculateEndTime(entry.time, s.defaultClassDuration || 50) : ''),
                         student: s,
                         teacher: t,
                         status: status,
@@ -2312,7 +2314,7 @@ export function renderDirectorAttendanceControl(container) {
                                             return `
                                                 <tr class="ac-student-row ${row.student.id === selectedStudentId ? 'selected' : ''}" data-student-id="${row.student.id}">
                                                     <td>${row.dayOfWeek}</td>
-                                                    <td><b>${row.time}</b></td>
+                                                    <td><b>${row.time} - ${row.endTime}</b></td>
                                                     <td>
                                                         <div class="student-cell">
                                                             <b class="student-name-text" style="font-weight:800; color:var(--text-main);">${row.student.name}</b>

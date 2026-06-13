@@ -1,4 +1,5 @@
 import { stateStore } from '../../state.js';
+import { calculateEndTime } from '../../state/sessions.js';
 import { openModal, closeModal } from '../../app.js';
 import { formatPhoneNumber, showKakaoTalkToast, showLocalConfirm } from './shared.js';
 
@@ -2223,6 +2224,9 @@ export function renderSchedules(container) {
                                                              <div style="font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; text-align: center;">
                                                              ${student.name}
                                                              </div>
+<div style="font-size: 0.62rem; color: #555; margin-top: 2px; font-weight: 500;">
+    ${c.time} - ${c.endTime || calculateEndTime(c.time, student.defaultClassDuration || 50)}
+</div>
 </span>
                                                              `;
                                                         }
@@ -2469,6 +2473,9 @@ export function renderSchedules(container) {
                                                             <div style="font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; text-align: center;">
                                                             ${student.name}
                                                             </div>
+<div style="font-size: 0.62rem; color: #555; margin-top: 2px; font-weight: 500;">
+    ${c.time} - ${c.endTime || calculateEndTime(c.time, student.defaultClassDuration || 50)}
+</div>
 </span>
                                                             `;
                                                         }

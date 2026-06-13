@@ -866,6 +866,10 @@ const openStudentDetailModal = (studentId) => {
                     <span style="color: var(--text-muted);">배정 담당강사</span>
                     <strong>${teacher ? (teacher.employmentStatus === 'resigned' ? `${teacher.name} (퇴사)` : teacher.name) : '미배정'}</strong>
                 </div>
+                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(0,0,0,0.03); padding-bottom: 6px;">
+                    <span style="color: var(--text-muted);">기본 수업시간</span>
+                    <strong>${student.defaultClassDuration || 50}분</strong>
+                </div>
                 <div style="display: flex; justify-content: space-between; padding-bottom: 2px;">
                     <span style="color: var(--text-muted);">주간 고정 수업 시간표</span>
                     <strong>${scheduleText || '미지정'}</strong>
@@ -1068,6 +1072,10 @@ const openStudentModal = (studentId = null) => {
     const student = isEdit ? stateStore.getStudent(studentId) : null;
     const teachers = stateStore.getTeachers();
     const studentClasses = isEdit ? stateStore.getClassesForStudent(studentId) : [];
+
+    const durationOptionsHtml = Array.from({ length: 18 }, (_, i) => (i + 1) * 5)
+        .map(d => `<option value="${d}" ${(!student && d === 50) || (student && student.defaultClassDuration === d) ? 'selected' : ''}>${d}분</option>`)
+        .join('');
 
     let stPostcode = '';
     let stBasicAddress = '';
@@ -1303,6 +1311,18 @@ const openStudentModal = (studentId = null) => {
                         <div class="form-group">
                             <label for="modal-student-due-day">정기 청구 희망일 <span style="color: var(--danger);">*</span></label>
                             <input type="number" id="modal-student-due-day" class="form-control" value="${student ? student.dueDay : '10'}" required min="1" max="31" placeholder="예: 10">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="modal-student-default-class-duration">기본 수업시간 <span style="color: var(--danger);">*</span></label>
+                            <select id="modal-student-default-class-duration" class="form-control" required>
+                                ${durationOptionsHtml}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <!-- spacer -->
                         </div>
                     </div>
 
@@ -1648,6 +1668,7 @@ const openStudentModal = (studentId = null) => {
             contentArea.querySelector('#modal-student-due-day'),
             contentArea.querySelector('#modal-student-fee'),
             contentArea.querySelector('#modal-student-instrument'),
+            contentArea.querySelector('#modal-student-default-class-duration'),
             phoneInput,
             parentPhoneInput
         ];
@@ -1767,6 +1788,8 @@ const openStudentModal = (studentId = null) => {
             const experiencePeriod = expPeriodEl.value.trim();
             const consultationNotes = notesEl.value.trim();
             const scheduleNotes = scheduleNotesEl.value.trim();
+            const durationEl = contentArea.querySelector('#modal-student-default-class-duration');
+            const defaultClassDuration = parseInt(durationEl.value) || 50;
 
             const adultSelect = contentArea.querySelector('#modal-student-adult');
             const isAdult = (adultSelect.value === 'adult') ? 'adult' : ((adultSelect.value === 'minor') ? 'minor' : null);
@@ -1814,7 +1837,8 @@ const openStudentModal = (studentId = null) => {
                     lessonStyle,
                     consultationNotes,
                     scheduleNotes,
-                    paymentStatus
+                    paymentStatus,
+                    defaultClassDuration
                 }, classSchedules);
             } else {
                 const enrollDate = new Date().toISOString().slice(0, 10);
@@ -1843,7 +1867,8 @@ const openStudentModal = (studentId = null) => {
                     lessonStyle,
                     consultationNotes,
                     scheduleNotes,
-                    paymentStatus
+                    paymentStatus,
+                    defaultClassDuration
                 }, classSchedules);
             }
 

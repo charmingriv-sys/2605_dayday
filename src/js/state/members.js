@@ -16,8 +16,9 @@ export const membersMethods = {
         const maxMemberNo = this.db.students.length ? Math.max(...this.db.students.map(s => s.studentMemberNo || 0)) : 0;
         const studentMemberNo = maxMemberNo + 1;
         const paymentStatus = student.paymentStatus || 'unpaid';
+        const defaultClassDuration = parseInt(student.defaultClassDuration) || 50;
         
-        const newStudent = { id, studentMemberNo, ...student, paymentStatus };
+        const newStudent = { id, studentMemberNo, ...student, paymentStatus, defaultClassDuration };
         this.db.students.push(newStudent);
 
         // Add class schedules
@@ -69,8 +70,9 @@ export const membersMethods = {
             const id = 'S' + nextStudentNum++;
             const studentMemberNo = nextMemberNo++;
             const paymentStatus = student.paymentStatus || 'unpaid';
+            const defaultClassDuration = parseInt(student.defaultClassDuration) || 50;
             
-            const newStudent = { id, studentMemberNo, ...student, paymentStatus };
+            const newStudent = { id, studentMemberNo, ...student, paymentStatus, defaultClassDuration };
             this.db.students.push(newStudent);
             addedStudents.push(newStudent);
 
@@ -105,7 +107,11 @@ export const membersMethods = {
     },
 
     updateStudent(id, data, classSchedules = null) {
-        this.db.students = this.db.students.map(s => s.id === id ? { ...s, ...data } : s);
+        const updatedData = { ...data };
+        if (updatedData.defaultClassDuration !== undefined) {
+            updatedData.defaultClassDuration = parseInt(updatedData.defaultClassDuration) || 50;
+        }
+        this.db.students = this.db.students.map(s => s.id === id ? { ...s, ...updatedData } : s);
         
         // Sync paymentStatus with monthly education payments
         if (data.paymentStatus !== undefined) {
