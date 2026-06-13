@@ -423,8 +423,32 @@ export function renderTodayConsole(container) {
                 return cat === 'attendance_warning';
             }).length;
         };
-        const getBookCheckCount = () => 0; // TODO: Phase 13E - 교재 확인 연동 (지급 승인 대기)
-        const getBookBillingCount = () => 0; // TODO: Phase 13E - 교재 결제 확인 연동 (교재비 결제대기)
+        const getBookCheckCount = () => {
+            return activeTasksList.filter(t => {
+                let cat = t.category;
+                if (t.source === 'system' || t.source === 'auto') {
+                    if (t.type === 'book') {
+                        if (t.category === 'book_check') {
+                            cat = 'book_check';
+                        }
+                    }
+                }
+                return cat === 'book_check';
+            }).length;
+        };
+        const getBookBillingCount = () => {
+            return activeTasksList.filter(t => {
+                let cat = t.category;
+                if (t.source === 'system' || t.source === 'auto') {
+                    if (t.type === 'book') {
+                        if (t.category === 'book_billing') {
+                            cat = 'book_billing';
+                        }
+                    }
+                }
+                return cat === 'book_billing';
+            }).length;
+        };
         const getMemoCount = () => {
             return activeTasksList.filter(t => {
                 let cat = t.category || 'memo';
@@ -498,6 +522,10 @@ export function renderTodayConsole(container) {
                         if (task.category === 'absent') cat = 'absent';
                         else if (task.category === 'staff_warning') cat = 'staff_warning';
                         else cat = 'attendance_warning';
+                    }
+                    else if (task.type === 'book') {
+                        if (task.category === 'book_check') cat = 'book_check';
+                        else if (task.category === 'book_billing') cat = 'book_billing';
                     }
                 }
                 return cat === selectedCategoryFilter;

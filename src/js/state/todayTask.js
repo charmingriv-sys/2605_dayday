@@ -547,6 +547,155 @@ export const todayTaskMethods = {
             });
         }
 
+        // 1.5 Textbook Warning Engine (Phase 13E-1)
+        const activeBookKeys = [];
+        if (this.db.bookIssueRequests) {
+            const students = typeof this.getStudents === 'function' ? this.getStudents() : (this.db.students || []);
+            const teachers = typeof this.getTeachers === 'function' ? this.getTeachers() : (this.db.teachers || []);
+            const books = typeof this.getBooks === 'function' ? this.getBooks() : (this.db.books || []);
+            const payments = typeof this.getPayments === 'function' ? this.getPayments() : (this.db.payments || []);
+            const bookIssueRequests = this.db.bookIssueRequests || [];
+
+            // A. 교재 확인 (book_check) - status: 'requested'인 BIR
+            bookIssueRequests.forEach(request => {
+                if (request.status !== 'requested') return;
+
+                const student = students.find(s => s.id === request.studentId);
+                if (!student) return;
+
+                const book = books.find(b => b.id === request.bookId);
+                const bookName = book ? book.name : request.bookNameSnapshot;
+
+                const teacher = teachers.find(t => t.id === request.teacherId);
+                const teacherName = teacher ? teacher.name : (request.teacherId === null ? '원장 직접 등록' : '강사');
+
+                const dedupeKey = `SYSTEM_RECOMMEND_BOOK_CHECK_${request.id}`;
+                activeBookKeys.push(dedupeKey);
+
+                const hasResolved = this.db.todayTasks.some(t =>
+                    t.source === 'system' &&
+                    (t.status === 'done' || t.status === 'dismissed') &&
+                    t.dedupeKey === dedupeKey
+                );
+
+                if (!hasResolved) {
+                    const isAlreadyOpen = this.db.todayTasks.some(t => t.dedupeKey === dedupeKey && t.status === 'open');
+                    if (!isAlreadyOpen) {
+                        const nowIso = parsedNow.toISOString();
+                        this.addTodayTask({
+                            organizationId: student.academyId || '',
+                            segment: 'academy_director_console',
+                            domain: 'academy',
+                            source: 'system',
+                            type: 'book',
+                            category: 'book_check',
+                            priority: 'today',
+                            status: 'open',
+                            dueAt: nowIso,
+                            startAt: nowIso,
+                            endAt: nowIso,
+                            title: `[교재확인] ${student.name} 원생 ${bookName}`,
+                            description: `${teacherName}가 ${student.name} 원생에게 ${bookName} 교재 지급 승인을 요청했습니다.${request.memo ? ` (메모: ${request.memo})` : ''}`,
+                            relatedStudentIds: [student.id],
+                            dedupeKey: dedupeKey,
+                            visibilityRoles: ['director'],
+                            actionType: 'NAVIGATE',
+                            actionPayload: { route: '/catalog', studentId: student.id }
+                        });
+                    }
+                }
+            });
+
+            // B. 교재 결제 확인 (book_billing) - payment.type === 'book' && payment.status !== 'paid'
+            payments.forEach(payment => {
+                if (payment.type !== 'book') return;
+                if (payment.status === 'paid') return;
+
+                const student = students.find(s => s.id === payment.studentId);
+                if (!student) return;
+
+                const book = books.find(b => b.id === payment.bookId);
+                const bookName = book ? book.name : '교재';
+
+                const dedupeKey = `SYSTEM_RECOMMEND_BOOK_BILLING_${payment.id}`;
+                activeBookKeys.push(dedupeKey);
+
+                const hasResolved = this.db.todayTasks.some(t =>
+                    t.source === 'system' &&
+                    (t.status === 'done' || t.status === 'dismissed') &&
+                    t.dedupeKey === dedupeKey
+                );
+
+                if (!hasResolved) {
+                    const isAlreadyOpen = this.db.todayTasks.some(t => t.dedupeKey === dedupeKey && t.status === 'open');
+                    if (!isAlreadyOpen) {
+                        const nowIso = parsedNow.toISOString();
+                        this.addTodayTask({
+                            organizationId: student.academyId || '',
+                            segment: 'academy_director_console',
+                            domain: 'academy',
+                            source: 'system',
+                            type: 'book',
+                            category: 'book_billing',
+                            priority: 'today',
+                            status: 'open',
+                            dueAt: nowIso,
+                            startAt: nowIso,
+                            endAt: nowIso,
+                            title: `[교재결제확인] ${student.name} 원생 ${bookName}`,
+                            description: `${student.name} 원생의 교재비 결제 확인이 필요합니다. (금액: ${payment.amount.toLocaleString()}원) 학부모 안내 및 수납 확인이 필요합니다.`,
+                            relatedStudentIds: [student.id],
+                            dedupeKey: dedupeKey,
+                            visibilityRoles: ['director'],
+                            actionType: 'NAVIGATE',
+                            actionPayload: { route: '/billing', studentId: student.id }
+                        });
+                    }
+                }
+            });
+
+            // C. Mute / remove obsolete textbook recommendations
+            // Resolve to 'done' if the status changed (e.g. payment status becomes 'paid', which syncs BIR status to 'paid')
+            this.db.todayTasks = this.db.todayTasks.map(t => {
+                if (t.source === 'system' && t.status === 'open' && t.type === 'book') {
+                    if (t.category === 'book_check') {
+                        const reqId = t.dedupeKey.replace('SYSTEM_RECOMMEND_BOOK_CHECK_', '');
+                        const req = bookIssueRequests.find(r => r.id === reqId);
+                        if (req && req.status !== 'requested') {
+                            return {
+                                ...t,
+                                status: 'done',
+                                completedAt: parsedNow.toISOString(),
+                                updatedAt: parsedNow.toISOString()
+                            };
+                        }
+                    } else if (t.category === 'book_billing') {
+                        const payId = t.dedupeKey.replace('SYSTEM_RECOMMEND_BOOK_BILLING_', '');
+                        const payment = payments.find(p => p.id === payId);
+                        if (payment && payment.status === 'paid') {
+                            return {
+                                ...t,
+                                status: 'done',
+                                completedAt: parsedNow.toISOString(),
+                                updatedAt: parsedNow.toISOString()
+                            };
+                        }
+                    }
+                }
+                return t;
+            });
+
+            // Filter out any open recommendations that are no longer active
+            this.db.todayTasks = this.db.todayTasks.filter(t => {
+                if (t.source === 'system' && t.status === 'open' && t.type === 'book') {
+                    if (t.category === 'book_check' || t.category === 'book_billing') {
+                        return activeBookKeys.includes(t.dedupeKey);
+                    }
+                }
+                return true;
+            });
+        }
+
         // 2. Student Attendance Warnings (Phase 13C Core Warning Engine)
         if (typeof this.getTeacherStudentScheduleForDate === 'function' && typeof this.getAttendance === 'function') {
             const todaySchedule = this.getTeacherStudentScheduleForDate(dateStr) || [];

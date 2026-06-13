@@ -191,6 +191,7 @@ const DEFAULT_DB = {
         { id: 'SB6', studentId: 'S5', bookId: 'B1', regDate: '2026-02-06', orderNo: 1, paymentId: null },
         { id: 'SB7', studentId: 'S8', bookId: 'B1', regDate: '2026-03-02', orderNo: 2, paymentId: null }
     ],
+    bookIssueRequests: [],
     announcements: [
         { id: 'AN1', title: '5월 가정의 달 학원 정기 연주회 일정 안내', content: '안녕하세요, 튜링 음악학원 원장 김하은입니다.\n학부모님들의 아낌없는 지지 덕분에 올해도 정기 연주회를 개최하게 되었습니다.\n\n■ 일시: 2026년 5월 30일(토) 오후 3시\n■ 장소: 학원 콘서트홀\n\n아이들이 그동안 열심히 준비한 연주 곡들을 들려드릴 예정이오니, 바쁘시더라도 부디 오셔서 자리를 빛내 주시고 많은 격려와 박수를 보내주시기 바랍니다.\n\n감사합니다.', date: '2026-05-15', views: 12 },
         { id: 'AN2', title: '여름방학 특별 단기 피아노 마스터 클래스 모집', content: '여름방학을 맞아 음악적 기량을 한층 높일 수 있는 피아노 마스터 클래스를 개설합니다.\n\n■ 모집 대상: 바이엘 4권 이상 학습자\n■ 정원: 선착순 10명\n■ 혜택: 전임 강사와의 1:1 집중 클리닉 및 마스터클래스 수료증 발부\n\n자세한 상담은 학원 행정실로 연락 바랍니다.', date: '2026-05-24', views: 3 }
@@ -282,6 +283,9 @@ class StateStore {
         this.listeners = {};
         this.loadDB();
         this.seedInitialBookPayments(); // Seed payments for default student books
+        if (typeof this.migrateStudentBooksToIssueRequests === 'function') {
+            this.migrateStudentBooksToIssueRequests();
+        }
     }
 
     seedDemoRecommendationsData() {
@@ -371,6 +375,11 @@ class StateStore {
     // Load from local storage via adapter wrapper
     loadDB() {
         this.db = adapter.loadSnapshotSync({ mode: 'local' });
+        
+        if (this.db && !this.db.bookIssueRequests) {
+            this.db.bookIssueRequests = [];
+            this.saveDB();
+        }
         
         // Migrate existing student records to have defaultClassDuration if missing
         if (this.db && Array.isArray(this.db.students)) {

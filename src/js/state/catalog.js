@@ -136,23 +136,180 @@ export const catalogMethods = {
         const newSB = { id, studentId, bookId, regDate, orderNo: parseInt(orderNo) || 1, paymentId: payId };
         this.db.studentBooks.push(newSB);
 
+        // 3. Create the confirmed book issue request
+        if (!this.db.bookIssueRequests) {
+            this.db.bookIssueRequests = [];
+        }
+        const birId = 'BIR' + (this.db.bookIssueRequests.length ? Math.max(...this.db.bookIssueRequests.map(r => parseInt(r.id.slice(3)) || 0)) + 1 : 1);
+        const newBIR = {
+            id: birId,
+            studentId,
+            teacherId: null,
+            bookId,
+            bookNameSnapshot: book.name,
+            amountSnapshot: book.price,
+            status: 'confirmed',
+            requestedAt: regDate,
+            confirmedAt: regDate,
+            paymentRequestedAt: null,
+            paidAt: null,
+            paymentId: payId,
+            studentBookId: id,
+            memo: '원장 직접 등록',
+            messageRequestId: null,
+            outboundMessageLogId: null
+        };
+        this.db.bookIssueRequests.push(newBIR);
+
         this.saveDB();
         this.notify('STUDENT_BOOKS_CHANGED', this.db.studentBooks);
         this.notify('PAYMENTS_CHANGED', this.db.payments);
+        this.notify('BOOK_ISSUE_REQUESTS_CHANGED', this.db.bookIssueRequests);
         return newSB;
     },
 
     removeStudentBook(id) {
         const sb = this.getStudentBooks().find(item => item.id === id);
         if (sb) {
-            // Delete invoice associated with it only if it is unpaid or requested
+            // If payment is already paid, block deletion to prevent ledger discrepancy
             if (sb.paymentId) {
+                const payments = this.db.payments || [];
+                const payment = payments.find(p => p.id === sb.paymentId);
+                if (payment && payment.status === 'paid') {
+                    return false; // Block deletion
+                }
+                
+                // Delete payment if it is unpaid/requested
                 this.db.payments = this.db.payments.filter(p => !(p.id === sb.paymentId && p.status !== 'paid'));
             }
+            
+            // Update associated bookIssueRequests status to 'cancelled'
+            if (this.db.bookIssueRequests) {
+                const req = this.db.bookIssueRequests.find(r => r.studentBookId === id);
+                if (req) {
+                    req.status = 'cancelled';
+                }
+            }
+
             this.db.studentBooks = this.db.studentBooks.filter(item => item.id !== id);
+
             this.saveDB();
             this.notify('STUDENT_BOOKS_CHANGED', this.db.studentBooks);
             this.notify('PAYMENTS_CHANGED', this.db.payments);
+            this.notify('BOOK_ISSUE_REQUESTS_CHANGED', this.db.bookIssueRequests);
+            return true;
+        }
+        return false;
+    },
+
+    // --- BOOK ISSUE REQUESTS ---
+    getBookIssueRequests() {
+        if (!this.db.bookIssueRequests) {
+            this.db.bookIssueRequests = [];
+        }
+        return this.db.bookIssueRequests;
+    },
+
+    addBookIssueRequest(req) {
+        if (!this.db.bookIssueRequests) {
+            this.db.bookIssueRequests = [];
+        }
+        const id = 'BIR' + (this.db.bookIssueRequests.length ? Math.max(...this.db.bookIssueRequests.map(b => parseInt(b.id.slice(3)) || 0)) + 1 : 1);
+        const newReq = {
+            id,
+            teacherId: req.teacherId || null,
+            studentId: req.studentId,
+            bookId: req.bookId,
+            bookNameSnapshot: req.bookNameSnapshot || '',
+            amountSnapshot: req.amountSnapshot || 0,
+            status: req.status || 'requested',
+            requestedAt: req.requestedAt || new Date().toISOString().slice(0, 10),
+            confirmedAt: req.confirmedAt || null,
+            paymentRequestedAt: req.paymentRequestedAt || null,
+            paidAt: req.paidAt || null,
+            paymentId: req.paymentId || null,
+            studentBookId: req.studentBookId || null,
+            memo: req.memo || '',
+            messageRequestId: req.messageRequestId || null,
+            outboundMessageLogId: req.outboundMessageLogId || null
+        };
+        this.db.bookIssueRequests.push(newReq);
+        this.saveDB();
+        this.notify('BOOK_ISSUE_REQUESTS_CHANGED', this.db.bookIssueRequests);
+        return newReq;
+    },
+
+    updateBookIssueRequest(id, updates) {
+        const reqIndex = this.getBookIssueRequests().findIndex(r => r.id === id);
+        if (reqIndex !== -1) {
+            this.db.bookIssueRequests[reqIndex] = {
+                ...this.db.bookIssueRequests[reqIndex],
+                ...updates
+            };
+            this.saveDB();
+            this.notify('BOOK_ISSUE_REQUESTS_CHANGED', this.db.bookIssueRequests);
+            return true;
+        }
+        return false;
+    },
+
+    migrateStudentBooksToIssueRequests() {
+        if (!this.db.bookIssueRequests) {
+            this.db.bookIssueRequests = [];
+        }
+        const studentBooks = this.getStudentBooks();
+        const payments = this.db.payments || [];
+        const books = this.db.books || [];
+        let dbChanged = false;
+
+        studentBooks.forEach(sb => {
+            // Check if there is already a bookIssueRequest referencing this studentBookId or paymentId
+            const exists = this.db.bookIssueRequests.some(req => 
+                req.studentBookId === sb.id || (sb.paymentId && req.paymentId === sb.paymentId)
+            );
+            if (!exists) {
+                let status = 'confirmed';
+                let paidAt = null;
+                const paymentId = sb.paymentId || null;
+                const payment = paymentId ? payments.find(p => p.id === paymentId) : null;
+                if (payment) {
+                    if (payment.status === 'paid') {
+                        status = 'paid';
+                        paidAt = payment.paidDate || sb.regDate;
+                    }
+                }
+
+                const book = books.find(b => b.id === sb.bookId);
+                const bookNameSnapshot = book ? book.name : '알 수 없는 교재';
+                const amountSnapshot = book ? book.price : 0;
+
+                const id = 'BIR' + (this.db.bookIssueRequests.length ? Math.max(...this.db.bookIssueRequests.map(r => parseInt(r.id.slice(3)) || 0)) + 1 : 1);
+                const newReq = {
+                    id,
+                    studentId: sb.studentId,
+                    teacherId: null,
+                    bookId: sb.bookId,
+                    bookNameSnapshot,
+                    amountSnapshot,
+                    status,
+                    requestedAt: sb.regDate,
+                    confirmedAt: sb.regDate,
+                    paymentRequestedAt: payment && payment.status === 'requested' ? sb.regDate : null,
+                    paidAt,
+                    paymentId,
+                    studentBookId: sb.id,
+                    memo: '이전 지급 데이터 마이그레이션',
+                    messageRequestId: null,
+                    outboundMessageLogId: null
+                };
+                this.db.bookIssueRequests.push(newReq);
+                dbChanged = true;
+            }
+        });
+
+        if (dbChanged) {
+            this.saveDB();
+            this.notify('BOOK_ISSUE_REQUESTS_CHANGED', this.db.bookIssueRequests);
         }
     }
 };

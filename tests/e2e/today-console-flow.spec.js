@@ -43,6 +43,16 @@ test.describe('Director Today Console Flow Checks', () => {
     await page.goto('/');
     await page.locator('.role-btn.director').click();
     
+    // Clear payments and bookIssueRequests to prevent warnings from polluting calendar tests
+    await page.evaluate(() => {
+      if (window.stateStore && window.stateStore.db) {
+        window.stateStore.db.payments = [];
+        window.stateStore.db.bookIssueRequests = [];
+        window.stateStore.db.todayTasks = [];
+        window.stateStore.saveDB();
+      }
+    });
+
     // Click "오늘 원장 콘솔" menu item
     await page.locator('.menu-item[data-view="dir-today-console"]').click();
   });

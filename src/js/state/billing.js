@@ -27,6 +27,18 @@ export const billingMethods = {
                 }
             }
 
+            // Sync bookIssueRequests if book payment is paid
+            if (invoice.type === 'book') {
+                if (this.db.bookIssueRequests) {
+                    const req = this.db.bookIssueRequests.find(r => r.paymentId === invoice.id);
+                    if (req) {
+                        req.status = 'paid';
+                        req.paidAt = invoice.paidDate;
+                        this.notify('BOOK_ISSUE_REQUESTS_CHANGED', this.db.bookIssueRequests);
+                    }
+                }
+            }
+
             this.saveDB();
             this.notify('PAYMENTS_CHANGED', this.db.payments);
             return invoice;
@@ -142,6 +154,19 @@ export const billingMethods = {
         const payment = this.db.payments.find(p => p.id === paymentId);
         if (payment) {
             Object.assign(payment, updates);
+
+            // Sync bookIssueRequests if book payment is paid
+            if (payment.type === 'book' && payment.status === 'paid') {
+                if (this.db.bookIssueRequests) {
+                    const req = this.db.bookIssueRequests.find(r => r.paymentId === payment.id);
+                    if (req) {
+                        req.status = 'paid';
+                        req.paidAt = payment.paidDate || new Date().toISOString().slice(0, 10);
+                        this.notify('BOOK_ISSUE_REQUESTS_CHANGED', this.db.bookIssueRequests);
+                    }
+                }
+            }
+
             this.saveDB();
             this.notify('PAYMENTS_CHANGED', this.db.payments);
             this.notify('STUDENT_BOOKS_CHANGED', this.db.studentBooks);
