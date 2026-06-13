@@ -372,7 +372,10 @@ export const todayTaskMethods = {
 
     // --- SYSTEM RECOMMENDATIONS ---
     syncSystemRecommendations(now = new Date()) {
-        const parsedNow = now instanceof Date ? now : new Date(now);
+        let parsedNow = now instanceof Date ? now : new Date(now);
+        if (this.db && this.db.settings && this.db.settings.DAYDAY_DEBUG_EVAL_TIME) {
+            parsedNow = new Date(this.db.settings.DAYDAY_DEBUG_EVAL_TIME);
+        }
         const y = parsedNow.getFullYear();
         const m = parsedNow.getMonth();
         const d = parsedNow.getDate();

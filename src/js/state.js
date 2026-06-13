@@ -495,3 +495,249 @@ Object.assign(StateStore.prototype, majorScheduleMethods);
 // Export a single instance to be used globally
 export const stateStore = new StateStore();
 window.stateStore = stateStore; // Make available in console
+
+// Phase 13C-Repair-A: Developer/QA Debug Seed Helper
+if (typeof localStorage !== 'undefined' && localStorage.getItem('DAYDAY_DEBUG_WARNING_SEED') === 'enabled') {
+    window.seedWarningDemoData = function() {
+        if (window.__daydayWarningSeedBackup) {
+            alert("이미 주입된 검수용 데이터가 존재합니다. 먼저 clearWarningDemoData()를 실행하여 복원하세요.");
+            return;
+        }
+        if (!confirm("현재 브라우저의 검수용 데이터를 임시로 주입합니다. 계속할까요?")) {
+            return;
+        }
+
+        // Backup original database snapshot and mockTime
+        window.__daydayWarningSeedBackup = JSON.stringify(stateStore.db);
+        window.__daydayWarningSeedMockTimeBackup = window.__mockTime;
+
+        const db = stateStore.db;
+
+        // Ensure arrays exist
+        if (!db.students) db.students = [];
+        if (!db.teachers) db.teachers = [];
+        if (!db.schedules) db.schedules = [];
+        if (!db.attendance) db.attendance = [];
+        if (!db.teacherShifts) db.teacherShifts = [];
+        if (!db.teacherAttendanceLogs) db.teacherAttendanceLogs = [];
+        if (!db.todayTasks) db.todayTasks = [];
+        if (!db.scheduleSnapshots) db.scheduleSnapshots = [];
+
+        // Clean up existing DEBUG- data to prevent duplicates
+        db.students = db.students.filter(s => !s.id.startsWith('DEBUG-STUDENT-'));
+        db.teachers = db.teachers.filter(t => !t.id.startsWith('DEBUG-TEACHER-'));
+        db.schedules = db.schedules.filter(s => !s.id.startsWith('DEBUG-WARNING-'));
+        db.attendance = db.attendance.filter(a => !a.id.startsWith('DEBUG-WARNING-'));
+        db.teacherShifts = db.teacherShifts.filter(s => !s.id.startsWith('DEBUG-WARNING-'));
+        db.teacherAttendanceLogs = db.teacherAttendanceLogs.filter(l => !l.id.startsWith('DEBUG-WARNING-'));
+        db.todayTasks = db.todayTasks.filter(t => !t.id.startsWith('DEBUG-WARNING-') && !(t.dedupeKey && t.dedupeKey.includes('DEBUG-')));
+
+        const date = new Date();
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        const todayStr = `${y}-${m}-${d}`;
+
+        // Ensure warning thresholds and switches are active for evaluations
+        db.settings = {
+            ...db.settings,
+            lateDetectionEnabled: true,
+            lateThresholdMinutes: 10,
+            studentAbsenceWarningEnabled: true,
+            studentCheckoutMissingWarningEnabled: true,
+            studentCheckoutMissingGraceMinutes: 10,
+            teacherLateWarningEnabled: true,
+            teacherLateGraceMinutes: 5,
+            teacherNoShowWarningEnabled: true,
+            teacherNoShowGraceMinutes: 15,
+            teacherCheckoutMissingWarningEnabled: true,
+            teacherCheckoutMissingGraceMinutes: 10
+        };
+
+        // 1. Students Warning Seed Data
+        // Find or create today's schedule snapshot to push entries directly
+        let todaySnapshot = db.scheduleSnapshots.find(s => s.date === todayStr);
+        if (!todaySnapshot) {
+            todaySnapshot = {
+                id: `SNAP_${todayStr}_AC1`,
+                academyId: 'AC1',
+                date: todayStr,
+                type: 'teacherStudentSchedule',
+                entries: [],
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            db.scheduleSnapshots.push(todaySnapshot);
+        }
+
+        // Clean up debug entries in today's snapshot to prevent duplicates
+        todaySnapshot.entries = todaySnapshot.entries.filter(e => !e.id.startsWith('DEBUG-WARNING-'));
+
+        // 1.1 Absent warning (1 student/schedule, early finished, no attendance log)
+        db.students.push({ id: 'DEBUG-STUDENT-ABSENT', name: '디버그결석', academyId: 'AC1', defaultClassDuration: 50 });
+        todaySnapshot.entries.push({
+            id: 'DEBUG-WARNING-SCH-ABSENT',
+            studentId: 'DEBUG-STUDENT-ABSENT',
+            teacherId: 'T8',
+            startTime: '09:00',
+            endTime: '09:50',
+            classDuration: 50,
+            subjectId: 'piano',
+            source: 'default'
+        });
+
+        // 1.2 Late warning (1 student/schedule/attendance log, 10:00 -> 10:15 checkin)
+        db.students.push({ id: 'DEBUG-STUDENT-LATE', name: '디버그지각', academyId: 'AC1', defaultClassDuration: 50 });
+        todaySnapshot.entries.push({
+            id: 'DEBUG-WARNING-SCH-LATE',
+            studentId: 'DEBUG-STUDENT-LATE',
+            teacherId: 'T8',
+            startTime: '10:00',
+            endTime: '10:50',
+            classDuration: 50,
+            subjectId: 'piano',
+            source: 'default'
+        });
+        db.attendance.push({
+            id: 'DEBUG-WARNING-ATT-LATE',
+            studentId: 'DEBUG-STUDENT-LATE',
+            date: todayStr,
+            classTime: '10:00',
+            time: '10:15',
+            status: 'present',
+            leavingTime: '10:50'
+        });
+
+        // 1.3 Late + Checkout Missing warning (1 student/schedule/attendance log, 11:00 -> 11:15, no leavingTime)
+        db.students.push({ id: 'DEBUG-STUDENT-LATEMISSING', name: '디버그지각하원누락', academyId: 'AC1', defaultClassDuration: 50 });
+        todaySnapshot.entries.push({
+            id: 'DEBUG-WARNING-SCH-LATEMISSING',
+            studentId: 'DEBUG-STUDENT-LATEMISSING',
+            teacherId: 'T8',
+            startTime: '11:00',
+            endTime: '11:50',
+            classDuration: 50,
+            subjectId: 'piano',
+            source: 'default'
+        });
+        db.attendance.push({
+            id: 'DEBUG-WARNING-ATT-LATEMISSING',
+            studentId: 'DEBUG-STUDENT-LATEMISSING',
+            date: todayStr,
+            classTime: '11:00',
+            time: '11:15',
+            status: 'present',
+            leavingTime: null
+        });
+
+        // 2. Teachers Warning Seed Data
+        // 2.1 Late warning (13:00 -> 13:10 checkin)
+        db.teachers.push({ id: 'DEBUG-TEACHER-LATE', name: '디버그강사지각', academyId: 'AC1', employmentStatus: 'active' });
+        db.teacherShifts.push({
+            id: 'DEBUG-WARNING-SHIFT-LATE',
+            teacherId: 'DEBUG-TEACHER-LATE',
+            date: todayStr,
+            slots: ['13:00', '13:30']
+        });
+        db.teacherAttendanceLogs.push({
+            id: 'DEBUG-WARNING-LOG-LATE',
+            teacherId: 'DEBUG-TEACHER-LATE',
+            date: todayStr,
+            checkInAt: `${todayStr}T13:10:00`,
+            checkOutAt: `${todayStr}T14:00:00`
+        });
+
+        // 2.2 No-show warning (14:00 slot, no checkIn log)
+        db.teachers.push({ id: 'DEBUG-TEACHER-NOSHOW', name: '디버그강사미출근', academyId: 'AC1', employmentStatus: 'active' });
+        db.teacherShifts.push({
+            id: 'DEBUG-WARNING-SHIFT-NOSHOW',
+            teacherId: 'DEBUG-TEACHER-NOSHOW',
+            date: todayStr,
+            slots: ['14:00', '14:30']
+        });
+
+        // 2.3 Checkout Missing warning (15:00 slot, checkIn 15:00, no checkOut log)
+        db.teachers.push({ id: 'DEBUG-TEACHER-MISSING', name: '디버그강사퇴근누락', academyId: 'AC1', employmentStatus: 'active' });
+        db.teacherShifts.push({
+            id: 'DEBUG-WARNING-SHIFT-MISSING',
+            teacherId: 'DEBUG-TEACHER-MISSING',
+            date: todayStr,
+            slots: ['15:00', '15:30']
+        });
+        db.teacherAttendanceLogs.push({
+            id: 'DEBUG-WARNING-LOG-MISSING',
+            teacherId: 'DEBUG-TEACHER-MISSING',
+            date: todayStr,
+            checkInAt: `${todayStr}T15:00:00`,
+            checkOutAt: null
+        });
+
+        // 2.4 Late + Checkout Missing warning (16:00 slot, checkIn 16:10, no checkOut log)
+        db.teachers.push({ id: 'DEBUG-TEACHER-LATEMISSING', name: '디버그강사지각퇴근누락', academyId: 'AC1', employmentStatus: 'active' });
+        db.teacherShifts.push({
+            id: 'DEBUG-WARNING-SHIFT-LATEMISSING',
+            teacherId: 'DEBUG-TEACHER-LATEMISSING',
+            date: todayStr,
+            slots: ['16:00', '16:30']
+        });
+        db.teacherAttendanceLogs.push({
+            id: 'DEBUG-WARNING-LOG-LATEMISSING',
+            teacherId: 'DEBUG-TEACHER-LATEMISSING',
+            date: todayStr,
+            checkInAt: `${todayStr}T16:10:00`,
+            checkOutAt: null
+        });
+
+        // Set debug evaluation override time in settings
+        const evalTime = new Date(`${todayStr}T18:00:00`);
+        db.settings.DAYDAY_DEBUG_EVAL_TIME = evalTime.toISOString();
+
+        // Save state changes
+        stateStore.saveDB();
+
+        // Mute stateStore.notify to prevent infinite rendering cascade during evaluation
+        const originalNotify = stateStore.notify;
+        stateStore.notify = function() {};
+
+        try {
+            // Evaluate recommendations
+            stateStore.syncSystemRecommendations(evalTime);
+        } finally {
+            // Restore notify
+            stateStore.notify = originalNotify;
+        }
+
+        // Trigger console rerender exactly once
+        stateStore.notify('TODAY_TASKS_CHANGED', stateStore.db.todayTasks || []);
+
+        console.log("DAYDAY WARNING SEED: Demo warning data has been successfully injected!");
+    };
+
+    window.clearWarningDemoData = function() {
+        if (!window.__daydayWarningSeedBackup) {
+            alert("복원할 백업 데이터가 없습니다.");
+            return;
+        }
+        if (!confirm("임시 주입한 검수용 데이터를 삭제하고 백업으로 복원합니다. 계속할까요?")) {
+            return;
+        }
+
+        try {
+            stateStore.db = JSON.parse(window.__daydayWarningSeedBackup);
+            delete window.__daydayWarningSeedBackup;
+
+            if (window.__daydayWarningSeedMockTimeBackup !== undefined) {
+                window.__mockTime = window.__daydayWarningSeedMockTimeBackup;
+                delete window.__daydayWarningSeedMockTimeBackup;
+            } else {
+                delete window.__mockTime;
+            }
+
+            stateStore.saveDB();
+            stateStore.notify('TODAY_TASKS_CHANGED', stateStore.db.todayTasks || []);
+            console.log("DAYDAY WARNING SEED: DB successfully restored from backup!");
+        } catch (e) {
+            console.error("DAYDAY WARNING SEED: Failed to restore backup DB", e);
+        }
+    };
+}
