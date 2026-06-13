@@ -366,7 +366,23 @@ export function renderTodayConsole(container) {
         // Placeholder counts for Phase 13B ~ 13E domain integrations
         // ==========================================
         const getOverdueCount = () => 0; // TODO: Phase 13D - 미수납 확인 연동 (수납일 경과 후 미수납 전환)
-        const getStaffWarningCount = () => 0; // TODO: Phase 13C - 특이근태 연동 (레슨 있음 + 강사 미출근 / 퇴근 누락)
+        const getStaffWarningCount = () => {
+            const teacherIds = new Set();
+            activeTasksList.forEach(t => {
+                let cat = t.category;
+                if (t.source === 'system' || t.source === 'auto') {
+                    if (t.type === 'attendance' && t.category === 'staff_warning') {
+                        cat = 'staff_warning';
+                    }
+                }
+                if (cat === 'staff_warning') {
+                    if (t.relatedTeacherIds && t.relatedTeacherIds.length > 0) {
+                        t.relatedTeacherIds.forEach(id => teacherIds.add(id));
+                    }
+                }
+            });
+            return teacherIds.size;
+        };
         const getAbsentCount = () => {
             const studentIds = new Set();
             activeTasksList.forEach(t => {
@@ -392,7 +408,7 @@ export function renderTodayConsole(container) {
                 let cat = t.category;
                 if (t.source === 'system' || t.source === 'auto') {
                     if (t.type === 'attendance') {
-                        if (t.category !== 'absent') {
+                        if (t.category !== 'absent' && t.category !== 'staff_warning') {
                             cat = 'attendance_warning';
                         }
                     }
@@ -414,6 +430,7 @@ export function renderTodayConsole(container) {
                     if (t.type === 'billing') cat = 'overdue';
                     else if (t.type === 'attendance') {
                         if (t.category === 'absent') cat = 'absent';
+                        else if (t.category === 'staff_warning') cat = 'staff_warning';
                         else cat = 'attendance_warning';
                     }
                 }
@@ -471,6 +488,7 @@ export function renderTodayConsole(container) {
                     if (task.type === 'billing') cat = 'overdue';
                     else if (task.type === 'attendance') {
                         if (task.category === 'absent') cat = 'absent';
+                        else if (task.category === 'staff_warning') cat = 'staff_warning';
                         else cat = 'attendance_warning';
                     }
                 }
