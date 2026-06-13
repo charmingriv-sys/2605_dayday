@@ -84,35 +84,35 @@ test.describe('Academy Warning Policy Settings UI E2E Flow', () => {
     // Toggle Student Late
     await lateCheckbox.uncheck();
     await expect(lateSelect).toBeDisabled();
-    await expect(lateText).toContainText('지각판정을 사용하지 않음');
+    await expect(lateText).toContainText('지각 판정을 사용하지 않습니다.');
     await lateCheckbox.check();
     await expect(lateSelect).toBeEnabled();
 
     // Toggle Student Checkout Missing
     await checkoutCheckbox.uncheck();
     await expect(checkoutSelect).toBeDisabled();
-    await expect(checkoutText).toContainText('하원누락 워닝을 사용하지 않음');
+    await expect(checkoutText).toContainText('하원누락 확인을 사용하지 않습니다.');
     await checkoutCheckbox.check();
     await expect(checkoutSelect).toBeEnabled();
 
     // Toggle Teacher Late
     await teacherLateCheckbox.uncheck();
     await expect(teacherLateSelect).toBeDisabled();
-    await expect(teacherLateText).toContainText('강사 지각판정을 사용하지 않음');
+    await expect(teacherLateText).toContainText('강사 지각 판정을 사용하지 않습니다.');
     await teacherLateCheckbox.check();
     await expect(teacherLateSelect).toBeEnabled();
 
     // Toggle Teacher No Show
     await teacherNoShowCheckbox.uncheck();
     await expect(teacherNoShowSelect).toBeDisabled();
-    await expect(teacherNoShowText).toContainText('강사 미출근 워닝을 사용하지 않음');
+    await expect(teacherNoShowText).toContainText('강사 미출근 확인을 사용하지 않습니다.');
     await teacherNoShowCheckbox.check();
     await expect(teacherNoShowSelect).toBeEnabled();
 
     // Toggle Teacher Checkout Missing
     await teacherCheckoutCheckbox.uncheck();
     await expect(teacherCheckoutSelect).toBeDisabled();
-    await expect(teacherCheckoutText).toContainText('강사 퇴근누락 워닝을 사용하지 않음');
+    await expect(teacherCheckoutText).toContainText('강사 퇴근누락 확인을 사용하지 않습니다.');
     await teacherCheckoutCheckbox.check();
     await expect(teacherCheckoutSelect).toBeEnabled();
 

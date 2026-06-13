@@ -109,7 +109,7 @@ export function renderAcademyInfo(container) {
                                     <select id="acad-late-threshold" class="form-control" style="width: 100px; margin-bottom: 0; display: inline-block;">
                                         ${generateMinuteOptions(stateStore.getLateThresholdMinutes())}
                                     </select>
-                                    <span id="acad-late-threshold-text" style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">수업 시작 후 설정한 시간이 지나면 지각으로 표시합니다.</span>
+                                    <span id="acad-late-threshold-text" style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">수업 시작 후 10분이 지나면 지각으로 표시합니다.</span>
                                 </div>
                             </div>
 
@@ -121,7 +121,7 @@ export function renderAcademyInfo(container) {
                                         <input type="checkbox" id="acad-student-absence-warning-enabled" ${stateStore.getStudentAbsenceWarningEnabled() ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
                                         사용함
                                     </label>
-                                    <span id="acad-student-absence-warning-text" style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">수업 종료 후에도 출석 기록이 없으면 확인이 필요한 결석으로 표시합니다.</span>
+                                    <span id="acad-student-absence-warning-text" style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">수업 종료 후에도 출석 기록이 없으면 결석 확인으로 표시합니다.</span>
                                 </div>
                             </div>
 
@@ -136,7 +136,7 @@ export function renderAcademyInfo(container) {
                                     <select id="acad-student-checkout-missing-grace-minutes" class="form-control" style="width: 100px; margin-bottom: 0; display: inline-block;">
                                         ${generateMinuteOptions(stateStore.getStudentCheckoutMissingGraceMinutes())}
                                     </select>
-                                    <span id="acad-student-checkout-missing-grace-minutes-text" style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">출석한 원생이 수업 종료 후 설정한 시간까지 하원 기록이 없으면 표시합니다.</span>
+                                    <span id="acad-student-checkout-missing-grace-minutes-text" style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">수업 종료 후 10분이 지나도 하원 기록이 없으면 하원누락으로 표시합니다.</span>
                                 </div>
                             </div>
 
@@ -151,7 +151,7 @@ export function renderAcademyInfo(container) {
                                     <select id="acad-teacher-late-warning-grace-minutes" class="form-control" style="width: 100px; margin-bottom: 0; display: inline-block;">
                                         ${generateMinuteOptions(stateStore.getTeacherLateWarningGraceMinutes())}
                                     </select>
-                                    <span id="acad-teacher-late-warning-grace-minutes-text" style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">출근 예정시간 후 설정한 시간이 지나면 지각으로 표시합니다.</span>
+                                    <span id="acad-teacher-late-warning-grace-minutes-text" style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">출근 예정시간 후 05분이 지나면 지각으로 표시합니다.</span>
                                 </div>
                             </div>
 
@@ -166,7 +166,7 @@ export function renderAcademyInfo(container) {
                                     <select id="acad-teacher-no-show-warning-grace-minutes" class="form-control" style="width: 100px; margin-bottom: 0; display: inline-block;">
                                         ${generateMinuteOptions(stateStore.getTeacherNoShowWarningGraceMinutes())}
                                     </select>
-                                    <span id="acad-teacher-no-show-warning-grace-minutes-text" style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">출근 예정시간 후 설정한 시간이 지나도 출근 기록이 없으면 미출근으로 표시합니다.</span>
+                                    <span id="acad-teacher-no-show-warning-grace-minutes-text" style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">출근 예정시간 후 10분이 지나도 출근 기록이 없으면 미출근으로 표시합니다.</span>
                                 </div>
                             </div>
 
@@ -181,7 +181,7 @@ export function renderAcademyInfo(container) {
                                     <select id="acad-teacher-checkout-missing-grace-minutes" class="form-control" style="width: 100px; margin-bottom: 0; display: inline-block;">
                                         ${generateMinuteOptions(stateStore.getTeacherCheckoutMissingGraceMinutes())}
                                     </select>
-                                    <span id="acad-teacher-checkout-missing-grace-minutes-text" style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">마지막 근무 종료 후 설정한 시간까지 퇴근 기록이 없으면 표시합니다.</span>
+                                    <span id="acad-teacher-checkout-missing-grace-minutes-text" style="font-size: 0.85rem; color: var(--text-main); font-weight: 600;">마지막 근무 종료 후 10분이 지나도 퇴근 기록이 없으면 퇴근누락으로 표시합니다.</span>
                                 </div>
                             </div>
                         </div>
@@ -264,8 +264,8 @@ export function renderAcademyInfo(container) {
             '#acad-late-detection-enabled', 
             '#acad-late-threshold', 
             '#acad-late-threshold-text',
-            (val) => `수업 시작 후 ${val}분 초과 시 지각 처리 (워닝 표시)`,
-            '지각판정을 사용하지 않음'
+            (val) => `수업 시작 후 ${val}분이 지나면 지각으로 표시합니다.`,
+            '지각 판정을 사용하지 않습니다.'
         );
 
         // 2. 결석 확인
@@ -273,8 +273,8 @@ export function renderAcademyInfo(container) {
             '#acad-student-absence-warning-enabled',
             null,
             '#acad-student-absence-warning-text',
-            () => '수업 종료 후에도 출석 기록이 없으면 확인이 필요한 결석으로 표시합니다.',
-            '결석 확인을 사용하지 않음'
+            () => '수업 종료 후에도 출석 기록이 없으면 결석 확인으로 표시합니다.',
+            '결석 확인을 사용하지 않습니다.'
         );
 
         // 3. 하원누락
@@ -282,8 +282,8 @@ export function renderAcademyInfo(container) {
             '#acad-student-checkout-missing-warning-enabled',
             '#acad-student-checkout-missing-grace-minutes',
             '#acad-student-checkout-missing-grace-minutes-text',
-            (val) => `수업 종료 후 ${val}분 초과 시 하원누락 워닝 표시`,
-            '하원누락 워닝을 사용하지 않음'
+            (val) => `수업 종료 후 ${val}분이 지나도 하원 기록이 없으면 하원누락으로 표시합니다.`,
+            '하원누락 확인을 사용하지 않습니다.'
         );
 
         // 4. 강사 지각
@@ -291,8 +291,8 @@ export function renderAcademyInfo(container) {
             '#acad-teacher-late-warning-enabled',
             '#acad-teacher-late-warning-grace-minutes',
             '#acad-teacher-late-warning-grace-minutes-text',
-            (val) => `출근 예정시간 후 ${val}분 초과 시 지각 처리 (워닝 표시)`,
-            '강사 지각판정을 사용하지 않음'
+            (val) => `출근 예정시간 후 ${val}분이 지나면 지각으로 표시합니다.`,
+            '강사 지각 판정을 사용하지 않습니다.'
         );
 
         // 5. 강사 미출근
@@ -300,8 +300,8 @@ export function renderAcademyInfo(container) {
             '#acad-teacher-no-show-warning-enabled',
             '#acad-teacher-no-show-warning-grace-minutes',
             '#acad-teacher-no-show-warning-grace-minutes-text',
-            (val) => `출근 예정시간 후 ${val}분 초과 시 미출근 워닝 표시`,
-            '강사 미출근 워닝을 사용하지 않음'
+            (val) => `출근 예정시간 후 ${val}분이 지나도 출근 기록이 없으면 미출근으로 표시합니다.`,
+            '강사 미출근 확인을 사용하지 않습니다.'
         );
 
         // 6. 강사 퇴근누락
@@ -309,8 +309,8 @@ export function renderAcademyInfo(container) {
             '#acad-teacher-checkout-missing-warning-enabled',
             '#acad-teacher-checkout-missing-grace-minutes',
             '#acad-teacher-checkout-missing-grace-minutes-text',
-            (val) => `마지막 근무 종료 후 ${val}분 초과 시 퇴근누락 워닝 표시`,
-            '강사 퇴근누락 워닝을 사용하지 않음'
+            (val) => `마지막 근무 종료 후 ${val}분이 지나도 퇴근 기록이 없으면 퇴근누락으로 표시합니다.`,
+            '강사 퇴근누락 확인을 사용하지 않습니다.'
         );
 
         let uploadedSignatureDataUrl = academy.directorSignature || '';

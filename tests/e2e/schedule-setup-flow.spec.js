@@ -47,12 +47,12 @@ test.describe('Director Schedule Settings and Notes Flow Checks', () => {
     await expect(lateDetectionCheckbox).toBeChecked();
     await expect(lateThresholdSelect).toBeEnabled();
     await expect(lateThresholdSelect).toHaveValue('10');
-    await expect(lateThresholdText).toContainText('수업 시작 후 10분 초과 시 지각 처리');
+    await expect(lateThresholdText).toContainText('수업 시작 후 10분이 지나면 지각으로 표시합니다.');
 
     // Uncheck late detection: threshold should be disabled, text changes to 미사용
     await lateDetectionCheckbox.uncheck();
     await expect(lateThresholdSelect).toBeDisabled();
-    await expect(lateThresholdText).toContainText('지각판정을 사용하지 않음');
+    await expect(lateThresholdText).toContainText('지각 판정을 사용하지 않습니다.');
 
     // Submit form with unchecked late detection
     const saveAcademyBtn = page.locator('#academy-info-form button[type="submit"]');
@@ -73,7 +73,7 @@ test.describe('Director Schedule Settings and Notes Flow Checks', () => {
     // Verify late detection is still disabled
     await expect(lateDetectionCheckbox).not.toBeChecked();
     await expect(lateThresholdSelect).toBeDisabled();
-    await expect(lateThresholdText).toContainText('지각판정을 사용하지 않음');
+    await expect(lateThresholdText).toContainText('지각 판정을 사용하지 않습니다.');
     // Threshold select value should still be preserved as 10
     await expect(lateThresholdSelect).toHaveValue('10');
 
@@ -81,7 +81,7 @@ test.describe('Director Schedule Settings and Notes Flow Checks', () => {
     await lateDetectionCheckbox.check();
     await expect(lateThresholdSelect).toBeEnabled();
     await lateThresholdSelect.selectOption('20');
-    await expect(lateThresholdText).toContainText('수업 시작 후 20분 초과 시 지각 처리');
+    await expect(lateThresholdText).toContainText('수업 시작 후 20분이 지나면 지각으로 표시합니다.');
     await saveAcademyBtn.click();
 
     // Reload page to verify persistence
@@ -99,11 +99,11 @@ test.describe('Director Schedule Settings and Notes Flow Checks', () => {
     await expect(lateDetectionCheckbox).toBeChecked();
     await expect(lateThresholdSelect).toBeEnabled();
     await expect(lateThresholdSelect).toHaveValue('20');
-    await expect(lateThresholdText).toContainText('수업 시작 후 20분 초과 시 지각 처리');
+    await expect(lateThresholdText).toContainText('수업 시작 후 20분이 지나면 지각으로 표시합니다.');
 
     // Change value to 00 mins, save and verify it persists
     await lateThresholdSelect.selectOption('0');
-    await expect(lateThresholdText).toContainText('수업 시작 후 00분 초과 시 지각 처리');
+    await expect(lateThresholdText).toContainText('수업 시작 후 00분이 지나면 지각으로 표시합니다.');
     await saveAcademyBtn.click();
 
     await page.reload();
@@ -117,11 +117,11 @@ test.describe('Director Schedule Settings and Notes Flow Checks', () => {
 
     await expect(lateThresholdSelect).toBeVisible();
     await expect(lateThresholdSelect).toHaveValue('0');
-    await expect(lateThresholdText).toContainText('수업 시작 후 00분 초과 시 지각 처리');
+    await expect(lateThresholdText).toContainText('수업 시작 후 00분이 지나면 지각으로 표시합니다.');
 
     // Restore to default 10 mins and save to clean up
     await lateThresholdSelect.selectOption('10');
-    await expect(lateThresholdText).toContainText('수업 시작 후 10분 초과 시 지각 처리');
+    await expect(lateThresholdText).toContainText('수업 시작 후 10분이 지나면 지각으로 표시합니다.');
     await saveAcademyBtn.click();
 
     // 4. Change Schedule Settings via Schedules subtab settings modal
