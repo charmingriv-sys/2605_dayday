@@ -5,7 +5,7 @@ export const settingsMethods = {
     getLateThresholdMinutes() {
         const settings = this.db.settings || {};
         const val = settings.lateThresholdMinutes;
-        if (typeof val === 'number' && val >= 0 && val <= 60 && val % 5 === 0) {
+        if (typeof val === 'number' && val >= 0 && val <= 90 && val % 5 === 0) {
             return val;
         }
         return 10;
@@ -13,7 +13,7 @@ export const settingsMethods = {
 
     setLateThresholdMinutes(minutes) {
         let val = Number(minutes);
-        if (isNaN(val) || val < 0 || val > 60 || val % 5 !== 0) {
+        if (isNaN(val) || val < 0 || val > 90 || val % 5 !== 0) {
             val = 10;
         }
         this.db.settings = {
@@ -34,6 +34,142 @@ export const settingsMethods = {
             ...this.db.settings,
             lateDetectionEnabled: !!enabled
         };
+        this.saveDB();
+        this.notify('SETTINGS_CHANGED', this.db.settings);
+    },
+
+    getStudentLateWarningEnabled() {
+        return this.getLateDetectionEnabled();
+    },
+    setStudentLateWarningEnabled(enabled) {
+        this.setLateDetectionEnabled(enabled);
+    },
+
+    getStudentLateWarningGraceMinutes() {
+        return this.getLateThresholdMinutes();
+    },
+    setStudentLateWarningGraceMinutes(minutes) {
+        this.setLateThresholdMinutes(minutes);
+    },
+
+    getStudentAbsenceWarningEnabled() {
+        const settings = this.db.settings || {};
+        return settings.studentAbsenceWarningEnabled !== false;
+    },
+    setStudentAbsenceWarningEnabled(enabled) {
+        this.db.settings = { ...this.db.settings, studentAbsenceWarningEnabled: !!enabled };
+        this.saveDB();
+        this.notify('SETTINGS_CHANGED', this.db.settings);
+    },
+
+    getStudentCheckoutMissingWarningEnabled() {
+        const settings = this.db.settings || {};
+        return settings.studentCheckoutMissingWarningEnabled !== false;
+    },
+    setStudentCheckoutMissingWarningEnabled(enabled) {
+        this.db.settings = { ...this.db.settings, studentCheckoutMissingWarningEnabled: !!enabled };
+        this.saveDB();
+        this.notify('SETTINGS_CHANGED', this.db.settings);
+    },
+
+    getStudentCheckoutMissingGraceMinutes() {
+        const settings = this.db.settings || {};
+        const val = settings.studentCheckoutMissingGraceMinutes;
+        if (typeof val === 'number' && val >= 0 && val <= 90 && val % 5 === 0) {
+            return val;
+        }
+        return 10;
+    },
+    setStudentCheckoutMissingGraceMinutes(minutes) {
+        let val = Number(minutes);
+        if (isNaN(val) || val < 0 || val > 90 || val % 5 !== 0) {
+            val = 10;
+        }
+        this.db.settings = { ...this.db.settings, studentCheckoutMissingGraceMinutes: val };
+        this.saveDB();
+        this.notify('SETTINGS_CHANGED', this.db.settings);
+    },
+
+    getTeacherLateWarningEnabled() {
+        const settings = this.db.settings || {};
+        return settings.teacherLateWarningEnabled !== false;
+    },
+    setTeacherLateWarningEnabled(enabled) {
+        this.db.settings = { ...this.db.settings, teacherLateWarningEnabled: !!enabled };
+        this.saveDB();
+        this.notify('SETTINGS_CHANGED', this.db.settings);
+    },
+
+    getTeacherLateWarningGraceMinutes() {
+        const settings = this.db.settings || {};
+        const val = settings.teacherLateWarningGraceMinutes;
+        if (typeof val === 'number' && val >= 0 && val <= 90 && val % 5 === 0) {
+            return val;
+        }
+        return 5;
+    },
+    setTeacherLateWarningGraceMinutes(minutes) {
+        let val = Number(minutes);
+        if (isNaN(val) || val < 0 || val > 90 || val % 5 !== 0) {
+            val = 5;
+        }
+        this.db.settings = { ...this.db.settings, teacherLateWarningGraceMinutes: val };
+        this.saveDB();
+        this.notify('SETTINGS_CHANGED', this.db.settings);
+    },
+
+    getTeacherNoShowWarningEnabled() {
+        const settings = this.db.settings || {};
+        return settings.teacherNoShowWarningEnabled !== false;
+    },
+    setTeacherNoShowWarningEnabled(enabled) {
+        this.db.settings = { ...this.db.settings, teacherNoShowWarningEnabled: !!enabled };
+        this.saveDB();
+        this.notify('SETTINGS_CHANGED', this.db.settings);
+    },
+
+    getTeacherNoShowWarningGraceMinutes() {
+        const settings = this.db.settings || {};
+        const val = settings.teacherNoShowWarningGraceMinutes;
+        if (typeof val === 'number' && val >= 0 && val <= 90 && val % 5 === 0) {
+            return val;
+        }
+        return 10;
+    },
+    setTeacherNoShowWarningGraceMinutes(minutes) {
+        let val = Number(minutes);
+        if (isNaN(val) || val < 0 || val > 90 || val % 5 !== 0) {
+            val = 10;
+        }
+        this.db.settings = { ...this.db.settings, teacherNoShowWarningGraceMinutes: val };
+        this.saveDB();
+        this.notify('SETTINGS_CHANGED', this.db.settings);
+    },
+
+    getTeacherCheckoutMissingWarningEnabled() {
+        const settings = this.db.settings || {};
+        return settings.teacherCheckoutMissingWarningEnabled !== false;
+    },
+    setTeacherCheckoutMissingWarningEnabled(enabled) {
+        this.db.settings = { ...this.db.settings, teacherCheckoutMissingWarningEnabled: !!enabled };
+        this.saveDB();
+        this.notify('SETTINGS_CHANGED', this.db.settings);
+    },
+
+    getTeacherCheckoutMissingGraceMinutes() {
+        const settings = this.db.settings || {};
+        const val = settings.teacherCheckoutMissingGraceMinutes;
+        if (typeof val === 'number' && val >= 0 && val <= 90 && val % 5 === 0) {
+            return val;
+        }
+        return 10;
+    },
+    setTeacherCheckoutMissingGraceMinutes(minutes) {
+        let val = Number(minutes);
+        if (isNaN(val) || val < 0 || val > 90 || val % 5 !== 0) {
+            val = 10;
+        }
+        this.db.settings = { ...this.db.settings, teacherCheckoutMissingGraceMinutes: val };
         this.saveDB();
         this.notify('SETTINGS_CHANGED', this.db.settings);
     },

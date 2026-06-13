@@ -30,7 +30,18 @@ const DEFAULT_DB = {
         scheduleStartTime: "14:00",
         scheduleEndTime: "21:00",
         scheduleSlotMinutes: 30,
-        printLayoutDefault: "one-per-page"
+        printLayoutDefault: "one-per-page",
+        lateDetectionEnabled: true,
+        lateThresholdMinutes: 10,
+        studentAbsenceWarningEnabled: true,
+        studentCheckoutMissingWarningEnabled: true,
+        studentCheckoutMissingGraceMinutes: 10,
+        teacherLateWarningEnabled: true,
+        teacherLateWarningGraceMinutes: 5,
+        teacherNoShowWarningEnabled: true,
+        teacherNoShowWarningGraceMinutes: 10,
+        teacherCheckoutMissingWarningEnabled: true,
+        teacherCheckoutMissingGraceMinutes: 10
     },
     teachers: [
         { id: 'T1', name: '문승현', instrument: '피아노', phone: '010-1111-1001', email: 'shmoon@turing.com', color: '#ffb3c1', scheduleNotes: "", employmentStatus: "active", resignedAt: null, resignMemo: "" },
@@ -370,6 +381,69 @@ class StateStore {
                     migrated = true;
                 }
             });
+            if (migrated) {
+                this.saveDB();
+            }
+        }
+
+        // Migrate settings to have warning configurations if missing or invalid
+        if (this.db && this.db.settings) {
+            let migrated = false;
+            const defaults = {
+                lateDetectionEnabled: true,
+                lateThresholdMinutes: 10,
+                studentAbsenceWarningEnabled: true,
+                studentCheckoutMissingWarningEnabled: true,
+                studentCheckoutMissingGraceMinutes: 10,
+                teacherLateWarningEnabled: true,
+                teacherLateWarningGraceMinutes: 5,
+                teacherNoShowWarningEnabled: true,
+                teacherNoShowWarningGraceMinutes: 10,
+                teacherCheckoutMissingWarningEnabled: true,
+                teacherCheckoutMissingGraceMinutes: 10
+            };
+            
+            // 1. Fill missing configurations
+            for (const key in defaults) {
+                if (this.db.settings[key] === undefined || this.db.settings[key] === null) {
+                    this.db.settings[key] = defaults[key];
+                    migrated = true;
+                }
+            }
+
+            // 2. Validate and clean Boolean values
+            const booleanKeys = [
+                'lateDetectionEnabled',
+                'studentAbsenceWarningEnabled',
+                'studentCheckoutMissingWarningEnabled',
+                'teacherLateWarningEnabled',
+                'teacherNoShowWarningEnabled',
+                'teacherCheckoutMissingWarningEnabled'
+            ];
+            booleanKeys.forEach(key => {
+                if (typeof this.db.settings[key] !== 'boolean') {
+                    this.db.settings[key] = !!this.db.settings[key];
+                    migrated = true;
+                }
+            });
+
+            // 3. Validate and clean graceMinutes (0~90 min, multiples of 5)
+            const minutesKeys = {
+                lateThresholdMinutes: 10,
+                studentCheckoutMissingGraceMinutes: 10,
+                teacherLateWarningGraceMinutes: 5,
+                teacherNoShowWarningGraceMinutes: 10,
+                teacherCheckoutMissingGraceMinutes: 10
+            };
+            for (const key in minutesKeys) {
+                const val = Number(this.db.settings[key]);
+                const defaultVal = minutesKeys[key];
+                if (isNaN(val) || val < 0 || val > 90 || val % 5 !== 0) {
+                    this.db.settings[key] = defaultVal;
+                    migrated = true;
+                }
+            }
+
             if (migrated) {
                 this.saveDB();
             }

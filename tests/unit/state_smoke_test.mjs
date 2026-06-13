@@ -150,13 +150,13 @@ if (val4 === 10) {
     hasError = true;
 }
 
-// Value greater than 60
-stateStore.setLateThresholdMinutes(65);
-const val65 = stateStore.getLateThresholdMinutes();
-if (val65 === 10) {
-    console.log('✓ setLateThresholdMinutes(65) normalized to 10.');
+// Value greater than 90
+stateStore.setLateThresholdMinutes(95);
+const val95 = stateStore.getLateThresholdMinutes();
+if (val95 === 10) {
+    console.log('✓ setLateThresholdMinutes(95) normalized to 10.');
 } else {
-    console.error(`❌ Expected 10, got ${val65}`);
+    console.error(`❌ Expected 10, got ${val95}`);
     hasError = true;
 }
 
