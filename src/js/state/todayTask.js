@@ -379,9 +379,11 @@ export const todayTaskMethods = {
         const dateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         const monthStr = `${y}-${String(m + 1).padStart(2, '0')}`;
 
-        const newRecommendations = [];
+        // Ensure database lists are initialized
+        if (!this.db.todayTasks) this.db.todayTasks = [];
 
-        // 1. Billing Unpaid Rule
+        // 1. Billing Unpaid Rule (Phase 13D Placeholder)
+        const unpaidBills = [];
         if (typeof this.getStudents === 'function' && typeof this.getPayments === 'function') {
             const students = this.getStudents();
             const payments = this.getPayments();
@@ -393,7 +395,7 @@ export const todayTaskMethods = {
                         const dedupeKey = `SYSTEM_RECOMMEND_BILLING_UNPAID_${payment.id}_${monthStr}`;
                         const dueTime = new Date(y, m, dueDay, 9, 0, 0, 0);
                         const endTime = new Date(y, m, dueDay, 10, 0, 0, 0);
-                        newRecommendations.push({
+                        unpaidBills.push({
                             organizationId: student.academyId || '',
                             segment: 'academy_director_console',
                             domain: 'academy',
@@ -418,39 +420,177 @@ export const todayTaskMethods = {
             });
         }
 
-        // 2. Attendance Delay Rule
+        // Apply Unpaid bills
+        unpaidBills.forEach(rec => {
+            const existing = this.db.todayTasks.find(t => t.dedupeKey === rec.dedupeKey);
+            if (!existing) {
+                this.addTodayTask(rec);
+            }
+        });
+
+        // 2. Student Attendance Warnings (Phase 13C Core Warning Engine)
         if (typeof this.getTeacherStudentScheduleForDate === 'function' && typeof this.getAttendance === 'function') {
             const todaySchedule = this.getTeacherStudentScheduleForDate(dateStr) || [];
             const attendanceList = this.getAttendance() || [];
+
+            // Warning policy settings
+            const lateDetectionEnabled = typeof this.getLateDetectionEnabled === 'function' ? this.getLateDetectionEnabled() : true;
+            const lateThresholdMinutes = typeof this.getLateThresholdMinutes === 'function' ? this.getLateThresholdMinutes() : 10;
+            const studentAbsenceWarningEnabled = typeof this.getStudentAbsenceWarningEnabled === 'function' ? this.getStudentAbsenceWarningEnabled() : true;
+            const studentCheckoutMissingWarningEnabled = typeof this.getStudentCheckoutMissingWarningEnabled === 'function' ? this.getStudentCheckoutMissingWarningEnabled() : true;
+            const studentCheckoutMissingGraceMinutes = typeof this.getStudentCheckoutMissingGraceMinutes === 'function' ? this.getStudentCheckoutMissingGraceMinutes() : 10;
+
+            const activeSessionKeys = [];
+
             todaySchedule.forEach(entry => {
-                const att = attendanceList.find(a => a.studentId === entry.studentId && a.date === dateStr);
+                const sessionKey = `${entry.studentId}_${dateStr}_${entry.time}`;
+                activeSessionKeys.push(sessionKey);
+
+                // 2.2 Calculate schedule timings
+                const student = typeof this.getStudent === 'function' ? this.getStudent(entry.studentId) : null;
+                const studentName = student ? student.name : '원생';
+                const [sh, smin] = entry.time.split(':').map(Number);
+                const scheduledStartAt = new Date(y, m, d, sh, smin, 0, 0);
+                const duration = entry.classDuration || (student ? student.defaultClassDuration : 50) || 50;
+                const scheduledEndAt = new Date(scheduledStartAt.getTime() + duration * 60 * 1000);
+
+                // 2.3 Retrieve attendance details
+                const att = attendanceList.find(a => a.studentId === entry.studentId && a.date === dateStr && (a.classTime === entry.time || !a.classTime));
                 const hasAttendance = att && att.status !== 'none';
+
+                // 2.4 State transition warning evaluation
+                let currentWarningState = 'NONE';
+                let checkoutLimit = null;
+
                 if (!hasAttendance) {
-                    const timePart = entry.time || '14:00';
-                    const [h, min] = timePart.split(':').map(Number);
-                    const classStartTime = new Date(y, m, d, h, min, 0, 0);
-                    // Check if 15 minutes have passed
-                    if (parsedNow.getTime() - classStartTime.getTime() >= 15 * 60 * 1000) {
-                        const dedupeKey = `SYSTEM_RECOMMEND_ATTENDANCE_LATE_${entry.studentId}_${dateStr}`;
-                        const student = typeof this.getStudent === 'function' ? this.getStudent(entry.studentId) : null;
-                        const studentName = student ? student.name : '원생';
-                        newRecommendations.push({
+                    // 수업 종료 후 출석이 없으면 결석 확인 대상
+                    if (studentAbsenceWarningEnabled && parsedNow.getTime() > scheduledEndAt.getTime()) {
+                        currentWarningState = 'ABSENT';
+                    }
+                } else if (att.status !== 'absent') {
+                    // 출석한 경우
+                    let isLate = false;
+                    let actualCheckInAt = null;
+
+                    if (lateDetectionEnabled && att.time) {
+                        const [actH, actM] = att.time.split(':').map(Number);
+                        actualCheckInAt = new Date(y, m, d, actH, actM, 0, 0);
+                        const lateLimit = new Date(scheduledStartAt.getTime() + lateThresholdMinutes * 60 * 1000);
+                        // 지각 판단 (초과 시)
+                        if (actualCheckInAt.getTime() > lateLimit.getTime()) {
+                            isLate = true;
+                        }
+                    }
+
+                    let isCheckoutMissing = false;
+                    // 하원이 찍혀있지 않을 때만 하원누락 대상
+                    if (studentCheckoutMissingWarningEnabled && !att.leavingTime) {
+                        // 기준 종료 시각 산정
+                        if (isLate && actualCheckInAt) {
+                            checkoutLimit = new Date(actualCheckInAt.getTime() + (duration + studentCheckoutMissingGraceMinutes) * 60 * 1000);
+                        } else {
+                            checkoutLimit = new Date(scheduledStartAt.getTime() + (duration + studentCheckoutMissingGraceMinutes) * 60 * 1000);
+                        }
+
+                        if (parsedNow.getTime() > checkoutLimit.getTime()) {
+                            isCheckoutMissing = true;
+                        }
+                    }
+
+                    // 상태 결합
+                    if (isLate && isCheckoutMissing) {
+                        currentWarningState = 'LATE_CHECKOUT_MISSING';
+                    } else if (isLate) {
+                        currentWarningState = 'LATE';
+                    } else if (isCheckoutMissing) {
+                        currentWarningState = 'CHECKOUT_MISSING';
+                    }
+                }
+
+                // 2.4.1 Calculate dedupe keys and check if already resolved by user
+                const warningKeys = [
+                    `SYSTEM_RECOMMEND_ABSENT_${sessionKey}`,
+                    `SYSTEM_RECOMMEND_LATE_${sessionKey}`,
+                    `SYSTEM_RECOMMEND_CHECKOUT_MISSING_${sessionKey}`,
+                    `SYSTEM_RECOMMEND_LATE_CHECKOUT_MISSING_${sessionKey}`
+                ];
+                const targetDedupeKey = currentWarningState !== 'NONE' ? `SYSTEM_RECOMMEND_${currentWarningState}_${sessionKey}` : null;
+
+                const hasResolvedWarning = targetDedupeKey && this.db.todayTasks.some(t => 
+                    t.source === 'system' && 
+                    (t.status === 'done' || t.status === 'dismissed') && 
+                    t.dedupeKey === targetDedupeKey
+                );
+
+                // 2.5 Clear obsolete warnings that are no longer matching the current state
+                this.db.todayTasks = this.db.todayTasks.filter(t => {
+                    if (t.source === 'system' && t.status === 'open' && t.dedupeKey && warningKeys.includes(t.dedupeKey)) {
+                        // Keep only if it matches the newly evaluated target state
+                        return t.dedupeKey === targetDedupeKey;
+                    }
+                    return true;
+                });
+
+                // 2.6 Add new warning if applicable and not already created or resolved by user
+                if (currentWarningState !== 'NONE' && !hasResolvedWarning) {
+                    const isAlreadyOpen = this.db.todayTasks.some(t => t.dedupeKey === targetDedupeKey && t.status === 'open');
+                    if (!isAlreadyOpen) {
+                        let title = '';
+                        let description = '';
+                        let category = 'attendance_warning';
+                        let dueAt = scheduledEndAt.toISOString();
+                        let warningTypeLabel = '';
+                        let reason = '';
+
+                        if (currentWarningState === 'ABSENT') {
+                            category = 'absent';
+                            title = `${studentName} 원생 결석 확인 필요`;
+                            warningTypeLabel = '결석 확인';
+                            reason = '수업이 끝났지만 출석 기록이 없습니다.';
+                            dueAt = scheduledEndAt.toISOString();
+                        } else if (currentWarningState === 'LATE') {
+                            title = `${studentName} 원생 지각 출석`;
+                            warningTypeLabel = '지각';
+                            reason = '수업 시작 후 출석했습니다.';
+                            dueAt = new Date(scheduledStartAt.getTime() + lateThresholdMinutes * 60 * 1000).toISOString();
+                        } else if (currentWarningState === 'CHECKOUT_MISSING') {
+                            title = `${studentName} 원생 하원누락 확인 필요`;
+                            warningTypeLabel = '하원누락';
+                            reason = '수업 시간이 지났지만 하원 기록이 없습니다.';
+                            dueAt = checkoutLimit ? checkoutLimit.toISOString() : scheduledEndAt.toISOString();
+                        } else if (currentWarningState === 'LATE_CHECKOUT_MISSING') {
+                            title = `${studentName} 원생 지각 출석 및 하원누락`;
+                            warningTypeLabel = '지각 + 하원누락';
+                            reason = '지각 출석 후 하원 기록이 없습니다.';
+                            dueAt = checkoutLimit ? checkoutLimit.toISOString() : scheduledEndAt.toISOString();
+                        }
+
+                        const startHM = entry.time;
+                        const pad = (n) => String(n).padStart(2, '0');
+                        const endHM = entry.endTime || `${pad(scheduledEndAt.getHours())}:${pad(scheduledEndAt.getMinutes())}`;
+                        const teacher = entry.teacherId ? (typeof this.getTeacher === 'function' ? this.getTeacher(entry.teacherId) : null) : null;
+                        const teacherName = teacher ? teacher.name : '미지정';
+                        const instrument = student ? (student.instrument || '미지정') : '미지정';
+
+                        description = `• 원생명: ${studentName}\n• 수업 시간: ${startHM} ~ ${endHM}\n• 담당 강사: ${teacherName}\n• 과목/악기: ${instrument}\n• 워닝 유형: ${warningTypeLabel}\n• 간단 사유: ${reason}`;
+
+                        this.addTodayTask({
                             organizationId: student ? (student.academyId || '') : '',
                             segment: 'academy_director_console',
                             domain: 'academy',
                             source: 'system',
                             type: 'attendance',
-                            category: 'system_check',
+                            category: category,
                             priority: 'today',
                             status: 'open',
-                            dueAt: new Date(classStartTime.getTime() + 15 * 60 * 1000).toISOString(),
-                            startAt: classStartTime.toISOString(),
-                            endAt: new Date(classStartTime.getTime() + 60 * 60 * 1000).toISOString(),
-                            title: `${studentName} 원생 출결 입력 지연`,
-                            description: `${studentName} 원생의 오늘 ${timePart} 수업 시작 후 15분이 경과하였으나 출결 기록이 완료되지 않았습니다. 등원 여부 확인 및 출결 태깅 지도가 필요합니다.`,
+                            dueAt: dueAt,
+                            startAt: scheduledStartAt.toISOString(),
+                            endAt: scheduledEndAt.toISOString(),
+                            title: title,
+                            description: description,
                             relatedStudentIds: [entry.studentId],
                             relatedTeacherIds: [entry.teacherId].filter(Boolean),
-                            dedupeKey: dedupeKey,
+                            dedupeKey: targetDedupeKey,
                             visibilityRoles: ['director'],
                             actionType: 'NAVIGATE',
                             actionPayload: { route: '/attendance', studentId: entry.studentId }
@@ -458,29 +598,28 @@ export const todayTaskMethods = {
                     }
                 }
             });
-        }
 
-        // Apply dedupe/upsert check
-        newRecommendations.forEach(rec => {
-            if (rec.dedupeKey) {
-                const existing = this.db.todayTasks.find(t => t.dedupeKey === rec.dedupeKey);
-                if (existing) {
-                    const isChanged = 
-                        existing.title !== rec.title ||
-                        existing.description !== rec.description ||
-                        existing.status !== rec.status ||
-                        existing.dueAt !== rec.dueAt ||
-                        existing.startAt !== rec.startAt ||
-                        existing.endAt !== rec.endAt;
-                    if (!isChanged) {
-                        return; // Skip upsert if identical to avoid infinite notify loop
+            // 3. Clean up warnings for cancelled schedules or changed teachers
+            this.db.todayTasks = this.db.todayTasks.filter(t => {
+                if (t.source === 'system' && t.status === 'open' && t.dedupeKey) {
+                    const isStudentWarning = 
+                        t.dedupeKey.startsWith('SYSTEM_RECOMMEND_ABSENT_') ||
+                        t.dedupeKey.startsWith('SYSTEM_RECOMMEND_LATE_') ||
+                        t.dedupeKey.startsWith('SYSTEM_RECOMMEND_CHECKOUT_MISSING_') ||
+                        t.dedupeKey.startsWith('SYSTEM_RECOMMEND_LATE_CHECKOUT_MISSING_');
+                        
+                    if (isStudentWarning) {
+                        const hasActiveSchedule = activeSessionKeys.some(key => t.dedupeKey.includes(key));
+                        if (!hasActiveSchedule) {
+                            return false; // Obsolete session warning removed
+                        }
                     }
                 }
-            }
-            this.addTodayTask(rec);
-        });
+                return true;
+            });
+        }
 
-        // 3. Auto-Resolve Conditions
+        // 4. Auto-Resolve Conditions (for Unpaid billing)
         const existingTasks = this.getTodayTasks() || [];
         existingTasks.forEach(task => {
             if (task.source === 'system' && task.status === 'open') {
@@ -493,19 +632,6 @@ export const todayTaskMethods = {
                         const payments = this.getPayments();
                         const payment = payments.find(p => p.id === paymentId);
                         if (payment && payment.status === 'paid') {
-                            this.updateTodayTask(task.id, { status: 'done', completedAt: parsedNow.toISOString() });
-                        }
-                    }
-                } else if (task.dedupeKey && task.dedupeKey.startsWith('SYSTEM_RECOMMEND_ATTENDANCE_LATE_')) {
-                    const prefix = 'SYSTEM_RECOMMEND_ATTENDANCE_LATE_';
-                    const rest = task.dedupeKey.substring(prefix.length);
-                    const lastUnderscore = rest.lastIndexOf('_');
-                    const studentId = lastUnderscore !== -1 ? rest.substring(0, lastUnderscore) : rest;
-                    const targetDate = lastUnderscore !== -1 ? rest.substring(lastUnderscore + 1) : '';
-                    if (typeof this.getAttendance === 'function') {
-                        const attendanceList = this.getAttendance() || [];
-                        const att = attendanceList.find(a => a.studentId === studentId && a.date === targetDate);
-                        if (att && att.status !== 'none') {
                             this.updateTodayTask(task.id, { status: 'done', completedAt: parsedNow.toISOString() });
                         }
                     }

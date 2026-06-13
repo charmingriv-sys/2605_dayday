@@ -367,10 +367,44 @@ export function renderTodayConsole(container) {
         // ==========================================
         const getOverdueCount = () => 0; // TODO: Phase 13D - 미수납 확인 연동 (수납일 경과 후 미수납 전환)
         const getStaffWarningCount = () => 0; // TODO: Phase 13C - 특이근태 연동 (레슨 있음 + 강사 미출근 / 퇴근 누락)
-        const getAbsentCount = () => 0; // TODO: Phase 13C - 결석 확인 연동 (수업 종료 후 결석 판정)
+        const getAbsentCount = () => {
+            const studentIds = new Set();
+            activeTasksList.forEach(t => {
+                let cat = t.category;
+                if (t.source === 'system' || t.source === 'auto') {
+                    if (t.type === 'attendance' && t.category === 'absent') {
+                        cat = 'absent';
+                    }
+                }
+                if (cat === 'absent') {
+                    if (t.relatedStudentIds && t.relatedStudentIds.length > 0) {
+                        t.relatedStudentIds.forEach(id => studentIds.add(id));
+                    }
+                }
+            });
+            return studentIds.size;
+        };
         const getScheduleCount = () => 0; // TODO: Phase 13C/D - 일정확인 연동 (D-3 일정 확인)
         const getBillingCount = () => 0; // TODO: Phase 13D - 수납확인 연동 (오늘 수납 예정)
-        const getAttendanceWarningCount = () => 0; // TODO: Phase 13C - 특이출결 연동 (하원 누락 / 연속결석 / 지각률)
+        const getAttendanceWarningCount = () => {
+            const studentIds = new Set();
+            activeTasksList.forEach(t => {
+                let cat = t.category;
+                if (t.source === 'system' || t.source === 'auto') {
+                    if (t.type === 'attendance') {
+                        if (t.category !== 'absent') {
+                            cat = 'attendance_warning';
+                        }
+                    }
+                }
+                if (cat === 'attendance_warning') {
+                    if (t.relatedStudentIds && t.relatedStudentIds.length > 0) {
+                        t.relatedStudentIds.forEach(id => studentIds.add(id));
+                    }
+                }
+            });
+            return studentIds.size;
+        };
         const getBookCheckCount = () => 0; // TODO: Phase 13E - 교재 확인 연동 (지급 승인 대기)
         const getBookBillingCount = () => 0; // TODO: Phase 13E - 교재 결제 확인 연동 (교재비 결제대기)
         const getMemoCount = () => {
@@ -378,7 +412,10 @@ export function renderTodayConsole(container) {
                 let cat = t.category || 'memo';
                 if (t.source === 'system' || t.source === 'auto') {
                     if (t.type === 'billing') cat = 'overdue';
-                    else if (t.type === 'attendance') cat = 'attendance_warning';
+                    else if (t.type === 'attendance') {
+                        if (t.category === 'absent') cat = 'absent';
+                        else cat = 'attendance_warning';
+                    }
                 }
                 return cat === 'memo';
             }).length;
@@ -432,7 +469,10 @@ export function renderTodayConsole(container) {
                 let cat = task.category || 'memo';
                 if (task.source === 'system' || task.source === 'auto') {
                     if (task.type === 'billing') cat = 'overdue';
-                    else if (task.type === 'attendance') cat = 'attendance_warning';
+                    else if (task.type === 'attendance') {
+                        if (task.category === 'absent') cat = 'absent';
+                        else cat = 'attendance_warning';
+                    }
                 }
                 return cat === selectedCategoryFilter;
             });
