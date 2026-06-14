@@ -1304,13 +1304,13 @@ export function renderTodayConsole(container) {
                                         `;
                                     } else {
                                         actionsHtml = `
-                                            <button type="button" class="btn btn-link btn-sm" data-action="done" data-id="${safeId}" style="padding: 4px 6px; font-size: 0.75rem; margin: 0; background: transparent; border: none; color: var(--success); font-weight: 600; cursor: pointer;" title="완료 처리">
+                                            <button type="button" class="task-action-btn btn-done" data-action="done" data-id="${safeId}" title="완료 처리">
                                                 완료
                                             </button>
-                                            <button type="button" class="btn btn-link btn-sm" data-action="snooze" data-id="${safeId}" style="padding: 4px 6px; font-size: 0.75rem; margin: 0; background: transparent; border: none; color: var(--accent); font-weight: 600; cursor: pointer;" title="보류 처리">
+                                            <button type="button" class="task-action-btn btn-snooze" data-action="snooze" data-id="${safeId}" title="보류 처리">
                                                 보류
                                             </button>
-                                            <button type="button" class="btn btn-link btn-sm" data-action="dismiss" data-id="${safeId}" style="padding: 4px 6px; font-size: 0.75rem; margin: 0; background: transparent; border: none; color: var(--text-muted); font-weight: 500; cursor: pointer;" title="오늘 큐에서 제외">
+                                            <button type="button" class="task-action-btn btn-dismiss" data-action="dismiss" data-id="${safeId}" title="오늘 큐에서 제외">
                                                 제외
                                             </button>
                                         `;
@@ -1344,7 +1344,7 @@ export function renderTodayConsole(container) {
                                                     ${timeTextHtml}
                                                 </div>
                                                 
-                                                <div style="display: flex; gap: 6px;">
+                                                <div class="task-actions-container" style="display: flex; gap: 6px;">
                                                     ${actionsHtml}
                                                 </div>
                                             </div>

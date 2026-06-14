@@ -2142,4 +2142,88 @@ body.kiosk-mode .content-container {
     }
 }
 
+/* --- Today Console Action Buttons (Phase 13H-Repair-D) --- */
+.task-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+    text-decoration: none !important;
+}
+
+/* 완료 버튼: 옅은 green/turquoise 배경 + 진한 텍스트 */
+.task-action-btn.btn-done {
+    background-color: rgba(0, 184, 148, 0.08);
+    color: #00b894;
+    border-color: rgba(0, 184, 148, 0.15);
+}
+.task-action-btn.btn-done:hover {
+    background-color: rgba(0, 184, 148, 0.16);
+    color: #008f72;
+    border-color: rgba(0, 184, 148, 0.3);
+}
+
+/* 보류 버튼: 옅은 blue 배경 + 진한 텍스트 */
+.task-action-btn.btn-snooze {
+    background-color: rgba(9, 132, 227, 0.08);
+    color: #0984e3;
+    border-color: rgba(9, 132, 227, 0.15);
+}
+.task-action-btn.btn-snooze:hover {
+    background-color: rgba(9, 132, 227, 0.16);
+    color: #0770c2;
+    border-color: rgba(9, 132, 227, 0.3);
+}
+
+/* 제외 버튼: 옅은 gray/slate 배경 + 진한 텍스트 */
+.task-action-btn.btn-dismiss {
+    background-color: rgba(100, 116, 139, 0.08);
+    color: #64748b;
+    border-color: rgba(100, 116, 139, 0.15);
+}
+.task-action-btn.btn-dismiss:hover {
+    background-color: rgba(100, 116, 139, 0.16);
+    color: #475569;
+    border-color: rgba(100, 116, 139, 0.3);
+}
+
+.task-actions-container {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+/* 모바일 및 좁은 화면 대응 */
+@media (max-width: 768px) {
+    /* 카드 전체 레이아웃을 세로 정렬로 변경 */
+    #tasks-list-container .glass-card {
+        flex-direction: column;
+        align-items: stretch !important;
+        gap: 12px !important;
+    }
+    
+    /* 오른쪽 시간 및 액션 영역을 아래로 배치하고 좌우로 넓힘 */
+    #tasks-list-container .task-action-wrapper {
+        justify-content: space-between;
+        flex-shrink: 1;
+        width: 100%;
+        border-top: 1px solid rgba(255, 255, 255, 0.05);
+        padding-top: 8px;
+        gap: 12px !important;
+    }
+    
+    /* 시간 텍스트 정렬을 왼쪽 정렬로 변경하고 최소 너비 제거 */
+    #tasks-list-container .task-action-wrapper > div:first-child {
+        text-align: left !important;
+        min-width: auto !important;
+    }
+}
+
 
