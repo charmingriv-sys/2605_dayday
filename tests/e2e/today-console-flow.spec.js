@@ -149,7 +149,7 @@ test.describe('Director Today Console Flow Checks', () => {
     await expect(page.locator(`#tasks-list-container :text("${taskTitle}")`)).toBeVisible();
     
     // Assert it now has the "완료" badge
-    const badgeDone = page.locator(`#tasks-list-container .glass-card:has-text("${taskTitle}") .badge`);
+    const badgeDone = page.locator(`#tasks-list-container .glass-card:has-text("${taskTitle}") .badge-success`);
     await expect(badgeDone).toContainText('완료');
 
     // Assert the action buttons (done, snooze, dismiss) are replaced by Reopen button
@@ -255,7 +255,7 @@ test.describe('Director Today Console Flow Checks', () => {
     // 6. Assert Tasks Queue Section exists at the bottom (outside workspace, as a full-width container)
     const tasksQueue = page.locator('#tasks-queue-section');
     await expect(tasksQueue).toBeVisible();
-    await expect(tasksQueue.locator('text=운영 대기 업무 (Active & Completed Queue)')).toBeVisible();
+    await expect(tasksQueue.locator('text=운영 대기 업무')).toBeVisible();
   });
 
   test('should display mockCalendarEvents and TodayTasks in the calendar timeline and hide the overlay', async ({ page }) => {
@@ -1153,7 +1153,7 @@ test.describe('Director Today Console Flow Checks', () => {
 
     // Verify billing task is now resolved and shows "완료" badge on Done tab
     const resolvedBillingCard = page.locator(`#tasks-list-container .glass-card:has-text("${billingTitle}")`);
-    await expect(resolvedBillingCard.locator('.badge')).toContainText('완료');
+    await expect(resolvedBillingCard.locator('.badge-success')).toContainText('완료');
     
     // Verify Reopen action is visible instead of active actions
     await expect(resolvedBillingCard.locator('button[data-action="reopen"]')).toBeVisible();
@@ -1663,7 +1663,8 @@ test.describe('Director Today Console Flow Checks', () => {
     await tabAll.click();
     const manualCard = tasksList.locator(`.glass-card:has-text("${mTitle}")`);
     await expect(manualCard).toBeVisible();
-    await expect(manualCard).toContainText('상담예약 · 상담');
+    await expect(manualCard.locator('.badge-source')).toContainText('상담예약');
+    await expect(manualCard.locator('.badge-domain')).toContainText('상담');
   });
 
   test('should verify Phase 13I KPI cards ordering, labeling and 5/4 responsive layout', async ({ page }) => {

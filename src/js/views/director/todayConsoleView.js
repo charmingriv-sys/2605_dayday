@@ -402,7 +402,7 @@ export function renderTodayConsole(container) {
             const list = activeTasksList.filter(t => {
                 let cat = t.category;
                 if (t.source === 'system' || t.source === 'auto') {
-                    if (t.type === 'schedule' && t.category === 'schedule') {
+                    if (t.type === 'schedule' && (t.category === 'schedule' || t.category === 'schedule_check')) {
                         cat = 'schedule';
                     }
                 }
@@ -544,7 +544,7 @@ export function renderTodayConsole(container) {
                         else if (task.category === 'book_billing') cat = 'book_billing';
                     }
                     else if (task.type === 'schedule') {
-                        if (task.category === 'schedule') cat = 'schedule';
+                        if (task.category === 'schedule' || task.category === 'schedule_check') cat = 'schedule';
                     }
                 }
                 return cat === selectedCategoryFilter;
@@ -799,14 +799,19 @@ export function renderTodayConsole(container) {
         };
 
         const getTaskUserTags = (task) => {
-            let character = '자동점검';
+            let character = '';
             let domain = '메모';
 
-            // source 구분
-            if (task.source === 'manual') {
-                character = '직접등록';
-            } else if (task.source === 'system') {
-                character = '자동점검';
+            if (isSystemCheck(task)) {
+                character = '추천확인';
+            } else if (task.priority === 'urgent' || task.priority === 'closing' || task.category === 'check' || task.category === 'closing' || task.category === 'urgent') {
+                character = '확인필요';
+            } else if (task.priority === 'today') {
+                character = '상담예약';
+            } else if (task.priority === 'info') {
+                character = '메모';
+            } else {
+                character = task.priority || '일반';
             }
 
             // 상담예약성 수동 처리
@@ -1182,7 +1187,7 @@ export function renderTodayConsole(container) {
             <div class="glass-card" style="padding: 1.8rem; min-height: 250px; display: flex; flex-direction: column; margin-bottom: 24px;" id="tasks-queue-section">
                 <h3 style="font-size: 1.1rem; font-weight: 700; margin: 0 0 1.5rem 0; display: flex; align-items: center; gap: 8px;">
                     <i class="fa-solid fa-hourglass-half" style="color: var(--accent);"></i>
-                    운영 대기 업무 (Active & Completed Queue)
+                    운영 대기 업무
                 </h3>
 
                 <!-- Filter Tabs for Phase 8C-5B -->
@@ -1217,6 +1222,7 @@ export function renderTodayConsole(container) {
                                 ${filteredTasks.map(task => {
                                     const safeId = escapeHtml(task.id);
                                     const safeTitle = escapeHtml(task.title);
+                                    const userTags = getTaskUserTags(task);
 
                                     const isDone = task.status === 'done';
                                     const isDismissed = task.status === 'dismissed';
@@ -1232,15 +1238,25 @@ export function renderTodayConsole(container) {
                                         : `font-weight: 700; color: var(--text-main); font-size: 0.95rem;`;
 
                                     let badgeHtml = '';
-                                    if (isDone) {
-                                        badgeHtml = `<span class="badge badge-success" style="padding: 4px 10px; font-weight: 700; background-color: var(--success); color: #ffffff;">완료</span>`;
-                                    } else if (task.status === 'dismissed') {
-                                        badgeHtml = `<span class="badge" style="padding: 4px 10px; font-weight: 700; background-color: var(--text-muted); color: #ffffff;">제외</span>`;
-                                    } else if (task.status === 'snoozed' && new Date(task.snoozedUntil).getTime() > Date.now()) {
-                                        badgeHtml = `<span class="badge" style="padding: 4px 10px; font-weight: 700; background-color: var(--warning); color: #ffffff;">보류</span>`;
-                                    } else {
-                                        badgeHtml = getPriorityBadge(task);
-                                    }
+                                    const statusBadge = isDone
+                                        ? `<span class="badge badge-success" style="padding: 3px 6px; font-size: 0.68rem; font-weight: 700; width: 100%; text-align: center; border-radius: 4px; background-color: var(--success); color: #ffffff; white-space: nowrap;">완료</span>`
+                                        : task.status === 'dismissed'
+                                            ? `<span class="badge" style="padding: 3px 6px; font-size: 0.68rem; font-weight: 700; width: 100%; text-align: center; border-radius: 4px; background-color: var(--text-muted); color: #ffffff; white-space: nowrap;">제외</span>`
+                                            : (task.status === 'snoozed' && new Date(task.snoozedUntil).getTime() > Date.now())
+                                                ? `<span class="badge" style="padding: 3px 6px; font-size: 0.68rem; font-weight: 700; width: 100%; text-align: center; border-radius: 4px; background-color: var(--warning); color: #ffffff; white-space: nowrap;">보류</span>`
+                                                : '';
+
+                                    badgeHtml = `
+                                    <div style="display: flex; flex-direction: column; gap: 4px; align-items: center; width: 72px;">
+                                        ${statusBadge}
+                                        <span class="badge badge-source" style="padding: 3px 6px; font-size: 0.68rem; font-weight: 700; width: 100%; text-align: center; border-radius: 4px; background-color: rgba(255,255,255,0.06); color: var(--text-muted); border: 1px solid rgba(255,255,255,0.04); white-space: nowrap;">
+                                            ${escapeHtml(userTags.character)}
+                                        </span>
+                                        <span class="badge-domain" style="padding: 3px 6px; font-size: 0.68rem; font-weight: 700; width: 100%; text-align: center; border-radius: 4px; background-color: ${getDomainBadgeColor(userTags.domain)}; color: #ffffff; white-space: nowrap; border: 1px solid rgba(255,255,255,0.04);">
+                                            ${escapeHtml(userTags.domain)}
+                                        </span>
+                                    </div>
+                                    `;
 
                                     let timeText = '';
                                     if (task.startAt) {
@@ -1274,6 +1290,12 @@ export function renderTodayConsole(container) {
                                                 교재 확인
                                             </button>
                                         `;
+                                    } else if (task.category === 'schedule_check') {
+                                        actionsHtml = `
+                                            <button type="button" class="btn btn-sm btn-primary" data-action="confirm-schedule" data-id="${safeId}" style="padding: 6px 12px; font-size: 0.75rem; margin: 0; background: var(--primary); color: #fff; justify-content: center; border-radius: 4px; font-weight: 600;" title="일정 확인 처리">
+                                                일정 확인
+                                            </button>
+                                        `;
                                     } else if (isRestorable) {
                                         actionsHtml = `
                                             <button type="button" class="btn btn-sm" data-action="reopen" data-id="${safeId}" style="padding: 6px 10px; font-size: 0.75rem; margin: 0; background: var(--primary); color: #fff; justify-content: center; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;" title="대기로 복원">
@@ -1304,7 +1326,6 @@ export function renderTodayConsole(container) {
                                         }
                                     }
                                     const safeDescription = escapeHtml(previewDescription);
-                                    const userTags = getTaskUserTags(task);
 
                                     return `
                                         <div class="glass-card" style="${cardStyle}" ${!isRestorable ? `onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='rgba(255,255,255,0.01)'"` : ''}>
@@ -1321,9 +1342,6 @@ export function renderTodayConsole(container) {
                                             <div style="display: flex; align-items: center; gap: 20px; flex-shrink: 0;" class="task-action-wrapper">
                                                 <div style="text-align: right; display: flex; flex-direction: column; gap: 4px; min-width: 100px;">
                                                     ${timeTextHtml}
-                                                    <div style="display: none;">
-                                                        ${escapeHtml(userTags.character)} · ${escapeHtml(userTags.domain)}
-                                                    </div>
                                                 </div>
                                                 
                                                 <div style="display: flex; gap: 6px;">
@@ -1725,6 +1743,26 @@ export function renderTodayConsole(container) {
                 return;
             }
 
+            // Confirm Schedule Action (Phase 13F)
+            const btnConfirmSchedule = e.target.closest('[data-action="confirm-schedule"]');
+            if (btnConfirmSchedule) {
+                const taskId = btnConfirmSchedule.dataset.id;
+                const task = stateStore.getTodayTasks().find(t => t.id === taskId);
+                if (task) {
+                    const scheduleId = task.dedupeKey.substring('SYSTEM_RECOMMEND_MAJOR_SCHEDULE_'.length).split('_')[0];
+                    const confirmed = confirm('이 일정을 확인 완료 처리할까요?');
+                    if (confirmed) {
+                        try {
+                            stateStore.confirmMajorSchedule(scheduleId);
+                            alert('일정이 확인 완료 처리되었습니다.');
+                        } catch (err) {
+                            alert(err.message);
+                        }
+                    }
+                }
+                return;
+            }
+
             // Done Action
             const btnDone = e.target.closest('[data-action="done"]');
             if (btnDone) {
@@ -1777,11 +1815,12 @@ export function renderTodayConsole(container) {
     container.addEventListener('click', handleEvents);
     container.addEventListener('change', handleEvents);
 
-    // Subscribe to TodayTask, Payments, StudentBooks, and Attendance store changes to reflect real-time queue states
+    // Subscribe to TodayTask, Payments, StudentBooks, Attendance, and MajorSchedules store changes to reflect real-time queue states
     const unsubTodayTasks = stateStore.subscribe('TODAY_TASKS_CHANGED', render);
     const unsubPayments = stateStore.subscribe('PAYMENTS_CHANGED', render);
     const unsubStudentBooks = stateStore.subscribe('STUDENT_BOOKS_CHANGED', render);
     const unsubAttendance = stateStore.subscribe('ATTENDANCE_CHANGED', render);
+    const unsubMajorSchedules = stateStore.subscribe('MAJOR_SCHEDULES_CHANGED', render);
 
     // View cleanup to prevent event listener and subscriber memory leaks
     return () => {
@@ -1789,6 +1828,7 @@ export function renderTodayConsole(container) {
         unsubPayments();
         unsubStudentBooks();
         unsubAttendance();
+        unsubMajorSchedules();
         container.removeEventListener('submit', handleEvents);
         container.removeEventListener('click', handleEvents);
         container.removeEventListener('change', handleEvents);
