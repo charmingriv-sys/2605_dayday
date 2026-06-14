@@ -798,6 +798,58 @@ export function renderTodayConsole(container) {
             }
         };
 
+        const getTaskUserTags = (task) => {
+            let character = '자동점검';
+            let domain = '메모';
+
+            // source 구분
+            if (task.source === 'manual') {
+                character = '직접등록';
+            } else if (task.source === 'system') {
+                character = '자동점검';
+            }
+
+            // 상담예약성 수동 처리
+            if (task.priority === 'today' && task.source !== 'system') {
+                character = '상담예약';
+                domain = '상담';
+                return { character, domain };
+            }
+
+            const category = task.category || '';
+            const type = task.type || '';
+
+            if (category === 'memo' || type === 'memo') {
+                domain = '메모';
+            } else if (category === 'absent' || category === 'attendance_warning') {
+                domain = '출결';
+            } else if (category === 'staff_warning') {
+                domain = '근태';
+            } else if (category === 'billing_due') {
+                domain = '수납';
+            } else if (category === 'billing_overdue') {
+                domain = '미수납';
+            } else if (type === 'schedule' || category === 'schedule') {
+                domain = '주요일정';
+            } else if (category === 'book_check') {
+                domain = '교재';
+            } else if (category === 'book_billing') {
+                domain = '교재결제';
+            } else if (type === 'counseling' || category === 'counseling') {
+                domain = '상담';
+            } else {
+                if (type === 'attendance') {
+                    domain = '출결';
+                } else if (type === 'billing') {
+                    domain = '수납';
+                } else if (type === 'book') {
+                    domain = '교재';
+                }
+            }
+
+            return { character, domain };
+        };
+
         const formatTaskDateTime = (isoString) => {
             if (!isoString) return '';
             try {
@@ -1127,7 +1179,7 @@ export function renderTodayConsole(container) {
                         완료 (${doneTasks.length})
                     </button>
                     <button type="button" class="tab-btn ${activeTab === 'hidden' ? 'active' : ''}" data-tab="hidden" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 4px; font-weight: 600; cursor: pointer; transition: all 0.2s; border: 1px solid ${activeTab === 'hidden' ? 'var(--accent)' : 'rgba(255,255,255,0.05)'}; background: ${activeTab === 'hidden' ? 'rgba(165, 94, 234, 0.15)' : 'rgba(255,255,255,0.01)'}; color: ${activeTab === 'hidden' ? 'var(--accent)' : 'var(--text-muted)'}; margin: 0;">
-                        숨김/보류 (${hiddenTasksList.length})
+                        제외/보류 (${hiddenTasksList.length})
                     </button>
                     <button type="button" class="tab-btn ${activeTab === 'all' ? 'active' : ''}" data-tab="all" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 4px; font-weight: 600; cursor: pointer; transition: all 0.2s; border: 1px solid ${activeTab === 'all' ? 'var(--text-main)' : 'rgba(255,255,255,0.05)'}; background: ${activeTab === 'all' ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.01)'}; color: ${activeTab === 'all' ? 'var(--text-main)' : 'var(--text-muted)'}; margin: 0;">
                         전체 (${allTasksList.length})
@@ -1168,7 +1220,7 @@ export function renderTodayConsole(container) {
                                     if (isDone) {
                                         badgeHtml = `<span class="badge badge-success" style="padding: 4px 10px; font-weight: 700; background-color: var(--success); color: #ffffff;">완료</span>`;
                                     } else if (task.status === 'dismissed') {
-                                        badgeHtml = `<span class="badge" style="padding: 4px 10px; font-weight: 700; background-color: var(--text-muted); color: #ffffff;">숨김</span>`;
+                                        badgeHtml = `<span class="badge" style="padding: 4px 10px; font-weight: 700; background-color: var(--text-muted); color: #ffffff;">제외</span>`;
                                     } else if (task.status === 'snoozed' && new Date(task.snoozedUntil).getTime() > Date.now()) {
                                         badgeHtml = `<span class="badge" style="padding: 4px 10px; font-weight: 700; background-color: var(--warning); color: #ffffff;">보류</span>`;
                                     } else {
@@ -1190,7 +1242,7 @@ export function renderTodayConsole(container) {
                                     if (isDone) {
                                         timeTextHtml = `<div style="font-size: 0.8rem; font-weight: 600; color: var(--success);"><i class="fa-solid fa-circle-check" style="margin-right: 4px;"></i>${formatTaskDateTime(task.completedAt)} 완료</div>`;
                                     } else if (task.status === 'dismissed') {
-                                        timeTextHtml = `<div style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);"><i class="fa-solid fa-eye-slash" style="margin-right: 4px;"></i>숨김 처리됨</div>`;
+                                        timeTextHtml = `<div style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);"><i class="fa-solid fa-eye-slash" style="margin-right: 4px;"></i>제외 처리됨</div>`;
                                     } else if (task.status === 'snoozed' && new Date(task.snoozedUntil).getTime() > Date.now()) {
                                         timeTextHtml = `<div style="font-size: 0.8rem; font-weight: 600; color: var(--accent);"><i class="fa-solid fa-hourglass" style="margin-right: 4px;"></i>${formatTaskDateTime(task.snoozedUntil)}까지 보류</div>`;
                                     } else {
@@ -1215,14 +1267,14 @@ export function renderTodayConsole(container) {
                                         `;
                                     } else {
                                         actionsHtml = `
-                                            <button type="button" class="btn btn-sm" data-action="done" data-id="${safeId}" style="padding: 6px 10px; font-size: 0.75rem; margin: 0; background: var(--success); color: #fff; justify-content: center; border-radius: 4px;" title="완료 처리">
-                                                <i class="fa-solid fa-check"></i>
+                                            <button type="button" class="btn btn-link btn-sm" data-action="done" data-id="${safeId}" style="padding: 4px 6px; font-size: 0.75rem; margin: 0; background: transparent; border: none; color: var(--success); font-weight: 600; cursor: pointer;" title="완료 처리">
+                                                완료
                                             </button>
-                                            <button type="button" class="btn btn-sm" data-action="snooze" data-id="${safeId}" style="padding: 6px 10px; font-size: 0.75rem; margin: 0; background: var(--secondary); color: var(--text-main); justify-content: center; border-radius: 4px;" title="1시간 보류">
-                                                <i class="fa-solid fa-hourglass"></i>
+                                            <button type="button" class="btn btn-link btn-sm" data-action="snooze" data-id="${safeId}" style="padding: 4px 6px; font-size: 0.75rem; margin: 0; background: transparent; border: none; color: var(--accent); font-weight: 600; cursor: pointer;" title="보류 처리">
+                                                보류
                                             </button>
-                                            <button type="button" class="btn btn-sm" data-action="dismiss" data-id="${safeId}" style="padding: 6px 10px; font-size: 0.75rem; margin: 0; background: var(--danger); color: #fff; justify-content: center; border-radius: 4px;" title="제외 및 숨김">
-                                                <i class="fa-solid fa-eye-slash"></i>
+                                            <button type="button" class="btn btn-link btn-sm" data-action="dismiss" data-id="${safeId}" style="padding: 4px 6px; font-size: 0.75rem; margin: 0; background: transparent; border: none; color: var(--text-muted); font-weight: 500; cursor: pointer;" title="오늘 큐에서 제외">
+                                                제외
                                             </button>
                                         `;
                                     }
@@ -1237,6 +1289,7 @@ export function renderTodayConsole(container) {
                                         }
                                     }
                                     const safeDescription = escapeHtml(previewDescription);
+                                    const userTags = getTaskUserTags(task);
 
                                     return `
                                         <div class="glass-card" style="${cardStyle}" ${!isRestorable ? `onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='rgba(255,255,255,0.01)'"` : ''}>
@@ -1251,9 +1304,11 @@ export function renderTodayConsole(container) {
                                             </div>
                                             <!-- Right side actions & metadata -->
                                             <div style="display: flex; align-items: center; gap: 20px; flex-shrink: 0;" class="task-action-wrapper">
-                                                <div style="text-align: right; display: flex; flex-direction: column; gap: 4px; min-width: 80px;">
+                                                <div style="text-align: right; display: flex; flex-direction: column; gap: 4px; min-width: 100px;">
                                                     ${timeTextHtml}
-                                                    <div style="font-size: 0.72rem; color: var(--text-muted);">${escapeHtml(task.type)}</div>
+                                                    <div style="font-size: 0.72rem; color: var(--text-muted); white-space: nowrap;">
+                                                        ${escapeHtml(userTags.character)} · ${escapeHtml(userTags.domain)}
+                                                    </div>
                                                 </div>
                                                 
                                                 <div style="display: flex; gap: 6px;">
@@ -1692,7 +1747,9 @@ export function renderTodayConsole(container) {
             const btnDismiss = e.target.closest('[data-action="dismiss"]');
             if (btnDismiss) {
                 const taskId = btnDismiss.dataset.id;
-                stateStore.dismissTodayTask(taskId);
+                if (confirm('이 업무를 오늘 큐에서 제외할까요?\n같은 조건의 자동 업무는 다시 표시되지 않을 수 있습니다.')) {
+                    stateStore.dismissTodayTask(taskId);
+                }
                 return;
             }
         }

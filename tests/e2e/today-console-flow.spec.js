@@ -181,8 +181,17 @@ test.describe('Director Today Console Flow Checks', () => {
     await expect(page.locator(`#tasks-list-container :text("${dismissTitle}")`)).toBeVisible();
 
     const dismissButton = page.locator(`#tasks-list-container .glass-card:has-text("${dismissTitle}") button[data-action="dismiss"]`);
+    
+    // Register dialog handler to verify confirm message and accept it
+    let dialogMsg = '';
+    page.once('dialog', dialog => {
+      dialogMsg = dialog.message();
+      dialog.accept();
+    });
+    
     await dismissButton.click();
     await expect(page.locator(`#tasks-list-container :text("${dismissTitle}")`)).toBeHidden();
+    expect(dialogMsg).toContain('이 업무를 오늘 큐에서 제외할까요?');
   });
 
   test('should escape HTML input fields and prevent XSS execution', async ({ page }) => {
@@ -1538,7 +1547,7 @@ test.describe('Director Today Console Flow Checks', () => {
     const tasksList = page.locator('#tasks-list-container');
     const tabActive = page.locator('.tab-btn:has-text("대기")');
     const tabDone = page.locator('.tab-btn:has-text("완료")');
-    const tabHidden = page.locator('.tab-btn:has-text("숨김/보류")');
+    const tabHidden = page.locator('.tab-btn:has-text("제외/보류")');
     const tabAll = page.locator('.tab-btn:has-text("전체")');
 
     // 2. Verify all are in Active Tab by default
@@ -1574,6 +1583,9 @@ test.describe('Director Today Console Flow Checks', () => {
     await expect(chip.locator('i.fa-check')).toBeHidden();
 
     // 7. Dismiss temporary task
+    page.once('dialog', dialog => {
+      dialog.accept();
+    });
     await tasksList.locator(`.glass-card:has-text("${dTitle}") [data-action="dismiss"]`).click();
     await expect(tasksList.locator(`.glass-card:has-text("${dTitle}")`)).toBeHidden();
 
@@ -1626,6 +1638,32 @@ test.describe('Director Today Console Flow Checks', () => {
     console.log('DEBUG_SCROLL_FINAL:', finalScroll);
     // Ensure final scroll position is close to the initial scroll position (within 2px tolerance)
     expect(Math.abs(finalScroll - initialScroll)).toBeLessThanOrEqual(2);
+
+    // 13. Verify Phase 13H user-friendly tags and button wordings/styles
+    // Check if internal values like 'billing', 'attendance', 'memo', 'staff_warning' etc. are NOT visible inside tasks-list-container
+    const containerText = await tasksList.innerText();
+    expect(containerText).not.toContain('billing');
+    expect(containerText).not.toContain('attendance');
+    expect(containerText).not.toContain('memo');
+    expect(containerText).not.toContain('staff_warning');
+    expect(containerText).not.toContain('book_billing');
+
+    // Verify 제외 and text buttons in Active Tab
+    await tabActive.click();
+    const activeFirstCard = tasksList.locator('.glass-card').first();
+    const doneTextBtn = activeFirstCard.locator('[data-action="done"]');
+    await expect(doneTextBtn).toContainText('완료');
+    const snoozeTextBtn = activeFirstCard.locator('[data-action="snooze"]');
+    await expect(snoozeTextBtn).toContainText('보류');
+    const dismissTextBtn = activeFirstCard.locator('[data-action="dismiss"]');
+    await expect(dismissTextBtn).toContainText('제외');
+
+    // Confirm that manual tasks added are shown as "직접등록 · 메모" or "상담예약 · 상담"
+    // Switch to All Tab since manual task (mTitle) has been marked done and is not in Active Tab
+    await tabAll.click();
+    const manualCard = tasksList.locator(`.glass-card:has-text("${mTitle}")`);
+    await expect(manualCard).toBeVisible();
+    await expect(manualCard).toContainText('상담예약 · 상담');
   });
 });
 
