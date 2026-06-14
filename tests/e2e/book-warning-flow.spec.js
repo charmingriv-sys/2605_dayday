@@ -128,7 +128,7 @@ test.describe('Textbook Warning Life Cycle Flow (Phase 13E-1)', () => {
     await page.locator('[data-filter-id="book_billing"]').click();
     await expect(taskList).toHaveCount(1);
     await expect(taskList.first()).toContainText('[교재결제확인]');
-    await expect(taskList.first()).toContainText('교재비 결제 확인이 필요합니다.');
+    await expect(taskList.first()).toContainText('학부모 안내 및 수납 확인이 필요합니다.');
 
     // 6. Test direct assignment by Director
     await page.evaluate(() => {

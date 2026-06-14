@@ -617,6 +617,20 @@ export const todayTaskMethods = {
                 const book = books.find(b => b.id === payment.bookId);
                 const bookName = book ? book.name : '교재';
 
+                // 요청 출처 역추적
+                const matchingReq = bookIssueRequests.find(r => 
+                    r.studentId === payment.studentId && 
+                    r.bookId === payment.bookId && 
+                    (r.status === 'confirmed' || r.status === 'paid')
+                );
+                
+                let sourceLabel = '직접 등록';
+                if (matchingReq && matchingReq.teacherId !== null) {
+                    const reqTeacher = teachers.find(t => t.id === matchingReq.teacherId);
+                    const teacherName = reqTeacher ? reqTeacher.name : '강사';
+                    sourceLabel = `${teacherName} 선생님 요청`;
+                }
+
                 const dedupeKey = `SYSTEM_RECOMMEND_BOOK_BILLING_${payment.id}`;
                 activeBookKeys.push(dedupeKey);
 
@@ -642,8 +656,8 @@ export const todayTaskMethods = {
                             dueAt: nowIso,
                             startAt: nowIso,
                             endAt: nowIso,
-                            title: `[교재결제확인] ${student.name} 원생 ${bookName}`,
-                            description: `${student.name} 원생의 교재비 결제 확인이 필요합니다. (금액: ${payment.amount.toLocaleString()}원) 학부모 안내 및 수납 확인이 필요합니다.`,
+                            title: `[교재결제확인] ${student.name} 원생 ${bookName} / ${sourceLabel}`,
+                            description: `학부모 안내 및 수납 확인이 필요합니다.`,
                             relatedStudentIds: [student.id],
                             dedupeKey: dedupeKey,
                             visibilityRoles: ['director'],
@@ -822,14 +836,14 @@ export const todayTaskMethods = {
                             reason = '수업 시작 후 출석했습니다.';
                             dueAt = new Date(scheduledStartAt.getTime() + lateThresholdMinutes * 60 * 1000).toISOString();
                         } else if (currentWarningState === 'CHECKOUT_MISSING') {
-                            title = `${studentName} 원생 하원누락 확인 필요`;
+                            title = `[특이출결] ${studentName} 원생 하원누락`;
                             warningTypeLabel = '하원누락';
-                            reason = '수업 시간이 지났지만 하원 기록이 없습니다.';
+                            reason = '수업 시간이 종료되었지만 하원 기록이 없습니다.';
                             dueAt = checkoutLimit ? checkoutLimit.toISOString() : scheduledEndAt.toISOString();
                         } else if (currentWarningState === 'LATE_CHECKOUT_MISSING') {
-                            title = `${studentName} 원생 지각 출석 및 하원누락`;
+                            title = `[특이출결] ${studentName} 원생 지각 및 하원누락`;
                             warningTypeLabel = '지각 + 하원누락';
-                            reason = '지각 출석 후 하원 기록이 없습니다.';
+                            reason = '지각 출석 후 수업 시간이 종료되었지만 하원 기록이 없습니다.';
                             dueAt = checkoutLimit ? checkoutLimit.toISOString() : scheduledEndAt.toISOString();
                         }
 
@@ -1071,24 +1085,24 @@ export const todayTaskMethods = {
                         let dueAt = scheduledEndAt.toISOString();
 
                         if (currentWarningState === 'ABSENT') {
-                            title = `${t.name} 강사 미출근`;
+                            title = `[특이근태] ${t.name} 강사 미출근`;
                             warningTypeLabel = '미출근';
                             reason = '출근 예정시간이 지났지만 출근 기록이 없습니다.';
                             dueAt = new Date(scheduledStartAt.getTime() + teacherNoShowGraceMinutes * 60 * 1000).toISOString();
                         } else if (currentWarningState === 'LATE') {
-                            title = `${t.name} 강사 지각`;
+                            title = `[특이근태] ${t.name} 강사 지각`;
                             warningTypeLabel = '지각';
-                            reason = '출근 예정시간이 지났지만 정시에 출근 기록이 없습니다.';
+                            reason = '출근 예정시간보다 늦게 출근했습니다.';
                             dueAt = new Date(scheduledStartAt.getTime() + teacherLateGraceMinutes * 60 * 1000).toISOString();
                         } else if (currentWarningState === 'CHECKOUT_MISSING') {
-                            title = `${t.name} 강사 퇴근누락`;
+                            title = `[특이근태] ${t.name} 강사 퇴근누락`;
                             warningTypeLabel = '퇴근누락';
-                            reason = '근무 시간이 지났지만 퇴근 기록이 없습니다.';
+                            reason = '근무 시간이 종료되었지만 퇴근 기록이 없습니다.';
                             dueAt = new Date(scheduledEndAt.getTime() + teacherCheckoutMissingGraceMinutes * 60 * 1000).toISOString();
                         } else if (currentWarningState === 'LATE_CHECKOUT_MISSING') {
-                            title = `${t.name} 강사 지각 및 퇴근누락`;
+                            title = `[특이근태] ${t.name} 강사 지각 및 퇴근누락`;
                             warningTypeLabel = '지각 + 퇴근누락';
-                            reason = '지각 출근 후 퇴근 기록이 없습니다.';
+                            reason = '늦게 출근했고, 근무 시간이 종료되었지만 퇴근 기록이 없습니다.';
                             dueAt = new Date(scheduledEndAt.getTime() + teacherCheckoutMissingGraceMinutes * 60 * 1000).toISOString();
                         }
 
@@ -1218,7 +1232,7 @@ export const todayTaskMethods = {
                     if (!hasResolved) {
                         const isAlreadyOpen = this.db.todayTasks.some(t => t.dedupeKey === dedupeKey && t.status === 'open');
                         if (!isAlreadyOpen) {
-                            let description = `${event.name} ${ms.label} 일정이 ${dLabel}입니다. 일정 내용과 준비 사항을 확인해 주세요.`;
+                            let description = '일정 내용과 준비 사항을 확인해 주세요.';
                             const details = [];
                             details.push(`• 일정명: ${event.name}`);
                             details.push(`• 마일스톤 유형: ${ms.label}`);

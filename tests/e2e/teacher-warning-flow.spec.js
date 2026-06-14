@@ -139,8 +139,8 @@ test.describe('Teacher Attendance Warning Engine E2E Flow', () => {
     });
     let systemTasks = res.tasks.filter(t => t.source === 'system');
     expect(systemTasks).toHaveLength(1);
-    expect(systemTasks[0].title).toBe('성어진 강사 지각');
-    expect(systemTasks[0].description).toContain('출근 예정시간이 지났지만 정시에 출근 기록이 없습니다.');
+    expect(systemTasks[0].title).toBe('[특이근태] 성어진 강사 지각');
+    expect(systemTasks[0].description).toContain('출근 예정시간보다 늦게 출근했습니다.');
 
     // ----------------------------------------------------
     // Rule 3: 출근 시작 + 미출근 허용분 초과, 출근 없음 → 미출근 생성, 지각 제외
@@ -153,7 +153,7 @@ test.describe('Teacher Attendance Warning Engine E2E Flow', () => {
     });
     systemTasks = res.tasks.filter(t => t.source === 'system');
     expect(systemTasks).toHaveLength(1);
-    expect(systemTasks[0].title).toBe('성어진 강사 미출근');
+    expect(systemTasks[0].title).toBe('[특이근태] 성어진 강사 미출근');
     expect(systemTasks[0].description).toContain('출근 예정시간이 지났지만 출근 기록이 없습니다.');
 
     // ----------------------------------------------------
@@ -169,7 +169,7 @@ test.describe('Teacher Attendance Warning Engine E2E Flow', () => {
     });
     systemTasks = res.tasks.filter(t => t.source === 'system');
     expect(systemTasks).toHaveLength(1);
-    expect(systemTasks[0].title).toBe('성어진 강사 지각');
+    expect(systemTasks[0].title).toBe('[특이근태] 성어진 강사 지각');
 
     // ----------------------------------------------------
     // Rule 5: 정상 출근 후 퇴근 없음 → 마지막 종료시간 + grace 초과 시 퇴근누락 생성
@@ -184,8 +184,8 @@ test.describe('Teacher Attendance Warning Engine E2E Flow', () => {
     });
     systemTasks = res.tasks.filter(t => t.source === 'system');
     expect(systemTasks).toHaveLength(1);
-    expect(systemTasks[0].title).toBe('성어진 강사 퇴근누락');
-    expect(systemTasks[0].description).toContain('근무 시간이 지났지만 퇴근 기록이 없습니다.');
+    expect(systemTasks[0].title).toBe('[특이근태] 성어진 강사 퇴근누락');
+    expect(systemTasks[0].description).toContain('근무 시간이 종료되었지만 퇴근 기록이 없습니다.');
 
     // ----------------------------------------------------
     // Rule 6: 지각 출근 후 퇴근 없음 → 지각 + 퇴근누락 처리
@@ -200,8 +200,8 @@ test.describe('Teacher Attendance Warning Engine E2E Flow', () => {
     });
     systemTasks = res.tasks.filter(t => t.source === 'system');
     expect(systemTasks).toHaveLength(1);
-    expect(systemTasks[0].title).toBe('성어진 강사 지각 및 퇴근누락');
-    expect(systemTasks[0].description).toContain('지각 출근 후 퇴근 기록이 없습니다.');
+    expect(systemTasks[0].title).toBe('[특이근태] 성어진 강사 지각 및 퇴근누락');
+    expect(systemTasks[0].description).toContain('늦게 출근했고, 근무 시간이 종료되었지만 퇴근 기록이 없습니다.');
 
     // ----------------------------------------------------
     // Rule 7: 출근시간관리 설정이 없는 날 출근만 있고 퇴근 없음 → 당일 퇴근누락 미생성
@@ -251,7 +251,7 @@ test.describe('Teacher Attendance Warning Engine E2E Flow', () => {
     });
     systemTasks = res.tasks.filter(t => t.source === 'system' && t.category === 'staff_warning');
     expect(systemTasks).toHaveLength(1);
-    expect(systemTasks[0].title).toBe('성어진 강사 퇴근누락');
+    expect(systemTasks[0].title).toBe('[특이근태] 성어진 강사 퇴근누락');
 
     // ----------------------------------------------------
     // Rule 10: 지각 설정 사용 안 함 → 지각 미생성
@@ -275,7 +275,7 @@ test.describe('Teacher Attendance Warning Engine E2E Flow', () => {
     });
     systemTasks = res.tasks.filter(t => t.source === 'system');
     expect(systemTasks).toHaveLength(1);
-    expect(systemTasks[0].title).toBe('성어진 강사 지각');
+    expect(systemTasks[0].title).toBe('[특이근태] 성어진 강사 지각');
 
     // ----------------------------------------------------
     // Rule 12: 퇴근누락 설정 사용 안 함 → 퇴근누락 미생성
@@ -301,7 +301,7 @@ test.describe('Teacher Attendance Warning Engine E2E Flow', () => {
     });
     systemTasks = res.tasks.filter(t => t.source === 'system');
     expect(systemTasks).toHaveLength(1);
-    expect(systemTasks[0].title).toBe('성어진 강사 지각');
+    expect(systemTasks[0].title).toBe('[특이근태] 성어진 강사 지각');
 
     // ----------------------------------------------------
     // Rule 14: 동일 워닝 중복 생성 방지

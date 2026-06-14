@@ -233,8 +233,8 @@ test.describe('Student Attendance Warning Engine E2E Flow', () => {
     });
     systemTasks = res.tasks.filter(t => t.source === 'system');
     expect(systemTasks).toHaveLength(1);
-    expect(systemTasks[0].title).toBe('홍길동 원생 하원누락 확인 필요');
-    expect(systemTasks[0].description).toContain('수업 시간이 지났지만 하원 기록이 없습니다.');
+    expect(systemTasks[0].title).toBe('[특이출결] 홍길동 원생 하원누락');
+    expect(systemTasks[0].description).toContain('수업 시간이 종료되었지만 하원 기록이 없습니다.');
 
     // ----------------------------------------------------
     // Rule 7: 지각 출석 후 하원 없음 → actualCheckInAt + classDuration + grace 초과 시 하원누락 생성
@@ -263,7 +263,7 @@ test.describe('Student Attendance Warning Engine E2E Flow', () => {
     });
     systemTasks = res.tasks.filter(t => t.source === 'system');
     expect(systemTasks).toHaveLength(1);
-    expect(systemTasks[0].title).toBe('홍길동 원생 지각 출석 및 하원누락');
+    expect(systemTasks[0].title).toBe('[특이출결] 홍길동 원생 지각 및 하원누락');
 
     // ----------------------------------------------------
     // Rule 8: 출석 없음 + 하원 없음 → 결석 확인만 생성, 하원누락 없음
