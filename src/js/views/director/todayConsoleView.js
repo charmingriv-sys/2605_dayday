@@ -850,6 +850,21 @@ export function renderTodayConsole(container) {
             return { character, domain };
         };
 
+        const getDomainBadgeColor = (domain) => {
+            switch (domain) {
+                case '메모': return 'var(--success)';
+                case '출결': return 'var(--danger)';
+                case '근태': return '#f1c40f';
+                case '수납': return 'var(--success)';
+                case '미수납': return 'var(--danger)';
+                case '주요일정': return 'var(--primary)';
+                case '교재': return '#a55eea';
+                case '교재결제': return '#f1c40f';
+                case '상담': return 'var(--primary)';
+                default: return 'var(--text-muted)';
+            }
+        };
+
         const formatTaskDateTime = (isoString) => {
             if (!isoString) return '';
             try {
@@ -1306,7 +1321,7 @@ export function renderTodayConsole(container) {
                                             <div style="display: flex; align-items: center; gap: 20px; flex-shrink: 0;" class="task-action-wrapper">
                                                 <div style="text-align: right; display: flex; flex-direction: column; gap: 4px; min-width: 100px;">
                                                     ${timeTextHtml}
-                                                    <div style="font-size: 0.72rem; color: var(--text-muted); white-space: nowrap;">
+                                                    <div style="display: none;">
                                                         ${escapeHtml(userTags.character)} · ${escapeHtml(userTags.domain)}
                                                     </div>
                                                 </div>
