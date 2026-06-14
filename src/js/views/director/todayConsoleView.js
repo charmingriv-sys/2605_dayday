@@ -1182,7 +1182,13 @@ export function renderTodayConsole(container) {
                                     }
 
                                     let actionsHtml = '';
-                                    if (isRestorable) {
+                                    if (task.category === 'book_check') {
+                                        actionsHtml = `
+                                            <button type="button" class="btn btn-sm btn-primary" data-action="confirm-book" data-id="${safeId}" style="padding: 6px 12px; font-size: 0.75rem; margin: 0; background: var(--primary); color: #fff; justify-content: center; border-radius: 4px; font-weight: 600;" title="교재 지급 승인">
+                                                교재 확인
+                                            </button>
+                                        `;
+                                    } else if (isRestorable) {
                                         actionsHtml = `
                                             <button type="button" class="btn btn-sm" data-action="reopen" data-id="${safeId}" style="padding: 6px 10px; font-size: 0.75rem; margin: 0; background: var(--primary); color: #fff; justify-content: center; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;" title="대기로 복원">
                                                 <i class="fa-solid fa-rotate-left"></i> 복원
@@ -1605,6 +1611,26 @@ export function renderTodayConsole(container) {
                     const popover = container.querySelector('#calendar-popover-container');
                     if (popover) {
                         popover.style.display = 'none';
+                    }
+                }
+                return;
+            }
+
+            // Confirm Book Action (Phase 13E-3)
+            const btnConfirmBook = e.target.closest('[data-action="confirm-book"]');
+            if (btnConfirmBook) {
+                const taskId = btnConfirmBook.dataset.id;
+                const task = stateStore.getTodayTasks().find(t => t.id === taskId);
+                if (task) {
+                    const birId = task.dedupeKey.replace('SYSTEM_RECOMMEND_BOOK_CHECK_', '');
+                    const confirmed = confirm('이 교재 지급 요청을 확인 처리할까요?');
+                    if (confirmed) {
+                        try {
+                            stateStore.confirmBookIssueRequest(birId);
+                            alert('교재 지급 요청이 확인 처리되었습니다.');
+                        } catch (err) {
+                            alert(err.message);
+                        }
                     }
                 }
                 return;

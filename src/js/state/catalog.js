@@ -333,5 +333,90 @@ export const catalogMethods = {
             this.saveDB();
             this.notify('BOOK_ISSUE_REQUESTS_CHANGED', this.db.bookIssueRequests);
         }
+    },
+
+    confirmBookIssueRequest(id) {
+        const req = this.getBookIssueRequests().find(r => r.id === id);
+        if (!req) {
+            throw new Error('해당 교재 지급 요청을 찾을 수 없습니다.');
+        }
+        if (req.status !== 'requested') {
+            throw new Error('이미 확인 처리되었거나 대기 중인 요청이 아닙니다.');
+        }
+
+        const book = this.getBook(req.bookId);
+        if (!book) {
+            throw new Error('교재 정보를 찾을 수 없습니다.');
+        }
+
+        let today = new Date().toISOString().slice(0, 10);
+        if (this.db && this.db.settings && this.db.settings.DAYDAY_DEBUG_EVAL_TIME) {
+            today = new Date(this.db.settings.DAYDAY_DEBUG_EVAL_TIME).toISOString().slice(0, 10);
+        }
+
+        // 1. Create payment if not already exists
+        let paymentId = req.paymentId;
+        if (!paymentId) {
+            if (!this.db.payments) this.db.payments = [];
+            const payId = 'P' + (this.db.payments.length ? Math.max(...this.db.payments.map(p => parseInt(p.id.slice(1)) || 0)) + 1 : 1);
+            const month = today.slice(0, 7);
+            const newPayment = {
+                id: payId,
+                studentId: req.studentId,
+                amount: req.amountSnapshot || book.price,
+                month: month,
+                type: 'book',
+                status: 'unpaid',
+                invoiceDate: today,
+                paidDate: null,
+                method: null,
+                bookId: req.bookId
+            };
+            this.db.payments.push(newPayment);
+            paymentId = payId;
+        }
+
+        // 2. Create student book record if not already exists
+        let studentBookId = req.studentBookId;
+        if (!studentBookId) {
+            if (!this.db.studentBooks) this.db.studentBooks = [];
+            const sbId = 'SB' + (this.db.studentBooks.length ? Math.max(...this.db.studentBooks.map(sb => parseInt(sb.id.slice(2)) || 0)) + 1 : 1);
+            
+            // Calculate orderNo
+            const studentBooks = this.getStudentBooks().filter(sb => sb.studentId === req.studentId && sb.bookId === req.bookId);
+            const nextOrderNo = studentBooks.length + 1;
+
+            const newSB = {
+                id: sbId,
+                studentId: req.studentId,
+                bookId: req.bookId,
+                regDate: today,
+                orderNo: nextOrderNo,
+                paymentId: paymentId
+            };
+            this.db.studentBooks.push(newSB);
+            studentBookId = sbId;
+        }
+
+        // 3. Update the request status
+        req.status = 'confirmed';
+        req.confirmedAt = today;
+        req.paymentId = paymentId;
+        req.studentBookId = studentBookId;
+
+        // 4. Sync recommendations
+        if (typeof this.syncSystemRecommendations === 'function') {
+            this.syncSystemRecommendations();
+        }
+
+        this.saveDB();
+        
+        // 5. Notify events
+        this.notify('STUDENT_BOOKS_CHANGED', this.db.studentBooks);
+        this.notify('PAYMENTS_CHANGED', this.db.payments);
+        this.notify('BOOK_ISSUE_REQUESTS_CHANGED', this.db.bookIssueRequests);
+        this.notify('TODAY_TASKS_CHANGED', this.db.todayTasks || []);
+        
+        return req;
     }
 };
