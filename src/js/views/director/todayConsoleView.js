@@ -484,27 +484,27 @@ export function renderTodayConsole(container) {
         };
 
         const cardsData = [
-            { id: 'overdue', label: '미수납 확인', count: getOverdueCount(), color: 'var(--danger)', icon: 'fa-file-invoice-dollar' },
-            { id: 'staff_warning', label: '특이근태', count: getStaffWarningCount(), color: '#f1c40f', icon: 'fa-user-clock' },
+            { id: 'memo', label: '운영메모', count: getMemoCount(), color: 'var(--primary)', icon: 'fa-note-sticky' },
             { id: 'absent', label: '결석 확인', count: getAbsentCount(), color: 'var(--danger)', icon: 'fa-user-slash' },
-            { id: 'schedule', label: '일정확인', count: getScheduleCount(), color: 'var(--primary)', icon: 'fa-calendar-day' },
-            { id: 'billing', label: '수납확인', count: getBillingCount(), color: 'var(--success)', icon: 'fa-receipt' },
             { id: 'attendance_warning', label: '특이출결', count: getAttendanceWarningCount(), color: 'var(--danger)', icon: 'fa-triangle-exclamation' },
+            { id: 'staff_warning', label: '특이근태', count: getStaffWarningCount(), color: '#f1c40f', icon: 'fa-user-clock' },
+            { id: 'billing', label: '수납확인', count: getBillingCount(), color: 'var(--success)', icon: 'fa-receipt' },
+            { id: 'overdue', label: '미수납 확인', count: getOverdueCount(), color: 'var(--danger)', icon: 'fa-file-invoice-dollar' },
+            { id: 'schedule', label: '일정확인', count: getScheduleCount(), color: 'var(--primary)', icon: 'fa-calendar-day' },
             { id: 'book_check', label: '교재 확인', count: getBookCheckCount(), color: '#a55eea', icon: 'fa-book' },
-            { id: 'book_billing', label: '교재 결제 확인', count: getBookBillingCount(), color: '#f1c40f', icon: 'fa-wallet' },
-            { id: 'memo', label: '운영메모', count: getMemoCount(), color: 'var(--primary)', icon: 'fa-note-sticky' }
+            { id: 'book_billing', label: '교재 결제 확인', count: getBookBillingCount(), color: '#f1c40f', icon: 'fa-wallet' }
         ];
 
         const chipsHtml = cardsData.map(card => {
             const isSelected = selectedCategoryFilter === card.id;
-            const borderStyle = isSelected ? `border: 2px solid ${card.color}; background: rgba(255,255,255,0.06);` : 'border: 1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.01);';
+            const cardClass = isSelected ? 'kpi-chip-card selected' : 'kpi-chip-card';
             const textClass = isSelected ? 'color: var(--text-main); font-weight: 800;' : 'color: var(--text-muted); font-weight: 600;';
             const countBadgeStyle = card.count > 0 
                 ? `background-color: ${card.color}; color: #fff; font-weight: 700;` 
                 : `background-color: rgba(255,255,255,0.08); color: var(--text-muted);`;
 
             return `
-                <div class="kpi-chip-card" data-filter-id="${card.id}" title="${card.id === 'memo' ? '오늘 등록된 운영 메모 및 할 일 수' : `${card.label} (향후 비즈니스 연동 예정)`}" style="box-sizing: border-box; flex: 1 1 140px; min-width: 130px; padding: 12px 14px; border-radius: 8px; cursor: pointer; transition: all 0.2s ease-in-out; display: flex; align-items: center; justify-content: space-between; gap: 8px; ${borderStyle}" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
+                <div class="${cardClass}" data-filter-id="${card.id}" title="${card.id === 'memo' ? '오늘 등록된 운영 메모 및 할 일 수' : `${card.label} (향후 비즈니스 연동 예정)`}" style="--card-color: ${card.color};">
                     <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                         <i class="fa-solid ${card.icon}" style="color: ${card.color}; font-size: 0.95rem; flex-shrink: 0;"></i>
                         <span style="font-size: 0.76rem; ${textClass} overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${card.label}</span>
@@ -1027,7 +1027,7 @@ export function renderTodayConsole(container) {
             </div>
 
             <!-- Upper 9 Work KPI Card Chips Row -->
-            <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 24px; width: 100%; box-sizing: border-box;" id="kpi-chips-row-container">
+            <div class="kpi-chips-container" id="kpi-chips-row-container">
                 ${chipsHtml}
             </div>
 

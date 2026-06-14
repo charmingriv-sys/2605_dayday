@@ -1665,5 +1665,81 @@ test.describe('Director Today Console Flow Checks', () => {
     await expect(manualCard).toBeVisible();
     await expect(manualCard).toContainText('상담예약 · 상담');
   });
+
+  test('should verify Phase 13I KPI cards ordering, labeling and 5/4 responsive layout', async ({ page }) => {
+    // 1. Set full viewport size to check initial 9 cards row
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await page.waitForTimeout(500);
+
+    // Expected KPI Card order and labels
+    const expectedCards = [
+      { id: 'memo', label: '운영메모' },
+      { id: 'absent', label: '결석 확인' },
+      { id: 'attendance_warning', label: '특이출결' },
+      { id: 'staff_warning', label: '특이근태' },
+      { id: 'billing', label: '수납확인' },
+      { id: 'overdue', label: '미수납 확인' },
+      { id: 'schedule', label: '일정확인' },
+      { id: 'book_check', label: '교재 확인' },
+      { id: 'book_billing', label: '교재 결제 확인' }
+    ];
+
+    const kpiChips = page.locator('#kpi-chips-row-container .kpi-chip-card');
+    
+    // Check total count (must be exactly 9 cards)
+    await expect(kpiChips).toHaveCount(9);
+
+    // Verify order and spelling/spacing of labels
+    for (let i = 0; i < expectedCards.length; i++) {
+      const card = kpiChips.nth(i);
+      await expect(card).toHaveAttribute('data-filter-id', expectedCards[i].id);
+      
+      const labelText = await card.locator('span').first().innerText();
+      expect(labelText.trim()).toBe(expectedCards[i].label);
+    }
+
+    // 2. Resize viewport to 1200px to trigger 5 / 4 responsive grid layout
+    await page.setViewportSize({ width: 1200, height: 900 });
+    
+    // Wait for styling or grid rendering stability
+    await page.waitForTimeout(500);
+
+    // Get bounding boxes of all 9 KPI cards
+    const boundingBoxes = [];
+    for (let i = 0; i < 9; i++) {
+      const box = await kpiChips.nth(i).boundingBox();
+      boundingBoxes.push(box);
+    }
+
+    // Ensure all 9 cards are rendered correctly and have bounding box data
+    for (const box of boundingBoxes) {
+      expect(box).not.toBeNull();
+    }
+
+    // In a 5 / 4 grid layout:
+    // First 5 cards (index 0~4) should be on Row 1 (same Y coordinate)
+    // Next 4 cards (index 5~8) should be on Row 2 (same Y coordinate, larger than Row 1 Y coordinate)
+    const row1Y = boundingBoxes[0].y;
+    for (let i = 1; i < 5; i++) {
+      // Allow minor rendering difference (within 2px)
+      expect(Math.abs(boundingBoxes[i].y - row1Y)).toBeLessThanOrEqual(2);
+    }
+
+    const row2Y = boundingBoxes[5].y;
+    expect(row2Y).toBeGreaterThan(row1Y);
+
+    for (let i = 6; i < 9; i++) {
+      expect(Math.abs(boundingBoxes[i].y - row2Y)).toBeLessThanOrEqual(2);
+    }
+
+    // Verify no overlaps in coordinate bounding boxes
+    // X coordinates should be progressive on the same row
+    for (let i = 0; i < 4; i++) {
+      expect(boundingBoxes[i+1].x).toBeGreaterThan(boundingBoxes[i].x);
+    }
+    for (let i = 5; i < 8; i++) {
+      expect(boundingBoxes[i+1].x).toBeGreaterThan(boundingBoxes[i].x);
+    }
+  });
 });
 
