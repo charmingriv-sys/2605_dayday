@@ -1147,25 +1147,65 @@ export const todayTaskMethods = {
             });
         }
 
-        // 4. Major Schedule Warning Engine (Phase 13F)
+        // 4. Major Schedule Warning Engine (Phase 13F-Repair-A)
         const activeScheduleKeys = [];
         if (this.db.majorSchedules) {
             const majorSchedules = this.db.majorSchedules || [];
             const students = typeof this.getStudents === 'function' ? this.getStudents() : (this.db.students || []);
             const todayMidnight = new Date(y, m, d, 0, 0, 0, 0);
 
-            majorSchedules.forEach(event => {
-                if (!event.eventDate) return;
-                const [ey, em, ed] = event.eventDate.split('-').map(Number);
+            const getDiffDays = (dateStr) => {
+                if (!dateStr) return null;
+                const [ey, em, ed] = dateStr.split('-').map(Number);
                 const eventMidnight = new Date(ey, em - 1, ed, 0, 0, 0, 0);
-
                 const diffTime = eventMidnight.getTime() - todayMidnight.getTime();
-                const diffDays = Math.round(diffTime / (24 * 60 * 60 * 1000));
+                return Math.round(diffTime / (24 * 60 * 60 * 1000));
+            };
 
-                // D-3부터 D-day까지 대상 판정 (0, 1, 2, 3)
-                if (diffDays >= 0 && diffDays <= 3) {
-                    const dLabel = diffDays === 0 ? 'D-day' : `D-${diffDays}`;
-                    const dedupeKey = `SYSTEM_RECOMMEND_MAJOR_SCHEDULE_${event.id}_${event.eventDate}`;
+            majorSchedules.forEach(event => {
+                // 관련 원생 실명 매핑
+                const participantNames = (event.participantStudentIds || [])
+                    .map(sid => {
+                        const s = students.find(student => student.id === sid);
+                        return s ? s.name : null;
+                    })
+                    .filter(Boolean)
+                    .join(', ');
+
+                const milestones = [];
+
+                // A. 접수마감 일정 (dueDate)
+                if (event.dueDate) {
+                    const diff = getDiffDays(event.dueDate);
+                    if (diff !== null && diff >= 0 && diff <= 3) {
+                        milestones.push({
+                            type: 'registration_deadline',
+                            date: event.dueDate,
+                            diffDays: diff,
+                            label: '접수마감',
+                            title: `[일정확인] ${event.name} 접수마감 일정이 ${diff === 0 ? 'D-day' : `D-${diff}`}입니다.`
+                        });
+                    }
+                }
+
+                // B. 진행/종료 일정 (eventDate 또는 endDate)
+                const targetEventDate = event.eventDate || event.endDate;
+                if (targetEventDate) {
+                    const diff = getDiffDays(targetEventDate);
+                    if (diff !== null && diff >= 0 && diff <= 3) {
+                        milestones.push({
+                            type: 'event_end',
+                            date: targetEventDate,
+                            diffDays: diff,
+                            label: '진행·종료',
+                            title: `[일정확인] ${event.name} 진행/종료일정이 ${diff === 0 ? 'D-day' : `D-${diff}`}입니다.`
+                        });
+                    }
+                }
+
+                milestones.forEach(ms => {
+                    const dLabel = ms.diffDays === 0 ? 'D-day' : `D-${ms.diffDays}`;
+                    const dedupeKey = `SYSTEM_RECOMMEND_MAJOR_SCHEDULE_${event.id}_${ms.type}_${ms.date}`;
                     activeScheduleKeys.push(dedupeKey);
 
                     // 수동 완료/삭제 여부 검사
@@ -1178,26 +1218,21 @@ export const todayTaskMethods = {
                     if (!hasResolved) {
                         const isAlreadyOpen = this.db.todayTasks.some(t => t.dedupeKey === dedupeKey && t.status === 'open');
                         if (!isAlreadyOpen) {
-                            // 관련 원생 실명 매핑
-                            const participantNames = (event.participantStudentIds || [])
-                                .map(sid => {
-                                    const s = students.find(student => student.id === sid);
-                                    return s ? s.name : null;
-                                })
-                                .filter(Boolean)
-                                .join(', ');
-
-                            let description = `${event.name} 일정이 ${dLabel}입니다. 일정 내용과 준비 사항을 확인해 주세요.`;
+                            let description = `${event.name} ${ms.label} 일정이 ${dLabel}입니다. 일정 내용과 준비 사항을 확인해 주세요.`;
                             const details = [];
-                            details.push(`• 일정일: ${event.eventDate}${event.place ? ` (${event.place})` : ''}`);
-                            if (event.ownerId) details.push(`• 담당자: ${event.ownerId}`);
-                            if (participantNames) details.push(`• 관련 원생: ${participantNames}`);
-                            if (event.memo) details.push(`• 메모: ${event.memo}`);
+                            details.push(`• 일정명: ${event.name}`);
+                            details.push(`• 마일스톤 유형: ${ms.label}`);
+                            details.push(`• D-day 표기: ${dLabel}`);
+                            details.push(`• 날짜: ${ms.date}`);
+                            details.push(`• 장소: ${event.place || '원내'}`);
+                            details.push(`• 담당자: ${event.ownerId || '없음'}`);
+                            details.push(`• 관련 원생: ${participantNames || '없음'}`);
+                            details.push(`• 메모: ${event.memo || '없음'}`);
                             description += `\n` + details.join('\n');
 
                             // D-3의 9:00 AM 생성 (우선순위 오늘, 임박할수록 앞 순위 배치하기 위해 분 단위 차등 적용)
-                            const dueTime = new Date(y, m, d, 9, diffDays, 0, 0);
-                            const endTime = new Date(y, m, d, 10, diffDays, 0, 0);
+                            const dueTime = new Date(y, m, d, 9, ms.diffDays, 0, 0);
+                            const endTime = new Date(y, m, d, 10, ms.diffDays, 0, 0);
 
                             this.addTodayTask({
                                 organizationId: '',
@@ -1211,7 +1246,7 @@ export const todayTaskMethods = {
                                 dueAt: dueTime.toISOString(),
                                 startAt: dueTime.toISOString(),
                                 endAt: endTime.toISOString(),
-                                title: `[일정확인] ${event.name} ${dLabel}`,
+                                title: ms.title,
                                 description: description,
                                 relatedStudentIds: event.participantStudentIds || [],
                                 dedupeKey: dedupeKey,
@@ -1219,7 +1254,7 @@ export const todayTaskMethods = {
                             });
                         }
                     }
-                }
+                });
             });
 
             // 4.2 Mute / remove obsolete schedule recommendations (자동 제거 / 무효화)
