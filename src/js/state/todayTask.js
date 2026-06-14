@@ -371,7 +371,7 @@ export const todayTaskMethods = {
     },
 
     // --- SYSTEM RECOMMENDATIONS ---
-    syncSystemRecommendations(now = new Date()) {
+    syncSystemRecommendations(now = new Date(), silent = false) {
         let parsedNow = now instanceof Date ? now : new Date(now);
         if (this.db && this.db.settings && this.db.settings.DAYDAY_DEBUG_EVAL_TIME) {
             parsedNow = new Date(this.db.settings.DAYDAY_DEBUG_EVAL_TIME);
@@ -1147,7 +1147,91 @@ export const todayTaskMethods = {
             });
         }
 
-        // 4. Auto-Resolve Conditions (for Unpaid billing)
+        // 4. Major Schedule Warning Engine (Phase 13F)
+        const activeScheduleKeys = [];
+        if (this.db.majorSchedules) {
+            const majorSchedules = this.db.majorSchedules || [];
+            const students = typeof this.getStudents === 'function' ? this.getStudents() : (this.db.students || []);
+            const todayMidnight = new Date(y, m, d, 0, 0, 0, 0);
+
+            majorSchedules.forEach(event => {
+                if (!event.eventDate) return;
+                const [ey, em, ed] = event.eventDate.split('-').map(Number);
+                const eventMidnight = new Date(ey, em - 1, ed, 0, 0, 0, 0);
+
+                const diffTime = eventMidnight.getTime() - todayMidnight.getTime();
+                const diffDays = Math.round(diffTime / (24 * 60 * 60 * 1000));
+
+                // D-3부터 D-day까지 대상 판정 (0, 1, 2, 3)
+                if (diffDays >= 0 && diffDays <= 3) {
+                    const dLabel = diffDays === 0 ? 'D-day' : `D-${diffDays}`;
+                    const dedupeKey = `SYSTEM_RECOMMEND_MAJOR_SCHEDULE_${event.id}_${event.eventDate}`;
+                    activeScheduleKeys.push(dedupeKey);
+
+                    // 수동 완료/삭제 여부 검사
+                    const hasResolved = this.db.todayTasks.some(t =>
+                        t.source === 'system' &&
+                        (t.status === 'done' || t.status === 'dismissed') &&
+                        t.dedupeKey === dedupeKey
+                    );
+
+                    if (!hasResolved) {
+                        const isAlreadyOpen = this.db.todayTasks.some(t => t.dedupeKey === dedupeKey && t.status === 'open');
+                        if (!isAlreadyOpen) {
+                            // 관련 원생 실명 매핑
+                            const participantNames = (event.participantStudentIds || [])
+                                .map(sid => {
+                                    const s = students.find(student => student.id === sid);
+                                    return s ? s.name : null;
+                                })
+                                .filter(Boolean)
+                                .join(', ');
+
+                            let description = `${event.name} 일정이 ${dLabel}입니다. 일정 내용과 준비 사항을 확인해 주세요.`;
+                            const details = [];
+                            details.push(`• 일정일: ${event.eventDate}${event.place ? ` (${event.place})` : ''}`);
+                            if (event.ownerId) details.push(`• 담당자: ${event.ownerId}`);
+                            if (participantNames) details.push(`• 관련 원생: ${participantNames}`);
+                            if (event.memo) details.push(`• 메모: ${event.memo}`);
+                            description += `\n` + details.join('\n');
+
+                            // D-3의 9:00 AM 생성 (우선순위 오늘, 임박할수록 앞 순위 배치하기 위해 분 단위 차등 적용)
+                            const dueTime = new Date(y, m, d, 9, diffDays, 0, 0);
+                            const endTime = new Date(y, m, d, 10, diffDays, 0, 0);
+
+                            this.addTodayTask({
+                                organizationId: '',
+                                segment: 'academy_director_console',
+                                domain: 'academy',
+                                source: 'system',
+                                type: 'schedule',
+                                category: 'schedule',
+                                priority: 'today',
+                                status: 'open',
+                                dueAt: dueTime.toISOString(),
+                                startAt: dueTime.toISOString(),
+                                endAt: endTime.toISOString(),
+                                title: `[일정확인] ${event.name} ${dLabel}`,
+                                description: description,
+                                relatedStudentIds: event.participantStudentIds || [],
+                                dedupeKey: dedupeKey,
+                                visibilityRoles: ['director']
+                            });
+                        }
+                    }
+                }
+            });
+
+            // 4.2 Mute / remove obsolete schedule recommendations (자동 제거 / 무효화)
+            this.db.todayTasks = this.db.todayTasks.filter(t => {
+                if (t.source === 'system' && t.status === 'open' && t.type === 'schedule') {
+                    return activeScheduleKeys.includes(t.dedupeKey);
+                }
+                return true;
+            });
+        }
+
+        // 5. Auto-Resolve Conditions (for Unpaid billing)
         const existingTasks = this.getTodayTasks() || [];
         existingTasks.forEach(task => {
             if (task.source === 'system' && task.status === 'open') {
@@ -1168,6 +1252,9 @@ export const todayTaskMethods = {
         });
 
         this.saveDB();
+        if (!silent) {
+            this.notify('TODAY_TASKS_CHANGED', this.db.todayTasks);
+        }
         return this.getTodayTasks();
     }
 };

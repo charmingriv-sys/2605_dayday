@@ -55,8 +55,6 @@ test.describe('Teacher Book Issue Flow & Duplicate Prevention (Phase 13E-2)', ()
     await expect(page.locator('#book-issue-section')).toBeHidden();
 
     // Logout
-    await page.locator('#btn-edit-profile').click();
-    await page.locator('button[data-close-modal]').click();
     await page.locator('#btn-logout').click();
     await page.locator('.role-grid').waitFor({ state: 'attached', timeout: 5000 });
 
@@ -86,8 +84,6 @@ test.describe('Teacher Book Issue Flow & Duplicate Prevention (Phase 13E-2)', ()
     await expect(submitBtn).toBeDisabled();
 
     // Logout
-    await page.locator('#btn-edit-profile').click();
-    await page.locator('button[data-close-modal]').click();
     await page.locator('#btn-logout').click();
     await page.locator('.role-grid').waitFor({ state: 'attached', timeout: 5000 });
 
@@ -123,8 +119,6 @@ test.describe('Teacher Book Issue Flow & Duplicate Prevention (Phase 13E-2)', ()
     await expect(successToast).toBeVisible({ timeout: 5000 });
 
     // Logout
-    await page.locator('#btn-edit-profile').click();
-    await page.locator('button[data-close-modal]').click();
     await page.locator('#btn-logout').click();
     await page.locator('.role-grid').waitFor({ state: 'attached', timeout: 5000 });
 
@@ -159,8 +153,6 @@ test.describe('Teacher Book Issue Flow & Duplicate Prevention (Phase 13E-2)', ()
     await expect(errorToast).toBeVisible({ timeout: 5000 });
 
     // Logout
-    await page.locator('#btn-edit-profile').click();
-    await page.locator('button[data-close-modal]').click();
     await page.locator('#btn-logout').click();
     await page.locator('.role-grid').waitFor({ state: 'attached', timeout: 5000 });
 

@@ -102,6 +102,9 @@ test.describe('Teacher Attendance Warning Engine E2E Flow', () => {
           store.db.todayTasks = opts.todayTasks;
         }
 
+        // Isolate majorSchedules warnings
+        store.db.majorSchedules = [];
+
         store.saveDB();
 
         store.syncSystemRecommendations(fakeNow);

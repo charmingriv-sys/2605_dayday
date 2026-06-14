@@ -330,8 +330,8 @@ export function renderTodayConsole(container) {
             ? `<span class="badge" id="demo-badge" style="font-size: 0.72rem; padding: 4px 8px; font-weight: 700; background-color: rgba(165, 94, 234, 0.15); color: #a55eea; border: 1px solid rgba(165, 94, 234, 0.25); margin-left: 10px; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-flask"></i> 추천확인 데모 데이터 활성화됨</span>`
             : '';
 
-        // Sync system recommendations before retrieving active tasks
-        stateStore.syncSystemRecommendations(new Date());
+        // Sync system recommendations silently to prevent infinite notification loops before retrieving active tasks
+        stateStore.syncSystemRecommendations(new Date(), true);
 
         // Fetch active tasks using detailed today filtering logic
         const isTodayTaskDetailed = (task) => {
@@ -398,7 +398,23 @@ export function renderTodayConsole(container) {
                 return cat === 'absent';
             }).length;
         };
-        const getScheduleCount = () => 0; // TODO: Phase 13C/D - 일정확인 연동 (D-3 일정 확인)
+        const getScheduleCount = () => {
+            const list = activeTasksList.filter(t => {
+                let cat = t.category;
+                if (t.source === 'system' || t.source === 'auto') {
+                    if (t.type === 'schedule' && t.category === 'schedule') {
+                        cat = 'schedule';
+                    }
+                }
+                const match = cat === 'schedule';
+                if (match) {
+                    console.log('DEBUG [getScheduleCount] MATCHED TASK:', JSON.stringify(t));
+                }
+                return match;
+            });
+            console.log('DEBUG [getScheduleCount] total count:', list.length, 'from activeTasksList length:', activeTasksList.length);
+            return list.length;
+        };
         const getBillingCount = () => {
             return activeTasksList.filter(t => {
                 let cat = t.category;
@@ -526,6 +542,9 @@ export function renderTodayConsole(container) {
                     else if (task.type === 'book') {
                         if (task.category === 'book_check') cat = 'book_check';
                         else if (task.category === 'book_billing') cat = 'book_billing';
+                    }
+                    else if (task.type === 'schedule') {
+                        if (task.category === 'schedule') cat = 'schedule';
                     }
                 }
                 return cat === selectedCategoryFilter;

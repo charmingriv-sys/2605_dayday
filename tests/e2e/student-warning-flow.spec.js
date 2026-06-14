@@ -102,6 +102,9 @@ test.describe('Student Attendance Warning Engine E2E Flow', () => {
           store.db.todayTasks = opts.todayTasks;
         }
 
+        // Isolate majorSchedules warnings
+        store.db.majorSchedules = [];
+
         store.saveDB();
 
         const y = fakeNow.getFullYear();

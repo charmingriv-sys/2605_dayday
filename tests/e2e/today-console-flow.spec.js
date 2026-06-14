@@ -337,7 +337,30 @@ test.describe('Director Today Console Flow Checks', () => {
   });
 
   test('should synchronize end date when start date is manually changed', async ({ page }) => {
-    // 1. Enter start date
+    // 1. Clear tasks and add mock event to hide overlay
+    await page.evaluate(() => {
+      window.stateStore.clearMockCalendarEvents();
+      window.stateStore.db.todayTasks = [];
+      const now = new Date();
+      window.stateStore.addMockCalendarEvent({
+        title: '일정 활성화용 회의',
+        startsAt: now.toISOString(),
+        endsAt: new Date(now.getTime() + 60 * 60 * 1000).toISOString(),
+        provider: 'local'
+      });
+    });
+
+    const calendarSection = page.locator('#calendar-timeline-section');
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const clickedDateStr = `${y}-${m}-15`;
+
+    const cellLocator = calendarSection.locator(`.calendar-day-cell[data-date="${clickedDateStr}"]`);
+    await cellLocator.click();
+    await page.waitForTimeout(500);
+
+    // 2. Enter start date
     await page.fill('#task-start-date-input', '2026-06-10');
     // Trigger change event explicitly to verify auto sync of end date
     await page.dispatchEvent('#task-start-date-input', 'change');
