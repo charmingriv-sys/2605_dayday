@@ -201,6 +201,82 @@ export const settingsMethods = {
         this.notify('SETTINGS_CHANGED', this.db.settings);
     },
 
+    normalizeParentMessageSettings(parentMessageSettings) {
+        const defaultEvents = [
+            'attendanceCheckIn',
+            'attendanceCheckOut',
+            'tuitionBilling',
+            'tuitionOverdue',
+            'tuitionPaid',
+            'bookBilling',
+            'bookOverdue',
+            'bookPaid'
+        ];
+        const normalized = {};
+        const src = parentMessageSettings || {};
+        for (const eventKey of defaultEvents) {
+            const original = src[eventKey] || {};
+            let messageEnabled = original.messageEnabled !== false;
+            let pushEnabled = original.pushEnabled !== false;
+            
+            if (!messageEnabled) {
+                pushEnabled = false;
+            }
+            
+            normalized[eventKey] = {
+                messageEnabled,
+                pushEnabled
+            };
+        }
+        return normalized;
+    },
+
+    getParentMessageSettings() {
+        if (!this.db.settings) {
+            this.db.settings = {};
+        }
+        this.db.settings.parentMessageSettings = this.normalizeParentMessageSettings(this.db.settings.parentMessageSettings);
+        return this.db.settings.parentMessageSettings;
+    },
+
+    updateParentMessageSetting(eventKey, partial) {
+        if (!this.db.settings) {
+            this.db.settings = {};
+        }
+        if (!this.db.settings.parentMessageSettings) {
+            this.db.settings.parentMessageSettings = this.normalizeParentMessageSettings({});
+        }
+        const current = this.db.settings.parentMessageSettings[eventKey] || { messageEnabled: true, pushEnabled: true };
+        const updated = { ...current, ...partial };
+        
+        if (updated.messageEnabled === false) {
+            updated.pushEnabled = false;
+        }
+        
+        this.db.settings.parentMessageSettings[eventKey] = updated;
+        this.saveDB();
+        this.notify('SETTINGS_CHANGED', this.db.settings);
+    },
+
+    updateParentMessageSettingsBulk(settingsMap) {
+        if (!this.db.settings) {
+            this.db.settings = {};
+        }
+        if (!this.db.settings.parentMessageSettings) {
+            this.db.settings.parentMessageSettings = this.normalizeParentMessageSettings({});
+        }
+        for (const [eventKey, partial] of Object.entries(settingsMap)) {
+            const current = this.db.settings.parentMessageSettings[eventKey] || { messageEnabled: true, pushEnabled: true };
+            const updated = { ...current, ...partial };
+            if (updated.messageEnabled === false) {
+                updated.pushEnabled = false;
+            }
+            this.db.settings.parentMessageSettings[eventKey] = updated;
+        }
+        this.saveDB();
+        this.notify('SETTINGS_CHANGED', this.db.settings);
+    },
+
     // --- ACADEMIES ---
     getAcademy(id) {
         if (!this.db.academies) this.db.academies = [];

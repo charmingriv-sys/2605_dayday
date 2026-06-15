@@ -280,6 +280,104 @@ if (syncedParent2 && syncedParent2.name === '동기화부모 수정' && syncedPa
     hasError = true;
 }
 
+// 12. parentMessageSettings 기본 초기화 및 멱등성 검증
+const parentMsgSettings = stateStore.getParentMessageSettings();
+const requiredEvents = [
+    'attendanceCheckIn',
+    'attendanceCheckOut',
+    'tuitionBilling',
+    'tuitionOverdue',
+    'tuitionPaid',
+    'bookBilling',
+    'bookOverdue',
+    'bookPaid'
+];
+
+let allKeysExist = true;
+for (const ev of requiredEvents) {
+    if (!parentMsgSettings[ev]) {
+        console.error(`[FAIL] Missing parentMessageSettings event key: ${ev}`);
+        allKeysExist = false;
+        hasError = true;
+    } else {
+        const item = parentMsgSettings[ev];
+        if (typeof item.messageEnabled !== 'boolean' || typeof item.pushEnabled !== 'boolean') {
+            console.error(`[FAIL] Event key ${ev} does not have boolean fields messageEnabled or pushEnabled.`);
+            hasError = true;
+        }
+    }
+}
+if (allKeysExist) {
+    console.log('[OK] parentMessageSettings has all 8 required event keys.');
+}
+
+// 13. normalizeParentMessageSettings 검증 (일부 키 누락 및 모순 상태 보정)
+const dirtySettings = {
+    attendanceCheckIn: { messageEnabled: false, pushEnabled: true }, // Contradiction: messageEnabled is false but pushEnabled is true
+    tuitionBilling: { messageEnabled: true, pushEnabled: false } // Valid silent mode
+};
+const cleanedSettings = stateStore.normalizeParentMessageSettings(dirtySettings);
+
+if (cleanedSettings.attendanceCheckIn.messageEnabled === false && cleanedSettings.attendanceCheckIn.pushEnabled === false) {
+    console.log('[OK] normalizeParentMessageSettings successfully corrected pushEnabled to false when messageEnabled is false.');
+} else {
+    console.error('[FAIL] normalizeParentMessageSettings failed to correct contradiction state!', cleanedSettings.attendanceCheckIn);
+    hasError = true;
+}
+
+if (cleanedSettings.tuitionBilling.messageEnabled === true && cleanedSettings.tuitionBilling.pushEnabled === false) {
+    console.log('[OK] normalizeParentMessageSettings preserved valid silent mode configuration.');
+} else {
+    console.error('[FAIL] normalizeParentMessageSettings incorrectly changed valid silent mode configuration!', cleanedSettings.tuitionBilling);
+    hasError = true;
+}
+
+if (cleanedSettings.attendanceCheckOut && cleanedSettings.attendanceCheckOut.messageEnabled === true && cleanedSettings.attendanceCheckOut.pushEnabled === true) {
+    console.log('[OK] normalizeParentMessageSettings successfully populated missing event keys with default values.');
+} else {
+    console.error('[FAIL] normalizeParentMessageSettings failed to populate missing event keys with defaults!', cleanedSettings.attendanceCheckOut);
+    hasError = true;
+}
+
+// 14. updateParentMessageSetting 및 종속 차단 강제 연동 검증
+stateStore.updateParentMessageSetting('tuitionPaid', { messageEnabled: true, pushEnabled: false });
+let tuitionPaidSetting = stateStore.getParentMessageSettings().tuitionPaid;
+if (tuitionPaidSetting.messageEnabled === true && tuitionPaidSetting.pushEnabled === false) {
+    console.log('[OK] updateParentMessageSetting successfully updated tuitionPaid setting.');
+} else {
+    console.error('[FAIL] updateParentMessageSetting failed to update tuitionPaid!', tuitionPaidSetting);
+    hasError = true;
+}
+
+stateStore.updateParentMessageSetting('tuitionPaid', { messageEnabled: false, pushEnabled: true });
+tuitionPaidSetting = stateStore.getParentMessageSettings().tuitionPaid;
+if (tuitionPaidSetting.messageEnabled === false && tuitionPaidSetting.pushEnabled === false) {
+    console.log('[OK] updateParentMessageSetting successfully corrected pushEnabled to false when messageEnabled is updated to false.');
+} else {
+    console.error('[FAIL] updateParentMessageSetting failed to force pushEnabled to false on contradiction!', tuitionPaidSetting);
+    hasError = true;
+}
+
+// 15. updateParentMessageSettingsBulk 검증
+stateStore.updateParentMessageSettingsBulk({
+    attendanceCheckIn: { messageEnabled: true, pushEnabled: true },
+    attendanceCheckOut: { messageEnabled: false, pushEnabled: true }, // Contradiction: should be corrected to false
+    tuitionBilling: { messageEnabled: false, pushEnabled: false }
+});
+
+const bulkCheckIn = stateStore.getParentMessageSettings().attendanceCheckIn;
+const bulkCheckOut = stateStore.getParentMessageSettings().attendanceCheckOut;
+const bulkBilling = stateStore.getParentMessageSettings().tuitionBilling;
+
+if (bulkCheckIn.messageEnabled === true && bulkCheckIn.pushEnabled === true &&
+    bulkCheckOut.messageEnabled === false && bulkCheckOut.pushEnabled === false &&
+    bulkBilling.messageEnabled === false && bulkBilling.pushEnabled === false) {
+    console.log('[OK] updateParentMessageSettingsBulk successfully updated multiple settings and corrected contradictions.');
+} else {
+    console.error('[FAIL] updateParentMessageSettingsBulk verification failed:', { bulkCheckIn, bulkCheckOut, bulkBilling });
+    hasError = true;
+}
+
 if (hasError) {
     console.error('--- Unit Test: Parent Messaging Schema & Migration FAILED ---');
     process.exit(1);

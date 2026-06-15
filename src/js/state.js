@@ -41,7 +41,17 @@ const DEFAULT_DB = {
         teacherNoShowWarningEnabled: true,
         teacherNoShowWarningGraceMinutes: 10,
         teacherCheckoutMissingWarningEnabled: true,
-        teacherCheckoutMissingGraceMinutes: 10
+        teacherCheckoutMissingGraceMinutes: 10,
+        parentMessageSettings: {
+            attendanceCheckIn: { messageEnabled: true, pushEnabled: true },
+            attendanceCheckOut: { messageEnabled: true, pushEnabled: true },
+            tuitionBilling: { messageEnabled: true, pushEnabled: true },
+            tuitionOverdue: { messageEnabled: true, pushEnabled: true },
+            tuitionPaid: { messageEnabled: true, pushEnabled: true },
+            bookBilling: { messageEnabled: true, pushEnabled: true },
+            bookOverdue: { messageEnabled: true, pushEnabled: true },
+            bookPaid: { messageEnabled: true, pushEnabled: true }
+        }
     },
     teachers: [
         { id: 'T1', name: '문승현', instrument: '피아노', phone: '010-1111-1001', email: 'shmoon@turing.com', color: '#ffb3c1', scheduleNotes: "", employmentStatus: "active", resignedAt: null, resignMemo: "" },
@@ -468,6 +478,18 @@ class StateStore {
                 const defaultVal = minutesKeys[key];
                 if (isNaN(val) || val < 0 || val > 90 || val % 5 !== 0) {
                     this.db.settings[key] = defaultVal;
+                    migrated = true;
+                }
+            }
+
+            // 4. Validate and clean parentMessageSettings
+            if (!this.db.settings.parentMessageSettings || typeof this.db.settings.parentMessageSettings !== 'object') {
+                this.db.settings.parentMessageSettings = this.normalizeParentMessageSettings({});
+                migrated = true;
+            } else {
+                const normalized = this.normalizeParentMessageSettings(this.db.settings.parentMessageSettings);
+                if (JSON.stringify(this.db.settings.parentMessageSettings) !== JSON.stringify(normalized)) {
+                    this.db.settings.parentMessageSettings = normalized;
                     migrated = true;
                 }
             }

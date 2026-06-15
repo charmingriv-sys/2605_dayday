@@ -172,4 +172,102 @@ test.describe('Academy Warning Policy Settings UI E2E Flow', () => {
     expect(dbSettings.teacherCheckoutMissingWarningEnabled).toBe(true);
     expect(dbSettings.teacherCheckoutMissingGraceMinutes).toBe(0);
   });
+
+  test('should customize, save, and reload parent message and push settings', async ({ page }) => {
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Navigate to Academy Info / Settings View
+    const settingsMenu = page.locator('.menu-item[data-view="dir-academy-info"]');
+    await expect(settingsMenu).toBeVisible();
+    await settingsMenu.click();
+
+    // 3. Authenticate with System Password (0000)
+    const pwInput = page.locator('#academy-auth-password');
+    await expect(pwInput).toBeVisible();
+    await pwInput.fill('0000');
+    
+    const authBtn = page.locator('#btn-submit-academy-auth');
+    await authBtn.click();
+
+    // 4. Verify parent message settings rows and checkboxes are visible
+    const checkInRow = page.locator('.parent-msg-setting-row[data-event="attendanceCheckIn"]');
+    await expect(checkInRow).toBeVisible();
+    
+    const checkInMsgCheckbox = checkInRow.locator('.msg-toggle');
+    const checkInPushCheckbox = checkInRow.locator('.push-toggle');
+
+    // Default values check (should be messageEnabled: true, pushEnabled: true)
+    await expect(checkInMsgCheckbox).toBeChecked();
+    await expect(checkInPushCheckbox).toBeChecked();
+
+    // 5. Test turning OFF messageEnabled -> pushEnabled becomes OFF and disabled
+    await checkInMsgCheckbox.uncheck();
+    await expect(checkInPushCheckbox).not.toBeChecked();
+    await expect(checkInPushCheckbox).toBeDisabled();
+
+    // 6. Test turning ON messageEnabled -> pushEnabled becomes enabled (but still unchecked by default since it was forced off)
+    await checkInMsgCheckbox.check();
+    await expect(checkInPushCheckbox).toBeEnabled();
+    await expect(checkInPushCheckbox).not.toBeChecked();
+
+    // 7. Check push checkbox again
+    await checkInPushCheckbox.check();
+
+    // 8. Let's make some non-default changes to verify persistence
+    const checkOutRow = page.locator('.parent-msg-setting-row[data-event="attendanceCheckOut"]');
+    const checkOutMsgCheckbox = checkOutRow.locator('.msg-toggle');
+    const checkOutPushCheckbox = checkOutRow.locator('.push-toggle');
+
+    // Turn off 등원 push
+    await checkInPushCheckbox.uncheck();
+    // Turn off 하원 message
+    await checkOutMsgCheckbox.uncheck();
+
+    // 9. Save settings
+    const saveAcademyBtn = page.locator('#academy-info-form button[type="submit"]');
+    await saveAcademyBtn.click();
+
+    // Wait for the save operation
+    await page.waitForTimeout(500);
+
+    // 10. Reload and verify settings persist
+    await page.reload();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    await settingsMenu.click();
+    await pwInput.fill('0000');
+    await authBtn.click();
+
+    // Locate elements again
+    const checkInRowReloaded = page.locator('.parent-msg-setting-row[data-event="attendanceCheckIn"]');
+    const checkInMsgCheckboxReloaded = checkInRowReloaded.locator('.msg-toggle');
+    const checkInPushCheckboxReloaded = checkInRowReloaded.locator('.push-toggle');
+
+    const checkOutRowReloaded = page.locator('.parent-msg-setting-row[data-event="attendanceCheckOut"]');
+    const checkOutMsgCheckboxReloaded = checkOutRowReloaded.locator('.msg-toggle');
+    const checkOutPushCheckboxReloaded = checkOutRowReloaded.locator('.push-toggle');
+
+    // Verify 등원: messageEnabled: true, pushEnabled: false
+    await expect(checkInMsgCheckboxReloaded).toBeChecked();
+    await expect(checkInPushCheckboxReloaded).not.toBeChecked();
+
+    // Verify 하원: messageEnabled: false, pushEnabled: false (disabled)
+    await expect(checkOutMsgCheckboxReloaded).not.toBeChecked();
+    await expect(checkOutPushCheckboxReloaded).not.toBeChecked();
+    await expect(checkOutPushCheckboxReloaded).toBeDisabled();
+
+    // 11. Directly evaluate stateStore DB settings values
+    const dbParentSettings = await page.evaluate(() => window.stateStore.db.settings.parentMessageSettings);
+    expect(dbParentSettings.attendanceCheckIn.messageEnabled).toBe(true);
+    expect(dbParentSettings.attendanceCheckIn.pushEnabled).toBe(false);
+    expect(dbParentSettings.attendanceCheckOut.messageEnabled).toBe(false);
+    expect(dbParentSettings.attendanceCheckOut.pushEnabled).toBe(false);
+    expect(dbParentSettings.tuitionBilling.messageEnabled).toBe(true);
+    expect(dbParentSettings.tuitionBilling.pushEnabled).toBe(true);
+  });
 });

@@ -1039,7 +1039,18 @@ test.describe('Director Attendance Control Console Flow', () => {
     await expect(warningInspectorPanel).toHaveClass(/open/);
     await page.locator('#ac-drawer-backdrop').click(); // close it
 
-    // 13. Verify Phase 9C-5B-2 & Repair-A & B: Late threshold display and integration in Attendance Control
+
+    const dismissToast = async () => {
+        const toastClose = page.locator('.kakaotalk-toast .toast-close-btn');
+        const count = await toastClose.count();
+        for (let i = 0; i < count; i++) {
+            try {
+                await toastClose.nth(0).click();
+                await page.waitForTimeout(50);
+            } catch (e) {}
+        }
+    };
+
     // Go to Academy Info / Settings View
     await page.locator('.menu-item[data-view="dir-academy-info"]').click();
     await page.locator('#academy-auth-password').fill('0000');
@@ -1061,9 +1072,11 @@ test.describe('Director Attendance Control Console Flow', () => {
     await expect(latePolicyInfo).toContainText('현재 지각 기준: 수업 시작 후 20분');
 
     // Change value to 00 mins (Repair-A) and save
+    await dismissToast();
     await page.locator('.menu-item[data-view="dir-academy-info"]').click();
     await page.locator('#academy-auth-password').fill('0000');
     await page.locator('#btn-submit-academy-auth').click();
+    await expect(lateThresholdSelect).toBeVisible();
     await lateThresholdSelect.selectOption('0');
     await page.locator('#academy-info-form button[type="submit"]').click();
 
@@ -1073,9 +1086,11 @@ test.describe('Director Attendance Control Console Flow', () => {
     await expect(latePolicyInfo).toContainText('현재 지각 기준: 수업 시작 후 00분');
 
     // Change value to 05 mins (Repair-B) and save
+    await dismissToast();
     await page.locator('.menu-item[data-view="dir-academy-info"]').click();
     await page.locator('#academy-auth-password').fill('0000');
     await page.locator('#btn-submit-academy-auth').click();
+    await expect(lateThresholdSelect).toBeVisible();
     await lateThresholdSelect.selectOption('5');
     await page.locator('#academy-info-form button[type="submit"]').click();
 
@@ -1085,9 +1100,11 @@ test.describe('Director Attendance Control Console Flow', () => {
     await expect(latePolicyInfo).toContainText('현재 지각 기준: 수업 시작 후 05분');
 
     // Clean up: Restore to default 10 mins
+    await dismissToast();
     await page.locator('.menu-item[data-view="dir-academy-info"]').click();
     await page.locator('#academy-auth-password').fill('0000');
     await page.locator('#btn-submit-academy-auth').click();
+    await expect(lateThresholdSelect).toBeVisible();
     await lateThresholdSelect.selectOption('10');
     await page.locator('#academy-info-form button[type="submit"]').click();
 

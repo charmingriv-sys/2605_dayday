@@ -34,6 +34,8 @@ export function renderAcademyInfo(container) {
             `).join('');
         };
 
+        const parentMessageSettings = stateStore.getParentMessageSettings();
+
         container.innerHTML = `
             <div class="glass-card" style="padding: 2.2rem; max-width: 700px; margin: 0 auto; min-height: 500px;">
                 <h3 style="font-size: 1.35rem; font-weight: 700; color: var(--text-main); margin: 0 0 8px 0; display: flex; align-items: center; gap: 8px;">
@@ -187,6 +189,145 @@ export function renderAcademyInfo(container) {
                         </div>
                     </div>
 
+                    <div style="border-top: 1px solid var(--border-color); padding-top: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5rem;">
+                        <h4 style="font-weight: 700; font-size: 1rem; color: var(--text-main); margin-bottom: 0.6rem; display: flex; align-items: center; gap: 8px;">
+                            <i class="fa-solid fa-message" style="color: var(--primary);"></i> 학부모 메시지/푸시 설정
+                        </h4>
+                        <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 1.2rem; line-height: 1.55;">
+                            학부모님 전용 앱으로 발송되는 알림의 메시지함 저장 및 휴대폰 앱 푸시 발송 여부를 구성합니다.
+                        </p>
+                        
+                        <div style="display: flex; flex-direction: column; gap: 1.2rem;">
+                            <!-- 출결 그룹 -->
+                            <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 16px; border-radius: var(--radius-sm);">
+                                <div style="font-weight: 700; font-size: 0.88rem; color: var(--text-main); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                                    <i class="fa-solid fa-user-clock" style="color: var(--primary);"></i> 출결
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 10px;">
+                                    <div class="parent-msg-setting-row" data-event="attendanceCheckIn" style="display: grid; grid-template-columns: 180px 140px 140px; align-items: center; gap: 12px;">
+                                        <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">등원</span>
+                                        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                            <input type="checkbox" class="msg-toggle" data-event="attendanceCheckIn" ${parentMessageSettings.attendanceCheckIn.messageEnabled ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                            메시지함 저장
+                                        </label>
+                                        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                            <input type="checkbox" class="push-toggle" data-event="attendanceCheckIn" ${parentMessageSettings.attendanceCheckIn.pushEnabled ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                            푸시 발송
+                                        </label>
+                                    </div>
+                                    <div class="parent-msg-setting-row" data-event="attendanceCheckOut" style="display: grid; grid-template-columns: 180px 140px 140px; align-items: center; gap: 12px;">
+                                        <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">하원</span>
+                                        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                            <input type="checkbox" class="msg-toggle" data-event="attendanceCheckOut" ${parentMessageSettings.attendanceCheckOut.messageEnabled ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                            메시지함 저장
+                                        </label>
+                                        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                            <input type="checkbox" class="push-toggle" data-event="attendanceCheckOut" ${parentMessageSettings.attendanceCheckOut.pushEnabled ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                            푸시 발송
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 수강료 그룹 -->
+                            <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 16px; border-radius: var(--radius-sm);">
+                                <div style="font-weight: 700; font-size: 0.88rem; color: var(--text-main); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                                    <i class="fa-solid fa-credit-card" style="color: var(--primary);"></i> 수강료
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 10px;">
+                                    <div class="parent-msg-setting-row" data-event="tuitionBilling" style="display: grid; grid-template-columns: 180px 140px 140px; align-items: center; gap: 12px;">
+                                        <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">수강료 수납 안내</span>
+                                        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                            <input type="checkbox" class="msg-toggle" data-event="tuitionBilling" ${parentMessageSettings.tuitionBilling.messageEnabled ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                            메시지함 저장
+                                        </label>
+                                        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                            <input type="checkbox" class="push-toggle" data-event="tuitionBilling" ${parentMessageSettings.tuitionBilling.pushEnabled ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                            푸시 발송
+                                        </label>
+                                    </div>
+                                    <div class="parent-msg-setting-row" data-event="tuitionOverdue" style="display: grid; grid-template-columns: 180px 140px 140px; align-items: center; gap: 12px;">
+                                        <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">수강료 미수납 안내</span>
+                                        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                            <input type="checkbox" class="msg-toggle" data-event="tuitionOverdue" ${parentMessageSettings.tuitionOverdue.messageEnabled ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                            메시지함 저장
+                                        </label>
+                                        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                            <input type="checkbox" class="push-toggle" data-event="tuitionOverdue" ${parentMessageSettings.tuitionOverdue.pushEnabled ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                            푸시 발송
+                                        </label>
+                                    </div>
+                                    <div class="parent-msg-setting-row" data-event="tuitionPaid" style="display: grid; grid-template-columns: 180px 140px 140px; align-items: center; gap: 12px;">
+                                        <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">수강료 수납 완료</span>
+                                        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                            <input type="checkbox" class="msg-toggle" data-event="tuitionPaid" ${parentMessageSettings.tuitionPaid.messageEnabled ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                            메시지함 저장
+                                        </label>
+                                        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                            <input type="checkbox" class="push-toggle" data-event="tuitionPaid" ${parentMessageSettings.tuitionPaid.pushEnabled ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                            푸시 발송
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 교재비 그룹 -->
+                            <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 16px; border-radius: var(--radius-sm);">
+                                <div style="font-weight: 700; font-size: 0.88rem; color: var(--text-main); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                                    <i class="fa-solid fa-book" style="color: var(--primary);"></i> 교재비
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 10px;">
+                                    <div class="parent-msg-setting-row" data-event="bookBilling" style="display: grid; grid-template-columns: 180px 140px 140px; align-items: center; gap: 12px;">
+                                        <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">교재비 수납 안내</span>
+                                        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                            <input type="checkbox" class="msg-toggle" data-event="bookBilling" ${parentMessageSettings.bookBilling.messageEnabled ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                            메시지함 저장
+                                        </label>
+                                        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                            <input type="checkbox" class="push-toggle" data-event="bookBilling" ${parentMessageSettings.bookBilling.pushEnabled ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                            푸시 발송
+                                        </label>
+                                    </div>
+                                    <div class="parent-msg-setting-row" data-event="bookOverdue" style="display: grid; grid-template-columns: 180px 140px 140px; align-items: center; gap: 12px;">
+                                        <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">교재비 미수납 안내</span>
+                                        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                            <input type="checkbox" class="msg-toggle" data-event="bookOverdue" ${parentMessageSettings.bookOverdue.messageEnabled ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                            메시지함 저장
+                                        </label>
+                                        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                            <input type="checkbox" class="push-toggle" data-event="bookOverdue" ${parentMessageSettings.bookOverdue.pushEnabled ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                            푸시 발송
+                                        </label>
+                                    </div>
+                                    <div class="parent-msg-setting-row" data-event="bookPaid" style="display: grid; grid-template-columns: 180px 140px 140px; align-items: center; gap: 12px;">
+                                        <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">교재비 수납 완료</span>
+                                        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                            <input type="checkbox" class="msg-toggle" data-event="bookPaid" ${parentMessageSettings.bookPaid.messageEnabled ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                            메시지함 저장
+                                        </label>
+                                        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                            <input type="checkbox" class="push-toggle" data-event="bookPaid" ${parentMessageSettings.bookPaid.pushEnabled ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                            푸시 발송
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 안내 박스 -->
+                            <div style="background: rgba(9, 132, 227, 0.05); border: 1px solid rgba(9, 132, 227, 0.15); padding: 16px; border-radius: var(--radius-sm); margin-top: 0.5rem;">
+                                <div style="font-weight: 700; font-size: 0.85rem; color: var(--primary); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                                    <i class="fa-solid fa-circle-info"></i> 학부모 메시지/푸시 설정 안내
+                                </div>
+                                <ul style="margin: 0; padding-left: 20px; font-size: 0.82rem; color: var(--text-muted); line-height: 1.6; display: flex; flex-direction: column; gap: 4px; text-align: left;">
+                                    <li>“메시지함 저장”을 켜면 학부모님 앱의 메시지함에 해당 알림이 남습니다.</li>
+                                    <li>“푸시 발송”을 켜면 학부모님 휴대폰에 앱 푸시 알림이 함께 전송됩니다.</li>
+                                    <li>메시지함 저장을 끄면 푸시 발송도 함께 꺼집니다.</li>
+                                    <li style="color: var(--warning); font-weight: 600; list-style-type: '※ ';">이 설정은 학부모님 앱 메시지함과 앱 푸시에만 적용되며, 문자(SMS/LMS)나 카카오 알림톡 자동 발송 설정이 아닙니다.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="form-group" style="margin-bottom: 0;">
                         <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 6px; color: var(--text-main);">학원장 서명 이미지 업로드</label>
                         <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; background: rgba(255, 255, 255, 0.03); border: 1px dashed var(--border-color); padding: 12px; border-radius: var(--radius-sm);">
@@ -312,6 +453,38 @@ export function renderAcademyInfo(container) {
             (val) => `마지막 근무 종료 후 ${val}분이 지나도 퇴근 기록이 없으면 퇴근누락으로 표시합니다.`,
             '강사 퇴근누락 확인을 사용하지 않습니다.'
         );
+
+        // 7. 학부모 메시지/푸시 설정 토글 바인딩
+        const updateRowUI = (row) => {
+            const msgCheckbox = row.querySelector('.msg-toggle');
+            const pushCheckbox = row.querySelector('.push-toggle');
+            const pushLabel = pushCheckbox.closest('label');
+
+            if (!msgCheckbox.checked) {
+                pushCheckbox.checked = false;
+                pushCheckbox.disabled = true;
+                pushLabel.style.opacity = '0.5';
+                pushLabel.style.cursor = 'not-allowed';
+            } else {
+                pushCheckbox.disabled = false;
+                pushLabel.style.opacity = '1';
+                pushLabel.style.cursor = 'pointer';
+            }
+        };
+
+        const msgPushRows = container.querySelectorAll('.parent-msg-setting-row');
+        msgPushRows.forEach(row => {
+            const msgCheckbox = row.querySelector('.msg-toggle');
+            const pushCheckbox = row.querySelector('.push-toggle');
+            
+            msgCheckbox.addEventListener('change', () => {
+                updateRowUI(row);
+            });
+            pushCheckbox.addEventListener('change', () => {
+                updateRowUI(row);
+            });
+            updateRowUI(row);
+        });
 
         let uploadedSignatureDataUrl = academy.directorSignature || '';
 
@@ -480,6 +653,17 @@ export function renderAcademyInfo(container) {
                 stateStore.setTeacherCheckoutMissingWarningEnabled(teacherCheckoutMissingWarningEnabled);
                 const teacherCheckoutMissingGraceMinutes = parseInt(container.querySelector('#acad-teacher-checkout-missing-grace-minutes').value);
                 stateStore.setTeacherCheckoutMissingGraceMinutes(teacherCheckoutMissingGraceMinutes);
+
+                // Save parent message settings
+                const msgPushRowsToSave = container.querySelectorAll('.parent-msg-setting-row');
+                const parentMessageSettingsMap = {};
+                msgPushRowsToSave.forEach(row => {
+                    const eventKey = row.dataset.event;
+                    const messageEnabled = row.querySelector('.msg-toggle').checked;
+                    const pushEnabled = row.querySelector('.push-toggle').checked;
+                    parentMessageSettingsMap[eventKey] = { messageEnabled, pushEnabled };
+                });
+                stateStore.updateParentMessageSettingsBulk(parentMessageSettingsMap);
 
                 stateStore.updateAcademy(academy.id, {
                     name: nameInput.value.trim(),
