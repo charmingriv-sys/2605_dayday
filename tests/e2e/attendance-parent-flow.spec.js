@@ -320,9 +320,8 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
     await expect(btnList).toHaveClass(/btn-primary/);
     await expect(btnCal).toHaveClass(/btn-secondary/);
 
-    // Verify unread badge count on list tab is present
-    const listTabBadge = btnList.locator('.badge-unread-count');
-    await expect(listTabBadge).toContainText('1');
+    // Verify unread badge count on list tab is NOT visible on UI
+    await expect(btnList.locator('.badge-unread-count')).not.toBeVisible();
 
     // Verify list rows are rendered
     const listTable = page.locator('[data-testid="parent-attendance-list"]');
@@ -342,11 +341,17 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
     await expect(row2).toContainText('14:15');
     await expect(row2).toContainText('하원 기록 없음');
 
-    // Verify unread indicator "알림 확인 전" in row2
-    const unreadIndicator = row2.locator('.badge-danger', { hasText: '알림 확인 전' });
-    await expect(unreadIndicator).toBeVisible();
+    // Verify unread indicator "알림 확인 전" is NOT visible on row2
+    await expect(row2.locator('text=알림 확인 전')).not.toBeVisible();
 
-    // Click row2 to view details and check that unread indicator is removed (due to read status transition)
+    // Verify that the message is initially unread in stateStore
+    const isUnreadBefore = await page.evaluate(() => {
+      const msg = window.stateStore.db.parentMessages.find(m => m.id === 'pm_unread_attendance_e2e');
+      return msg ? msg.status : null;
+    });
+    expect(isUnreadBefore).toBe('unread');
+
+    // Click row2 to view details and trigger read status transition
     await row2.click();
     const commonModal = page.locator('#common-modal');
     await expect(commonModal).toBeVisible();
@@ -361,9 +366,12 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
     await expect(commonModal).not.toHaveClass(/show/);
     await page.waitForTimeout(500);
 
-    // Verify unread badge/indicator is now gone
-    await expect(unreadIndicator).toBeHidden();
-    await expect(listTabBadge).toBeHidden();
+    // Verify that the message status in stateStore is updated to read
+    const isUnreadAfter = await page.evaluate(() => {
+      const msg = window.stateStore.db.parentMessages.find(m => m.id === 'pm_unread_attendance_e2e');
+      return msg ? msg.status : null;
+    });
+    expect(isUnreadAfter).toBe('read');
 
     // Turn off lateDetectionEnabled and verify "지각" label disappears
     await page.evaluate(() => {

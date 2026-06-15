@@ -115,9 +115,8 @@ export function renderCalendar(container) {
                 <button class="btn ${activeViewMode === 'calendar' ? 'btn-primary' : 'btn-secondary'}" id="btn-view-calendar" style="border-radius: 20px; font-weight: 700; padding: 8px 18px; cursor: pointer;">
                     <i class="fa-solid fa-calendar-days" style="margin-right: 4px;"></i> 달력형
                 </button>
-                <button class="btn ${activeViewMode === 'list' ? 'btn-primary' : 'btn-secondary'}" id="btn-view-list" style="border-radius: 20px; font-weight: 700; padding: 8px 18px; cursor: pointer; position: relative;">
+                <button class="btn ${activeViewMode === 'list' ? 'btn-primary' : 'btn-secondary'}" id="btn-view-list" style="border-radius: 20px; font-weight: 700; padding: 8px 18px; cursor: pointer;">
                     <i class="fa-solid fa-list" style="margin-right: 4px;"></i> 리스트형
-                    ${unreadAttendanceCount > 0 ? `<span class="badge-unread-count" style="position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.65rem; display: flex; align-items: center; justify-content: center; font-weight: bold;">${unreadAttendanceCount}</span>` : ''}
                 </button>
             </div>
         `;
@@ -313,9 +312,7 @@ export function renderCalendar(container) {
                                         return isAttendanceMsg && m.createdAt.startsWith(record.date);
                                     });
 
-                                    const unreadBadge = associatedMsg 
-                                        ? `<span class="badge badge-danger" style="margin-left: 8px; font-size: 0.7rem;">알림 확인 전</span>` 
-                                        : '';
+                                    const unreadBadge = '';
 
                                     return `
                                         <tr class="attendance-list-row" data-date="${record.date}" style="cursor: pointer;">
@@ -459,61 +456,141 @@ function showAttendanceModal(record) {
 
 // Billing view for S1
 export function renderBilling(container) {
+    let activeTab = 'unpaid'; // 'unpaid' or 'paid'
+
     const render = () => {
         const studentId = getActiveStudentId();
+        const student = stateStore.getStudent(studentId);
         const payments = stateStore.getPaymentsForStudent(studentId);
-        
-        // Sort payments by month descending (newest month first)
-        payments.sort((a, b) => b.month.localeCompare(a.month));
 
-        // Get unpaid count
-        const unpaidCount = payments.filter(p => p.status === 'unpaid').length;
-        const totalUnpaidAmount = payments.filter(p => p.status === 'unpaid').reduce((sum, p) => sum + p.amount, 0);
+        // Fetch unread parent messages for parent
+        const user = stateStore.getCurrentUser();
+        const unreadParentMessages = user ? stateStore.getParentMessagesForParent(user.id, studentId).filter(m => m.status === 'unread') : [];
 
-        let tableRowsHtml = '';
-        if (payments.length === 0) {
-            tableRowsHtml = `
-                <tr>
-                    <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 3rem;">
-                        <i class="fa-solid fa-receipt" style="font-size: 2.5rem; margin-bottom: 1rem; display: block; color: var(--text-muted);"></i>
-                        청구된 수강료 내역이 없습니다.
-                    </td>
-                </tr>
+        // Helper to match unread parent messages to a payment
+        const getAssociatedMessages = (payment) => {
+            return unreadParentMessages.filter(m => m.dedupeKey && m.dedupeKey.endsWith(`_${payment.id}`));
+        };
+
+        // Separate payments by tab
+        const unpaidPayments = payments.filter(p => p.status !== 'paid');
+        const paidPayments = payments.filter(p => p.status === 'paid');
+
+        // Sort payments: newest month/date first
+        unpaidPayments.sort((a, b) => b.month.localeCompare(a.month) || (b.invoiceDate || '').localeCompare(a.invoiceDate || ''));
+        paidPayments.sort((a, b) => b.month.localeCompare(a.month) || (b.invoiceDate || '').localeCompare(a.invoiceDate || ''));
+
+        // Metric calculations
+        const unpaidCount = unpaidPayments.length;
+        const totalUnpaidAmount = unpaidPayments.reduce((sum, p) => sum + p.amount, 0);
+
+        // Tab badge counters for unread messages
+        const unreadUnpaidCount = unpaidPayments.reduce((sum, p) => sum + getAssociatedMessages(p).length, 0);
+        const unreadPaidCount = paidPayments.reduce((sum, p) => sum + getAssociatedMessages(p).length, 0);
+
+        // Tab selection HTML
+        const tabHtml = `
+            <div style="display: flex; gap: 10px; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+                <button class="btn ${activeTab === 'unpaid' ? 'btn-primary' : 'btn-secondary'}" id="btn-tab-unpaid" style="border-radius: 20px; font-weight: 700; padding: 8px 18px; cursor: pointer;">
+                    <i class="fa-solid fa-receipt" style="margin-right: 4px;"></i> 미납/청구 내역
+                </button>
+                <button class="btn ${activeTab === 'paid' ? 'btn-primary' : 'btn-secondary'}" id="btn-tab-paid" style="border-radius: 20px; font-weight: 700; padding: 8px 18px; cursor: pointer;">
+                    <i class="fa-solid fa-circle-check" style="margin-right: 4px;"></i> 납부 완료 내역
+                </button>
+            </div>
+        `;
+
+        let listContentHtml = '';
+        const currentList = activeTab === 'unpaid' ? unpaidPayments : paidPayments;
+
+        if (currentList.length === 0) {
+            const emptyMsg = activeTab === 'unpaid' ? '현재 납부할 내역이 없습니다.' : '아직 납부 완료 내역이 없습니다.';
+            listContentHtml = `
+                <div style="text-align: center; color: var(--text-muted); padding: 4rem 2rem; font-size: 0.95rem;">
+                    <i class="fa-solid fa-receipt" style="font-size: 3rem; display: block; margin-bottom: 1rem; color: rgba(0,0,0,0.06);"></i>
+                    ${emptyMsg}
+                </div>
             `;
         } else {
-            payments.forEach(p => {
-                const statusInfo = PAYMENT_STATUS_MAP[p.status] || { text: p.status, badge: 'badge-info' };
-                
-                let methodInfo = '-';
-                if (p.status === 'paid') {
-                    const methodText = PAYMENT_METHOD_MAP[p.method] || p.method || '일반';
-                    methodInfo = `${p.paidDate ? p.paidDate : '-'} (${methodText})`;
-                }
+            listContentHtml = `
+                <div class="table-wrapper">
+                    <table class="custom-table" data-testid="parent-billing-table">
+                        <thead>
+                            <tr>
+                                <th>구분</th>
+                                <th>원생명</th>
+                                <th>청구 정보</th>
+                                <th>청구 금액</th>
+                                ${activeTab === 'unpaid' ? '<th>납부 예정일</th><th>납부 상태</th>' : '<th>납부 완료일</th><th>결제 수단</th>'}
+                                <th>상세 보기</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${currentList.map(p => {
+                                const typeTag = p.type === 'book'
+                                    ? `<span class="badge badge-warning" style="background: #ffeaa7; color: #d63031; border: 1px solid #fdcb6e; font-weight: bold;">교재비</span>`
+                                    : `<span class="badge badge-info" style="background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; font-weight: bold;">수강료</span>`;
+                                
+                                const studentName = student ? student.name : '-';
+                                
+                                const parts = p.month.split('-');
+                                const formattedMonth = parts.length === 2 ? `${parts[0]}년 ${parts[1]}월` : p.month;
+                                const billingInfo = p.type === 'book' ? (p.invoiceDate || '-') : formattedMonth;
 
-                let actionButtonHtml = '-';
-                if (p.status === 'unpaid') {
-                    actionButtonHtml = `
-                        <button class="btn btn-success btn-sm btn-pay" data-id="${p.id}" style="padding: 6px 12px; font-size: 0.8rem; font-weight: bold; border-radius: var(--radius-sm);">
-                            <i class="fa-solid fa-wallet"></i> 모의 결제하기
-                        </button>
-                    `;
-                }
+                                let statusText = '';
+                                let badgeClass = '';
+                                if (p.status === 'unpaid') {
+                                    statusText = '미수납';
+                                    badgeClass = 'badge-danger';
+                                } else if (p.status === 'requested') {
+                                    statusText = '결제 대기';
+                                    badgeClass = 'badge-warning';
+                                } else if (p.status === 'paid') {
+                                    statusText = '납부 완료';
+                                    badgeClass = 'badge-success';
+                                } else {
+                                    statusText = p.status;
+                                    badgeClass = 'badge-info';
+                                }
 
-                tableRowsHtml += `
-                    <tr>
-                        <td><strong>${p.month}</strong></td>
-                        <td style="font-weight: 600; color: var(--text-main);">${formatCurrency(p.amount)}</td>
-                        <td>${p.invoiceDate}</td>
-                        <td><span class="badge ${statusInfo.badge}">${statusInfo.text}</span></td>
-                        <td style="font-size: 0.85rem; color: var(--text-muted);">${methodInfo}</td>
-                        <td>${actionButtonHtml}</td>
-                    </tr>
-                `;
-            });
+                                const dueDate = getPaymentDueDate(p, student);
+
+                                const associatedMsgs = getAssociatedMessages(p);
+                                const unreadBadge = '';
+
+                                return `
+                                    <tr class="billing-list-row" data-id="${p.id}" style="cursor: pointer;">
+                                        <td>${typeTag}</td>
+                                        <td><strong>${studentName}</strong></td>
+                                        <td>${billingInfo}</td>
+                                        <td style="font-weight: 600; color: var(--text-main);">${formatCurrency(p.amount)}</td>
+                                        ${activeTab === 'unpaid' ? `
+                                            <td>${dueDate}</td>
+                                            <td>
+                                                <span class="badge ${badgeClass}">${statusText}</span>
+                                                ${unreadBadge}
+                                            </td>
+                                        ` : `
+                                            <td>${p.paidDate || '-'}</td>
+                                            <td>${PAYMENT_METHOD_MAP[p.method] || p.method || '일반'}</td>
+                                        `}
+                                        <td>
+                                            <button class="btn btn-secondary btn-sm" style="padding: 4px 8px; font-size: 0.75rem;">
+                                                상세 <i class="fa-solid fa-chevron-right" style="font-size: 0.65rem;"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
         }
 
         container.innerHTML = `
             ${renderSiblingSelectorHeader(container, render)}
+            
             <div class="metrics-grid">
                 <div class="glass-card metric-card">
                     <div class="metric-icon red">
@@ -521,7 +598,7 @@ export function renderBilling(container) {
                     </div>
                     <div class="metric-info">
                         <span class="metric-value">${unpaidCount}건</span>
-                        <span class="metric-label">미납 수강료</span>
+                        <span class="metric-label">미납/청구 내역</span>
                     </div>
                 </div>
                 <div class="glass-card metric-card">
@@ -530,44 +607,34 @@ export function renderBilling(container) {
                     </div>
                     <div class="metric-info">
                         <span class="metric-value">${formatCurrency(totalUnpaidAmount)}</span>
-                        <span class="metric-label">결제 대기 총액</span>
+                        <span class="metric-label">미납 총액</span>
                     </div>
                 </div>
             </div>
 
-            <div class="glass-card" style="margin-top: 1.5rem;">
+            ${tabHtml}
+
+            <div class="glass-card">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 12px;">
                     <h3 style="font-weight: 700; font-size: 1.25rem; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
                         <i class="fa-solid fa-receipt" style="color: var(--primary);"></i>
-                        수강료 청구 및 납부 현황
+                        ${activeTab === 'unpaid' ? '미납 및 청구 내역' : '납부 완료 내역'}
                     </h3>
-                    <button class="btn btn-secondary" id="btn-create-mock-invoice" style="padding: 8px 14px; font-size: 0.8rem; font-weight: 600;">
-                        <i class="fa-solid fa-plus-circle" style="color: var(--accent);"></i> 테스트 청구서 생성
-                    </button>
+                    ${activeTab === 'unpaid' ? `
+                        <button class="btn btn-secondary" id="btn-create-mock-invoice" style="padding: 8px 14px; font-size: 0.8rem; font-weight: 600;">
+                            <i class="fa-solid fa-plus-circle" style="color: var(--accent);"></i> 테스트 청구서 생성
+                        </button>
+                    ` : ''}
                 </div>
 
-                <div class="table-wrapper">
-                    <table class="custom-table">
-                        <thead>
-                            <tr>
-                                <th>청구월</th>
-                                <th>청구 금액</th>
-                                <th>청구일자</th>
-                                <th>납부 상태</th>
-                                <th>납부 완료일 (결제수단)</th>
-                                <th>결제 처리</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${tableRowsHtml}
-                        </tbody>
-                    </table>
-                </div>
-                
-                <p style="margin-top: 1.2rem; font-size: 0.85rem; color: var(--text-muted); text-align: left; line-height: 1.5;">
-                    <i class="fa-solid fa-circle-info"></i> 모의 결제하기 버튼을 클릭하면 토스페이, 카카오페이를 연동한 가상 결제 시뮬레이터 창이 실행됩니다.<br>
-                    <i class="fa-solid fa-circle-info"></i> 상단의 '테스트 청구서 생성' 버튼을 클릭하면 테스트를 위한 다음 달 미납 청구서를 즉시 발행합니다.
-                </p>
+                ${listContentHtml}
+
+                ${activeTab === 'unpaid' ? `
+                    <p style="margin-top: 1.2rem; font-size: 0.85rem; color: var(--text-muted); text-align: left; line-height: 1.5;">
+                        <i class="fa-solid fa-circle-info"></i> 미납 청구 항목을 클릭하면 상세 내역 확인 및 모의 결제창이 실행됩니다.<br>
+                        <i class="fa-solid fa-circle-info"></i> '테스트 청구서 생성' 버튼을 클릭하면 다음 달 수강료 청구서가 임의로 추가 생성됩니다.
+                    </p>
+                ` : ''}
             </div>
         `;
 
@@ -580,7 +647,7 @@ export function renderBilling(container) {
                 if (s1Payments.length > 0) {
                     const months = s1Payments.map(p => p.month);
                     months.sort();
-                    const maxMonth = months[months.length - 1]; // e.g. "2026-05"
+                    const maxMonth = months[months.length - 1];
                     const [year, month] = maxMonth.split('-').map(Number);
                     let nextM = month + 1;
                     let nextY = year;
@@ -590,35 +657,178 @@ export function renderBilling(container) {
                     }
                     nextMonth = `${nextY}-${String(nextM).padStart(2, '0')}`;
                 }
-                
-                // Add new mock invoice
                 stateStore.createInvoice(studentId, 150000, nextMonth);
             });
         }
 
-        // Bind pay buttons click
-        const payBtns = container.querySelectorAll('.btn-pay');
-        payBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
-                const paymentId = btn.dataset.id;
-                const invoice = payments.find(p => p.id === paymentId);
-                if (invoice) {
-                    openPaymentModal(invoice);
+        // Bind tabs switching
+        const btnTabUnpaid = container.querySelector('#btn-tab-unpaid');
+        const btnTabPaid = container.querySelector('#btn-tab-paid');
+        if (btnTabUnpaid) {
+            btnTabUnpaid.addEventListener('click', () => {
+                activeTab = 'unpaid';
+                render();
+            });
+        }
+        if (btnTabPaid) {
+            btnTabPaid.addEventListener('click', () => {
+                activeTab = 'paid';
+                render();
+            });
+        }
+
+        // Bind list rows click
+        const rows = container.querySelectorAll('.billing-list-row');
+        rows.forEach(row => {
+            row.addEventListener('click', () => {
+                const paymentId = row.dataset.id;
+                const payment = payments.find(p => p.id === paymentId);
+                if (payment) {
+                    // Mark associated unread parentMessages as read
+                    const associatedMsgs = getAssociatedMessages(payment);
+                    associatedMsgs.forEach(msg => {
+                        stateStore.markParentMessageAsRead(msg.id);
+                    });
+
+                    showPaymentDetailModal(payment, student);
                 }
             });
         });
+
         bindSiblingSelector(container, render);
     };
 
     render();
 
-    const unsubscribe = stateStore.subscribe('PAYMENTS_CHANGED', () => {
-        render();
-    });
+    const unsubscribe = stateStore.subscribe('PAYMENTS_CHANGED', render);
+    const unsubscribeMessages = stateStore.subscribe('PARENT_MESSAGES_CHANGED', render);
 
     return () => {
         unsubscribe();
+        unsubscribeMessages();
     };
+}
+
+export function getPaymentDueDate(payment, student) {
+    if (!student) return '-';
+    const dueDay = student.dueDay || 10;
+    const [py, pm] = payment.month.split('-').map(Number);
+    const safeDueDay = Math.min(dueDay, new Date(py, pm, 0).getDate());
+    
+    let paymentDueAt = new Date(py, pm - 1, safeDueDay, 0, 0, 0, 0);
+
+    // Apply rollover calculation for book payments
+    if (payment.type === 'book') {
+        const invoiceDateStr = payment.invoiceDate || payment.createdAt || new Date().toISOString().slice(0, 10);
+        const [iy, im, id] = invoiceDateStr.split('-').map(Number);
+        const invoiceDateAt = new Date(iy, im - 1, id, 0, 0, 0, 0);
+
+        if (invoiceDateAt.getTime() >= paymentDueAt.getTime()) {
+            let nextYear = py;
+            let nextMonth = pm + 1;
+            if (nextMonth > 12) {
+                nextMonth = 1;
+                nextY = py + 1; // wait, nextYear py assignment is fine
+                nextYear += 1;
+            }
+            const nextSafeDueDay = Math.min(dueDay, new Date(nextYear, nextMonth, 0).getDate());
+            paymentDueAt = new Date(nextYear, nextMonth - 1, nextSafeDueDay, 0, 0, 0, 0);
+        }
+    }
+    
+    const yStr = paymentDueAt.getFullYear();
+    const mStr = String(paymentDueAt.getMonth() + 1).padStart(2, '0');
+    const dStr = String(paymentDueAt.getDate()).padStart(2, '0');
+    return `${yStr}-${mStr}-${dStr}`;
+}
+
+function showPaymentDetailModal(payment, student) {
+    const typeLabel = payment.type === 'book' ? '교재비' : '수강료';
+    const studentName = student ? student.name : '-';
+    
+    const parts = payment.month.split('-');
+    const formattedMonth = parts.length === 2 ? `${parts[0]}년 ${parts[1]}월` : payment.month;
+    const billingInfo = payment.type === 'book' ? (payment.invoiceDate || '-') : formattedMonth;
+    
+    const dueDate = getPaymentDueDate(payment, student);
+    
+    let bookNameStr = '';
+    if (payment.type === 'book') {
+        const book = payment.bookId ? stateStore.getBook(payment.bookId) : null;
+        const nameSnapshot = book ? book.name : '교재비';
+        bookNameStr = `<div><i class="fa-solid fa-book" style="margin-right: 4px;"></i> 교재명: ${nameSnapshot}</div>`;
+    }
+
+    let statusText = '';
+    let badgeClass = '';
+    if (payment.status === 'unpaid') {
+        statusText = '미수납';
+        badgeClass = 'badge-danger';
+    } else if (payment.status === 'requested') {
+        statusText = '결제 대기';
+        badgeClass = 'badge-warning';
+    } else if (payment.status === 'paid') {
+        statusText = '납부 완료';
+        badgeClass = 'badge-success';
+    } else {
+        statusText = payment.status;
+        badgeClass = 'badge-info';
+    }
+
+    let footerHtml = `<button class="btn btn-secondary" data-close-modal>닫기</button>`;
+    if (payment.status !== 'paid') {
+        footerHtml = `
+            <button class="btn btn-success" id="modal-btn-pay" style="font-weight: bold;">
+                <i class="fa-solid fa-wallet"></i> 모의 결제하기
+            </button>
+            <button class="btn btn-secondary" data-close-modal>닫기</button>
+        `;
+    }
+
+    const htmlContent = `
+        <div class="modal-header">
+            <h3 class="modal-title">청구 및 수납 상세 정보</h3>
+            <button class="modal-close" data-close-modal>&times;</button>
+        </div>
+        <div class="modal-body" style="padding-top: 10px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.2rem;">
+                <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-main);">
+                    <i class="fa-solid fa-receipt" style="color: var(--primary); margin-right: 6px;"></i>
+                    ${typeLabel} 청구서
+                </div>
+                <span class="badge ${badgeClass}">${statusText}</span>
+            </div>
+            
+            <div style="background: rgba(9, 132, 227, 0.02); border: 1px solid var(--border-color); padding: 1.2rem; border-radius: var(--radius-md); margin-bottom: 1.2rem;">
+                <div style="font-size: 0.95rem; color: var(--text-main); display: flex; flex-direction: column; gap: 8px;">
+                    <div><i class="fa-solid fa-child" style="margin-right: 4px;"></i> 대상 원생: <strong>${studentName}</strong></div>
+                    <div><i class="fa-solid fa-won-sign" style="margin-right: 4px;"></i> 청구 금액: <strong>${formatCurrency(payment.amount)}</strong></div>
+                    <div><i class="fa-solid fa-calendar-day" style="margin-right: 4px;"></i> 청구 정보: ${billingInfo}</div>
+                    <div><i class="fa-solid fa-clock" style="margin-right: 4px;"></i> 납부 예정일: ${dueDate}</div>
+                    ${payment.status === 'paid' ? `
+                        <div><i class="fa-solid fa-calendar-check" style="margin-right: 4px;"></i> 납부 완료일: ${payment.paidDate || '-'}</div>
+                        <div><i class="fa-solid fa-credit-card" style="margin-right: 4px;"></i> 결제 수단: ${PAYMENT_METHOD_MAP[payment.method] || payment.method || '일반'}</div>
+                    ` : ''}
+                    ${bookNameStr}
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            ${footerHtml}
+        </div>
+    `;
+
+    openModal(htmlContent, (modalContent) => {
+        const payBtn = modalContent.querySelector('#modal-btn-pay');
+        if (payBtn) {
+            payBtn.addEventListener('click', () => {
+                closeModal();
+                setTimeout(() => {
+                    openPaymentModal(payment);
+                }, 350);
+            });
+        }
+    });
 }
 
 function openPaymentModal(invoice) {

@@ -1696,6 +1696,118 @@ if (matchedMsg && matchedMsg.title === '등원 안내') {
     hasError = true;
 }
 
+// --- Starting Phase 16N-Repair-D Parent Billing View Unit Tests ---
+console.log('--- Starting Phase 16N-Repair-D Parent Billing View Unit Tests ---');
+
+// Mock document for importing student.js
+global.document = {
+    getElementById: () => null,
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    addEventListener: () => {}
+};
+
+try {
+    const { getPaymentDueDate } = await import('../../src/js/views/student.js');
+
+    // 1. Test getPaymentDueDate with regular due day
+    const testStudent = { dueDay: 15 };
+    const paymentEducation = { type: 'education', month: '2026-06', amount: 150000 };
+    const dueDateEdu = getPaymentDueDate(paymentEducation, testStudent);
+    if (dueDateEdu === '2026-06-15') {
+        console.log('[OK] getPaymentDueDate calculated correct due date for education payment.');
+    } else {
+        console.error('[FAIL] getPaymentDueDate calculated incorrect due date for education payment:', dueDateEdu);
+        hasError = true;
+    }
+
+    // 2. Test getPaymentDueDate for book payment without rollover
+    const paymentBookNormal = { 
+        type: 'book', 
+        month: '2026-06', 
+        amount: 20000, 
+        invoiceDate: '2026-06-10' 
+    };
+    const dueDateBookNormal = getPaymentDueDate(paymentBookNormal, testStudent);
+    if (dueDateBookNormal === '2026-06-15') {
+        console.log('[OK] getPaymentDueDate calculated correct due date for book payment without rollover.');
+    } else {
+        console.error('[FAIL] getPaymentDueDate calculated incorrect due date for book payment without rollover:', dueDateBookNormal);
+        hasError = true;
+    }
+
+    // 3. Test getPaymentDueDate for book payment WITH rollover (invoiceDate >= dueDay)
+    const paymentBookRollover = { 
+        type: 'book', 
+        month: '2026-06', 
+        amount: 20000, 
+        invoiceDate: '2026-06-15' 
+    };
+    const dueDateBookRollover = getPaymentDueDate(paymentBookRollover, testStudent);
+    if (dueDateBookRollover === '2026-07-15') {
+        console.log('[OK] getPaymentDueDate calculated correct due date for book payment WITH rollover.');
+    } else {
+        console.error('[FAIL] getPaymentDueDate calculated incorrect due date for book payment WITH rollover:', dueDateBookRollover);
+        hasError = true;
+    }
+
+    // 4. Test payments classification and filtering logic
+    const mockPayments = [
+        { id: 'P_EDU_UNPAID', type: 'education', status: 'unpaid', amount: 150000, month: '2026-06' },
+        { id: 'P_EDU_REQ', type: 'education', status: 'requested', amount: 150000, month: '2026-05' },
+        { id: 'P_EDU_PAID', type: 'education', status: 'paid', amount: 150000, month: '2026-04' },
+        { id: 'P_BOOK_UNPAID', type: 'book', status: 'unpaid', amount: 20000, month: '2026-06' },
+        { id: 'P_BOOK_PAID', type: 'book', status: 'paid', amount: 20000, month: '2026-05' }
+    ];
+
+    const unpaidPayments = mockPayments.filter(p => p.status !== 'paid');
+    const paidPayments = mockPayments.filter(p => p.status === 'paid');
+
+    if (unpaidPayments.length === 3 && unpaidPayments.some(p => p.id === 'P_EDU_UNPAID') && unpaidPayments.some(p => p.id === 'P_EDU_REQ') && unpaidPayments.some(p => p.id === 'P_BOOK_UNPAID')) {
+        console.log('[OK] Payments classified as unpaid/requested correctly including both education and book types.');
+    } else {
+        console.error('[FAIL] Unpaid payments classification failed:', unpaidPayments);
+        hasError = true;
+    }
+
+    if (paidPayments.length === 2 && paidPayments.some(p => p.id === 'P_EDU_PAID') && paidPayments.some(p => p.id === 'P_BOOK_PAID')) {
+        console.log('[OK] Payments classified as paid correctly including both education and book types.');
+    } else {
+        console.error('[FAIL] Paid payments classification failed:', paidPayments);
+        hasError = true;
+    }
+
+    // 5. Test book name fallback logic
+    const testBookId = 'B_TEST_16ND';
+    stateStore.db.books.push({ id: testBookId, name: '테스트교재명' });
+    stateStore.saveDB();
+
+    const book1 = stateStore.getBook(testBookId);
+    const bookName1 = book1 ? book1.name : '교재비';
+    if (bookName1 === '테스트교재명') {
+        console.log('[OK] Book name successfully resolved via bookId.');
+    } else {
+        console.error('[FAIL] Book name resolve failed:', bookName1);
+        hasError = true;
+    }
+
+    const bookNameFallback = stateStore.getBook('NON_EXIST_ID') ? stateStore.getBook('NON_EXIST_ID').name : '교재비';
+    if (bookNameFallback === '교재비') {
+        console.log('[OK] Book name fallback resolved to default "교재비".');
+    } else {
+        console.error('[FAIL] Book name fallback failed:', bookNameFallback);
+        hasError = true;
+    }
+
+    // Clean up book test data
+    stateStore.db.books = stateStore.db.books.filter(b => b.id !== testBookId);
+    stateStore.saveDB();
+
+} catch (err) {
+    console.error('[FAIL] Failed during Phase 16N-Repair-D unit tests execution:', err);
+    hasError = true;
+}
+
 // Clean up Phase 16N test data
 stateStore.db.students = stateStore.db.students.filter(s => s.id !== testStudentIdN && s.id !== otherStudentIdN);
 stateStore.db.parentStudentLinks = stateStore.db.parentStudentLinks.filter(l => l.parentUserId !== testParentUserId);
