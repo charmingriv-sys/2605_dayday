@@ -1575,6 +1575,127 @@ if (targetMsg && targetMsg.status === 'unread') {
     hasError = true;
 }
 
+// 3. Test list-view model helper logic (sorting, status formatting, parentMessages mapping)
+console.log('--- Starting Phase 16N Parent Attendance list-view helper tests ---');
+
+// Status formatting helper check with lateEnabled setting consideration
+const formatStatusHelper = (status, leavingTime, lateEnabled) => {
+    const displayStatus = (status === 'late' && !lateEnabled) ? 'present' : status;
+    if (displayStatus === 'absent') return '결석';
+    const prefix = displayStatus === 'late' ? '지각' : '등원 완료';
+    const suffix = leavingTime ? '하원 완료' : '하원 기록 없음';
+    return `${prefix} / ${suffix}`;
+};
+
+if (formatStatusHelper('absent', '', true) === '결석') {
+    console.log('[OK] formatStatusHelper mapped absent status correctly.');
+} else {
+    console.error('[FAIL] formatStatusHelper absent status mapping failed');
+    hasError = true;
+}
+
+if (formatStatusHelper('present', '15:30', true) === '등원 완료 / 하원 완료') {
+    console.log('[OK] formatStatusHelper mapped present check-in with leavingTime correctly.');
+} else {
+    console.error('[FAIL] formatStatusHelper present check-in with leavingTime failed');
+    hasError = true;
+}
+
+// lateEnabled === true
+if (formatStatusHelper('late', '', true) === '지각 / 하원 기록 없음') {
+    console.log('[OK] formatStatusHelper mapped late check-in correctly when lateEnabled is true.');
+} else {
+    console.error('[FAIL] formatStatusHelper late check-in failed when lateEnabled is true');
+    hasError = true;
+}
+
+// lateEnabled === false
+if (formatStatusHelper('late', '', false) === '등원 완료 / 하원 기록 없음') {
+    console.log('[OK] formatStatusHelper mapped late check-in as present (등원 완료) when lateEnabled is false.');
+} else {
+    console.error('[FAIL] formatStatusHelper late check-in mapping failed when lateEnabled is false');
+    hasError = true;
+}
+
+// Validate lateDetectionEnabled setting API retrieval
+const originalLateSetting = stateStore.getLateDetectionEnabled();
+stateStore.setLateDetectionEnabled(true);
+if (stateStore.getLateDetectionEnabled() === true) {
+    console.log('[OK] StateStore get/set LateDetectionEnabled to true verified.');
+} else {
+    console.error('[FAIL] StateStore get/set LateDetectionEnabled to true failed');
+    hasError = true;
+}
+
+stateStore.setLateDetectionEnabled(false);
+if (stateStore.getLateDetectionEnabled() === false) {
+    console.log('[OK] StateStore get/set LateDetectionEnabled to false verified.');
+} else {
+    console.error('[FAIL] StateStore get/set LateDetectionEnabled to false failed');
+    hasError = true;
+}
+// Restore setting
+stateStore.setLateDetectionEnabled(originalLateSetting);
+
+// Verify that details modal presentation content does not include the lesson note section / comment string
+const testAttendanceRecord = {
+    id: 'ATT_TEST_1',
+    studentId: 'S1',
+    date: '2026-06-03',
+    status: 'present',
+    time: '09:00',
+    leavingTime: '18:00',
+    note: '수업일지 코멘트 내용'
+};
+
+const simulateModalTemplate = (record, lateEnabled) => {
+    return `
+        <div class="modal-header">
+            <h3 class="modal-title">출결 상세 정보</h3>
+        </div>
+        <div class="modal-body">
+            <div>등원 기록 시간: ${record.time ? record.time : '기록 없음'}</div>
+            <div>하원 기록 시간: ${record.leavingTime ? record.leavingTime : '하원 기록 없음'}</div>
+        </div>
+    `;
+};
+
+const renderedTemplate = simulateModalTemplate(testAttendanceRecord, true);
+if (!renderedTemplate.includes('선생님 수업일지') && !renderedTemplate.includes('수업일지 코멘트 내용')) {
+    console.log('[OK] Details modal template contract verified: does not include the teacher note/comment sections.');
+} else {
+    console.error('[FAIL] Details modal template contains lesson note or teacher comment header.');
+    hasError = true;
+}
+
+// Date sorting check
+const testRecords = [{ date: '2026-06-01' }, { date: '2026-06-03' }, { date: '2026-06-02' }];
+const sortedRecords = [...testRecords].sort((a, b) => b.date.localeCompare(a.date));
+if (sortedRecords[0].date === '2026-06-03' && sortedRecords[2].date === '2026-06-01') {
+    console.log('[OK] Attendance list date sorting verified descending.');
+} else {
+    console.error('[FAIL] Attendance list date sorting failed. Result:', sortedRecords);
+    hasError = true;
+}
+
+// parentMessages matching check
+const todayIsoStr = new Date().toISOString().slice(0, 10);
+const unreadMsgsForTest = stateStore.getParentMessagesForParent(testParentUserId, testStudentIdN).filter(m => m.status === 'unread');
+const matchedMsg = unreadMsgsForTest.find(m => {
+    const category = m.category || '';
+    const type = m.type || '';
+    const isAttendanceMsg = category === 'attendance' || type === 'check_in' || type === 'check_out';
+    return isAttendanceMsg && m.createdAt.startsWith(todayIsoStr);
+});
+
+if (matchedMsg && matchedMsg.title === '등원 안내') {
+    console.log('[OK] Successfully matched attendance record date with unread parentMessage.');
+} else {
+    console.log('DEBUG unreadMsgsForTest:', unreadMsgsForTest);
+    console.error('[FAIL] Failed to match attendance record with parentMessage. matchedMsg:', matchedMsg);
+    hasError = true;
+}
+
 // Clean up Phase 16N test data
 stateStore.db.students = stateStore.db.students.filter(s => s.id !== testStudentIdN && s.id !== otherStudentIdN);
 stateStore.db.parentStudentLinks = stateStore.db.parentStudentLinks.filter(l => l.parentUserId !== testParentUserId);

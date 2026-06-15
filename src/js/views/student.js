@@ -90,165 +90,346 @@ function bindSiblingSelector(container, reRenderFn) {
 
 // Calendar view for S1
 export function renderCalendar(container) {
+    let activeViewMode = 'calendar'; // 'calendar' or 'list'
+
     const render = () => {
         const studentId = getActiveStudentId();
+        const student = stateStore.getStudent(studentId);
         const attendanceList = stateStore.getAttendanceForStudent(studentId);
         
-        // Filter attendance for May 2026
-        const mayAttendance = attendanceList.filter(a => a.date.startsWith('2026-05'));
-        const presentCount = mayAttendance.filter(a => a.status === 'present').length;
-        const lateCount = mayAttendance.filter(a => a.status === 'late').length;
-        const absentCount = mayAttendance.filter(a => a.status === 'absent').length;
+        // Check if late warning is enabled in settings
+        const lateEnabled = stateStore.getLateDetectionEnabled();
 
-        // Calendar header days
-        const daysOfWeek = ['일', '월', '화', '수', '목', '금', '토'];
+        // Fetch unread parent messages for parent
+        const user = stateStore.getCurrentUser();
+        const unreadParentMessages = user ? stateStore.getParentMessagesForParent(user.id, studentId).filter(m => m.status === 'unread') : [];
+        const unreadAttendanceCount = unreadParentMessages.filter(m => {
+            const category = m.category || '';
+            const type = m.type || '';
+            return category === 'attendance' || type === 'check_in' || type === 'check_out';
+        }).length;
 
-        // Generate cells for May 2026
-        const cells = [];
-        // April 2026 padding: Apr 26 to Apr 30
-        for (let d = 26; d <= 30; d++) {
-            cells.push({ day: d, dateStr: `2026-04-${d}`, isCurrent: false });
-        }
-        // May 2026: May 1 to May 31
-        for (let d = 1; d <= 31; d++) {
-            const dayStr = String(d).padStart(2, '0');
-            cells.push({ day: d, dateStr: `2026-05-${dayStr}`, isCurrent: true });
-        }
-        // June 2026 padding: Jun 1 to Jun 6
-        for (let d = 1; d <= 6; d++) {
-            const dayStr = String(d).padStart(2, '0');
-            cells.push({ day: d, dateStr: `2026-06-${dayStr}`, isCurrent: false });
-        }
-
-        let cellsHtml = '';
-        cells.forEach(cell => {
-            if (!cell.isCurrent) {
-                const record = attendanceList.find(a => a.date === cell.dateStr);
-                const hasRecordClass = record ? 'has-record' : '';
-                const pointerStyle = record ? 'style="cursor: pointer; background: rgba(9, 132, 227, 0.04);"' : '';
-                
-                let statusDot = '';
-                if (record) {
-                    statusDot = `<span class="calendar-day-status ${record.status}" title="${STATUS_MAP[record.status]?.text}"></span>`;
-                }
-
-                cellsHtml += `
-                    <div class="calendar-day-cell other-month ${hasRecordClass}" data-date="${cell.dateStr}" ${pointerStyle}>
-                        <span class="calendar-day-number">${cell.day}</span>
-                        ${statusDot}
-                    </div>
-                `;
-            } else {
-                const record = attendanceList.find(a => a.date === cell.dateStr);
-                const hasRecordClass = record ? 'has-record' : '';
-                const pointerStyle = record ? 'style="cursor: pointer; background: rgba(9, 132, 227, 0.04);"' : '';
-                
-                let statusDot = '';
-                if (record) {
-                    statusDot = `<span class="calendar-day-status ${record.status}" title="${STATUS_MAP[record.status]?.text}"></span>`;
-                }
-
-                cellsHtml += `
-                    <div class="calendar-day-cell ${hasRecordClass}" data-date="${cell.dateStr}" ${pointerStyle}>
-                        <span class="calendar-day-number">${cell.day}</span>
-                        ${statusDot}
-                    </div>
-                `;
-            }
-        });
-
-        container.innerHTML = `
-            ${renderSiblingSelectorHeader(container, render)}
-            <div class="metrics-grid">
-                <div class="glass-card metric-card">
-                    <div class="metric-icon green">
-                        <i class="fa-solid fa-calendar-check"></i>
-                    </div>
-                    <div class="metric-info">
-                        <span class="metric-value">${presentCount}회</span>
-                        <span class="metric-label">등원 완료</span>
-                    </div>
-                </div>
-                <div class="glass-card metric-card">
-                    <div class="metric-icon cyan">
-                        <i class="fa-solid fa-clock"></i>
-                    </div>
-                    <div class="metric-info">
-                        <span class="metric-value">${lateCount}회</span>
-                        <span class="metric-label">지각</span>
-                    </div>
-                </div>
-                <div class="glass-card metric-card">
-                    <div class="metric-icon red">
-                        <i class="fa-solid fa-calendar-xmark"></i>
-                    </div>
-                    <div class="metric-info">
-                        <span class="metric-value">${absentCount}회</span>
-                        <span class="metric-label">결석</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="glass-card" style="margin-top: 1.5rem;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 12px;">
-                    <h3 style="font-weight: 700; font-size: 1.25rem; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
-                        <i class="fa-solid fa-calendar-days" style="color: var(--primary);"></i>
-                        2026년 5월 출결 및 수업일지 캘린더
-                    </h3>
-                    <div style="display: flex; gap: 12px; font-size: 0.8rem;">
-                        <span style="display: flex; align-items: center; gap: 6px; color: var(--text-muted);">
-                            <span class="calendar-day-status present" style="margin: 0; display: inline-block;"></span> 등원
-                        </span>
-                        <span style="display: flex; align-items: center; gap: 6px; color: var(--text-muted);">
-                            <span class="calendar-day-status late" style="margin: 0; display: inline-block;"></span> 지각
-                        </span>
-                        <span style="display: flex; align-items: center; gap: 6px; color: var(--text-muted);">
-                            <span class="calendar-day-status absent" style="margin: 0; display: inline-block;"></span> 결석
-                        </span>
-                    </div>
-                </div>
-
-                <div class="attendance-calendar-grid">
-                    ${daysOfWeek.map(d => `<div class="calendar-header-day">${d}</div>`).join('')}
-                    ${cellsHtml}
-                </div>
-                
-                <p style="margin-top: 1rem; font-size: 0.85rem; color: var(--text-muted); text-align: center;">
-                    <i class="fa-solid fa-circle-info"></i> 출석 표시가 있는 날짜를 클릭하면 해당일 수업일지 내용을 확인할 수 있습니다.
-                </p>
+        // View Mode Toggle HTML
+        const viewModeToggleHtml = `
+            <div style="display: flex; gap: 10px; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+                <button class="btn ${activeViewMode === 'calendar' ? 'btn-primary' : 'btn-secondary'}" id="btn-view-calendar" style="border-radius: 20px; font-weight: 700; padding: 8px 18px; cursor: pointer;">
+                    <i class="fa-solid fa-calendar-days" style="margin-right: 4px;"></i> 달력형
+                </button>
+                <button class="btn ${activeViewMode === 'list' ? 'btn-primary' : 'btn-secondary'}" id="btn-view-list" style="border-radius: 20px; font-weight: 700; padding: 8px 18px; cursor: pointer; position: relative;">
+                    <i class="fa-solid fa-list" style="margin-right: 4px;"></i> 리스트형
+                    ${unreadAttendanceCount > 0 ? `<span class="badge-unread-count" style="position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.65rem; display: flex; align-items: center; justify-content: center; font-weight: bold;">${unreadAttendanceCount}</span>` : ''}
+                </button>
             </div>
         `;
 
-        // Bind click events for records
-        const recordCells = container.querySelectorAll('.calendar-day-cell.has-record');
-        recordCells.forEach(cell => {
-            cell.addEventListener('click', () => {
-                const date = cell.dataset.date;
-                const record = attendanceList.find(a => a.date === date);
+        if (activeViewMode === 'calendar') {
+            // Filter attendance for May 2026
+            const mayAttendance = attendanceList.filter(a => a.date.startsWith('2026-05'));
+            const presentCount = mayAttendance.filter(a => {
+                const status = (a.status === 'late' && !lateEnabled) ? 'present' : a.status;
+                return status === 'present';
+            }).length;
+            const lateCount = mayAttendance.filter(a => {
+                const status = (a.status === 'late' && !lateEnabled) ? 'present' : a.status;
+                return status === 'late';
+            }).length;
+            const absentCount = mayAttendance.filter(a => a.status === 'absent').length;
+
+            // Calendar header days
+            const daysOfWeek = ['일', '월', '화', '수', '목', '금', '토'];
+
+            // Generate cells for May 2026
+            const cells = [];
+            // April 2026 padding: Apr 26 to Apr 30
+            for (let d = 26; d <= 30; d++) {
+                cells.push({ day: d, dateStr: `2026-04-${d}`, isCurrent: false });
+            }
+            // May 2026: May 1 to May 31
+            for (let d = 1; d <= 31; d++) {
+                const dayStr = String(d).padStart(2, '0');
+                cells.push({ day: d, dateStr: `2026-05-${dayStr}`, isCurrent: true });
+            }
+            // June 2026 padding: Jun 1 to Jun 6
+            for (let d = 1; d <= 6; d++) {
+                const dayStr = String(d).padStart(2, '0');
+                cells.push({ day: d, dateStr: `2026-06-${dayStr}`, isCurrent: false });
+            }
+
+            let cellsHtml = '';
+            cells.forEach(cell => {
+                const record = attendanceList.find(a => a.date === cell.dateStr);
+                const hasRecordClass = record ? 'has-record' : '';
+                const pointerStyle = record ? 'style="cursor: pointer; background: rgba(9, 132, 227, 0.04);"' : '';
+                
+                let statusDot = '';
                 if (record) {
-                    showAttendanceModal(record);
+                    const statusForDot = (record.status === 'late' && !lateEnabled) ? 'present' : record.status;
+                    statusDot = `<span class="calendar-day-status ${statusForDot}" title="${STATUS_MAP[statusForDot]?.text}"></span>`;
+                }
+
+                if (!cell.isCurrent) {
+                    cellsHtml += `
+                        <div class="calendar-day-cell other-month ${hasRecordClass}" data-date="${cell.dateStr}" ${pointerStyle}>
+                            <span class="calendar-day-number">${cell.day}</span>
+                            ${statusDot}
+                        </div>
+                    `;
+                } else {
+                    cellsHtml += `
+                        <div class="calendar-day-cell ${hasRecordClass}" data-date="${cell.dateStr}" ${pointerStyle}>
+                            <span class="calendar-day-number">${cell.day}</span>
+                            ${statusDot}
+                        </div>
+                    `;
                 }
             });
-        });
+
+            container.innerHTML = `
+                ${renderSiblingSelectorHeader(container, render)}
+                ${viewModeToggleHtml}
+                <div class="metrics-grid">
+                    <div class="glass-card metric-card">
+                        <div class="metric-icon green">
+                            <i class="fa-solid fa-calendar-check"></i>
+                        </div>
+                        <div class="metric-info">
+                            <span class="metric-value">${presentCount}회</span>
+                            <span class="metric-label">등원 완료</span>
+                        </div>
+                    </div>
+                    <div class="glass-card metric-card">
+                        <div class="metric-icon cyan">
+                            <i class="fa-solid fa-clock"></i>
+                        </div>
+                        <div class="metric-info">
+                            <span class="metric-value">${lateCount}회</span>
+                            <span class="metric-label">지각</span>
+                        </div>
+                    </div>
+                    <div class="glass-card metric-card">
+                        <div class="metric-icon red">
+                            <i class="fa-solid fa-calendar-xmark"></i>
+                        </div>
+                        <div class="metric-info">
+                            <span class="metric-value">${absentCount}회</span>
+                            <span class="metric-label">결석</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-card" style="margin-top: 1.5rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 12px;">
+                        <h3 style="font-weight: 700; font-size: 1.25rem; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                            <i class="fa-solid fa-calendar-days" style="color: var(--primary);"></i>
+                            2026년 5월 출결 및 수업일지 캘린더
+                        </h3>
+                        <div style="display: flex; gap: 12px; font-size: 0.8rem;">
+                            <span style="display: flex; align-items: center; gap: 6px; color: var(--text-muted);">
+                                <span class="calendar-day-status present" style="margin: 0; display: inline-block;"></span> 등원
+                            </span>
+                            <span style="display: flex; align-items: center; gap: 6px; color: var(--text-muted);">
+                                <span class="calendar-day-status late" style="margin: 0; display: inline-block;"></span> 지각
+                            </span>
+                            <span style="display: flex; align-items: center; gap: 6px; color: var(--text-muted);">
+                                <span class="calendar-day-status absent" style="margin: 0; display: inline-block;"></span> 결석
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="attendance-calendar-grid">
+                        ${daysOfWeek.map(d => `<div class="calendar-header-day">${d}</div>`).join('')}
+                        ${cellsHtml}
+                    </div>
+                    
+                    <p style="margin-top: 1rem; font-size: 0.85rem; color: var(--text-muted); text-align: center;">
+                        <i class="fa-solid fa-circle-info"></i> 출석 표시가 있는 날짜를 클릭하면 해당일 수업일지 내용을 확인할 수 있습니다.
+                    </p>
+                </div>
+            `;
+
+            // Bind click events for records
+            const recordCells = container.querySelectorAll('.calendar-day-cell.has-record');
+            recordCells.forEach(cell => {
+                cell.addEventListener('click', () => {
+                    const date = cell.dataset.date;
+                    const record = attendanceList.find(a => a.date === date);
+                    if (record) {
+                        showAttendanceModal(record);
+                    }
+                });
+            });
+
+        } else {
+            // Render List View
+            const sortedAttendance = [...attendanceList].sort((a, b) => b.date.localeCompare(a.date));
+            
+            let listContentHtml = '';
+            if (sortedAttendance.length === 0) {
+                listContentHtml = `
+                    <div style="text-align: center; color: var(--text-muted); padding: 4rem 2rem; font-size: 0.95rem;">
+                        <i class="fa-solid fa-calendar-xmark" style="font-size: 3rem; display: block; margin-bottom: 1rem; color: rgba(0,0,0,0.06);"></i>
+                        아직 출결 기록이 없습니다.
+                    </div>
+                `;
+            } else {
+                listContentHtml = `
+                    <div class="table-wrapper">
+                        <table class="custom-table" data-testid="parent-attendance-list">
+                            <thead>
+                                <tr>
+                                    <th>날짜</th>
+                                    <th>상태</th>
+                                    <th>등원 시간</th>
+                                    <th>하원 시간</th>
+                                    <th>수강 과목</th>
+                                    <th>상세 보기</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${sortedAttendance.map(record => {
+                                    const dateObj = new Date(record.date);
+                                    const dayName = ['일', '월', '화', '수', '목', '금', '토'][dateObj.getDay()];
+                                    const dateFormatted = `${record.date} (${dayName})`;
+                                    
+                                    // Status mapping logic
+                                    let statusText = '';
+                                    let badgeClass = '';
+                                    const displayStatus = (record.status === 'late' && !lateEnabled) ? 'present' : record.status;
+                                    if (displayStatus === 'absent') {
+                                        statusText = '결석';
+                                        badgeClass = 'badge-danger';
+                                    } else {
+                                        const prefix = displayStatus === 'late' ? '지각' : '등원 완료';
+                                        const suffix = record.leavingTime ? '하원 완료' : '하원 기록 없음';
+                                        statusText = `${prefix} / ${suffix}`;
+                                        badgeClass = displayStatus === 'late' ? 'badge-warning' : 'badge-success';
+                                    }
+
+                                    // Find associated unread check_in / check_out parent message
+                                    const associatedMsg = unreadParentMessages.find(m => {
+                                        const category = m.category || '';
+                                        const type = m.type || '';
+                                        const isAttendanceMsg = category === 'attendance' || type === 'check_in' || type === 'check_out';
+                                        return isAttendanceMsg && m.createdAt.startsWith(record.date);
+                                    });
+
+                                    const unreadBadge = associatedMsg 
+                                        ? `<span class="badge badge-danger" style="margin-left: 8px; font-size: 0.7rem;">알림 확인 전</span>` 
+                                        : '';
+
+                                    return `
+                                        <tr class="attendance-list-row" data-date="${record.date}" style="cursor: pointer;">
+                                            <td><strong>${dateFormatted}</strong></td>
+                                            <td>
+                                                <span class="badge ${badgeClass}">${statusText}</span>
+                                                ${unreadBadge}
+                                            </td>
+                                            <td>${record.time || '-'}</td>
+                                            <td>${record.leavingTime || '<span style="color: var(--text-muted); font-size: 0.85rem;">하원 기록 없음</span>'}</td>
+                                            <td>${student ? student.instrument : '-'}</td>
+                                            <td>
+                                                <button class="btn btn-secondary btn-sm" style="padding: 4px 8px; font-size: 0.75rem;">
+                                                    상세 <i class="fa-solid fa-chevron-right" style="font-size: 0.65rem;"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = `
+                ${renderSiblingSelectorHeader(container, render)}
+                ${viewModeToggleHtml}
+                <div class="glass-card">
+                    <h3 style="font-weight: 700; font-size: 1.25rem; color: var(--text-main); margin-bottom: 1.5rem; display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-list" style="color: var(--primary);"></i>
+                        출결 기록 내역
+                    </h3>
+                    ${listContentHtml}
+                </div>
+            `;
+
+            // Bind click events for list rows
+            const listRows = container.querySelectorAll('.attendance-list-row');
+            listRows.forEach(row => {
+                row.addEventListener('click', () => {
+                    const date = row.dataset.date;
+                    const record = attendanceList.find(a => a.date === date);
+                    if (record) {
+                        // Mark associated unread parentMessages as read
+                        const associatedMsgs = unreadParentMessages.filter(m => {
+                            const category = m.category || '';
+                            const type = m.type || '';
+                            const isAttendanceMsg = category === 'attendance' || type === 'check_in' || type === 'check_out';
+                            return isAttendanceMsg && m.createdAt.startsWith(record.date);
+                        });
+                        associatedMsgs.forEach(msg => {
+                            stateStore.markParentMessageAsRead(msg.id);
+                        });
+                        
+                        showAttendanceModal(record);
+                    }
+                });
+            });
+        }
+
+        // Bind toggle buttons
+        const btnCal = container.querySelector('#btn-view-calendar');
+        const btnList = container.querySelector('#btn-view-list');
+        if (btnCal) {
+            btnCal.addEventListener('click', () => {
+                activeViewMode = 'calendar';
+                render();
+            });
+        }
+        if (btnList) {
+            btnList.addEventListener('click', () => {
+                activeViewMode = 'list';
+                render();
+            });
+        }
+
         bindSiblingSelector(container, render);
     };
 
     render();
 
-    const unsubscribe = stateStore.subscribe('ATTENDANCE_CHANGED', () => {
-        render();
-    });
+    const unsubscribe = stateStore.subscribe('ATTENDANCE_CHANGED', render);
+    const unsubscribeMessages = stateStore.subscribe('PARENT_MESSAGES_CHANGED', render);
+    const unsubscribeSettings = stateStore.subscribe('SETTINGS_CHANGED', render);
 
     return () => {
         unsubscribe();
+        unsubscribeMessages();
+        unsubscribeSettings();
     };
 }
 
 function showAttendanceModal(record) {
-    const statusInfo = STATUS_MAP[record.status] || { text: record.status, badge: 'badge-info' };
+    const studentId = getActiveStudentId();
+    const student = stateStore.getStudent(studentId);
+    const subjectText = student ? student.instrument : '-';
+    
+    const lateEnabled = stateStore.getLateDetectionEnabled();
+    const displayStatus = (record.status === 'late' && !lateEnabled) ? 'present' : record.status;
+    const statusInfo = STATUS_MAP[displayStatus] || { text: displayStatus, badge: 'badge-info' };
+    
+    // Detailed status info
+    let detailedStatusHtml = `<span class="badge ${statusInfo.badge}">${statusInfo.text}</span>`;
+    if (displayStatus !== 'absent') {
+        const prefix = displayStatus === 'late' ? '지각' : '등원 완료';
+        const suffix = record.leavingTime ? '하원 완료' : '하원 기록 없음';
+        const badgeClass = displayStatus === 'late' ? 'badge-warning' : 'badge-success';
+        detailedStatusHtml = `<span class="badge ${badgeClass}">${prefix} / ${suffix}</span>`;
+    }
+
     const htmlContent = `
         <div class="modal-header">
-            <h3 class="modal-title">출결 및 수업일지 상세 정보</h3>
+            <h3 class="modal-title">출결 상세 정보</h3>
             <button class="modal-close" data-close-modal>&times;</button>
         </div>
         <div class="modal-body" style="padding-top: 10px;">
@@ -257,19 +438,14 @@ function showAttendanceModal(record) {
                     <i class="fa-solid fa-calendar-day" style="color: var(--primary); margin-right: 6px;"></i>
                     ${formatDate(record.date)}
                 </div>
-                <span class="badge ${statusInfo.badge}">${statusInfo.text}</span>
+                ${detailedStatusHtml}
             </div>
             
             <div style="background: rgba(9, 132, 227, 0.02); border: 1px solid var(--border-color); padding: 1.2rem; border-radius: var(--radius-md); margin-bottom: 1.2rem;">
-                <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.8rem; display: flex; align-items: center; gap: 6px;">
-                    <i class="fa-solid fa-clock"></i>
-                    <span>등원 기록 시간: ${record.time ? record.time : '기록 없음'}</span>
-                </div>
-                <div style="border-top: 1px solid var(--border-color); padding-top: 0.8rem; font-size: 0.95rem; line-height: 1.6; color: var(--text-main);">
-                    <strong style="color: var(--secondary); display: block; margin-bottom: 6px;">
-                        <i class="fa-solid fa-feather-pointed"></i> 선생님 수업일지
-                    </strong>
-                    <div style="white-space: pre-wrap;">${record.note || '선생님이 작성한 수업일지 코멘트가 없습니다.'}</div>
+                <div style="font-size: 0.85rem; color: var(--text-muted); display: flex; flex-direction: column; gap: 6px;">
+                    <div><i class="fa-solid fa-clock" style="margin-right: 4px;"></i> 등원 기록 시간: ${record.time ? record.time : '기록 없음'}</div>
+                    <div><i class="fa-solid fa-clock" style="margin-right: 4px;"></i> 하원 기록 시간: ${record.leavingTime ? record.leavingTime : '<span style="color: var(--text-muted);">하원 기록 없음</span>'}</div>
+                    <div><i class="fa-solid fa-music" style="margin-right: 4px;"></i> 수강 과목: ${subjectText}</div>
                 </div>
             </div>
         </div>

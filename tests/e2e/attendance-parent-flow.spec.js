@@ -240,4 +240,157 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
 
     expect(consoleErrors.length).toBe(0);
   });
+
+  test('should support calendar and list view switching and display list details', async ({ page }) => {
+    // 1. Log in as Parent
+    const parentBtn = page.locator('#login-overlay .role-btn.student');
+    await expect(parentBtn).toBeVisible({ timeout: 5000 });
+    await parentBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // Inject mock parent message and attendance records for S1
+    await page.evaluate(() => {
+      const db = window.stateStore.db;
+      db.parentMessages = [];
+      db.attendance = [];
+      db.settings.lateDetectionEnabled = true;
+
+      // Link USR_PAR_DEMO to S1
+      const link = db.parentStudentLinks.find(l => l.parentUserId === 'USR_PAR_DEMO' && l.studentId === 'S1');
+      if (!link) {
+        db.parentStudentLinks.push({ parentUserId: 'USR_PAR_DEMO', studentId: 'S1' });
+      }
+
+      // Add check-in attendance record for 2026-06-03
+      db.attendance.push({
+        id: 'ATT_E2E_LIST_1',
+        studentId: 'S1',
+        date: '2026-06-03',
+        status: 'present',
+        time: '09:00',
+        leavingTime: '18:00',
+        note: '양손 연습 잘함'
+      });
+
+      // Add late check-in attendance record for 2026-06-02
+      db.attendance.push({
+        id: 'ATT_E2E_LIST_2',
+        studentId: 'S1',
+        date: '2026-06-02',
+        status: 'late',
+        time: '14:15',
+        leavingTime: '',
+        note: '하원 누락됨'
+      });
+
+      // Add unread check_in parent message for 2026-06-02
+      db.parentMessages.push({
+        id: 'pm_unread_attendance_e2e',
+        studentId: 'S1',
+        parentContactId: null,
+        parentSlot: null,
+        recipientUserId: 'USR_PAR_DEMO',
+        category: 'attendance',
+        type: 'check_in',
+        title: '지각 등원 안내',
+        body: '최다은 원생이 지각 등원했습니다.',
+        status: 'unread',
+        pushRequired: false,
+        pushStatus: 'not_required',
+        dedupeKey: 'E2E_MSG_ATT_LIST_UNREAD',
+        createdAt: '2026-06-02T14:15:00.000Z'
+      });
+
+      window.stateStore.saveDB();
+    });
+
+    // Navigate to Attendance View
+    const parentAttendanceTab = page.locator('.menu-item[data-view="stu-calendar"]');
+    await expect(parentAttendanceTab).toBeVisible();
+    await parentAttendanceTab.click();
+
+    // Verify view mode tabs are present
+    const btnCal = page.locator('#btn-view-calendar');
+    const btnList = page.locator('#btn-view-list');
+    await expect(btnCal).toBeVisible();
+    await expect(btnList).toBeVisible();
+
+    // Toggle to list view
+    await btnList.click();
+    await expect(btnList).toHaveClass(/btn-primary/);
+    await expect(btnCal).toHaveClass(/btn-secondary/);
+
+    // Verify unread badge count on list tab is present
+    const listTabBadge = btnList.locator('.badge-unread-count');
+    await expect(listTabBadge).toContainText('1');
+
+    // Verify list rows are rendered
+    const listTable = page.locator('[data-testid="parent-attendance-list"]');
+    await expect(listTable).toBeVisible();
+
+    // Row for 2026-06-03: present + leavingTime -> "등원 완료 / 하원 완료"
+    const row1 = listTable.locator('tr.attendance-list-row', { hasText: '2026-06-03' });
+    await expect(row1).toBeVisible();
+    await expect(row1).toContainText('등원 완료 / 하원 완료');
+    await expect(row1).toContainText('09:00');
+    await expect(row1).toContainText('18:00');
+
+    // Row for 2026-06-02: late + no leavingTime -> "지각 / 하원 기록 없음"
+    const row2 = listTable.locator('tr.attendance-list-row', { hasText: '2026-06-02' });
+    await expect(row2).toBeVisible();
+    await expect(row2).toContainText('지각 / 하원 기록 없음');
+    await expect(row2).toContainText('14:15');
+    await expect(row2).toContainText('하원 기록 없음');
+
+    // Verify unread indicator "알림 확인 전" in row2
+    const unreadIndicator = row2.locator('.badge-danger', { hasText: '알림 확인 전' });
+    await expect(unreadIndicator).toBeVisible();
+
+    // Click row2 to view details and check that unread indicator is removed (due to read status transition)
+    await row2.click();
+    const commonModal = page.locator('#common-modal');
+    await expect(commonModal).toBeVisible();
+    await expect(commonModal).toContainText('하원 기록 없음');
+    
+    // Verify that notes are not shown in details modal
+    await expect(commonModal).not.toContainText('선생님 수업일지');
+    await expect(commonModal).not.toContainText('하원 누락됨');
+
+    // Close modal
+    await commonModal.locator('[data-close-modal]').first().click();
+    await expect(commonModal).not.toHaveClass(/show/);
+    await page.waitForTimeout(500);
+
+    // Verify unread badge/indicator is now gone
+    await expect(unreadIndicator).toBeHidden();
+    await expect(listTabBadge).toBeHidden();
+
+    // Turn off lateDetectionEnabled and verify "지각" label disappears
+    await page.evaluate(() => {
+      window.stateStore.setLateDetectionEnabled(false);
+    });
+
+    // Check that row2 now shows "등원 완료 / 하원 기록 없음"
+    await expect(row2).toContainText('등원 완료 / 하원 기록 없음');
+    await expect(row2).not.toContainText('지각 / 하원 기록 없음');
+
+    // Click row2 to verify modal status changes to "등원 완료 / 하원 기록 없음" without "지각"
+    await row2.click();
+    await expect(commonModal).toBeVisible();
+    await expect(commonModal).toContainText('등원 완료 / 하원 기록 없음');
+    await expect(commonModal).not.toContainText('지각');
+
+    // Close modal
+    await commonModal.locator('[data-close-modal]').first().click();
+    await expect(commonModal).not.toHaveClass(/show/);
+    await page.waitForTimeout(500);
+
+    // Toggle back to calendar
+    await btnCal.click();
+    await expect(btnCal).toHaveClass(/btn-primary/);
+    await expect(page.locator('.attendance-calendar-grid')).toBeVisible();
+
+    // Verify that "학부모 메시지함" menu is NOT visible in sidebar
+    await expect(page.locator('#parent-messages-menu-item')).toBeHidden();
+  });
 });
