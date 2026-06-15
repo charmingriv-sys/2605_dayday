@@ -773,6 +773,29 @@ const openStudentDetailModal = (studentId) => {
         `;
     }
 
+    const contacts = stateStore.getParentContactsByStudent(studentId) || [];
+    const parent1 = contacts.find(c => c.slot === 'parent1');
+    const parent2 = contacts.find(c => c.slot === 'parent2');
+
+    const relationKo = {
+        mother: '모',
+        father: '부',
+        grandmother: '조모',
+        grandfather: '조부',
+        guardian: '보호자',
+        etc: '기타'
+    };
+
+    const p1Name = parent1 ? parent1.name : (student.parentName || '');
+    const p1Phone = parent1 ? parent1.phone : (student.parentPhone || '');
+    const p1Relation = parent1 ? parent1.relation : 'guardian';
+    const p1RelationText = relationKo[p1Relation] || p1Relation || '보호자';
+
+    const p2Name = parent2 ? parent2.name : '';
+    const p2Phone = parent2 ? parent2.phone : '';
+    const p2Relation = parent2 ? parent2.relation : '';
+    const p2RelationText = relationKo[p2Relation] || p2Relation || '';
+
     const html = `
         <div class="modal-header">
             <h3 class="modal-title"><i class="fa-solid fa-graduation-cap" style="color: var(--primary); margin-right: 8px;"></i><strong>${student.name}</strong> 원생 상세 정보</h3>
@@ -807,12 +830,12 @@ const openStudentDetailModal = (studentId) => {
                     <strong>${student.phone || '-'}</strong>
                 </div>
                 <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(0,0,0,0.03); padding-bottom: 6px;">
-                    <span style="color: var(--text-muted);">학부모 성함</span>
-                    <strong>${student.parentName || '-'}</strong>
+                    <span style="color: var(--text-muted);">보호자 1 (대표)</span>
+                    <strong>${p1Name ? `${p1Name} (${p1RelationText}) | ${p1Phone || '-'}` : '-'}</strong>
                 </div>
                 <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(0,0,0,0.03); padding-bottom: 6px;">
-                    <span style="color: var(--text-muted);">학부모 연락처</span>
-                    <strong>${student.parentPhone || '-'}</strong>
+                    <span style="color: var(--text-muted);">보호자 2</span>
+                    <strong>${p2Name ? `${p2Name} (${p2RelationText}) | ${p2Phone || '-'}` : '<span style="color: var(--text-muted); font-weight: normal;">등록되지 않음</span>'}</strong>
                 </div>
                 <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(0,0,0,0.03); padding-bottom: 6px;">
                     <span style="color: var(--text-muted);">최초 등록일</span>
@@ -1102,6 +1125,22 @@ const openStudentModal = (studentId = null) => {
         }
     }
 
+    let parent1 = null;
+    let parent2 = null;
+    if (student) {
+        const contacts = stateStore.getParentContactsByStudent(studentId) || [];
+        parent1 = contacts.find(c => c.slot === 'parent1');
+        parent2 = contacts.find(c => c.slot === 'parent2');
+    }
+
+    const p1Name = parent1 ? parent1.name : (student ? student.parentName || '' : '');
+    const p1Phone = parent1 ? parent1.phone : (student ? student.parentPhone || '' : '');
+    const p1Relation = parent1 ? parent1.relation : 'guardian';
+
+    const p2Name = parent2 ? parent2.name : '';
+    const p2Phone = parent2 ? parent2.phone : '';
+    const p2Relation = parent2 ? parent2.relation : 'etc';
+
     // Build teacher list selections
     const teacherOptionsHtml = teachers
         .filter(t => t.employmentStatus !== 'resigned' || (student && student.teacherId === t.id))
@@ -1193,23 +1232,6 @@ const openStudentModal = (studentId = null) => {
                             </div>
                         </div>
                         <div class="form-group">
-                            <label for="modal-student-parent-name">학부모 성함</label>
-                            <input type="text" id="modal-student-parent-name" class="form-control" value="${student ? student.parentName || '' : ''}" placeholder="예: 김철수">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="modal-student-parent-phone">학부모 연락처</label>
-                            <div style="display: flex; gap: 8px; width: 100%;">
-                                <input type="tel" id="modal-student-parent-phone" class="form-control" style="flex-grow: 1; margin-bottom: 0;" placeholder="010-0000-0000">
-                                <select id="modal-student-parent-phone-status" class="form-control" style="width: 100px; margin-bottom: 0; flex-shrink: 0;">
-                                    <option value="direct">직접입력</option>
-                                    <option value="none">없음</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="form-group">
                             <label style="font-weight: 600; font-size: 0.95rem; margin-bottom: 4px; display: block;">주소 <span style="color: var(--danger);">*</span></label>
                             <div style="display: flex; gap: 8px; margin-bottom: 8px;">
                                 <input type="text" id="modal-student-postcode" class="form-control" style="flex-grow: 1; margin-bottom: 0;" placeholder="우편번호" readonly value="${stPostcode}">
@@ -1217,6 +1239,78 @@ const openStudentModal = (studentId = null) => {
                             </div>
                             <input type="text" id="modal-student-address-basic" class="form-control" style="margin-bottom: 8px;" placeholder="기본 주소지" readonly value="${stBasicAddress}">
                             <input type="text" id="modal-student-address-detail" class="form-control" placeholder="상세주소 입력" value="${stDetailAddress}">
+                        </div>
+                    </div>
+
+                    <!-- 보호자 연락처 영역 -->
+                    <div style="margin-top: 1rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+                        <div style="font-weight: 700; font-size: 0.9rem; color: var(--primary); margin-bottom: 1rem;">보호자 정보</div>
+                        
+                        <!-- 보호자 1 (대표) -->
+                        <div style="background: rgba(0, 0, 0, 0.02); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 1rem; margin-bottom: 1rem;">
+                            <div style="font-weight: 600; font-size: 0.85rem; color: var(--text-color); margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+                                <span>보호자 1 (대표)</span>
+                                <span style="font-size: 0.75rem; color: var(--primary); font-weight: normal;">* 필수 수신처 지정 가능</span>
+                            </div>
+                            <div class="form-row" style="margin-bottom: 8px;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="modal-student-parent-name" style="font-size: 0.8rem; margin-bottom: 2px;">성함</label>
+                                    <input type="text" id="modal-student-parent-name" class="form-control" style="margin-bottom: 0; font-size: 0.85rem; height: 32px;" value="${p1Name}" placeholder="예: 김철수">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="modal-student-parent-relation" style="font-size: 0.8rem; margin-bottom: 2px;">관계</label>
+                                    <select id="modal-student-parent-relation" class="form-control" style="margin-bottom: 0; font-size: 0.85rem; height: 32px; padding: 4px 8px;">
+                                        <option value="mother" ${p1Relation === 'mother' ? 'selected' : ''}>모</option>
+                                        <option value="father" ${p1Relation === 'father' ? 'selected' : ''}>부</option>
+                                        <option value="grandmother" ${p1Relation === 'grandmother' ? 'selected' : ''}>조모</option>
+                                        <option value="grandfather" ${p1Relation === 'grandfather' ? 'selected' : ''}>조부</option>
+                                        <option value="guardian" ${p1Relation === 'guardian' ? 'selected' : ''}>보호자</option>
+                                        <option value="etc" ${p1Relation === 'etc' ? 'selected' : ''}>기타</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0; margin-top: 8px;">
+                                <label for="modal-student-parent-phone" style="font-size: 0.8rem; margin-bottom: 2px;">연락처</label>
+                                <div style="display: flex; gap: 8px; width: 100%;">
+                                    <input type="tel" id="modal-student-parent-phone" class="form-control" style="flex-grow: 1; margin-bottom: 0; font-size: 0.85rem; height: 32px;" placeholder="010-0000-0000">
+                                    <select id="modal-student-parent-phone-status" class="form-control" style="width: 100px; margin-bottom: 0; flex-shrink: 0; font-size: 0.85rem; height: 32px; padding: 4px 8px;">
+                                        <option value="direct">직접입력</option>
+                                        <option value="none">없음</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 보호자 2 (선택) -->
+                        <div style="background: rgba(0, 0, 0, 0.02); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 1rem; margin-bottom: 0;">
+                            <div style="font-weight: 600; font-size: 0.85rem; color: var(--text-color); margin-bottom: 8px;">보호자 2 (선택)</div>
+                            <div class="form-row" style="margin-bottom: 8px;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="modal-student-parent2-name" style="font-size: 0.8rem; margin-bottom: 2px;">성함</label>
+                                    <input type="text" id="modal-student-parent2-name" class="form-control" style="margin-bottom: 0; font-size: 0.85rem; height: 32px;" value="${p2Name}" placeholder="예: 이영희">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="modal-student-parent2-relation" style="font-size: 0.8rem; margin-bottom: 2px;">관계</label>
+                                    <select id="modal-student-parent2-relation" class="form-control" style="margin-bottom: 0; font-size: 0.85rem; height: 32px; padding: 4px 8px;">
+                                        <option value="mother" ${p2Relation === 'mother' ? 'selected' : ''}>모</option>
+                                        <option value="father" ${p2Relation === 'father' ? 'selected' : ''}>부</option>
+                                        <option value="grandmother" ${p2Relation === 'grandmother' ? 'selected' : ''}>조모</option>
+                                        <option value="grandfather" ${p2Relation === 'grandfather' ? 'selected' : ''}>조부</option>
+                                        <option value="guardian" ${p2Relation === 'guardian' ? 'selected' : ''}>보호자</option>
+                                        <option value="etc" ${p2Relation === 'etc' ? 'selected' : ''}>기타</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0; margin-top: 8px;">
+                                <label for="modal-student-parent2-phone" style="font-size: 0.8rem; margin-bottom: 2px;">연락처</label>
+                                <div style="display: flex; gap: 8px; width: 100%;">
+                                    <input type="tel" id="modal-student-parent2-phone" class="form-control" style="flex-grow: 1; margin-bottom: 0; font-size: 0.85rem; height: 32px;" placeholder="010-0000-0000">
+                                    <select id="modal-student-parent2-phone-status" class="form-control" style="width: 100px; margin-bottom: 0; flex-shrink: 0; font-size: 0.85rem; height: 32px; padding: 4px 8px;">
+                                        <option value="direct">직접입력</option>
+                                        <option value="none">없음</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1525,9 +1619,12 @@ const openStudentModal = (studentId = null) => {
         const phoneStatus = contentArea.querySelector('#modal-student-phone-status');
         const parentPhoneInput = contentArea.querySelector('#modal-student-parent-phone');
         const parentPhoneStatus = contentArea.querySelector('#modal-student-parent-phone-status');
+        const parent2PhoneInput = contentArea.querySelector('#modal-student-parent2-phone');
+        const parent2PhoneStatus = contentArea.querySelector('#modal-student-parent2-phone-status');
 
         const phoneBinder = PhoneNumberInput.bind(phoneInput);
         const parentPhoneBinder = PhoneNumberInput.bind(parentPhoneInput);
+        const parent2PhoneBinder = PhoneNumberInput.bind(parent2PhoneInput);
 
         const addressBinder = AddressInput.bind({
             postcodeEl: contentArea.querySelector('#modal-student-postcode'),
@@ -1549,6 +1646,7 @@ const openStudentModal = (studentId = null) => {
 
         phoneStatus.addEventListener('change', () => updatePhoneUI(phoneInput, phoneStatus, phoneBinder));
         parentPhoneStatus.addEventListener('change', () => updatePhoneUI(parentPhoneInput, parentPhoneStatus, parentPhoneBinder));
+        parent2PhoneStatus.addEventListener('change', () => updatePhoneUI(parent2PhoneInput, parent2PhoneStatus, parent2PhoneBinder));
 
         // Auto-switch status to 'direct' when digits are typed in 'none' state
         const setupPhoneAutoSwitch = (input, statusSelect, binder) => {
@@ -1564,10 +1662,12 @@ const openStudentModal = (studentId = null) => {
 
         setupPhoneAutoSwitch(phoneInput, phoneStatus, phoneBinder);
         setupPhoneAutoSwitch(parentPhoneInput, parentPhoneStatus, parentPhoneBinder);
+        setupPhoneAutoSwitch(parent2PhoneInput, parent2PhoneStatus, parent2PhoneBinder);
 
         const destroyAllBinders = () => {
             phoneBinder.destroy();
             parentPhoneBinder.destroy();
+            parent2PhoneBinder.destroy();
             addressBinder.destroy();
         };
 
@@ -1578,7 +1678,8 @@ const openStudentModal = (studentId = null) => {
         // Pre-fill phone fields
         if (student) {
             const isPhoneEmpty = !student.phone || student.phone === '없음';
-            const isParentPhoneEmpty = !student.parentPhone || student.parentPhone === '없음';
+            const isParentPhoneEmpty = !p1Phone || p1Phone === '없음';
+            const isParent2PhoneEmpty = !p2Phone || p2Phone === '없음';
 
             if (isPhoneEmpty) {
                 phoneStatus.value = 'none';
@@ -1595,17 +1696,30 @@ const openStudentModal = (studentId = null) => {
                 updatePhoneUI(parentPhoneInput, parentPhoneStatus, parentPhoneBinder);
             } else {
                 parentPhoneStatus.value = 'direct';
-                parentPhoneInput.value = student.parentPhone;
+                parentPhoneInput.value = p1Phone;
                 parentPhoneInput.disabled = false;
                 if (parentPhoneBinder) parentPhoneBinder.validate();
+            }
+
+            if (isParent2PhoneEmpty) {
+                parent2PhoneStatus.value = 'none';
+                updatePhoneUI(parent2PhoneInput, parent2PhoneStatus, parent2PhoneBinder);
+            } else {
+                parent2PhoneStatus.value = 'direct';
+                parent2PhoneInput.value = p2Phone;
+                parent2PhoneInput.disabled = false;
+                if (parent2PhoneBinder) parent2PhoneBinder.validate();
             }
         } else {
             phoneStatus.value = 'direct';
             parentPhoneStatus.value = 'direct';
+            parent2PhoneStatus.value = 'none';
             phoneInput.disabled = false;
             parentPhoneInput.disabled = false;
+            parent2PhoneInput.disabled = false;
             if (phoneBinder) phoneBinder.validate();
             if (parentPhoneBinder) parentPhoneBinder.validate();
+            if (parent2PhoneBinder) parent2PhoneBinder.validate();
         }
 
         // Custom selects logic for learning experience & instrument ownership
@@ -1734,11 +1848,14 @@ const openStudentModal = (studentId = null) => {
             // Contact Multi-validation
             const isPhoneNone = phoneStatus.value === 'none';
             const isParentPhoneNone = parentPhoneStatus.value === 'none';
+            const isParent2PhoneNone = parent2PhoneStatus.value === 'none';
             const phoneVal = phoneInput.value.trim();
             const parentPhoneVal = parentPhoneInput.value.trim();
+            const parent2PhoneVal = parent2PhoneInput.value.trim();
 
             const hasPhoneInput = !isPhoneNone && phoneVal !== '';
             const hasParentPhoneInput = !isParentPhoneNone && parentPhoneVal !== '';
+            const hasParent2PhoneInput = !isParent2PhoneNone && parent2PhoneVal !== '';
 
             // Check if both are empty/None
             if (!hasPhoneInput && !hasParentPhoneInput) {
@@ -1749,6 +1866,9 @@ const openStudentModal = (studentId = null) => {
                     validationPassed = false;
                 }
                 if (hasParentPhoneInput && !parentPhoneBinder.isValid()) {
+                    validationPassed = false;
+                }
+                if (hasParent2PhoneInput && !parent2PhoneBinder.isValid()) {
                     validationPassed = false;
                 }
             }
@@ -1776,6 +1896,11 @@ const openStudentModal = (studentId = null) => {
             const phone = isPhoneNone ? null : phoneVal;
             const parentName = parentNameEl.value.trim();
             const parentPhone = isParentPhoneNone ? null : parentPhoneVal;
+            const parent1Relation = contentArea.querySelector('#modal-student-parent-relation').value;
+
+            const parent2Name = contentArea.querySelector('#modal-student-parent2-name').value.trim();
+            const parent2Relation = contentArea.querySelector('#modal-student-parent2-relation').value;
+            const parent2Phone = isParent2PhoneNone ? null : parent2PhoneVal;
             
             const postcode = postcodeEl.value.trim();
             const address = addressBasicEl.value.trim();
@@ -1812,6 +1937,8 @@ const openStudentModal = (studentId = null) => {
                 return { dayOfWeek, time };
             });
 
+            let savedStudentId = studentId;
+
             if (isEdit) {
                 stateStore.updateStudent(studentId, {
                     name,
@@ -1842,7 +1969,7 @@ const openStudentModal = (studentId = null) => {
                 }, classSchedules);
             } else {
                 const enrollDate = new Date().toISOString().slice(0, 10);
-                stateStore.addStudent({
+                const newStudent = stateStore.addStudent({
                     name,
                     instrument,
                     phone,
@@ -1870,6 +1997,29 @@ const openStudentModal = (studentId = null) => {
                     paymentStatus,
                     defaultClassDuration
                 }, classSchedules);
+                savedStudentId = newStudent.id;
+            }
+
+            // Save Parent 1 contact details
+            stateStore.upsertParentContact({
+                studentId: savedStudentId,
+                slot: 'parent1',
+                name: parentName,
+                relation: parent1Relation,
+                phone: parentPhone || ''
+            });
+
+            // Save Parent 2 contact details
+            if (!parent2Name && !parent2Phone) {
+                stateStore.clearParentContact(savedStudentId, 'parent2');
+            } else {
+                stateStore.upsertParentContact({
+                    studentId: savedStudentId,
+                    slot: 'parent2',
+                    name: parent2Name,
+                    relation: parent2Relation,
+                    phone: parent2Phone || ''
+                });
             }
 
             destroyAllBinders();

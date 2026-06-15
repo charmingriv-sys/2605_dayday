@@ -393,5 +393,67 @@ export const communicationMethods = {
         this.saveDB();
         this.notify('PARENT_MESSAGES_CHANGED', this.db.parentMessages);
         return newMessage;
+    },
+
+    upsertParentContact(contact) {
+        if (!this.db.parentContacts) this.db.parentContacts = [];
+
+        const studentId = contact.studentId;
+        const slot = contact.slot;
+        const name = contact.name ? contact.name.trim() : '';
+        const relation = contact.relation || (slot === 'parent1' ? 'guardian' : 'etc');
+        const phone = contact.phone ? contact.phone.trim() : '';
+        const normalizedPhone = phone.replace(/[^0-9]/g, '');
+
+        const canReceiveMessage = contact.canReceiveMessage !== undefined ? contact.canReceiveMessage : (normalizedPhone !== '');
+
+        const index = this.db.parentContacts.findIndex(c => c.studentId === studentId && c.slot === slot);
+        const now = new Date().toISOString();
+
+        if (index !== -1) {
+            const existing = this.db.parentContacts[index];
+            this.db.parentContacts[index] = {
+                ...existing,
+                name,
+                relation,
+                phone,
+                normalizedPhone,
+                canReceiveMessage,
+                updatedAt: now
+            };
+        } else {
+            const id = 'pc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+            const newContact = {
+                id,
+                studentId,
+                slot,
+                name,
+                relation,
+                phone,
+                normalizedPhone,
+                isPrimary: slot === 'parent1',
+                canReceiveMessage,
+                canReceiveAttendanceMessage: true,
+                canReceivePaymentMessage: true,
+                canReceiveNoticeMessage: true,
+                linkedUserId: null,
+                appInstalled: false,
+                pushEnabled: false,
+                pushTokenStatus: 'unknown',
+                lastAppLoginAt: null,
+                createdAt: now,
+                updatedAt: now
+            };
+            this.db.parentContacts.push(newContact);
+        }
+        this.saveDB();
+        this.notify('PARENT_CONTACTS_CHANGED', this.db.parentContacts);
+    },
+
+    clearParentContact(studentId, slot) {
+        if (!this.db.parentContacts) this.db.parentContacts = [];
+        this.db.parentContacts = this.db.parentContacts.filter(c => !(c.studentId === studentId && c.slot === slot));
+        this.saveDB();
+        this.notify('PARENT_CONTACTS_CHANGED', this.db.parentContacts);
     }
 };

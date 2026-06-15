@@ -187,6 +187,99 @@ if (allContacts.length === 2) {
     hasError = true;
 }
 
+// 9. upsertParentContact 신규 생성 및 수정, 멱등성 검증
+const studentIdForUpsert = 'S_UPSERT_TEST';
+stateStore.upsertParentContact({
+    studentId: studentIdForUpsert,
+    slot: 'parent1',
+    name: '아빠',
+    relation: 'father',
+    phone: '010-1234-5678'
+});
+
+const upsertedContacts1 = stateStore.getParentContactsByStudent(studentIdForUpsert);
+if (upsertedContacts1.length === 1 && upsertedContacts1[0].name === '아빠' && upsertedContacts1[0].relation === 'father') {
+    console.log('[OK] upsertParentContact successfully created a contact.');
+} else {
+    console.error('[FAIL] upsertParentContact failed to create contact properly:', upsertedContacts1);
+    hasError = true;
+}
+
+stateStore.upsertParentContact({
+    studentId: studentIdForUpsert,
+    slot: 'parent1',
+    name: '아빠 수정',
+    relation: 'father',
+    phone: '010-1234-5678'
+});
+
+const upsertedContacts2 = stateStore.getParentContactsByStudent(studentIdForUpsert);
+if (upsertedContacts2.length === 1 && upsertedContacts2[0].name === '아빠 수정') {
+    console.log('[OK] upsertParentContact successfully updated existing slot without duplicates.');
+} else {
+    console.error('[FAIL] upsertParentContact failed or created duplicate:', upsertedContacts2);
+    hasError = true;
+}
+
+// 10. clearParentContact (parent2 비웠을 때 삭제 동작 검증)
+stateStore.upsertParentContact({
+    studentId: studentIdForUpsert,
+    slot: 'parent2',
+    name: '엄마',
+    relation: 'mother',
+    phone: '010-9876-5432'
+});
+
+const beforeClear = stateStore.getParentContactsByStudent(studentIdForUpsert);
+if (beforeClear.length === 2) {
+    console.log('[OK] parent2 successfully created before clear.');
+} else {
+    console.error('[FAIL] parent2 not created:', beforeClear);
+    hasError = true;
+}
+
+stateStore.clearParentContact(studentIdForUpsert, 'parent2');
+const afterClear = stateStore.getParentContactsByStudent(studentIdForUpsert);
+if (afterClear.length === 1 && !afterClear.some(c => c.slot === 'parent2')) {
+    console.log('[OK] clearParentContact successfully deleted parent2.');
+} else {
+    console.error('[FAIL] clearParentContact failed to delete parent2:', afterClear);
+    hasError = true;
+}
+
+// 11. addStudent / updateStudent 호출 시 parent1 자동 동기화 검증
+const syncedStudent = stateStore.addStudent({
+    name: '동기화원생',
+    parentName: '동기화부모',
+    parentPhone: '010-1111-3333',
+    instrument: '첼로',
+    fee: 100000,
+    dueDay: 5
+});
+
+const syncedContacts1 = stateStore.getParentContactsByStudent(syncedStudent.id);
+const syncedParent1 = syncedContacts1.find(c => c.slot === 'parent1');
+if (syncedParent1 && syncedParent1.name === '동기화부모' && syncedParent1.phone === '010-1111-3333') {
+    console.log('[OK] addStudent automatically created parent1 contact.');
+} else {
+    console.error('[FAIL] addStudent parent1 sync failed:', syncedParent1);
+    hasError = true;
+}
+
+stateStore.updateStudent(syncedStudent.id, {
+    parentName: '동기화부모 수정',
+    parentPhone: '010-1111-4444'
+});
+
+const syncedContacts2 = stateStore.getParentContactsByStudent(syncedStudent.id);
+const syncedParent2 = syncedContacts2.find(c => c.slot === 'parent1');
+if (syncedParent2 && syncedParent2.name === '동기화부모 수정' && syncedParent2.phone === '010-1111-4444') {
+    console.log('[OK] updateStudent automatically updated parent1 contact.');
+} else {
+    console.error('[FAIL] updateStudent parent1 sync failed:', syncedParent2);
+    hasError = true;
+}
+
 if (hasError) {
     console.error('--- Unit Test: Parent Messaging Schema & Migration FAILED ---');
     process.exit(1);

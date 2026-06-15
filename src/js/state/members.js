@@ -44,6 +44,16 @@ export const membersMethods = {
             method: paymentStatus === 'paid' ? 'cash' : null
         });
 
+        if (student.parentPhone || student.parentName) {
+            this.upsertParentContact({
+                studentId: id,
+                slot: 'parent1',
+                name: student.parentName || `${student.name} 보호자`,
+                relation: 'guardian',
+                phone: student.parentPhone || ''
+            });
+        }
+
         this.saveDB();
         this.notify('STUDENTS_CHANGED', this.db.students);
         this.notify('CLASSES_CHANGED', this.db.classes);
@@ -153,6 +163,21 @@ export const membersMethods = {
                 const classId = 'C' + (this.db.classes.length ? Math.max(...this.db.classes.map(c => parseInt(c.id.slice(1)) || 0)) + 1 : 1);
                 this.db.classes.push({ id: classId, studentId: id, dayOfWeek: schedule.dayOfWeek, time: schedule.time });
             });
+        }
+
+        if (data.parentPhone !== undefined || data.parentName !== undefined) {
+            const s = this.db.students.find(x => x.id === id);
+            if (s && (s.parentPhone || s.parentName)) {
+                this.upsertParentContact({
+                    studentId: id,
+                    slot: 'parent1',
+                    name: s.parentName || `${s.name} 보호자`,
+                    relation: 'guardian',
+                    phone: s.parentPhone || ''
+                });
+            } else if (s && !s.parentPhone && !s.parentName) {
+                this.clearParentContact(id, 'parent1');
+            }
         }
 
         this.saveDB();

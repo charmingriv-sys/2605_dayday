@@ -162,4 +162,118 @@ test.describe('Student Registration and Persistence Flow', () => {
 
     expect(consoleErrors.length).toBe(0);
   });
+
+  test('should register a new student with Parent 1 and Parent 2, verify in detail modal, edit/clear Parent 2, and persist', async ({ page }) => {
+    const p1Name = `Parent1_${Date.now()}`;
+    const p2Name = `Parent2_${Date.now()}`;
+
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Navigate to Student Management Tab
+    await page.locator('.menu-item[data-view="dir-students"]').click();
+    await expect(page.locator('#page-title')).toContainText('원생 명부 관리');
+
+    // 3. Click Add Student Button
+    await page.locator('#btn-add-student').click();
+    await expect(page.locator('#common-modal')).toBeVisible();
+
+    // 4. Fill in details
+    const childName = `Child_${Date.now()}`;
+    await page.locator('#modal-student-name').fill(childName);
+    
+    // Parent 1 inputs
+    await page.locator('#modal-student-parent-name').fill(p1Name);
+    await page.locator('#modal-student-parent-relation').selectOption('mother');
+    await page.locator('#modal-student-parent-phone').fill('010-1111-2222');
+    
+    // Parent 2 inputs
+    await page.locator('#modal-student-parent2-name').fill(p2Name);
+    await page.locator('#modal-student-parent2-relation').selectOption('father');
+    await page.locator('#modal-student-parent2-phone').fill('010-3333-4444');
+
+    // Address
+    await page.evaluate(() => {
+      window.kakao = {
+        Postcode: function(options) {
+          return {
+            open: () => {
+              if (options && options.oncomplete) {
+                options.oncomplete({
+                  zonecode: '06543',
+                  roadAddress: '서울시 서초구 반포동 123-4'
+                });
+              }
+            }
+          };
+        }
+      };
+    });
+    await page.locator('#btn-modal-student-address-search').click();
+    await page.locator('#modal-student-address-detail').fill('101동 202호');
+    await page.locator('#modal-student-address-detail').evaluate(el => {
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    await page.locator('#modal-student-instrument').selectOption({ index: 1 });
+    await page.locator('#modal-student-teacher').selectOption({ index: 1 });
+    await page.locator('#modal-student-due-day').fill('10');
+    await page.locator('#modal-student-fee').fill('150000');
+
+    // Submit
+    await page.locator('#btn-student-submit').click();
+    await expect(page.locator('#common-modal')).not.toHaveClass(/show/);
+    await page.waitForTimeout(400);
+
+    // Verify cell exists
+    const cell = page.locator(`.student-name-link:has-text("${childName}")`);
+    await expect(cell).toBeVisible();
+
+    // Click to open detail modal
+    await cell.click();
+    await expect(page.locator('#common-modal')).toBeVisible();
+
+    // Verify Parent 1 and Parent 2 info display in Detail Modal
+    await expect(page.locator('#common-modal')).toContainText('보호자 1 (대표)');
+    await expect(page.locator('#common-modal')).toContainText(`${p1Name} (모) | 010-1111-2222`);
+    await expect(page.locator('#common-modal')).toContainText('보호자 2');
+    await expect(page.locator('#common-modal')).toContainText(`${p2Name} (부) | 010-3333-4444`);
+
+    // Click Edit Student button
+    await page.locator('#btn-edit-student-from-detail').click();
+
+    // Verify inputs populated in Edit form
+    await expect(page.locator('#modal-student-parent-name')).toHaveValue(p1Name);
+    await expect(page.locator('#modal-student-parent-relation')).toHaveValue('mother');
+    await expect(page.locator('#modal-student-parent-phone')).toHaveValue('010-1111-2222');
+
+    await expect(page.locator('#modal-student-parent2-name')).toHaveValue(p2Name);
+    await expect(page.locator('#modal-student-parent2-relation')).toHaveValue('father');
+    await expect(page.locator('#modal-student-parent2-phone')).toHaveValue('010-3333-4444');
+
+    // Clear Parent 2 completely
+    await page.locator('#modal-student-parent2-name').fill('');
+    await page.locator('#modal-student-parent2-phone-status').selectOption('none');
+    await page.locator('#modal-student-parent2-phone').fill('');
+
+    // Submit Edit
+    await page.locator('#btn-student-submit').click();
+    await expect(page.locator('#common-modal')).not.toHaveClass(/show/);
+    await page.waitForTimeout(400);
+
+    // Click to open detail modal again
+    await cell.click();
+    await expect(page.locator('#common-modal')).toBeVisible();
+
+    // Verify Parent 2 is registered as none/deleted
+    await expect(page.locator('#common-modal')).toContainText('등록되지 않음');
+    
+    // Close modal
+    await page.locator('#common-modal [data-close-modal]').first().click();
+    await expect(page.locator('#common-modal')).not.toHaveClass(/show/);
+  });
 });
