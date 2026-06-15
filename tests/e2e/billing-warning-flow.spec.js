@@ -300,4 +300,136 @@ test.describe('Billing & Overdue Warnings E2E Flow', () => {
     await expect(page.locator('.kpi-chip-card[data-filter-id="attendance_warning"] .badge')).toContainText('2');
     await expect(page.locator('.kpi-chip-card[data-filter-id="staff_warning"] .badge')).toContainText('2');
   });
+
+  test('should generate tuition overdue parent messages automatically on system recommendations sync', async ({ page }) => {
+    // 1. Login as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Setup database, settings, and mock payments
+    await page.evaluate(() => {
+      const db = window.stateStore.db;
+      db.parentMessages = [];
+      db.payments = [];
+      db.todayTasks = [];
+
+      // Ensure S1 has a contact
+      const s1 = window.stateStore.getStudent('S1');
+      if (s1) {
+        s1.dueDay = 10;
+        window.stateStore.upsertParentContact({
+          studentId: 'S1',
+          slot: 'parent1',
+          name: s1.parentName || '최다은보호자',
+          relation: 'guardian',
+          phone: s1.parentPhone || '010-1234-5678',
+          canReceiveMessage: true
+        });
+      }
+
+      // Ensure S2 has a contact
+      const s2 = window.stateStore.getStudent('S2');
+      if (s2) {
+        s2.dueDay = 13; // due today
+        window.stateStore.upsertParentContact({
+          studentId: 'S2',
+          slot: 'parent1',
+          name: s2.parentName || '채은재보호자',
+          relation: 'guardian',
+          phone: s2.parentPhone || '010-2222-2222',
+          canReceiveMessage: true
+        });
+      }
+
+      window.stateStore.updateParentMessageSettingsBulk({
+        tuitionOverdue: { messageEnabled: true, pushEnabled: true }
+      });
+
+      // 1. Overdue payment (S1 due 10th, today is 13th)
+      db.payments.push({
+        id: 'P-OVERDUE-E2E-1',
+        studentId: 'S1',
+        amount: 150000,
+        month: '2026-06',
+        type: 'education',
+        status: 'unpaid',
+        invoiceDate: '2026-06-10'
+      });
+
+      // 2. Due today payment (S2 due 13th, today is 13th) -> should not generate overdue message
+      db.payments.push({
+        id: 'P-DUE-E2E-2',
+        studentId: 'S2',
+        amount: 160000,
+        month: '2026-06',
+        type: 'education',
+        status: 'unpaid',
+        invoiceDate: '2026-06-13'
+      });
+
+      // 3. Book payment overdue -> should not generate overdue message
+      db.payments.push({
+        id: 'P-BOOK-E2E-3',
+        studentId: 'S1',
+        amount: 25000,
+        month: '2026-06',
+        type: 'book',
+        status: 'unpaid',
+        invoiceDate: '2026-06-10'
+      });
+
+      // Set eval date
+      db.settings.DAYDAY_DEBUG_EVAL_TIME = '2026-06-13T12:00:00.000Z';
+
+      window.stateStore.saveDB();
+      window.stateStore.syncSystemRecommendations(new Date('2026-06-13T12:00:00.000Z'));
+    });
+
+    // 3. Verify tuition overdue parentMessage is created for S1
+    let parentMsgs = await page.evaluate(() => window.stateStore.db.parentMessages);
+    let overdueMsg = parentMsgs.find(m => m.studentId === 'S1' && m.type === 'tuition_overdue');
+    expect(overdueMsg).toBeDefined();
+    expect(overdueMsg.pushRequired).toBe(true);
+    expect(overdueMsg.pushStatus).toBe('pending');
+    expect(overdueMsg.title).toContain('최다은 원생 수강료 미수납 안내');
+    expect(overdueMsg.body).toContain('최다은 원생의 2026년 06월 수강료 150,000원이 아직 수납되지 않았습니다.');
+
+    // 4. Verify due today payment (S2) did not generate overdue message
+    let dueMsg = parentMsgs.find(m => m.studentId === 'S2' && m.type === 'tuition_overdue');
+    expect(dueMsg).toBeUndefined();
+
+    // 5. Verify book payment did not generate overdue message
+    let bookMsg = parentMsgs.find(m => m.relatedDomainId === 'P-BOOK-E2E-3');
+    expect(bookMsg).toBeUndefined();
+
+    // 6. Verify deduplication
+    const count = await page.evaluate(() => {
+      window.stateStore.syncSystemRecommendations(new Date('2026-06-13T12:00:00.000Z'));
+      return window.stateStore.db.parentMessages.filter(m => m.studentId === 'S1' && m.type === 'tuition_overdue').length;
+    });
+    expect(count).toBe(1);
+
+    // 7. Verify no outboundMessageLogs or old messages are created
+    const outboundLogs = await page.evaluate(() => window.stateStore.db.outboundMessageLogs || []);
+    expect(outboundLogs.length).toBe(0);
+
+    const oldMessages = await page.evaluate(() => window.stateStore.db.messages || []);
+    const overdueOldMessages = oldMessages.filter(m => m.title && m.title.includes('미수납'));
+    expect(overdueOldMessages.length).toBe(0);
+
+    // 8. Verify paid payment does not generate overdue messages
+    await page.evaluate(() => {
+      window.stateStore.payInvoice('P-OVERDUE-E2E-1', 'cash');
+      // clean parentMessages for S1 overdue and run sync
+      window.stateStore.db.parentMessages = window.stateStore.db.parentMessages.filter(m => m.studentId === 'S1' && m.type !== 'tuition_overdue');
+      window.stateStore.saveDB();
+      window.stateStore.syncSystemRecommendations(new Date('2026-06-13T12:00:00.000Z'));
+    });
+
+    parentMsgs = await page.evaluate(() => window.stateStore.db.parentMessages);
+    let overdueMsgAfterPaid = parentMsgs.find(m => m.studentId === 'S1' && m.type === 'tuition_overdue');
+    expect(overdueMsgAfterPaid).toBeUndefined();
+  });
 });

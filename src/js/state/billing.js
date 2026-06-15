@@ -210,7 +210,17 @@ export const billingMethods = {
         const settings = typeof this.getParentMessageSettings === 'function' ? this.getParentMessageSettings() : null;
         if (!settings) return;
 
-        const eventKey = eventType === 'tuition_billing' ? 'tuitionBilling' : 'tuitionPaid';
+        let eventKey = '';
+        if (eventType === 'tuition_billing') {
+            eventKey = 'tuitionBilling';
+        } else if (eventType === 'tuition_paid') {
+            eventKey = 'tuitionPaid';
+        } else if (eventType === 'tuition_overdue') {
+            eventKey = 'tuitionOverdue';
+        } else {
+            return;
+        }
+
         const setting = settings[eventKey];
         if (!setting || setting.messageEnabled === false) {
             return;
@@ -231,6 +241,10 @@ export const billingMethods = {
             title = `${student.name} 원생 수강료 수납 완료`;
             body = `${student.name} 원생의 ${formattedMonth} 수강료 ${payment.amount.toLocaleString()}원이 수납 완료되었습니다.`;
             dedupeKey = `TUITION_PAID_${payment.id}`;
+        } else if (eventType === 'tuition_overdue') {
+            title = `${student.name} 원생 수강료 미수납 안내`;
+            body = `${student.name} 원생의 ${formattedMonth} 수강료 ${payment.amount.toLocaleString()}원이 아직 수납되지 않았습니다.`;
+            dedupeKey = `TUITION_OVERDUE_${payment.id}`;
         } else {
             return;
         }

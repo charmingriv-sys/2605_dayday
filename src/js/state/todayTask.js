@@ -462,6 +462,13 @@ export const todayTaskMethods = {
                     const dedupeKey = `SYSTEM_RECOMMEND_BILLING_UNPAID_${payment.id}_${payment.month}`;
                     activeBillingKeys.push(dedupeKey);
 
+                    // Trigger tuition_overdue parent message if not already created
+                    const msgDedupeKey = `TUITION_OVERDUE_${payment.id}`;
+                    const msgExists = this.db.parentMessages && this.db.parentMessages.some(m => m.dedupeKey === msgDedupeKey);
+                    if (!msgExists && typeof this.triggerPaymentParentMessage === 'function') {
+                        this.triggerPaymentParentMessage(payment.id, 'tuition_overdue');
+                    }
+
                     // 수동 완료/삭제 여부 검사
                     const hasResolved = this.db.todayTasks.some(t =>
                         t.source === 'system' &&

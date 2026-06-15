@@ -763,6 +763,206 @@ if (messagesBookPaid.length === 0) {
     hasError = true;
 }
 
+// 18. 수강료 미수납 안내 학부모 메시지 자동 생성 엔진 검증 (Phase 16M-2)
+console.log('--- Starting Phase 16M-2 Tuition Overdue messaging engine tests ---');
+
+const testStudentIdO = 'S_TEST_O';
+// Clean up
+stateStore.db.students = stateStore.db.students.filter(s => s.id !== testStudentIdO);
+stateStore.db.parentContacts = stateStore.db.parentContacts.filter(c => c.studentId !== testStudentIdO);
+stateStore.db.parentMessages = stateStore.db.parentMessages.filter(m => m.studentId !== testStudentIdO);
+stateStore.db.payments = stateStore.db.payments.filter(p => p.studentId !== testStudentIdO);
+stateStore.db.todayTasks = stateStore.db.todayTasks.filter(t => t.relatedStudentIds && !t.relatedStudentIds.includes(testStudentIdO));
+
+// Add student with dueDay = 10
+stateStore.db.students.push({
+    id: testStudentIdO,
+    name: '오원생',
+    phone: '010-5555-5555',
+    parentPhone: '010-4444-4444',
+    parentName: '오부모',
+    teacherId: 'T8',
+    instrument: '피아노',
+    fee: 250000,
+    dueDay: 10,
+    enrollDate: '2026-01-10'
+});
+
+// Migrate contacts to initialize parent1
+stateStore.migrateParentContacts();
+
+// Set evaluation time to 2026-06-13 (today is 13th)
+if (!stateStore.db.settings) stateStore.db.settings = {};
+stateStore.db.settings.DAYDAY_DEBUG_EVAL_TIME = '2026-06-13T12:00:00.000Z';
+
+// 18.1 Test Case: messageEnabled=true, pushEnabled=true (Default overdue message)
+stateStore.updateParentMessageSettingsBulk({
+    tuitionOverdue: { messageEnabled: true, pushEnabled: true }
+});
+
+// Add overdue payment (due on 10th, unpaid)
+stateStore.db.payments.push({
+    id: 'P_O_OVERDUE_1',
+    studentId: testStudentIdO,
+    amount: 250000,
+    month: '2026-06',
+    type: 'education',
+    status: 'unpaid',
+    invoiceDate: '2026-06-10'
+});
+
+// Add due today payment (due on 13th, unpaid)
+const testStudentIdO2 = 'S_TEST_O2';
+stateStore.db.students.push({
+    id: testStudentIdO2,
+    name: '오늘원생',
+    phone: '010-3333-3333',
+    parentPhone: '010-2222-2222',
+    parentName: '오늘부모',
+    teacherId: 'T8',
+    instrument: '바이올린',
+    fee: 250000,
+    dueDay: 13,
+    enrollDate: '2026-01-10'
+});
+stateStore.migrateParentContacts();
+
+stateStore.db.payments.push({
+    id: 'P_O_DUE_TODAY',
+    studentId: testStudentIdO2,
+    amount: 250000,
+    month: '2026-06',
+    type: 'education',
+    status: 'unpaid',
+    invoiceDate: '2026-06-13'
+});
+
+// Trigger recommendations sync
+stateStore.syncSystemRecommendations(new Date('2026-06-13T12:00:00.000Z'));
+
+// Verify overdue parentMessage is created for S_TEST_O
+const messagesOverdue1 = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdO && m.type === 'tuition_overdue');
+if (messagesOverdue1.length === 1) {
+    const msg = messagesOverdue1[0];
+    console.log('[OK] Tuition overdue parent message created successfully.');
+    if (msg.pushRequired === true && msg.pushStatus === 'pending') {
+        console.log('[OK] Tuition overdue pushRequired and pushStatus are correct (true/pending).');
+    } else {
+        console.error('[FAIL] Tuition overdue pushRequired/pushStatus mismatch:', msg.pushRequired, msg.pushStatus);
+        hasError = true;
+    }
+    if (msg.title === '오원생 원생 수강료 미수납 안내' && msg.body.includes('오원생 원생의 2026년 06월 수강료 250,000원이 아직 수납되지 않았습니다.')) {
+        console.log('[OK] Tuition overdue message title and body are correct.');
+    } else {
+        console.error('[FAIL] Tuition overdue message content mismatch:', msg.title, msg.body);
+        hasError = true;
+    }
+} else {
+    console.error('[FAIL] Expected 1 tuition overdue parent message for overdue student, got:', messagesOverdue1.length);
+    hasError = true;
+}
+
+// Verify due today parentMessage is NOT created for S_TEST_O2
+const messagesDueToday = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdO2 && m.type === 'tuition_overdue');
+if (messagesDueToday.length === 0) {
+    console.log('[OK] Excluded due today payment from overdue message generation.');
+} else {
+    console.error('[FAIL] Overdue message was generated for due today payment:', messagesDueToday);
+    hasError = true;
+}
+
+// 18.2 Test Case: Deduplication (repeated syncs must not duplicate)
+stateStore.syncSystemRecommendations(new Date('2026-06-13T12:00:00.000Z'));
+const messagesOverdueDup = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdO && m.type === 'tuition_overdue');
+if (messagesOverdueDup.length === 1) {
+    console.log('[OK] Deduplication worked successfully for tuition overdue.');
+} else {
+    console.error('[FAIL] Deduplication failed, count of overdue messages is:', messagesOverdueDup.length);
+    hasError = true;
+}
+
+// 18.3 Test Case: messageEnabled=false
+stateStore.updateParentMessageSettingsBulk({
+    tuitionOverdue: { messageEnabled: false, pushEnabled: false }
+});
+// Clean S_TEST_O messages and re-trigger
+stateStore.db.parentMessages = stateStore.db.parentMessages.filter(m => m.studentId !== testStudentIdO);
+stateStore.syncSystemRecommendations(new Date('2026-06-13T12:00:00.000Z'));
+const messagesOverdueDisabled = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdO && m.type === 'tuition_overdue');
+if (messagesOverdueDisabled.length === 0) {
+    console.log('[OK] No overdue message created when messageEnabled is false.');
+} else {
+    console.error('[FAIL] Overdue message was created even though messageEnabled is false:', messagesOverdueDisabled);
+    hasError = true;
+}
+
+// 18.4 Test Case: pushEnabled=false (Silent mode)
+stateStore.updateParentMessageSettingsBulk({
+    tuitionOverdue: { messageEnabled: true, pushEnabled: false }
+});
+stateStore.syncSystemRecommendations(new Date('2026-06-13T12:00:00.000Z'));
+const messagesOverdueSilent = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdO && m.type === 'tuition_overdue');
+if (messagesOverdueSilent.length === 1) {
+    const msg = messagesOverdueSilent[0];
+    if (msg.pushRequired === false && msg.pushStatus === 'not_required') {
+        console.log('[OK] Tuition overdue silent mode push settings are correct (false/not_required).');
+    } else {
+        console.error('[FAIL] Tuition overdue silent mode push settings mismatch:', msg.pushRequired, msg.pushStatus);
+        hasError = true;
+    }
+} else {
+    console.error('[FAIL] Expected silent overdue message to be created.');
+    hasError = true;
+}
+
+// 18.5 Test Case: canReceiveMessage=false
+const contactO = stateStore.getPrimaryParentContact(testStudentIdO);
+if (contactO) {
+    contactO.canReceiveMessage = false;
+    stateStore.saveDB();
+}
+// Clean messages and trigger
+stateStore.db.parentMessages = stateStore.db.parentMessages.filter(m => m.studentId !== testStudentIdO);
+stateStore.syncSystemRecommendations(new Date('2026-06-13T12:00:00.000Z'));
+const messagesOverdueNoReceive = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdO && m.type === 'tuition_overdue');
+if (messagesOverdueNoReceive.length === 0) {
+    console.log('[OK] No overdue message created when canReceiveMessage is false.');
+} else {
+    console.error('[FAIL] Overdue message was created even though canReceiveMessage is false:', messagesOverdueNoReceive);
+    hasError = true;
+}
+
+// Restore
+if (contactO) {
+    contactO.canReceiveMessage = true;
+    stateStore.saveDB();
+}
+
+// 18.6 Test Case: Book payment overdue exclusion
+stateStore.db.payments.push({
+    id: 'P_O_BOOK_OVERDUE',
+    studentId: testStudentIdO,
+    amount: 20000,
+    month: '2026-06',
+    type: 'book',
+    status: 'unpaid',
+    invoiceDate: '2026-06-10'
+});
+stateStore.syncSystemRecommendations(new Date('2026-06-13T12:00:00.000Z'));
+const messagesBookOverdue = stateStore.db.parentMessages.filter(m => m.relatedDomainId === 'P_O_BOOK_OVERDUE');
+if (messagesBookOverdue.length === 0) {
+    console.log('[OK] Excluded book payment from overdue message generation.');
+} else {
+    console.error('[FAIL] Overdue message was generated for book payment:', messagesBookOverdue);
+    hasError = true;
+}
+
+// Clean up test students from DB
+stateStore.db.students = stateStore.db.students.filter(s => s.id !== testStudentIdO && s.id !== testStudentIdO2);
+stateStore.db.parentContacts = stateStore.db.parentContacts.filter(c => c.studentId !== testStudentIdO && c.studentId !== testStudentIdO2);
+stateStore.db.parentMessages = stateStore.db.parentMessages.filter(m => m.studentId !== testStudentIdO && m.studentId !== testStudentIdO2);
+stateStore.db.payments = stateStore.db.payments.filter(p => p.studentId !== testStudentIdO && p.studentId !== testStudentIdO2);
+
 if (hasError) {
     console.error('--- Unit Test: Parent Messaging Schema & Migration FAILED ---');
     process.exit(1);
