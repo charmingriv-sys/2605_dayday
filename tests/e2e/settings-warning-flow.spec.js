@@ -270,4 +270,74 @@ test.describe('Academy Warning Policy Settings UI E2E Flow', () => {
     expect(dbParentSettings.tuitionBilling.messageEnabled).toBe(true);
     expect(dbParentSettings.tuitionBilling.pushEnabled).toBe(true);
   });
+
+  test('should generate parent messages automatically based on attendance events and settings', async ({ page }) => {
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Initialize parent contacts and configure settings
+    await page.evaluate(() => {
+        window.stateStore.db.parentMessages = [];
+        window.stateStore.updateParentMessageSettingsBulk({
+            attendanceCheckIn: { messageEnabled: true, pushEnabled: true },
+            attendanceCheckOut: { messageEnabled: true, pushEnabled: false }
+        });
+        window.stateStore.saveDB();
+    });
+
+    const menuAttendance = page.locator('.menu-item[data-view="dir-attendance-control"]');
+    await expect(menuAttendance).toBeVisible();
+    await menuAttendance.click();
+
+    // Trigger check-in via stateStore in page context (14:30 triggers late status)
+    await page.evaluate(() => {
+        window.stateStore.markAttendance('S1', '2026-06-15', 'present', '14:30', 'E2E 등원');
+    });
+
+    // Verify parentMessages check_in is created (even with late status)
+    let parentMsgs = await page.evaluate(() => window.stateStore.db.parentMessages);
+    let checkInMsg = parentMsgs.find(m => m.studentId === 'S1' && m.type === 'check_in');
+    expect(checkInMsg).toBeDefined();
+    expect(checkInMsg.pushRequired).toBe(true);
+    expect(checkInMsg.pushStatus).toBe('pending');
+    expect(checkInMsg.title).toContain('최다은 원생 등원 알림');
+    expect(checkInMsg.body).toContain('14:30에 등원했습니다.');
+
+    // Trigger check-out (leaveAttendance)
+    await page.evaluate(() => {
+        window.stateStore.leaveAttendance('S1', '2026-06-15', '15:20');
+    });
+
+    parentMsgs = await page.evaluate(() => window.stateStore.db.parentMessages);
+    let checkOutMsg = parentMsgs.find(m => m.studentId === 'S1' && m.type === 'check_out');
+    expect(checkOutMsg).toBeDefined();
+    expect(checkOutMsg.pushRequired).toBe(false);
+    expect(checkOutMsg.pushStatus).toBe('not_required');
+    expect(checkOutMsg.title).toContain('최다은 원생 하원 알림');
+    expect(checkOutMsg.body).toContain('15:20에 하원했습니다.');
+
+    // Test settings OFF -> no message created
+    await page.evaluate(() => {
+        window.stateStore.updateParentMessageSettingsBulk({
+            attendanceCheckIn: { messageEnabled: false, pushEnabled: false }
+        });
+        window.stateStore.saveDB();
+        window.stateStore.markAttendance('S1', '2026-06-16', 'present', '14:40', 'E2E 등원2');
+    });
+
+    parentMsgs = await page.evaluate(() => window.stateStore.db.parentMessages);
+    let checkInMsg2 = parentMsgs.find(m => m.studentId === 'S1' && m.type === 'check_in' && m.body.includes('14:40'));
+    expect(checkInMsg2).toBeUndefined();
+
+    // Verify no outboundMessageLogs or old messages are created by this
+    const outboundLogs = await page.evaluate(() => window.stateStore.db.outboundMessageLogs || []);
+    expect(outboundLogs.length).toBe(0);
+
+    const oldMessages = await page.evaluate(() => window.stateStore.db.messages || []);
+    const attOldMessages = oldMessages.filter(m => m.title && m.title.includes('출결'));
+    expect(attOldMessages.length).toBe(0);
+  });
 });

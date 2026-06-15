@@ -66,6 +66,15 @@ export const attendanceMethods = {
         }
 
         this.saveDB();
+
+        if (status === 'present' || status === 'late') {
+            const attRecord = existing || this.db.attendance.find(a => a.studentId === studentId && a.date === date);
+            if (attRecord) {
+                const finalTime = time || attRecord.time || new Date().toTimeString().slice(0, 5);
+                this.triggerAttendanceParentMessage(studentId, date, 'check_in', finalTime, attRecord.id);
+            }
+        }
+
         this.notify('ATTENDANCE_CHANGED', this.db.attendance);
 
         // If KakaoTalk alert needs to be dispatched, fire custom DOM event for toast notification
@@ -98,6 +107,12 @@ export const attendanceMethods = {
         }
 
         this.saveDB();
+
+        const attRecord = existing || this.db.attendance.find(a => a.studentId === studentId && a.date === date);
+        if (attRecord) {
+            this.triggerAttendanceParentMessage(studentId, date, 'check_out', time || new Date().toTimeString().slice(0, 5), attRecord.id);
+        }
+
         this.notify('ATTENDANCE_CHANGED', this.db.attendance);
 
         if (alertTriggered) {
@@ -184,6 +199,19 @@ export const attendanceMethods = {
         }
 
         this.saveDB();
+
+        if (status === 'present' || status === 'late') {
+            const attRecord = existing || this.db.attendance.find(a => 
+                a.studentId === studentId && 
+                a.date === date && 
+                (a.classTime === classTime || !a.classTime)
+            );
+            if (attRecord) {
+                const finalTime = time || attRecord.time || new Date().toTimeString().slice(0, 5);
+                this.triggerAttendanceParentMessage(studentId, date, 'check_in', finalTime, attRecord.id);
+            }
+        }
+
         this.notify('ATTENDANCE_CHANGED', this.db.attendance);
     },
 
@@ -390,5 +418,54 @@ export const attendanceMethods = {
         });
 
         return warnings;
+    },
+
+    triggerAttendanceParentMessage(studentId, date, type, time, attendanceLogId) {
+        const student = typeof this.getStudent === 'function' ? this.getStudent(studentId) : null;
+        if (!student) return;
+
+        const primaryContact = typeof this.getPrimaryParentContact === 'function' ? this.getPrimaryParentContact(studentId) : null;
+        if (!primaryContact) return;
+
+        if (!primaryContact.phone || primaryContact.canReceiveMessage === false) {
+            return;
+        }
+
+        const settings = typeof this.getParentMessageSettings === 'function' ? this.getParentMessageSettings() : null;
+        if (!settings) return;
+
+        const eventKey = type === 'check_in' ? 'attendanceCheckIn' : 'attendanceCheckOut';
+        const setting = settings[eventKey];
+        if (!setting || setting.messageEnabled === false) {
+            return;
+        }
+
+        const title = `${student.name} 원생 ${type === 'check_in' ? '등원' : '하원'} 알림`;
+        const body = `${student.name} 원생이 ${time}에 ${type === 'check_in' ? '등원' : '하원'}했습니다.`;
+        const dedupeKey = `ATTENDANCE_${type === 'check_in' ? 'CHECK_IN' : 'CHECK_OUT'}_${studentId}_${date}_${attendanceLogId}`;
+
+        const pushRequired = setting.pushEnabled === true;
+        const pushStatus = pushRequired ? 'pending' : 'not_required';
+
+        if (typeof this.createParentMessage === 'function') {
+            this.createParentMessage({
+                studentId,
+                parentContactId: primaryContact.id,
+                parentSlot: primaryContact.slot,
+                recipientName: primaryContact.name,
+                recipientRelation: primaryContact.relation,
+                recipientPhone: primaryContact.phone,
+                recipientUserId: primaryContact.linkedUserId,
+                category: 'attendance',
+                type,
+                title,
+                body,
+                pushRequired,
+                pushStatus,
+                relatedDomainType: 'attendance',
+                relatedDomainId: attendanceLogId,
+                dedupeKey
+            });
+        }
     }
 };

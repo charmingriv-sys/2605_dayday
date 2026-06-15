@@ -378,6 +378,164 @@ if (bulkCheckIn.messageEnabled === true && bulkCheckIn.pushEnabled === true &&
     hasError = true;
 }
 
+// 16. 출결 이벤트 기반 학부모 메시지함 자동 생성 엔진 검증 (Phase 16L)
+console.log('--- Starting Phase 16L Attendance Event messaging engine tests ---');
+
+const testStudentIdL = 'S_TEST_L';
+// 16.1 Clean up any previous test student and messages
+stateStore.db.students = stateStore.db.students.filter(s => s.id !== testStudentIdL);
+stateStore.db.parentContacts = stateStore.db.parentContacts.filter(c => c.studentId !== testStudentIdL);
+stateStore.db.parentMessages = stateStore.db.parentMessages.filter(m => m.studentId !== testStudentIdL);
+stateStore.db.attendance = stateStore.db.attendance.filter(a => a.studentId !== testStudentIdL);
+
+// Add student
+stateStore.db.students.push({
+    id: testStudentIdL,
+    name: '엘원생',
+    phone: '010-9999-9999',
+    parentPhone: '010-8888-8888',
+    parentName: '엘부모',
+    teacherId: 'T8',
+    instrument: '피아노',
+    fee: 150000,
+    dueDay: 10,
+    enrollDate: '2026-01-10'
+});
+
+// Migrate contacts to initialize parent1
+stateStore.migrateParentContacts();
+
+// Verify primary contact is set
+const contactL = stateStore.getPrimaryParentContact(testStudentIdL);
+if (!contactL) {
+    console.error('[FAIL] Primary contact for L student not initialized.');
+    hasError = true;
+}
+
+// 16.2 Test Case: messageEnabled=true, pushEnabled=true (Default check-in)
+stateStore.updateParentMessageSettingsBulk({
+    attendanceCheckIn: { messageEnabled: true, pushEnabled: true },
+    attendanceCheckOut: { messageEnabled: true, pushEnabled: true }
+});
+
+// Clear messages first
+stateStore.db.parentMessages = stateStore.db.parentMessages.filter(m => m.studentId !== testStudentIdL);
+
+// Trigger check-in
+stateStore.markAttendance(testStudentIdL, '2026-06-15', 'present', '14:05', '단위테스트 등원');
+
+const messagesCheckIn1 = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdL && m.type === 'check_in');
+if (messagesCheckIn1.length === 1) {
+    const msg = messagesCheckIn1[0];
+    console.log('[OK] Check-in parent message created successfully.');
+    if (msg.pushRequired === true && msg.pushStatus === 'pending') {
+        console.log('[OK] Check-in pushRequired and pushStatus are correct (true/pending).');
+    } else {
+        console.error('[FAIL] Check-in pushRequired/pushStatus mismatch:', msg.pushRequired, msg.pushStatus);
+        hasError = true;
+    }
+    if (msg.title === '엘원생 원생 등원 알림' && msg.body.includes('엘원생 원생이 14:05에 등원했습니다.')) {
+        console.log('[OK] Check-in message title and body are correct.');
+    } else {
+        console.error('[FAIL] Check-in message content mismatch:', msg.title, msg.body);
+        hasError = true;
+    }
+} else {
+    console.error('[FAIL] Expected 1 check-in parent message, got:', messagesCheckIn1.length);
+    hasError = true;
+}
+
+// 16.3 Test Case: Deduplication (Duplicate check-in should not create new message)
+stateStore.markAttendance(testStudentIdL, '2026-06-15', 'present', '14:05', '단위테스트 등원 중복');
+const messagesCheckInDup = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdL && m.type === 'check_in');
+if (messagesCheckInDup.length === 1) {
+    console.log('[OK] Deduplication worked successfully for duplicate check-in.');
+} else {
+    console.error('[FAIL] Deduplication failed, count of check-in messages is:', messagesCheckInDup.length);
+    hasError = true;
+}
+
+// 16.4 Test Case: messageEnabled=true, pushEnabled=false (Silent mode check-out)
+stateStore.updateParentMessageSettingsBulk({
+    attendanceCheckOut: { messageEnabled: true, pushEnabled: false }
+});
+
+stateStore.leaveAttendance(testStudentIdL, '2026-06-15', '14:55');
+const messagesCheckOut1 = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdL && m.type === 'check_out');
+if (messagesCheckOut1.length === 1) {
+    const msg = messagesCheckOut1[0];
+    console.log('[OK] Check-out parent message created successfully.');
+    if (msg.pushRequired === false && msg.pushStatus === 'not_required') {
+        console.log('[OK] Check-out pushRequired and pushStatus are correct for silent mode (false/not_required).');
+    } else {
+        console.error('[FAIL] Check-out pushRequired/pushStatus mismatch in silent mode:', msg.pushRequired, msg.pushStatus);
+        hasError = true;
+    }
+    if (msg.title === '엘원생 원생 하원 알림' && msg.body.includes('엘원생 원생이 14:55에 하원했습니다.')) {
+        console.log('[OK] Check-out message title and body are correct.');
+    } else {
+        console.error('[FAIL] Check-out message content mismatch:', msg.title, msg.body);
+        hasError = true;
+    }
+} else {
+    console.error('[FAIL] Expected 1 check-out parent message, got:', messagesCheckOut1.length);
+    hasError = true;
+}
+
+// 16.5 Test Case: messageEnabled=false (No message generated)
+stateStore.updateParentMessageSettingsBulk({
+    attendanceCheckIn: { messageEnabled: false, pushEnabled: false }
+});
+
+// Clear attendance for another date to test
+stateStore.markAttendance(testStudentIdL, '2026-06-16', 'present', '14:10', '메시지 비활성화 상태 등원');
+const messagesCheckInDisabled = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdL && m.type === 'check_in' && m.body.includes('14:10'));
+if (messagesCheckInDisabled.length === 0) {
+    console.log('[OK] No message created when messageEnabled is false.');
+} else {
+    console.error('[FAIL] Message was created even though messageEnabled is false:', messagesCheckInDisabled);
+    hasError = true;
+}
+
+// 16.6 Test Case: primary contact has canReceiveMessage=false (No message generated)
+stateStore.updateParentMessageSettingsBulk({
+    attendanceCheckIn: { messageEnabled: true, pushEnabled: true }
+});
+contactL.canReceiveMessage = false;
+stateStore.saveDB();
+
+stateStore.markAttendance(testStudentIdL, '2026-06-17', 'present', '14:20', '수신비동의 등원');
+const messagesCheckInNoReceive = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdL && m.type === 'check_in' && m.body.includes('14:20'));
+if (messagesCheckInNoReceive.length === 0) {
+    console.log('[OK] No message created when canReceiveMessage is false.');
+} else {
+    console.error('[FAIL] Message was created even though canReceiveMessage is false:', messagesCheckInNoReceive);
+    hasError = true;
+}
+
+// Restore canReceiveMessage for student
+contactL.canReceiveMessage = true;
+stateStore.saveDB();
+
+// 16.7 Test Case: check inclusion of late and exclusion of absent events
+stateStore.markAttendance(testStudentIdL, '2026-06-18', 'late', '14:40', '지각 이벤트');
+const messagesCheckInLate = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdL && m.type === 'check_in' && m.body.includes('14:40'));
+if (messagesCheckInLate.length === 1) {
+    console.log('[OK] Late status check-in correctly generated parent check_in message.');
+} else {
+    console.error('[FAIL] Expected parent check_in message for late status, got count:', messagesCheckInLate.length);
+    hasError = true;
+}
+
+stateStore.markAttendance(testStudentIdL, '2026-06-19', 'absent', '14:50', '결석 이벤트');
+const messagesCheckInAbsent = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdL && m.type === 'check_in' && m.body.includes('14:50'));
+if (messagesCheckInAbsent.length === 0) {
+    console.log('[OK] Excluded absent status from check_in message generation.');
+} else {
+    console.error('[FAIL] Message was created for absent status check-in!', messagesCheckInAbsent);
+    hasError = true;
+}
+
 if (hasError) {
     console.error('--- Unit Test: Parent Messaging Schema & Migration FAILED ---');
     process.exit(1);
