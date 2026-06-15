@@ -270,7 +270,9 @@ const DEFAULT_DB = {
       { id: "msn_13", studentId: "S7", content: "06.02 입시곡 진도 양호", createdAt: "2026-06-02T10:00:00.000Z", updatedAt: "2026-06-02T10:00:00.000Z" }
     ],
     teacherAttendanceLogs: [],
-    teacherAttendanceEditLogs: []
+    teacherAttendanceEditLogs: [],
+    parentContacts: [],
+    parentMessages: []
 };
 
 const adapter = new LocalStorageAdapter({
@@ -285,6 +287,9 @@ class StateStore {
         this.seedInitialBookPayments(); // Seed payments for default student books
         if (typeof this.migrateStudentBooksToIssueRequests === 'function') {
             this.migrateStudentBooksToIssueRequests();
+        }
+        if (typeof this.migrateParentContacts === 'function') {
+            this.migrateParentContacts();
         }
     }
 
@@ -376,9 +381,23 @@ class StateStore {
     loadDB() {
         this.db = adapter.loadSnapshotSync({ mode: 'local' });
         
-        if (this.db && !this.db.bookIssueRequests) {
-            this.db.bookIssueRequests = [];
-            this.saveDB();
+        if (this.db) {
+            let migrated = false;
+            if (!this.db.bookIssueRequests) {
+                this.db.bookIssueRequests = [];
+                migrated = true;
+            }
+            if (!this.db.parentContacts) {
+                this.db.parentContacts = [];
+                migrated = true;
+            }
+            if (!this.db.parentMessages) {
+                this.db.parentMessages = [];
+                migrated = true;
+            }
+            if (migrated) {
+                this.saveDB();
+            }
         }
         
         // Migrate existing student records to have defaultClassDuration if missing

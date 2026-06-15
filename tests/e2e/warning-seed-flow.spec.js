@@ -2,6 +2,22 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Warning Seed Flow E2E Checks', () => {
   test.beforeEach(async ({ page }) => {
+    // Mock system date to 2026-06-14 (Sunday) to stabilize the KPI badge counts against weekday schedule changes
+    await page.addInitScript(() => {
+      const mockDate = new Date('2026-06-14T12:00:00');
+      const OriginalDate = Date;
+      globalThis.Date = class extends OriginalDate {
+        constructor(...args) {
+          if (args.length === 0) {
+            return new OriginalDate(mockDate.getTime());
+          }
+          return new OriginalDate(...args);
+        }
+        static now() {
+          return mockDate.getTime();
+        }
+      };
+    });
     page.on('console', msg => console.log('PAGE LOG:', msg.text()));
     await page.goto('/');
     await page.waitForLoadState('domcontentloaded');

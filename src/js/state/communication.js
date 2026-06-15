@@ -269,5 +269,129 @@ export const communicationMethods = {
         this.db.messageTemplates = this.db.messageTemplates.filter(t => t.id !== templateId);
         this.saveDB();
         this.notify('MESSAGE_TEMPLATES_CHANGED', this.db.messageTemplates);
+    },
+
+    migrateParentContacts() {
+        if (!this.db.parentContacts) {
+            this.db.parentContacts = [];
+        }
+        if (!this.db.students) {
+            return;
+        }
+
+        let migrated = false;
+        this.db.students.forEach(student => {
+            if (!student.parentPhone) return;
+
+            const studentId = student.id;
+            const phone = student.parentPhone;
+            const normalizedPhone = phone.replace(/[^0-9]/g, '');
+
+            // 1. 이미 동일 studentId에 slot이 'parent1'인 parentContact가 있는지 확인
+            const hasSlot1 = this.db.parentContacts.some(c => c.studentId === studentId && c.slot === 'parent1');
+
+            // 2. 이미 동일 studentId에 동일 normalizedPhone을 가진 parentContact가 있는지 확인
+            const hasPhone = this.db.parentContacts.some(c => c.studentId === studentId && c.normalizedPhone === normalizedPhone);
+
+            if (hasSlot1 || hasPhone) {
+                return; // 멱등성 유지 (중복 생성 차단)
+            }
+
+            const name = student.parentName || `${student.name} 보호자`;
+            const id = 'pc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+            const now = new Date().toISOString();
+
+            const newContact = {
+                id,
+                studentId,
+                slot: 'parent1',
+                name,
+                relation: 'guardian',
+                phone,
+                normalizedPhone,
+                isPrimary: true,
+                canReceiveMessage: true,
+                canReceiveAttendanceMessage: true,
+                canReceivePaymentMessage: true,
+                canReceiveNoticeMessage: true,
+                linkedUserId: null,
+                appInstalled: false,
+                pushEnabled: false,
+                pushTokenStatus: 'unknown',
+                lastAppLoginAt: null,
+                memo: 'MIGRATED',
+                createdAt: now,
+                updatedAt: now
+            };
+
+            this.db.parentContacts.push(newContact);
+            migrated = true;
+        });
+
+        if (migrated) {
+            this.saveDB();
+            this.notify('PARENT_CONTACTS_CHANGED', this.db.parentContacts);
+        }
+    },
+
+    getParentContactsByStudent(studentId) {
+        if (!this.db.parentContacts) this.db.parentContacts = [];
+        return this.db.parentContacts.filter(c => c.studentId === studentId);
+    },
+
+    getPrimaryParentContact(studentId) {
+        if (!this.db.parentContacts) this.db.parentContacts = [];
+        return this.db.parentContacts.find(c => c.studentId === studentId && c.isPrimary === true) || null;
+    },
+
+    createParentMessage(input) {
+        if (!this.db.parentMessages) this.db.parentMessages = [];
+
+        // dedupeKey 중복 체크
+        if (input.dedupeKey) {
+            const existing = this.db.parentMessages.find(m => m.dedupeKey === input.dedupeKey);
+            if (existing) {
+                // 중복될 때는 기존 메시지 반환
+                return existing;
+            }
+        }
+
+        const id = 'pm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+        const createdAt = new Date().toISOString();
+
+        const pushRequired = input.pushRequired !== undefined ? input.pushRequired : false;
+        const pushStatus = input.pushStatus || (pushRequired ? 'pending' : 'not_required');
+
+        const newMessage = {
+            id,
+            studentId: input.studentId || null,
+            parentContactId: input.parentContactId || null,
+            parentSlot: input.parentSlot || null,
+            recipientName: input.recipientName || null,
+            recipientRelation: input.recipientRelation || null,
+            recipientPhone: input.recipientPhone || null,
+            recipientUserId: input.recipientUserId || null,
+            category: input.category || null,
+            type: input.type || null,
+            title: input.title || null,
+            body: input.body || null,
+            summary: input.summary || null,
+            status: input.status || 'unread',
+            isImportant: input.isImportant !== undefined ? input.isImportant : false,
+            pushRequired,
+            pushStatus,
+            relatedDomainType: input.relatedDomainType || null,
+            relatedDomainId: input.relatedDomainId || null,
+            dedupeKey: input.dedupeKey || null,
+            createdAt,
+            readAt: input.readAt || null,
+            archivedAt: input.archivedAt || null,
+            deletedAt: input.deletedAt || null
+        };
+
+        this.db.parentMessages.push(newMessage);
+        this.saveDB();
+        this.notify('PARENT_MESSAGES_CHANGED', this.db.parentMessages);
+        return newMessage;
     }
 };
