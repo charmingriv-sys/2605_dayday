@@ -1460,6 +1460,126 @@ if (messagesTuitionBookOverdue.length === 0) {
 // Clean tuition payment
 stateStore.db.payments = stateStore.db.payments.filter(p => p.id !== tuitionPaymentIdBO);
 
+// --- Starting Phase 16N Parent Messages Portal view tests ---
+console.log('--- Starting Phase 16N Parent Messages Portal view tests ---');
+
+const testParentUserId = 'USR_PAR_TEST_N';
+const testStudentIdN = 'S_TEST_N';
+const otherStudentIdN = 'S_TEST_N_OTHER';
+
+// Clear existing items
+stateStore.db.students = stateStore.db.students.filter(s => s.id !== testStudentIdN && s.id !== otherStudentIdN);
+stateStore.db.parentStudentLinks = stateStore.db.parentStudentLinks.filter(l => l.parentUserId !== testParentUserId);
+stateStore.db.parentMessages = stateStore.db.parentMessages.filter(m => m.studentId !== testStudentIdN && m.studentId !== otherStudentIdN);
+
+// Add students
+stateStore.db.students.push({
+    id: testStudentIdN,
+    name: '최은지',
+    phone: '010-8888-2222',
+    parentPhone: '010-9999-1111'
+});
+stateStore.db.students.push({
+    id: otherStudentIdN,
+    name: '김철수',
+    phone: '010-3333-3333',
+    parentPhone: '010-4444-4444'
+});
+
+// Link parent to testStudentIdN
+stateStore.db.parentStudentLinks.push({ parentUserId: testParentUserId, studentId: testStudentIdN });
+
+// Add messages
+const msgNotice = stateStore.createParentMessage({
+    studentId: testStudentIdN,
+    category: 'schedule',
+    type: 'class_notice',
+    title: '학원 여름방학 안내',
+    body: '7월 25일부터 28일까지 여름방학입니다.',
+    dedupeKey: 'DEDUPE_N_NOTICE'
+});
+
+const msgAttendance = stateStore.createParentMessage({
+    studentId: testStudentIdN,
+    category: 'attendance',
+    type: 'check_in',
+    title: '등원 안내',
+    body: '최은지 원생이 등원했습니다.',
+    dedupeKey: 'DEDUPE_N_ATTENDANCE'
+});
+
+const msgPayment = stateStore.createParentMessage({
+    studentId: testStudentIdN,
+    category: 'payment',
+    type: 'tuition_billing',
+    title: '수강료 청구',
+    body: '최은지 원생의 6월 수강료가 청구되었습니다.',
+    dedupeKey: 'DEDUPE_N_PAYMENT'
+});
+
+const msgAlert = stateStore.createParentMessage({
+    studentId: testStudentIdN,
+    category: 'unknown_cat',
+    type: 'fallback_type',
+    title: '임시 알림',
+    body: '알림 테스트',
+    dedupeKey: 'DEDUPE_N_ALERT'
+});
+
+const msgOther = stateStore.createParentMessage({
+    studentId: otherStudentIdN,
+    category: 'attendance',
+    type: 'check_in',
+    title: '타원생 등원',
+    body: '김철수 원생이 등원했습니다.',
+    dedupeKey: 'DEDUPE_N_OTHER'
+});
+
+// 1. Test filtering of getParentMessagesForParent
+const parentMsgs = stateStore.getParentMessagesForParent(testParentUserId, testStudentIdN);
+if (parentMsgs.length === 4) {
+    console.log('[OK] getParentMessagesForParent successfully filtered messages for the linked student.');
+    const hasOtherMsg = parentMsgs.some(m => m.studentId === otherStudentIdN);
+    if (!hasOtherMsg) {
+        console.log('[OK] Excluded other student\'s messages from parent view.');
+    } else {
+        console.error('[FAIL] Other student\'s message was included in parent view.');
+        hasError = true;
+    }
+} else {
+    console.error('[FAIL] Expected 4 messages for parent, got:', parentMsgs.length);
+    hasError = true;
+}
+
+// Test with non-linked studentId
+const nonLinkedMsgs = stateStore.getParentMessagesForParent(testParentUserId, otherStudentIdN);
+if (nonLinkedMsgs.length === 0) {
+    console.log('[OK] Returns empty list when querying non-linked studentId.');
+} else {
+    console.error('[FAIL] Non-linked student query returned messages:', nonLinkedMsgs);
+    hasError = true;
+}
+
+// 2. Test read status transition and readAt update
+const targetMsg = stateStore.db.parentMessages.find(m => m.id === msgNotice.id);
+if (targetMsg && targetMsg.status === 'unread') {
+    stateStore.markParentMessageAsRead(msgNotice.id);
+    if (targetMsg.status === 'read' && targetMsg.readAt) {
+        console.log('[OK] markParentMessageAsRead successfully updated status to read and recorded readAt.');
+    } else {
+        console.error('[FAIL] markParentMessageAsRead status/readAt mismatch:', targetMsg.status, targetMsg.readAt);
+        hasError = true;
+    }
+} else {
+    console.error('[FAIL] Test message not found or not unread initially.');
+    hasError = true;
+}
+
+// Clean up Phase 16N test data
+stateStore.db.students = stateStore.db.students.filter(s => s.id !== testStudentIdN && s.id !== otherStudentIdN);
+stateStore.db.parentStudentLinks = stateStore.db.parentStudentLinks.filter(l => l.parentUserId !== testParentUserId);
+stateStore.db.parentMessages = stateStore.db.parentMessages.filter(m => m.studentId !== testStudentIdN && m.studentId !== otherStudentIdN);
+
 // Clean up test students and books from DB
 stateStore.db.students = stateStore.db.students.filter(s => s.id !== testStudentIdBO && s.id !== testStudentIdO && s.id !== testStudentIdO2);
 stateStore.db.parentContacts = stateStore.db.parentContacts.filter(c => c.studentId !== testStudentIdBO && c.studentId !== testStudentIdO && c.studentId !== testStudentIdO2);

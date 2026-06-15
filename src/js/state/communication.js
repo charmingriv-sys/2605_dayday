@@ -455,5 +455,41 @@ export const communicationMethods = {
         this.db.parentContacts = this.db.parentContacts.filter(c => !(c.studentId === studentId && c.slot === slot));
         this.saveDB();
         this.notify('PARENT_CONTACTS_CHANGED', this.db.parentContacts);
+    },
+
+    getParentMessagesForParent(parentUserId, studentId) {
+        if (!this.db.parentMessages) this.db.parentMessages = [];
+        
+        // 1. Get student IDs linked to this parentUserId
+        const linkedStudentIds = typeof this.getStudentsForParent === 'function' 
+            ? this.getStudentsForParent(parentUserId).map(s => s.id) 
+            : [];
+            
+        // 2. If studentId is provided, verify it is linked to the parent
+        if (studentId && !linkedStudentIds.includes(studentId)) {
+            return [];
+        }
+        
+        // 3. Filter messages
+        return this.db.parentMessages.filter(m => {
+            // Must belong to one of the parent's linked students
+            if (!linkedStudentIds.includes(m.studentId)) return false;
+            
+            // If specific studentId is requested, filter by it
+            if (studentId && m.studentId !== studentId) return false;
+            
+            return true;
+        });
+    },
+
+    markParentMessageAsRead(id) {
+        if (!this.db.parentMessages) this.db.parentMessages = [];
+        const msg = this.db.parentMessages.find(m => m.id === id);
+        if (msg && msg.status === 'unread') {
+            msg.status = 'read';
+            msg.readAt = new Date().toISOString();
+            this.saveDB();
+            this.notify('PARENT_MESSAGES_CHANGED', this.db.parentMessages);
+        }
     }
 };
