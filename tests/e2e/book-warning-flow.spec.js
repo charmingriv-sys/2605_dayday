@@ -27,6 +27,7 @@ test.describe('Textbook Warning Life Cycle Flow (Phase 13E-1)', () => {
       db.payments = [];
       db.studentBooks = [];
       db.bookIssueRequests = [];
+      db.parentMessages = [];
 
       // A. Seed some base data
       const student1 = db.students.find(s => s.id === 'S1');
@@ -234,6 +235,7 @@ test.describe('Textbook Warning Life Cycle Flow (Phase 13E-1)', () => {
       db.payments = [];
       db.studentBooks = [];
       db.bookIssueRequests = [];
+      db.parentMessages = [];
 
       const student1 = db.students.find(s => s.id === 'S1');
       if (student1) {
@@ -484,6 +486,103 @@ test.describe('Textbook Warning Life Cycle Flow (Phase 13E-1)', () => {
     expect(guardsResult.paidError).toContain('이미 확인 처리되었거나 대기 중인 요청이 아닙니다.');
 
     // 9. Verify no side-effects (no messages/outboundMessageLogs generated)
+    const hasSideEffects = await page.evaluate(() => {
+      const db = window.stateStore.db;
+      const newMessages = (db.messages || []).filter(m => m.title && m.title.includes('교재'));
+      const newLogs = (db.outboundMessageLogs || []).filter(l => l.id && l.id.includes('book'));
+      return newMessages.length > 0 || newLogs.length > 0;
+    });
+    expect(hasSideEffects).toBe(false);
+  });
+
+  test('should generate book overdue parent messages automatically on system recommendations sync and enforce settings and guards', async ({ page }) => {
+    // 1. Login as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // Navigate to Today Console
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+    await expect(page.locator('#page-title')).toContainText('오늘 원장 콘솔');
+
+    // 2. Setup mock data
+    await page.evaluate(() => {
+      const db = window.stateStore.db;
+      db.todayTasks = [];
+      db.payments = [];
+      db.studentBooks = [];
+      db.bookIssueRequests = [];
+      db.parentMessages = [];
+
+      // Add test student S1 with dueDay = 10
+      const student1 = db.students.find(s => s.id === 'S1');
+      if (student1) {
+        student1.academyId = 'AC1';
+        student1.dueDay = 10;
+      }
+
+      // Ensure primary contact can receive message
+      const contact1 = db.parentContacts ? db.parentContacts.find(c => c.studentId === 'S1' && c.isPrimary) : null;
+      if (contact1) {
+        contact1.canReceiveMessage = true;
+      }
+
+      // Configure parentMessageSettings
+      if (!db.settings) db.settings = {};
+      db.settings.parentMessageSettings = {
+        bookOverdue: { messageEnabled: true, pushEnabled: true }
+      };
+
+      // Set Debug time to 2026-06-12 (past 10th)
+      db.settings.DAYDAY_DEBUG_EVAL_TIME = '2026-06-12T12:00:00.000Z';
+
+      // 3. Add unpaid book payment confirmed on 2026-06-08 (before dueDay 10)
+      db.payments.push({
+        id: 'P-BOOK-OVERDUE-E2E',
+        studentId: 'S1',
+        amount: 15000,
+        month: '2026-06',
+        type: 'book',
+        status: 'unpaid',
+        invoiceDate: '2026-06-08',
+        bookId: 'B1'
+      });
+
+      window.stateStore.syncSystemRecommendations();
+      window.stateStore.saveDB();
+    });
+
+    // Verify overdue parent message is created
+    const { overdueMessage, studentName } = await page.evaluate(() => {
+      const store = window.stateStore;
+      const msg = store.db.parentMessages.find(m => m.relatedDomainId === 'P-BOOK-OVERDUE-E2E' && m.type === 'book_overdue');
+      const student = store.getStudent('S1');
+      return {
+        overdueMessage: msg,
+        studentName: student ? student.name : ''
+      };
+    });
+
+    expect(overdueMessage).toBeDefined();
+    expect(overdueMessage.type).toBe('book_overdue');
+    expect(overdueMessage.category).toBe('payment');
+    expect(overdueMessage.title).toBe(`${studentName} 원생 교재비 미수납 안내`);
+    expect(overdueMessage.body).toContain('세모둥이네꼬마바이엘 1');
+    expect(overdueMessage.body).toContain('15,000');
+    expect(overdueMessage.pushRequired).toBe(true);
+    expect(overdueMessage.pushStatus).toBe('pending');
+    expect(overdueMessage.dedupeKey).toBe('BOOK_OVERDUE_P-BOOK-OVERDUE-E2E');
+
+    // 4. Verify no duplicates on repeating sync
+    const duplicateCount = await page.evaluate(() => {
+      const store = window.stateStore;
+      store.syncSystemRecommendations();
+      return store.db.parentMessages.filter(m => m.relatedDomainId === 'P-BOOK-OVERDUE-E2E' && m.type === 'book_overdue').length;
+    });
+    expect(duplicateCount).toBe(1);
+
+    // 5. Verify no outboundMessageLogs or old messages are created
     const hasSideEffects = await page.evaluate(() => {
       const db = window.stateStore.db;
       const newMessages = (db.messages || []).filter(m => m.title && m.title.includes('교재'));

@@ -624,6 +624,38 @@ export const todayTaskMethods = {
                 const book = books.find(b => b.id === payment.bookId);
                 const bookName = book ? book.name : '교재';
 
+                // Calculate due date and check if it is overdue
+                const [py, pm] = payment.month.split('-').map(Number);
+                const safeDueDay = Math.min(student.dueDay || 14, new Date(py, pm, 0).getDate());
+                let paymentDueAt = new Date(py, pm - 1, safeDueDay, 0, 0, 0, 0);
+
+                const invoiceDateStr = payment.invoiceDate || payment.createdAt || new Date().toISOString().slice(0, 10);
+                const [iy, im, id] = invoiceDateStr.split('-').map(Number);
+                const invoiceDateAt = new Date(iy, im - 1, id, 0, 0, 0, 0);
+
+                if (invoiceDateAt.getTime() >= paymentDueAt.getTime()) {
+                    // 교재 확인 승인 직후 바로 미수납 안내가 생성되지 않도록 납부 예정일을 다음 달로 이월(Rollover)합니다.
+                    let nextYear = py;
+                    let nextMonth = pm + 1;
+                    if (nextMonth > 12) {
+                        nextMonth = 1;
+                        nextYear += 1;
+                    }
+                    const nextSafeDueDay = Math.min(student.dueDay || 14, new Date(nextYear, nextMonth, 0).getDate());
+                    paymentDueAt = new Date(nextYear, nextMonth - 1, nextSafeDueDay, 0, 0, 0, 0);
+                }
+
+                const todayMidnight = new Date(y, m, d, 0, 0, 0, 0);
+                const isOverdue = paymentDueAt.getTime() < todayMidnight.getTime();
+
+                if (isOverdue) {
+                    const msgDedupeKey = `BOOK_OVERDUE_${payment.id}`;
+                    const msgExists = this.db.parentMessages && this.db.parentMessages.some(m => m.dedupeKey === msgDedupeKey);
+                    if (!msgExists && typeof this.triggerPaymentParentMessage === 'function') {
+                        this.triggerPaymentParentMessage(payment.id, 'book_overdue');
+                    }
+                }
+
                 // 요청 출처 역추적
                 const matchingReq = bookIssueRequests.find(r => 
                     r.studentId === payment.studentId && 

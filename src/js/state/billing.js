@@ -231,6 +231,8 @@ export const billingMethods = {
             eventKey = 'bookBilling';
         } else if (eventType === 'book_paid') {
             eventKey = 'bookPaid';
+        } else if (eventType === 'book_overdue') {
+            eventKey = 'bookOverdue';
         } else {
             return;
         }
@@ -284,6 +286,12 @@ export const billingMethods = {
                 ? `${student.name} 원생의 ${bookName} 교재비 ${payment.amount.toLocaleString()}원이 수납 완료되었습니다.`
                 : `${student.name} 원생의 교재비 ${payment.amount.toLocaleString()}원이 수납 완료되었습니다.`;
             dedupeKey = `BOOK_PAID_${payment.id}`;
+        } else if (eventType === 'book_overdue') {
+            title = `${student.name} 원생 교재비 미수납 안내`;
+            body = bookName
+                ? `${student.name} 원생의 ${bookName} 교재비 ${payment.amount.toLocaleString()}원이 아직 수납되지 않았습니다.`
+                : `${student.name} 원생의 교재비 ${payment.amount.toLocaleString()}원이 아직 수납되지 않았습니다.`;
+            dedupeKey = `BOOK_OVERDUE_${payment.id}`;
         } else {
             return;
         }
