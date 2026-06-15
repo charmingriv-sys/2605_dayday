@@ -13,6 +13,7 @@ export const billingMethods = {
     payInvoice(paymentId, method) {
         const invoice = this.db.payments.find(p => p.id === paymentId);
         if (invoice) {
+            const wasPaid = invoice.status === 'paid';
             invoice.status = 'paid';
             invoice.paidDate = new Date().toISOString().slice(0, 10);
             invoice.method = method;
@@ -41,6 +42,12 @@ export const billingMethods = {
 
             this.saveDB();
             this.notify('PAYMENTS_CHANGED', this.db.payments);
+
+            // Trigger tuition_paid message if status transitioned to paid
+            if (!wasPaid) {
+                this.triggerPaymentParentMessage(invoice.id, 'tuition_paid');
+            }
+
             return invoice;
         }
         return null;
@@ -67,6 +74,10 @@ export const billingMethods = {
         this.db.payments.push(newInvoice);
         this.saveDB();
         this.notify('PAYMENTS_CHANGED', this.db.payments);
+
+        // Trigger tuition_billing message
+        this.triggerPaymentParentMessage(newInvoice.id, 'tuition_billing');
+
         return newInvoice;
     },
 
@@ -153,6 +164,7 @@ export const billingMethods = {
     updatePayment(paymentId, updates) {
         const payment = this.db.payments.find(p => p.id === paymentId);
         if (payment) {
+            const wasPaid = payment.status === 'paid';
             Object.assign(payment, updates);
 
             // Sync bookIssueRequests if book payment is paid
@@ -170,8 +182,81 @@ export const billingMethods = {
             this.saveDB();
             this.notify('PAYMENTS_CHANGED', this.db.payments);
             this.notify('STUDENT_BOOKS_CHANGED', this.db.studentBooks);
+
+            // Trigger tuition_paid message if status transitioned to paid
+            if (!wasPaid && payment.status === 'paid') {
+                this.triggerPaymentParentMessage(payment.id, 'tuition_paid');
+            }
+
             return true;
         }
         return false;
+    },
+
+    triggerPaymentParentMessage(paymentId, eventType) {
+        const payment = this.db.payments.find(p => p.id === paymentId);
+        if (!payment || payment.type !== 'education') return;
+
+        const student = typeof this.getStudent === 'function' ? this.getStudent(payment.studentId) : null;
+        if (!student) return;
+
+        const primaryContact = typeof this.getPrimaryParentContact === 'function' ? this.getPrimaryParentContact(payment.studentId) : null;
+        if (!primaryContact) return;
+
+        if (!primaryContact.phone || primaryContact.canReceiveMessage === false) {
+            return;
+        }
+
+        const settings = typeof this.getParentMessageSettings === 'function' ? this.getParentMessageSettings() : null;
+        if (!settings) return;
+
+        const eventKey = eventType === 'tuition_billing' ? 'tuitionBilling' : 'tuitionPaid';
+        const setting = settings[eventKey];
+        if (!setting || setting.messageEnabled === false) {
+            return;
+        }
+
+        const parts = payment.month.split('-');
+        const formattedMonth = parts.length === 2 ? `${parts[0]}년 ${parts[1]}월` : payment.month;
+
+        let title = '';
+        let body = '';
+        let dedupeKey = '';
+
+        if (eventType === 'tuition_billing') {
+            title = `${student.name} 원생 수강료 수납 안내`;
+            body = `${student.name} 원생의 ${formattedMonth} 수강료 ${payment.amount.toLocaleString()}원이 청구되었습니다.`;
+            dedupeKey = `TUITION_BILLING_${payment.id}`;
+        } else if (eventType === 'tuition_paid') {
+            title = `${student.name} 원생 수강료 수납 완료`;
+            body = `${student.name} 원생의 ${formattedMonth} 수강료 ${payment.amount.toLocaleString()}원이 수납 완료되었습니다.`;
+            dedupeKey = `TUITION_PAID_${payment.id}`;
+        } else {
+            return;
+        }
+
+        const pushRequired = setting.pushEnabled === true;
+        const pushStatus = pushRequired ? 'pending' : 'not_required';
+
+        if (typeof this.createParentMessage === 'function') {
+            this.createParentMessage({
+                studentId: payment.studentId,
+                parentContactId: primaryContact.id,
+                parentSlot: primaryContact.slot,
+                recipientName: primaryContact.name,
+                recipientRelation: primaryContact.relation,
+                recipientPhone: primaryContact.phone,
+                recipientUserId: primaryContact.linkedUserId,
+                category: 'payment',
+                type: eventType,
+                title,
+                body,
+                pushRequired,
+                pushStatus,
+                relatedDomainType: 'payment',
+                relatedDomainId: payment.id,
+                dedupeKey
+            });
+        }
     }
 };

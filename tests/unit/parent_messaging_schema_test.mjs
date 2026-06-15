@@ -536,6 +536,233 @@ if (messagesCheckInAbsent.length === 0) {
     hasError = true;
 }
 
+// 17. 수강료 수납 안내 및 수납 완료 학부모 메시지 자동 생성 엔진 검증 (Phase 16M-1)
+console.log('--- Starting Phase 16M-1 Tuition Event messaging engine tests ---');
+
+const testStudentIdM = 'S_TEST_M';
+// Clean up previous test student, contacts, messages, payments
+stateStore.db.students = stateStore.db.students.filter(s => s.id !== testStudentIdM);
+stateStore.db.parentContacts = stateStore.db.parentContacts.filter(c => c.studentId !== testStudentIdM);
+stateStore.db.parentMessages = stateStore.db.parentMessages.filter(m => m.studentId !== testStudentIdM);
+stateStore.db.payments = stateStore.db.payments.filter(p => p.studentId !== testStudentIdM);
+
+// Add student
+stateStore.db.students.push({
+    id: testStudentIdM,
+    name: '엠원생',
+    phone: '010-7777-7777',
+    parentPhone: '010-6666-6666',
+    parentName: '엠부모',
+    teacherId: 'T8',
+    instrument: '피아노',
+    fee: 200000,
+    dueDay: 15,
+    enrollDate: '2026-01-10'
+});
+
+// Migrate contacts to initialize parent1
+stateStore.migrateParentContacts();
+
+// Verify primary contact is set
+const contactM = stateStore.getPrimaryParentContact(testStudentIdM);
+if (!contactM) {
+    console.error('[FAIL] Primary contact for M student not initialized.');
+    hasError = true;
+}
+
+// 17.1 Test Case: messageEnabled=true, pushEnabled=true (Default tuition billing)
+stateStore.updateParentMessageSettingsBulk({
+    tuitionBilling: { messageEnabled: true, pushEnabled: true },
+    tuitionPaid: { messageEnabled: true, pushEnabled: true }
+});
+
+// Create education invoice
+const invoiceM1 = stateStore.createInvoice(testStudentIdM, 200000, '2026-06');
+const messagesBilling1 = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdM && m.type === 'tuition_billing');
+
+if (messagesBilling1.length === 1) {
+    const msg = messagesBilling1[0];
+    console.log('[OK] Tuition billing parent message created successfully.');
+    if (msg.pushRequired === true && msg.pushStatus === 'pending') {
+        console.log('[OK] Tuition billing pushRequired and pushStatus are correct (true/pending).');
+    } else {
+        console.error('[FAIL] Tuition billing pushRequired/pushStatus mismatch:', msg.pushRequired, msg.pushStatus);
+        hasError = true;
+    }
+    if (msg.title === '엠원생 원생 수강료 수납 안내' && msg.body.includes('엠원생 원생의 2026년 06월 수강료 200,000원이 청구되었습니다.')) {
+        console.log('[OK] Tuition billing message title and body are correct.');
+    } else {
+        console.error('[FAIL] Tuition billing message content mismatch:', msg.title, msg.body);
+        hasError = true;
+    }
+} else {
+    console.error('[FAIL] Expected 1 tuition billing parent message, got:', messagesBilling1.length);
+    hasError = true;
+}
+
+// 17.2 Test Case: Deduplication for tuition billing (duplicate invoice or recreate should not duplicate)
+stateStore.triggerPaymentParentMessage(invoiceM1.id, 'tuition_billing');
+const messagesBillingDup = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdM && m.type === 'tuition_billing');
+if (messagesBillingDup.length === 1) {
+    console.log('[OK] Deduplication worked successfully for tuition billing.');
+} else {
+    console.error('[FAIL] Deduplication failed, count of billing messages is:', messagesBillingDup.length);
+    hasError = true;
+}
+
+// 17.3 Test Case: Tuition Paid transition
+stateStore.payInvoice(invoiceM1.id, 'card');
+const messagesPaid1 = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdM && m.type === 'tuition_paid');
+if (messagesPaid1.length === 1) {
+    const msg = messagesPaid1[0];
+    console.log('[OK] Tuition paid parent message created successfully.');
+    if (msg.pushRequired === true && msg.pushStatus === 'pending') {
+        console.log('[OK] Tuition paid pushRequired and pushStatus are correct (true/pending).');
+    } else {
+        console.error('[FAIL] Tuition paid pushRequired/pushStatus mismatch:', msg.pushRequired, msg.pushStatus);
+        hasError = true;
+    }
+    if (msg.title === '엠원생 원생 수강료 수납 완료' && msg.body.includes('엠원생 원생의 2026년 06월 수강료 200,000원이 수납 완료되었습니다.')) {
+        console.log('[OK] Tuition paid message title and body are correct.');
+    } else {
+        console.error('[FAIL] Tuition paid message content mismatch:', msg.title, msg.body);
+        hasError = true;
+    }
+} else {
+    console.error('[FAIL] Expected 1 tuition paid parent message, got:', messagesPaid1.length);
+    hasError = true;
+}
+
+// 17.4 Test Case: Deduplication for tuition paid
+stateStore.triggerPaymentParentMessage(invoiceM1.id, 'tuition_paid');
+const messagesPaidDup = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdM && m.type === 'tuition_paid');
+if (messagesPaidDup.length === 1) {
+    console.log('[OK] Deduplication worked successfully for tuition paid.');
+} else {
+    console.error('[FAIL] Deduplication failed, count of paid messages is:', messagesPaidDup.length);
+    hasError = true;
+}
+
+// 17.5 Test Case: Silent mode (messageEnabled=true, pushEnabled=false)
+stateStore.updateParentMessageSettingsBulk({
+    tuitionBilling: { messageEnabled: true, pushEnabled: false },
+    tuitionPaid: { messageEnabled: true, pushEnabled: false }
+});
+
+const invoiceM2 = stateStore.createInvoice(testStudentIdM, 200000, '2026-07');
+const messagesBilling2 = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdM && m.type === 'tuition_billing' && m.body.includes('2026년 07월'));
+if (messagesBilling2.length === 1) {
+    const msg = messagesBilling2[0];
+    if (msg.pushRequired === false && msg.pushStatus === 'not_required') {
+        console.log('[OK] Tuition billing silent mode push settings are correct (false/not_required).');
+    } else {
+        console.error('[FAIL] Tuition billing silent mode push settings mismatch:', msg.pushRequired, msg.pushStatus);
+        hasError = true;
+    }
+} else {
+    console.error('[FAIL] Expected silent billing message to be created.');
+    hasError = true;
+}
+
+stateStore.payInvoice(invoiceM2.id, 'cash');
+const messagesPaid2 = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdM && m.type === 'tuition_paid' && m.body.includes('2026년 07월'));
+if (messagesPaid2.length === 1) {
+    const msg = messagesPaid2[0];
+    if (msg.pushRequired === false && msg.pushStatus === 'not_required') {
+        console.log('[OK] Tuition paid silent mode push settings are correct (false/not_required).');
+    } else {
+        console.error('[FAIL] Tuition paid silent mode push settings mismatch:', msg.pushRequired, msg.pushStatus);
+        hasError = true;
+    }
+} else {
+    console.error('[FAIL] Expected silent paid message to be created.');
+    hasError = true;
+}
+
+// 17.6 Test Case: messageEnabled=false
+stateStore.updateParentMessageSettingsBulk({
+    tuitionBilling: { messageEnabled: false, pushEnabled: false },
+    tuitionPaid: { messageEnabled: false, pushEnabled: false }
+});
+
+const invoiceM3 = stateStore.createInvoice(testStudentIdM, 200000, '2026-08');
+const messagesBilling3 = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdM && m.type === 'tuition_billing' && m.body.includes('2026년 08월'));
+if (messagesBilling3.length === 0) {
+    console.log('[OK] No billing message created when messageEnabled is false.');
+} else {
+    console.error('[FAIL] Billing message was created even though messageEnabled is false:', messagesBilling3);
+    hasError = true;
+}
+
+stateStore.payInvoice(invoiceM3.id, 'cash');
+const messagesPaid3 = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdM && m.type === 'tuition_paid' && m.body.includes('2026년 08월'));
+if (messagesPaid3.length === 0) {
+    console.log('[OK] No paid message created when messageEnabled is false.');
+} else {
+    console.error('[FAIL] Paid message was created even though messageEnabled is false:', messagesPaid3);
+    hasError = true;
+}
+
+// 17.7 Test Case: canReceiveMessage=false
+stateStore.updateParentMessageSettingsBulk({
+    tuitionBilling: { messageEnabled: true, pushEnabled: true },
+    tuitionPaid: { messageEnabled: true, pushEnabled: true }
+});
+contactM.canReceiveMessage = false;
+stateStore.saveDB();
+
+const invoiceM4 = stateStore.createInvoice(testStudentIdM, 200000, '2026-09');
+const messagesBilling4 = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdM && m.type === 'tuition_billing' && m.body.includes('2026년 09월'));
+if (messagesBilling4.length === 0) {
+    console.log('[OK] No billing message created when canReceiveMessage is false.');
+} else {
+    console.error('[FAIL] Billing message was created even though canReceiveMessage is false:', messagesBilling4);
+    hasError = true;
+}
+
+stateStore.payInvoice(invoiceM4.id, 'cash');
+const messagesPaid4 = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdM && m.type === 'tuition_paid' && m.body.includes('2026년 09월'));
+if (messagesPaid4.length === 0) {
+    console.log('[OK] No paid message created when canReceiveMessage is false.');
+} else {
+    console.error('[FAIL] Paid message was created even though canReceiveMessage is false:', messagesPaid4);
+    hasError = true;
+}
+
+// Restore canReceiveMessage
+contactM.canReceiveMessage = true;
+stateStore.saveDB();
+
+// 17.8 Test Case: Book payments must be excluded
+const bookPaymentId = 'P_TEST_BOOK_M';
+stateStore.db.payments.push({
+    id: bookPaymentId,
+    studentId: testStudentIdM,
+    amount: 15000,
+    month: '2026-06',
+    type: 'book',
+    status: 'unpaid',
+    invoiceDate: '2026-06-15'
+});
+
+stateStore.triggerPaymentParentMessage(bookPaymentId, 'tuition_billing');
+const messagesBookBilling = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdM && m.type === 'tuition_billing' && m.relatedDomainId === bookPaymentId);
+if (messagesBookBilling.length === 0) {
+    console.log('[OK] Excluded book payment from tuition billing message generation.');
+} else {
+    console.error('[FAIL] Billing message was generated for book payment:', messagesBookBilling);
+    hasError = true;
+}
+
+stateStore.payInvoice(bookPaymentId, 'cash');
+const messagesBookPaid = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdM && m.type === 'tuition_paid' && m.relatedDomainId === bookPaymentId);
+if (messagesBookPaid.length === 0) {
+    console.log('[OK] Excluded book payment from tuition paid message generation.');
+} else {
+    console.error('[FAIL] Paid message was generated for book payment:', messagesBookPaid);
+    hasError = true;
+}
+
 if (hasError) {
     console.error('--- Unit Test: Parent Messaging Schema & Migration FAILED ---');
     process.exit(1);

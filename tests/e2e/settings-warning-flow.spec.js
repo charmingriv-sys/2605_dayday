@@ -340,4 +340,114 @@ test.describe('Academy Warning Policy Settings UI E2E Flow', () => {
     const attOldMessages = oldMessages.filter(m => m.title && m.title.includes('출결'));
     expect(attOldMessages.length).toBe(0);
   });
+
+  test('should generate parent messages automatically based on tuition events and settings', async ({ page }) => {
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Initialize parent contacts and configure settings
+    await page.evaluate(() => {
+        window.stateStore.db.parentMessages = [];
+        window.stateStore.db.payments = [];
+        
+        // Ensure S1 has contact in db
+        const s1 = window.stateStore.getStudent('S1');
+        if (s1) {
+            window.stateStore.upsertParentContact({
+                studentId: 'S1',
+                slot: 'parent1',
+                name: s1.parentName || '최다은보호자',
+                relation: 'guardian',
+                phone: s1.parentPhone || '010-1234-5678',
+                canReceiveMessage: true
+            });
+        }
+
+        window.stateStore.updateParentMessageSettingsBulk({
+            tuitionBilling: { messageEnabled: true, pushEnabled: true },
+            tuitionPaid: { messageEnabled: true, pushEnabled: false }
+        });
+        window.stateStore.saveDB();
+    });
+
+    // 3. Create invoice for S1 to trigger tuition_billing
+    const invoiceId = await page.evaluate(() => {
+        const invoice = window.stateStore.createInvoice('S1', 150000, '2026-06');
+        return invoice.id;
+    });
+
+    // 4. Verify tuition billing message is created
+    let parentMsgs = await page.evaluate(() => window.stateStore.db.parentMessages);
+    let billingMsg = parentMsgs.find(m => m.studentId === 'S1' && m.type === 'tuition_billing');
+    expect(billingMsg).toBeDefined();
+    expect(billingMsg.pushRequired).toBe(true);
+    expect(billingMsg.pushStatus).toBe('pending');
+    expect(billingMsg.title).toContain('최다은 원생 수강료 수납 안내');
+    expect(billingMsg.body).toContain('최다은 원생의 2026년 06월 수강료 150,000원이 청구되었습니다.');
+
+    // 5. Pay invoice to trigger tuition_paid
+    await page.evaluate((id) => {
+        window.stateStore.payInvoice(id, 'cash');
+    }, invoiceId);
+
+    // 6. Verify tuition paid message is created
+    parentMsgs = await page.evaluate(() => window.stateStore.db.parentMessages);
+    let paidMsg = parentMsgs.find(m => m.studentId === 'S1' && m.type === 'tuition_paid');
+    expect(paidMsg).toBeDefined();
+    expect(paidMsg.pushRequired).toBe(false);
+    expect(paidMsg.pushStatus).toBe('not_required');
+    expect(paidMsg.title).toContain('최다은 원생 수강료 수납 완료');
+    expect(paidMsg.body).toContain('최다은 원생의 2026년 06월 수강료 150,000원이 수납 완료되었습니다.');
+
+    // 7. Verify deduplication
+    const dupCount = await page.evaluate((id) => {
+        window.stateStore.triggerPaymentParentMessage(id, 'tuition_paid');
+        return window.stateStore.db.parentMessages.filter(m => m.studentId === 'S1' && m.type === 'tuition_paid').length;
+    }, invoiceId);
+    expect(dupCount).toBe(1);
+
+    // 8. Test settings OFF -> no message created
+    await page.evaluate(() => {
+        window.stateStore.updateParentMessageSettingsBulk({
+            tuitionBilling: { messageEnabled: false, pushEnabled: false }
+        });
+        window.stateStore.saveDB();
+        window.stateStore.createInvoice('S1', 150000, '2026-07');
+    });
+
+    parentMsgs = await page.evaluate(() => window.stateStore.db.parentMessages);
+    let billingMsg2 = parentMsgs.find(m => m.studentId === 'S1' && m.type === 'tuition_billing' && m.body.includes('2026년 07월'));
+    expect(billingMsg2).toBeUndefined();
+
+    // 9. Verify no book payment message is created
+    await page.evaluate(() => {
+        // push a book payment
+        window.stateStore.db.payments.push({
+            id: 'P-BOOK-E2E',
+            studentId: 'S1',
+            amount: 20000,
+            month: '2026-06',
+            type: 'book',
+            status: 'unpaid',
+            invoiceDate: '2026-06-15'
+        });
+        window.stateStore.triggerPaymentParentMessage('P-BOOK-E2E', 'tuition_billing');
+        window.stateStore.payInvoice('P-BOOK-E2E', 'cash');
+    });
+
+    parentMsgs = await page.evaluate(() => window.stateStore.db.parentMessages);
+    let bookMsg = parentMsgs.filter(m => m.relatedDomainId === 'P-BOOK-E2E');
+    expect(bookMsg.length).toBe(0);
+
+    // 10. Verify no outboundMessageLogs or old messages are created
+    const outboundLogs = await page.evaluate(() => window.stateStore.db.outboundMessageLogs || []);
+    expect(outboundLogs.length).toBe(0);
+
+    const oldMessages = await page.evaluate(() => window.stateStore.db.messages || []);
+    const billingOldMessages = oldMessages.filter(m => m.title && m.title.includes('수납'));
+    expect(billingOldMessages.length).toBe(0);
+  });
 });
