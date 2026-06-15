@@ -240,6 +240,19 @@ test.describe('Textbook Warning Life Cycle Flow (Phase 13E-1)', () => {
         student1.academyId = 'AC1';
       }
 
+      // Ensure parentMessageSettings are enabled for textbook billing & paid messages
+      if (!db.settings) db.settings = {};
+      db.settings.parentMessageSettings = {
+        bookBilling: { messageEnabled: true, pushEnabled: true },
+        bookPaid: { messageEnabled: true, pushEnabled: true }
+      };
+
+      // Ensure S1 has contact that can receive message
+      const contact1 = db.parentContacts ? db.parentContacts.find(c => c.studentId === 'S1' && c.isPrimary) : null;
+      if (contact1) {
+        contact1.canReceiveMessage = true;
+      }
+
       db.bookIssueRequests.push({
         id: 'BIR-REQ-TEST1',
         studentId: 'S1',
@@ -308,7 +321,7 @@ test.describe('Textbook Warning Life Cycle Flow (Phase 13E-1)', () => {
     await expect(billingCardCount).toContainText('1');
 
     // 6. Verify DB changes on confirmed BIR, studentBook and payment creation
-    const { confirmedBIR, createdPayment, createdStudentBook, evalDate } = await page.evaluate(() => {
+    const { confirmedBIR, createdPayment, createdStudentBook, evalDate, billingMessage, studentName, overdueCount } = await page.evaluate(() => {
       const store = window.stateStore;
       const bir = store.getBookIssueRequests().find(r => r.id === 'BIR-REQ-TEST1');
       const p = store.db.payments.find(pm => pm.id === bir.paymentId);
@@ -316,11 +329,17 @@ test.describe('Textbook Warning Life Cycle Flow (Phase 13E-1)', () => {
       const eDate = store.db.settings.DAYDAY_DEBUG_EVAL_TIME 
         ? new Date(store.db.settings.DAYDAY_DEBUG_EVAL_TIME).toISOString().slice(0, 10)
         : new Date().toISOString().slice(0, 10);
+      const student = store.getStudent('S1');
+      const billingMsg = store.db.parentMessages.find(m => m.relatedDomainId === p.id && m.type === 'book_billing');
+      const oCount = store.db.parentMessages.filter(m => m.studentId === 'S1' && m.type === 'book_overdue').length;
       return {
         confirmedBIR: bir,
         createdPayment: p,
         createdStudentBook: sb,
-        evalDate: eDate
+        evalDate: eDate,
+        billingMessage: billingMsg,
+        studentName: student ? student.name : '',
+        overdueCount: oCount
       };
     });
 
@@ -340,6 +359,20 @@ test.describe('Textbook Warning Life Cycle Flow (Phase 13E-1)', () => {
     expect(createdStudentBook).toBeDefined();
     expect(createdStudentBook.bookId).toBe('B1');
     expect(createdStudentBook.studentId).toBe('S1');
+
+    // Verify book_billing parent message detail
+    expect(billingMessage).toBeDefined();
+    expect(billingMessage.type).toBe('book_billing');
+    expect(billingMessage.category).toBe('payment');
+    expect(billingMessage.title).toBe(`${studentName} 원생 교재비 수납 안내`);
+    expect(billingMessage.body).toContain('세모둥이네꼬마바이엘 1');
+    expect(billingMessage.body).toContain('5,000');
+    expect(billingMessage.pushRequired).toBe(true);
+    expect(billingMessage.pushStatus).toBe('pending');
+    expect(billingMessage.dedupeKey).toBe(`BOOK_BILLING_${createdPayment.id}`);
+
+    // Verify book_overdue is NOT created
+    expect(overdueCount).toBe(0);
 
     // 7. Verify safety check: double-execution of confirmBookIssueRequest does not create duplicates
     const countsAfterDoubleSync = await page.evaluate(() => {
@@ -363,6 +396,47 @@ test.describe('Textbook Warning Life Cycle Flow (Phase 13E-1)', () => {
     expect(countsAfterDoubleSync.birCount).toBe(1);
     expect(countsAfterDoubleSync.paymentCount).toBe(1);
     expect(countsAfterDoubleSync.sbCount).toBe(1);
+
+    // 7.1 Verify book_paid parentMessage is created when textbook payment is paid
+    const { paidMessage, paidStudentName } = await page.evaluate(() => {
+      const store = window.stateStore;
+      const bir = store.getBookIssueRequests().find(r => r.id === 'BIR-REQ-TEST1');
+      const paymentId = bir.paymentId;
+      
+      // Pay the invoice
+      store.payInvoice(paymentId, 'cash');
+      
+      const student = store.getStudent('S1');
+      const paidMsg = store.db.parentMessages.find(m => m.relatedDomainId === paymentId && m.type === 'book_paid');
+      
+      return {
+        paidMessage: paidMsg,
+        paidStudentName: student ? student.name : ''
+      };
+    });
+    
+    expect(paidMessage).toBeDefined();
+    expect(paidMessage.type).toBe('book_paid');
+    expect(paidMessage.category).toBe('payment');
+    expect(paidMessage.title).toBe(`${paidStudentName} 원생 교재비 수납 완료`);
+    expect(paidMessage.body).toContain('세모둥이네꼬마바이엘 1');
+    expect(paidMessage.body).toContain('5,000');
+    expect(paidMessage.pushRequired).toBe(true);
+    expect(paidMessage.pushStatus).toBe('pending');
+    expect(paidMessage.dedupeKey).toBe(`BOOK_PAID_${confirmedBIR.paymentId}`);
+
+    // 7.2 Verify duplicate payment status transitions do not generate duplicate book_paid messages
+    const paidMessagesCountAfterDuplicate = await page.evaluate(() => {
+      const store = window.stateStore;
+      const bir = store.getBookIssueRequests().find(r => r.id === 'BIR-REQ-TEST1');
+      const paymentId = bir.paymentId;
+
+      // Call updatePayment to 'paid' status again
+      store.updatePayment(paymentId, { status: 'paid' });
+
+      return store.db.parentMessages.filter(m => m.relatedDomainId === paymentId && m.type === 'book_paid').length;
+    });
+    expect(paidMessagesCountAfterDuplicate).toBe(1);
 
     // 8. Verify guards: cancelled / paid BIR cannot be approved
     const guardsResult = await page.evaluate(() => {

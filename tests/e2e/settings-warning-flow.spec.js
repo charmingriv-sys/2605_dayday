@@ -439,8 +439,11 @@ test.describe('Academy Warning Policy Settings UI E2E Flow', () => {
     });
 
     parentMsgs = await page.evaluate(() => window.stateStore.db.parentMessages);
-    let bookMsg = parentMsgs.filter(m => m.relatedDomainId === 'P-BOOK-E2E');
-    expect(bookMsg.length).toBe(0);
+    let bookMsgTuition = parentMsgs.filter(m => m.relatedDomainId === 'P-BOOK-E2E' && m.type.startsWith('tuition_'));
+    expect(bookMsgTuition.length).toBe(0);
+
+    let bookMsgBook = parentMsgs.filter(m => m.relatedDomainId === 'P-BOOK-E2E' && m.type === 'book_paid');
+    expect(bookMsgBook.length).toBe(1);
 
     // 10. Verify no outboundMessageLogs or old messages are created
     const outboundLogs = await page.evaluate(() => window.stateStore.db.outboundMessageLogs || []);

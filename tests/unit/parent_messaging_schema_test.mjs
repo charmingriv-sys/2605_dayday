@@ -957,11 +957,272 @@ if (messagesBookOverdue.length === 0) {
     hasError = true;
 }
 
-// Clean up test students from DB
-stateStore.db.students = stateStore.db.students.filter(s => s.id !== testStudentIdO && s.id !== testStudentIdO2);
-stateStore.db.parentContacts = stateStore.db.parentContacts.filter(c => c.studentId !== testStudentIdO && c.studentId !== testStudentIdO2);
-stateStore.db.parentMessages = stateStore.db.parentMessages.filter(m => m.studentId !== testStudentIdO && m.studentId !== testStudentIdO2);
-stateStore.db.payments = stateStore.db.payments.filter(p => p.studentId !== testStudentIdO && p.studentId !== testStudentIdO2);
+// 19. 교재비 수납 안내 및 수납 완료 학부모 메시지 자동 생성 엔진 검증 (Phase 16M-3)
+console.log('--- Starting Phase 16M-3 Book Payment messaging engine tests ---');
+
+const testStudentIdB = 'S_TEST_B';
+// Clean up
+stateStore.db.students = stateStore.db.students.filter(s => s.id !== testStudentIdB);
+stateStore.db.parentContacts = stateStore.db.parentContacts.filter(c => c.studentId !== testStudentIdB);
+stateStore.db.parentMessages = stateStore.db.parentMessages.filter(m => m.studentId !== testStudentIdB);
+stateStore.db.payments = stateStore.db.payments.filter(p => p.studentId !== testStudentIdB);
+stateStore.db.books = stateStore.db.books || [];
+stateStore.db.bookIssueRequests = stateStore.db.bookIssueRequests || [];
+
+// Add student
+stateStore.db.students.push({
+    id: testStudentIdB,
+    name: '교재원생',
+    phone: '010-7777-7777',
+    parentPhone: '010-8888-8888',
+    parentName: '교재부모',
+    teacherId: 'T8',
+    instrument: '피아노',
+    fee: 250000,
+    dueDay: 15,
+    enrollDate: '2026-01-10'
+});
+
+// Migrate contacts to initialize parent1
+stateStore.migrateParentContacts();
+
+// Add book
+const testBook = stateStore.addBook({ name: '바이엘1', price: 15000 });
+
+// Ensure bookBilling & bookPaid are enabled
+stateStore.updateParentMessageSettingsBulk({
+    bookBilling: { messageEnabled: true, pushEnabled: true },
+    bookPaid: { messageEnabled: true, pushEnabled: true }
+});
+
+// 19.1 Test Case: Confirming book request creates book_billing message
+const req = stateStore.addBookIssueRequest({
+    studentId: testStudentIdB,
+    bookId: testBook.id,
+    bookNameSnapshot: testBook.name,
+    amountSnapshot: testBook.price
+});
+
+// Confirm book issue request
+stateStore.confirmBookIssueRequest(req.id);
+
+// Find confirmed payment
+const bookPayment = stateStore.db.payments.find(p => p.studentId === testStudentIdB && p.type === 'book');
+if (!bookPayment) {
+    console.error('[FAIL] Book payment was not created on confirmBookIssueRequest');
+    hasError = true;
+} else {
+    // Check book_billing message
+    const messagesBilling = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdB && m.type === 'book_billing');
+    if (messagesBilling.length === 1) {
+        const msg = messagesBilling[0];
+        console.log('[OK] Book billing parent message created successfully.');
+        if (msg.pushRequired === true && msg.pushStatus === 'pending') {
+            console.log('[OK] Book billing pushRequired and pushStatus are correct (true/pending).');
+        } else {
+            console.error('[FAIL] Book billing pushRequired/pushStatus mismatch:', msg.pushRequired, msg.pushStatus);
+            hasError = true;
+        }
+        if (msg.title === '교재원생 원생 교재비 수납 안내' && msg.body.includes('교재원생 원생의 바이엘1 교재비 15,000원이 청구되었습니다.')) {
+            console.log('[OK] Book billing message title and body are correct.');
+        } else {
+            console.error('[FAIL] Book billing message content mismatch:', msg.title, msg.body);
+            hasError = true;
+        }
+        if (msg.dedupeKey === `BOOK_BILLING_${bookPayment.id}`) {
+            console.log('[OK] Book billing dedupeKey is correct.');
+        } else {
+            console.error('[FAIL] Book billing dedupeKey mismatch:', msg.dedupeKey);
+            hasError = true;
+        }
+    } else {
+        console.error('[FAIL] Expected 1 book billing parent message, got:', messagesBilling.length);
+        hasError = true;
+    }
+
+    // 19.2 Test Case: book_overdue is NOT created during the confirmation of book issue request
+    const messagesOverdue = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdB && m.type === 'book_overdue');
+    if (messagesOverdue.length === 0) {
+        console.log('[OK] book_overdue is not created upon book request confirmation.');
+    } else {
+        console.error('[FAIL] book_overdue was created upon book request confirmation:', messagesOverdue);
+        hasError = true;
+    }
+
+    // 19.3 Test Case: book_paid parentMessage creation on payInvoice
+    stateStore.payInvoice(bookPayment.id, 'cash');
+    const messagesPaid = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdB && m.type === 'book_paid');
+    if (messagesPaid.length === 1) {
+        const msg = messagesPaid[0];
+        console.log('[OK] Book paid parent message created successfully.');
+        if (msg.pushRequired === true && msg.pushStatus === 'pending') {
+            console.log('[OK] Book paid pushRequired and pushStatus are correct (true/pending).');
+        } else {
+            console.error('[FAIL] Book paid pushRequired/pushStatus mismatch:', msg.pushRequired, msg.pushStatus);
+            hasError = true;
+        }
+        if (msg.title === '교재원생 원생 교재비 수납 완료' && msg.body.includes('교재원생 원생의 바이엘1 교재비 15,000원이 수납 완료되었습니다.')) {
+            console.log('[OK] Book paid message title and body are correct.');
+        } else {
+            console.error('[FAIL] Book paid message content mismatch:', msg.title, msg.body);
+            hasError = true;
+        }
+        if (msg.dedupeKey === `BOOK_PAID_${bookPayment.id}`) {
+            console.log('[OK] Book paid dedupeKey is correct.');
+        } else {
+            console.error('[FAIL] Book paid dedupeKey mismatch:', msg.dedupeKey);
+            hasError = true;
+        }
+    } else {
+        console.error('[FAIL] Expected 1 book paid parent message, got:', messagesPaid.length);
+        hasError = true;
+    }
+
+    // 19.4 Test Case: Deduplication
+    stateStore.triggerPaymentParentMessage(bookPayment.id, 'book_billing');
+    stateStore.triggerPaymentParentMessage(bookPayment.id, 'book_paid');
+    const messagesBillingDup = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdB && m.type === 'book_billing');
+    const messagesPaidDup = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdB && m.type === 'book_paid');
+    if (messagesBillingDup.length === 1 && messagesPaidDup.length === 1) {
+        console.log('[OK] Deduplication worked successfully for book billing and book paid.');
+    } else {
+        console.error('[FAIL] Deduplication failed, book billing count:', messagesBillingDup.length, 'book paid count:', messagesPaidDup.length);
+        hasError = true;
+    }
+
+    // 19.5 Test Case: messageEnabled=false
+    stateStore.updateParentMessageSettingsBulk({
+        bookBilling: { messageEnabled: false, pushEnabled: false },
+        bookPaid: { messageEnabled: false, pushEnabled: false }
+    });
+    // Clear messages for testStudentIdB
+    stateStore.db.parentMessages = stateStore.db.parentMessages.filter(m => m.studentId !== testStudentIdB);
+    
+    stateStore.triggerPaymentParentMessage(bookPayment.id, 'book_billing');
+    stateStore.triggerPaymentParentMessage(bookPayment.id, 'book_paid');
+    const messagesBillingDisabled = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdB && m.type === 'book_billing');
+    const messagesPaidDisabled = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdB && m.type === 'book_paid');
+    if (messagesBillingDisabled.length === 0 && messagesPaidDisabled.length === 0) {
+        console.log('[OK] No book messages created when messageEnabled is false.');
+    } else {
+        console.error('[FAIL] Book messages created when messageEnabled is false:', messagesBillingDisabled, messagesPaidDisabled);
+        hasError = true;
+    }
+
+    // 19.6 Test Case: pushEnabled=false (Silent Mode)
+    stateStore.updateParentMessageSettingsBulk({
+        bookBilling: { messageEnabled: true, pushEnabled: false },
+        bookPaid: { messageEnabled: true, pushEnabled: false }
+    });
+    stateStore.triggerPaymentParentMessage(bookPayment.id, 'book_billing');
+    stateStore.triggerPaymentParentMessage(bookPayment.id, 'book_paid');
+    const messagesBillingSilent = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdB && m.type === 'book_billing');
+    const messagesPaidSilent = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdB && m.type === 'book_paid');
+    if (messagesBillingSilent.length === 1 && messagesPaidSilent.length === 1) {
+        const msgBill = messagesBillingSilent[0];
+        const msgPaid = messagesPaidSilent[0];
+        if (msgBill.pushRequired === false && msgBill.pushStatus === 'not_required' &&
+            msgPaid.pushRequired === false && msgPaid.pushStatus === 'not_required') {
+            console.log('[OK] Book billing/paid silent mode push settings are correct (false/not_required).');
+        } else {
+            console.error('[FAIL] Book billing/paid silent mode push settings mismatch:', msgBill.pushRequired, msgBill.pushStatus, msgPaid.pushRequired, msgPaid.pushStatus);
+            hasError = true;
+        }
+    } else {
+        console.error('[FAIL] Expected book messages to be created in silent mode.');
+        hasError = true;
+    }
+
+    // 19.7 Test Case: Fallback when book cannot be resolved
+    const fakeBookPayment = {
+        id: 'P_FAKE_BOOK',
+        studentId: testStudentIdB,
+        amount: 20000,
+        month: '2026-06',
+        type: 'book',
+        status: 'unpaid',
+        invoiceDate: '2026-06-15',
+        bookId: 'B_NONEXISTENT'
+    };
+    stateStore.db.payments.push(fakeBookPayment);
+    // Clear and trigger
+    stateStore.db.parentMessages = stateStore.db.parentMessages.filter(m => m.studentId !== testStudentIdB);
+    stateStore.triggerPaymentParentMessage(fakeBookPayment.id, 'book_billing');
+    stateStore.triggerPaymentParentMessage(fakeBookPayment.id, 'book_paid');
+    
+    const messagesBillingFallback = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdB && m.type === 'book_billing');
+    const messagesPaidFallback = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdB && m.type === 'book_paid');
+    if (messagesBillingFallback.length === 1 && messagesPaidFallback.length === 1) {
+        const msgBill = messagesBillingFallback[0];
+        const msgPaid = messagesPaidFallback[0];
+        if (msgBill.body === '교재원생 원생의 교재비 20,000원이 청구되었습니다.' &&
+            msgPaid.body === '교재원생 원생의 교재비 20,000원이 수납 완료되었습니다.') {
+            console.log('[OK] Fallback to generic message body verified successfully when book name is missing.');
+        } else {
+            console.error('[FAIL] Fallback message body mismatch:', msgBill.body, msgPaid.body);
+            hasError = true;
+        }
+    } else {
+        console.error('[FAIL] Fallback messages were not created.');
+        hasError = true;
+    }
+    // Clean fake payment
+    stateStore.db.payments = stateStore.db.payments.filter(p => p.id !== 'P_FAKE_BOOK');
+
+    // 19.8 Test Case: canReceiveMessage=false
+    const contactB = stateStore.getPrimaryParentContact(testStudentIdB);
+    if (contactB) {
+        contactB.canReceiveMessage = false;
+        stateStore.saveDB();
+    }
+    stateStore.db.parentMessages = stateStore.db.parentMessages.filter(m => m.studentId !== testStudentIdB);
+    stateStore.triggerPaymentParentMessage(bookPayment.id, 'book_billing');
+    const messagesBillingNoReceive = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdB && m.type === 'book_billing');
+    if (messagesBillingNoReceive.length === 0) {
+        console.log('[OK] No book message created when canReceiveMessage is false.');
+    } else {
+        console.error('[FAIL] Book message was created even though canReceiveMessage is false:', messagesBillingNoReceive);
+        hasError = true;
+    }
+    // Restore
+    if (contactB) {
+        contactB.canReceiveMessage = true;
+        stateStore.saveDB();
+    }
+
+    // 19.9 Test Case: Education payments do not trigger book events
+    const tuitionPaymentId = 'P_TEST_TUITION_B';
+    stateStore.db.payments.push({
+        id: tuitionPaymentId,
+        studentId: testStudentIdB,
+        amount: 250000,
+        month: '2026-06',
+        type: 'education',
+        status: 'unpaid',
+        invoiceDate: '2026-06-15'
+    });
+    // Try to trigger book events using a tuition payment
+    stateStore.db.parentMessages = stateStore.db.parentMessages.filter(m => m.studentId !== testStudentIdB);
+    stateStore.triggerPaymentParentMessage(tuitionPaymentId, 'book_billing');
+    stateStore.triggerPaymentParentMessage(tuitionPaymentId, 'book_paid');
+    const messagesTuitionBookEvents = stateStore.db.parentMessages.filter(m => m.studentId === testStudentIdB && (m.type === 'book_billing' || m.type === 'book_paid'));
+    if (messagesTuitionBookEvents.length === 0) {
+        console.log('[OK] Tuition payment successfully guarded from book event message generation.');
+    } else {
+        console.error('[FAIL] Tuition payment triggered book event messages:', messagesTuitionBookEvents);
+        hasError = true;
+    }
+    // Clean tuition payment
+    stateStore.db.payments = stateStore.db.payments.filter(p => p.id !== tuitionPaymentId);
+}
+
+// Clean up test students and books from DB
+stateStore.db.students = stateStore.db.students.filter(s => s.id !== testStudentIdB && s.id !== testStudentIdO && s.id !== testStudentIdO2);
+stateStore.db.parentContacts = stateStore.db.parentContacts.filter(c => c.studentId !== testStudentIdB && c.studentId !== testStudentIdO && c.studentId !== testStudentIdO2);
+stateStore.db.parentMessages = stateStore.db.parentMessages.filter(m => m.studentId !== testStudentIdB && m.studentId !== testStudentIdO && m.studentId !== testStudentIdO2);
+stateStore.db.payments = stateStore.db.payments.filter(p => p.studentId !== testStudentIdB && p.studentId !== testStudentIdO && p.studentId !== testStudentIdO2);
+stateStore.db.books = stateStore.db.books.filter(b => b.id !== testBook.id);
+stateStore.db.bookIssueRequests = stateStore.db.bookIssueRequests.filter(r => r.studentId !== testStudentIdB);
 
 if (hasError) {
     console.error('--- Unit Test: Parent Messaging Schema & Migration FAILED ---');

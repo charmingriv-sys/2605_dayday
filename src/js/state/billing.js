@@ -43,9 +43,13 @@ export const billingMethods = {
             this.saveDB();
             this.notify('PAYMENTS_CHANGED', this.db.payments);
 
-            // Trigger tuition_paid message if status transitioned to paid
+            // Trigger messages if status transitioned to paid
             if (!wasPaid) {
-                this.triggerPaymentParentMessage(invoice.id, 'tuition_paid');
+                if (invoice.type === 'education') {
+                    this.triggerPaymentParentMessage(invoice.id, 'tuition_paid');
+                } else if (invoice.type === 'book') {
+                    this.triggerPaymentParentMessage(invoice.id, 'book_paid');
+                }
             }
 
             return invoice;
@@ -183,9 +187,13 @@ export const billingMethods = {
             this.notify('PAYMENTS_CHANGED', this.db.payments);
             this.notify('STUDENT_BOOKS_CHANGED', this.db.studentBooks);
 
-            // Trigger tuition_paid message if status transitioned to paid
+            // Trigger messages if status transitioned to paid
             if (!wasPaid && payment.status === 'paid') {
-                this.triggerPaymentParentMessage(payment.id, 'tuition_paid');
+                if (payment.type === 'education') {
+                    this.triggerPaymentParentMessage(payment.id, 'tuition_paid');
+                } else if (payment.type === 'book') {
+                    this.triggerPaymentParentMessage(payment.id, 'book_paid');
+                }
             }
 
             return true;
@@ -195,7 +203,9 @@ export const billingMethods = {
 
     triggerPaymentParentMessage(paymentId, eventType) {
         const payment = this.db.payments.find(p => p.id === paymentId);
-        if (!payment || payment.type !== 'education') return;
+        if (!payment) return;
+        if (eventType.startsWith('tuition_') && payment.type !== 'education') return;
+        if (eventType.startsWith('book_') && payment.type !== 'book') return;
 
         const student = typeof this.getStudent === 'function' ? this.getStudent(payment.studentId) : null;
         if (!student) return;
@@ -217,6 +227,10 @@ export const billingMethods = {
             eventKey = 'tuitionPaid';
         } else if (eventType === 'tuition_overdue') {
             eventKey = 'tuitionOverdue';
+        } else if (eventType === 'book_billing') {
+            eventKey = 'bookBilling';
+        } else if (eventType === 'book_paid') {
+            eventKey = 'bookPaid';
         } else {
             return;
         }
@@ -228,6 +242,19 @@ export const billingMethods = {
 
         const parts = payment.month.split('-');
         const formattedMonth = parts.length === 2 ? `${parts[0]}년 ${parts[1]}월` : payment.month;
+
+        let bookName = '';
+        if (payment.type === 'book') {
+            const book = payment.bookId && typeof this.getBook === 'function' ? this.getBook(payment.bookId) : null;
+            if (book) {
+                bookName = book.name;
+            } else if (this.db.bookIssueRequests) {
+                const req = this.db.bookIssueRequests.find(r => r.paymentId === payment.id);
+                if (req) {
+                    bookName = req.bookNameSnapshot || '';
+                }
+            }
+        }
 
         let title = '';
         let body = '';
@@ -245,6 +272,18 @@ export const billingMethods = {
             title = `${student.name} 원생 수강료 미수납 안내`;
             body = `${student.name} 원생의 ${formattedMonth} 수강료 ${payment.amount.toLocaleString()}원이 아직 수납되지 않았습니다.`;
             dedupeKey = `TUITION_OVERDUE_${payment.id}`;
+        } else if (eventType === 'book_billing') {
+            title = `${student.name} 원생 교재비 수납 안내`;
+            body = bookName
+                ? `${student.name} 원생의 ${bookName} 교재비 ${payment.amount.toLocaleString()}원이 청구되었습니다.`
+                : `${student.name} 원생의 교재비 ${payment.amount.toLocaleString()}원이 청구되었습니다.`;
+            dedupeKey = `BOOK_BILLING_${payment.id}`;
+        } else if (eventType === 'book_paid') {
+            title = `${student.name} 원생 교재비 수납 완료`;
+            body = bookName
+                ? `${student.name} 원생의 ${bookName} 교재비 ${payment.amount.toLocaleString()}원이 수납 완료되었습니다.`
+                : `${student.name} 원생의 교재비 ${payment.amount.toLocaleString()}원이 수납 완료되었습니다.`;
+            dedupeKey = `BOOK_PAID_${payment.id}`;
         } else {
             return;
         }

@@ -374,6 +374,10 @@ export const catalogMethods = {
             };
             this.db.payments.push(newPayment);
             paymentId = payId;
+
+            if (typeof this.triggerPaymentParentMessage === 'function') {
+                this.triggerPaymentParentMessage(payId, 'book_billing');
+            }
         }
 
         // 2. Create student book record if not already exists
