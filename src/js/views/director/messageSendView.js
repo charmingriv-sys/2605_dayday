@@ -557,6 +557,67 @@ const validateRecipients = (recipients) => {
 
 // --- View rendering entry point ----------------------------------------------
 export function renderMessageSend(container) {
+  // Phase 16P-1: Handoff Payload Check
+  if (typeof window !== 'undefined' && typeof sessionStorage !== 'undefined') {
+    const rawHandoff = sessionStorage.getItem('dayday_handoff_payload');
+    if (rawHandoff) {
+      try {
+        const payload = JSON.parse(rawHandoff);
+        sessionStorage.removeItem('dayday_handoff_payload');
+        
+        if (payload && payload.source === 'today_console' && payload.studentId) {
+          // Reset and apply selection
+          viewState.selectedStudentIds.clear();
+          viewState.selectedStudentIds.add(payload.studentId);
+          
+          viewState.selectedContacts.clear();
+          viewState.selectedContacts.add(`${payload.studentId}_g1`);
+          
+          viewState.contactTypes = {
+            student: false,
+            g1: true,
+            g2: false
+          };
+          
+          // Save handoff metadata
+          viewState.handoffTaskId = payload.taskId || '';
+          viewState.handoffRelatedDomainType = payload.relatedDomainType || '';
+          viewState.handoffRelatedDomainId = payload.relatedDomainId || '';
+          
+          // Template Type Setting
+          const tKey = payload.suggestedTemplateType || 'general';
+          viewState.selectedTemplateKey = tKey;
+          
+          // Set body and title draft only if they are empty
+          if (!viewState.title.trim() && !viewState.body.trim()) {
+            if (tKey === 'absent') {
+              viewState.title = '출석 확인 요청';
+              const classTime = payload.meta && payload.meta.classTime;
+              if (classTime) {
+                viewState.body = `#{이름} 원생의 ${classTime} 수업 출석 기록이 확인되지 않았습니다.\n확인 부탁드립니다.`;
+              } else {
+                viewState.body = `#{이름} 원생의 수업 출석 기록이 확인되지 않았습니다.\n확인 부탁드립니다.`;
+              }
+            } else {
+              const selectedTemplate = TEMPLATES_MAP[tKey];
+              if (selectedTemplate) {
+                viewState.title = selectedTemplate.title;
+                viewState.body = selectedTemplate.body;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error parsing handoff payload', e);
+      }
+    } else {
+      // Clear handoff metadata for direct manual views
+      viewState.handoffTaskId = null;
+      viewState.handoffRelatedDomainType = null;
+      viewState.handoffRelatedDomainId = null;
+    }
+  }
+
   // Set up common header items
   const headerActions = document.querySelector('.header-actions');
   const settingsQuickBar = document.getElementById('settings-quick-bar');
@@ -2600,6 +2661,16 @@ export function renderMessageSend(container) {
     viewState.vaultPages["recent"] = 0;
 
     render();
+
+    // Handoff Return Confirmation Flow (Phase 16P-1)
+    if (viewState.handoffTaskId) {
+      if (confirm("발송이 완료되었습니다. 오늘 원장 콘솔로 돌아가시겠습니까?")) {
+        const todayConsoleMenu = document.querySelector('.menu-item[data-view="dir-today-console"]');
+        if (todayConsoleMenu) {
+          todayConsoleMenu.click();
+        }
+      }
+    }
   };
 
 

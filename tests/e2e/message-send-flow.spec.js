@@ -1790,5 +1790,225 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
       window.stateStore.saveDB();
     }, studentId);
   });
+
+  test('should support console-to-message handoff integration, specific buttons, auto template mapping, class time parsing, return confirmation, and direct menu reset (Phase 16P-1)', async ({ page }) => {
+    const studentId = 'S_TEST_16P_STUDENT';
+    const taskIdAbsent = 'TASK_16P_ABSENT';
+    const taskIdBookCheck = 'TASK_16P_BOOKCHECK';
+    const taskIdBookBilling = 'TASK_16P_BOOKBILLING';
+    const taskIdStaff = 'TASK_16P_STAFF';
+
+    // 1. Seed database with test student, parent, and various console tasks
+    await page.evaluate(({ sid, tidA, tidB, tidBB, tidS }) => {
+      // Clean up first defensively
+      window.stateStore.db.students = window.stateStore.db.students.filter(s => s.id !== sid);
+      window.stateStore.db.parentContacts = window.stateStore.db.parentContacts.filter(c => c.studentId !== sid);
+      window.stateStore.db.todayTasks = window.stateStore.db.todayTasks.filter(t => ![tidA, tidB, tidBB, tidS].includes(t.id));
+
+      window.stateStore.db.students.push({
+        id: sid,
+        name: '나핸드',
+        phone: '010-9988-7766',
+        instrument: '피아노',
+        pay: 'unpaid'
+      });
+      window.stateStore.db.parentContacts.push({
+        id: 'pc_16p_g1',
+        studentId: sid,
+        slot: 'parent1',
+        name: '나학부모',
+        relation: 'mother',
+        phone: '010-8877-6655',
+        canReceiveMessage: true,
+        isPrimary: true
+      });
+
+      const todayIso = new Date().toISOString();
+
+      // Absent check task (Handoff target)
+      window.stateStore.db.todayTasks.push({
+        id: tidA,
+        organizationId: '',
+        segment: 'academy_director_console',
+        domain: 'academy',
+        source: 'system',
+        type: 'attendance',
+        category: 'absent',
+        priority: 'today',
+        status: 'open',
+        dueAt: todayIso,
+        startAt: todayIso,
+        endAt: todayIso,
+        title: '나핸드 원생 결석 확인 필요',
+        description: '• 원생명: 나핸드\n• 수업 시간: 14:00 ~ 15:00\n• 담당 강사: 정강사\n• 과목/악기: 피아노\n• 워닝 유형: 결석 확인\n• 간단 사유: 수업 종료 후 출석이 확인되지 않았습니다.',
+        relatedStudentIds: [sid],
+        dedupeKey: 'SYSTEM_ABSENT_SESSION_TEST_16P',
+        visibilityRoles: ['director']
+      });
+
+      // Book check task (Non-handoff target)
+      window.stateStore.db.todayTasks.push({
+        id: tidB,
+        organizationId: '',
+        segment: 'academy_director_console',
+        domain: 'academy',
+        source: 'user',
+        type: 'book',
+        category: 'book_check',
+        priority: 'today',
+        status: 'open',
+        dueAt: todayIso,
+        startAt: todayIso,
+        endAt: todayIso,
+        title: '[교재확인] 나핸드 원생 바이엘1',
+        description: '강사가 나핸드 원생에게 바이엘1 지급 승인을 요청했습니다.',
+        relatedStudentIds: [sid],
+        dedupeKey: 'SYSTEM_RECOMMEND_BOOK_CHECK_TEST_16P',
+        visibilityRoles: ['director']
+      });
+
+      // Book billing task (Handoff target)
+      window.stateStore.db.todayTasks.push({
+        id: tidBB,
+        organizationId: '',
+        segment: 'academy_director_console',
+        domain: 'academy',
+        source: 'user',
+        type: 'book',
+        category: 'book_billing',
+        priority: 'today',
+        status: 'open',
+        dueAt: todayIso,
+        startAt: todayIso,
+        endAt: todayIso,
+        title: '[교재결제확인] 나핸드 원생 바이엘1 / 직접 등록',
+        description: '학부모 안내 및 수납 확인이 필요합니다.',
+        relatedStudentIds: [sid],
+        dedupeKey: 'SYSTEM_RECOMMEND_BOOK_BILLING_TEST_16P',
+        visibilityRoles: ['director']
+      });
+
+      // Staff warning task (Non-handoff target)
+      window.stateStore.db.todayTasks.push({
+        id: tidS,
+        organizationId: '',
+        segment: 'academy_director_console',
+        domain: 'academy',
+        source: 'system',
+        type: 'attendance',
+        category: 'staff_warning',
+        priority: 'today',
+        status: 'open',
+        dueAt: todayIso,
+        startAt: todayIso,
+        endAt: todayIso,
+        title: '강사 지각 경고',
+        description: '강사가 약정 출근 시각보다 늦게 지문 인식했습니다.',
+        dedupeKey: 'SYSTEM_RECOMMEND_STAFF_WARNING_TEST_16P',
+        visibilityRoles: ['director']
+      });
+
+      window.stateStore.saveDB();
+    }, { sid: studentId, tidA: taskIdAbsent, tidB: taskIdBookCheck, tidBB: taskIdBookBilling, tidS: taskIdStaff });
+
+    // Navigate to Today Console
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+
+    // 2. Verify button visibility/invisibility
+    const absentCard = page.locator('#tasks-list-container .glass-card', { hasText: '나핸드 원생 결석 확인 필요' });
+    const absentMessageBtn = absentCard.locator('button:has-text("메시지 보내기")');
+    await expect(absentMessageBtn).toBeVisible();
+
+    const bookCheckCard = page.locator('#tasks-list-container .glass-card', { hasText: '[교재확인] 나핸드 원생 바이엘1' });
+    const bookCheckMessageBtn = bookCheckCard.locator('button:has-text("메시지 보내기")');
+    await expect(bookCheckMessageBtn).toBeHidden();
+
+    const bookBillingCard = page.locator('#tasks-list-container .glass-card', { hasText: '[교재결제확인] 나핸드 원생 바이엘1' });
+    const bookBillingMessageBtn = bookBillingCard.locator('button:has-text("메시지 보내기")');
+    await expect(bookBillingMessageBtn).toBeVisible();
+
+    const staffCard = page.locator('#tasks-list-container .glass-card', { hasText: '강사 지각 경고' });
+    const staffMessageBtn = staffCard.locator('button:has-text("메시지 보내기")');
+    await expect(staffMessageBtn).toBeHidden();
+
+    // 3. Click and trigger Handoff
+    await absentMessageBtn.click();
+
+    // Verify active view is Message Send view
+    await expect(page.locator('.menu-item[data-view="dir-message-send"]')).toHaveClass(/active/);
+
+    // 4. Verify selection state and class-time text parsing
+    // Checkbox for '나핸드' in the student list should be checked
+    const studentRow = page.locator('.student-row', { hasText: '나핸드' });
+    const studentCheckIcon = studentRow.locator('.row-checkbox svg');
+    await expect(studentCheckIcon).toBeVisible();
+
+    // Guardian 1 contact selection chip should be active
+    const contactChipG1 = page.locator('.btn-toggle-contact-type[data-type="g1"] svg');
+    await expect(contactChipG1).toBeVisible();
+    const contactChipStudent = page.locator('.btn-toggle-contact-type[data-type="student"] svg');
+    await expect(contactChipStudent).toBeHidden();
+    const contactChipG2 = page.locator('.btn-toggle-contact-type[data-type="g2"] svg');
+    await expect(contactChipG2).toBeHidden();
+
+    // Verify draft input fields
+    await expect(page.locator('#composeTitleInput')).toHaveValue('출석 확인 요청');
+    await expect(page.locator('#composeBodyInput')).toHaveValue('#{이름} 원생의 14:00 ~ 15:00 수업 출석 기록이 확인되지 않았습니다.\n확인 부탁드립니다.');
+
+    // 5. Add to Recipients
+    await page.locator('#btnAddToRecipients').click();
+
+    // 6. Focus confirmation modal & dispatch with console return confirmation
+    await page.locator('#btnReviewSend').click();
+    const focusOverlay = page.locator('#focusConfirmOverlay');
+    await expect(focusOverlay).toBeVisible();
+
+    // Set dialog handlers
+    const sendDialogHandler = async (dialog) => {
+      if (dialog.message().includes('실제 발송은 아직 연동되지 않았고')) {
+        await dialog.accept();
+      } else if (dialog.message().includes('오늘 원장 콘솔로 돌아가시겠습니까?')) {
+        await dialog.accept(); // Confirm return
+      }
+    };
+
+    page.on('dialog', sendDialogHandler);
+    await page.locator('#btnFocusSendConfirm').click();
+    await page.waitForTimeout(200); // Wait for routing
+    page.off('dialog', sendDialogHandler);
+
+    // 7. Verify we are returned to Today Console
+    await expect(page.locator('.menu-item[data-view="dir-today-console"]')).toHaveClass(/active/);
+
+    // 8. Verify target task is still Open (not automatically completed)
+    const refreshedAbsentCard = page.locator('#tasks-list-container .glass-card', { hasText: '나핸드 원생 결석 확인 필요' });
+    await expect(refreshedAbsentCard).toBeVisible();
+    await expect(refreshedAbsentCard.locator('.btn-done')).toBeVisible();
+
+    // 9. Go to Message Send directly and verify preserved state (policy correction)
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+
+    // Search query or selections should be clean
+    const rawHandoffInStorage = await page.evaluate(() => sessionStorage.getItem('dayday_handoff_payload'));
+    expect(rawHandoffInStorage).toBeNull();
+
+    // Students selected state should be clear (because adding to recipients cleared the selection)
+    const resetStudentRow = page.locator('.student-row', { hasText: '나핸드' });
+    const resetStudentCheckIcon = resetStudentRow.locator('.row-checkbox svg');
+    await expect(resetStudentCheckIcon).toBeHidden();
+
+    // Title and Body should be preserved (not reset) when direct menu navigation occurs
+    await expect(page.locator('#composeTitleInput')).toHaveValue('출석 확인 요청');
+    await expect(page.locator('#composeBodyInput')).toHaveValue('#{이름} 원생의 14:00 ~ 15:00 수업 출석 기록이 확인되지 않았습니다.\n확인 부탁드립니다.');
+    await expect(page.locator('#totalRecipientsLabel')).toContainText('1건');
+
+    // 10. Cleanup db
+    await page.evaluate(({ sid, tidA, tidB, tidBB, tidS }) => {
+      window.stateStore.db.students = window.stateStore.db.students.filter(s => s.id !== sid);
+      window.stateStore.db.parentContacts = window.stateStore.db.parentContacts.filter(c => c.studentId !== sid);
+      window.stateStore.db.todayTasks = window.stateStore.db.todayTasks.filter(t => ![tidA, tidB, tidBB, tidS].includes(t.id));
+      window.stateStore.saveDB();
+    }, { sid: studentId, tidA: taskIdAbsent, tidB: taskIdBookCheck, tidBB: taskIdBookBilling, tidS: taskIdStaff });
+  });
 });
 
