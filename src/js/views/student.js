@@ -124,19 +124,51 @@ export function renderCalendar(container) {
             </div>
         `;
 
-        if (activeViewMode === 'calendar') {
-            // Filter attendance for May 2026
-            const mayAttendance = attendanceList.filter(a => a.date.startsWith('2026-05'));
-            const presentCount = mayAttendance.filter(a => {
-                const status = (a.status === 'late' && !lateEnabled) ? 'present' : a.status;
-                return status === 'present';
-            }).length;
-            const lateCount = mayAttendance.filter(a => {
-                const status = (a.status === 'late' && !lateEnabled) ? 'present' : a.status;
-                return status === 'late';
-            }).length;
-            const absentCount = mayAttendance.filter(a => a.status === 'absent').length;
+        // Filter attendance for May 2026
+        const mayAttendance = attendanceList.filter(a => a.date.startsWith('2026-05'));
+        const presentCount = mayAttendance.filter(a => {
+            const status = (a.status === 'late' && !lateEnabled) ? 'present' : a.status;
+            return status === 'present';
+        }).length;
+        const lateCount = mayAttendance.filter(a => {
+            const status = (a.status === 'late' && !lateEnabled) ? 'present' : a.status;
+            return status === 'late';
+        }).length;
+        const absentCount = mayAttendance.filter(a => a.status === 'absent').length;
 
+        const metricsGridHtml = `
+            <div class="metrics-grid">
+                <div class="glass-card metric-card">
+                    <div class="metric-icon green">
+                        <i class="fa-solid fa-calendar-check"></i>
+                    </div>
+                    <div class="metric-info">
+                        <span class="metric-value">${presentCount}회</span>
+                        <span class="metric-label">등원 완료</span>
+                    </div>
+                </div>
+                <div class="glass-card metric-card">
+                    <div class="metric-icon cyan">
+                        <i class="fa-solid fa-clock"></i>
+                    </div>
+                    <div class="metric-info">
+                        <span class="metric-value">${lateCount}회</span>
+                        <span class="metric-label">지각</span>
+                    </div>
+                </div>
+                <div class="glass-card metric-card">
+                    <div class="metric-icon red">
+                        <i class="fa-solid fa-calendar-xmark"></i>
+                    </div>
+                    <div class="metric-info">
+                        <span class="metric-value">${absentCount}회</span>
+                        <span class="metric-label">결석</span>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        if (activeViewMode === 'calendar') {
             // Calendar header days
             const daysOfWeek = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -189,35 +221,7 @@ export function renderCalendar(container) {
             container.innerHTML = `
                 ${renderSiblingSelectorHeader(container, render)}
                 ${viewModeToggleHtml}
-                <div class="metrics-grid">
-                    <div class="glass-card metric-card">
-                        <div class="metric-icon green">
-                            <i class="fa-solid fa-calendar-check"></i>
-                        </div>
-                        <div class="metric-info">
-                            <span class="metric-value">${presentCount}회</span>
-                            <span class="metric-label">등원 완료</span>
-                        </div>
-                    </div>
-                    <div class="glass-card metric-card">
-                        <div class="metric-icon cyan">
-                            <i class="fa-solid fa-clock"></i>
-                        </div>
-                        <div class="metric-info">
-                            <span class="metric-value">${lateCount}회</span>
-                            <span class="metric-label">지각</span>
-                        </div>
-                    </div>
-                    <div class="glass-card metric-card">
-                        <div class="metric-icon red">
-                            <i class="fa-solid fa-calendar-xmark"></i>
-                        </div>
-                        <div class="metric-info">
-                            <span class="metric-value">${absentCount}회</span>
-                            <span class="metric-label">결석</span>
-                        </div>
-                    </div>
-                </div>
+                ${metricsGridHtml}
 
                 <div class="glass-card" style="margin-top: 1.5rem;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 12px;">
@@ -344,7 +348,8 @@ export function renderCalendar(container) {
             container.innerHTML = `
                 ${renderSiblingSelectorHeader(container, render)}
                 ${viewModeToggleHtml}
-                <div class="glass-card">
+                ${metricsGridHtml}
+                <div class="glass-card" style="margin-top: 1.5rem;">
                     <h3 style="font-weight: 700; font-size: 1.25rem; color: var(--text-main); margin-bottom: 1.5rem; display: flex; align-items: center; gap: 8px;">
                         <i class="fa-solid fa-list" style="color: var(--primary);"></i>
                         출결 기록 내역

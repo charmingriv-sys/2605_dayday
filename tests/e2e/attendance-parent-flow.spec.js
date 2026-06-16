@@ -322,6 +322,18 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
     await expect(btnCal).toBeVisible();
     await expect(btnList).toBeVisible();
 
+    // Verify Tab is above KPI metrics grid (calendar view)
+    const calTabBox = await btnCal.boundingBox();
+    const metricsGrid = page.locator('.metrics-grid');
+    const metricsGridBox = await metricsGrid.boundingBox();
+    expect(calTabBox.y).toBeLessThan(metricsGridBox.y);
+
+    // Verify KPI cards are visible (initially in calendar view)
+    await expect(metricsGrid).toBeVisible();
+    await expect(metricsGrid).toContainText('등원 완료');
+    await expect(metricsGrid).toContainText('지각');
+    await expect(metricsGrid).toContainText('결석');
+
     // Verify unread badge count on list tab button is visible
     const tabBadge = btnList.locator('.parent-tab-badge');
     await expect(tabBadge).toBeVisible();
@@ -331,6 +343,14 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
     await btnList.click();
     await expect(btnList).toHaveClass(/btn-primary/);
     await expect(btnCal).toHaveClass(/btn-secondary/);
+
+    // Verify KPI cards remain visible after switching to list view
+    await expect(metricsGrid).toBeVisible();
+
+    // Verify Tab is still above KPI metrics grid in list view
+    const listTabBox = await btnList.boundingBox();
+    const metricsGridBoxList = await metricsGrid.boundingBox();
+    expect(listTabBox.y).toBeLessThan(metricsGridBoxList.y);
 
     // Verify list rows are rendered
     const listTable = page.locator('[data-testid="parent-attendance-list"]');
@@ -415,6 +435,9 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
     await btnCal.click();
     await expect(btnCal).toHaveClass(/btn-primary/);
     await expect(page.locator('.attendance-calendar-grid')).toBeVisible();
+
+    // Verify KPI cards are still visible after returning to calendar view
+    await expect(metricsGrid).toBeVisible();
 
     // Verify that "학부모 메시지함" menu is NOT visible in sidebar
     await expect(page.locator('#parent-messages-menu-item')).toBeHidden();
