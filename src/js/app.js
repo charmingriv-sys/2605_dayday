@@ -59,7 +59,7 @@ const VIEW_TITLES = {
     'stu-calendar': '출석 및 수업 기록',
     'stu-billing': '수강료 청구 및 결제',
     'stu-journal': '선생님 피드백 코멘트',
-    'stu-communication': '학부모 알림 및 설문'
+    'stu-communication': '알림 및 설문'
 };
 
 // Map of view names to module renderer functions
@@ -1986,7 +1986,13 @@ function removeToast(toast) {
 }
 
 // Common Modal Open / Close Helpers
+let closeModalTimeout = null;
+
 export function openModal(htmlContent, onInit = null) {
+    if (closeModalTimeout) {
+        clearTimeout(closeModalTimeout);
+        closeModalTimeout = null;
+    }
     const contentArea = document.getElementById('modal-content-area');
     contentArea.style.maxWidth = ''; // Reset custom max-width override
     contentArea.style.padding = ''; // Reset custom padding override
@@ -2007,14 +2013,18 @@ export function openModal(htmlContent, onInit = null) {
 
 export function closeModal() {
     commonModal.classList.remove('show');
+    if (closeModalTimeout) {
+        clearTimeout(closeModalTimeout);
+    }
     // Allow animation to finish before clearing
-    setTimeout(() => {
+    closeModalTimeout = setTimeout(() => {
         const contentArea = document.getElementById('modal-content-area');
         contentArea.style.maxWidth = ''; // Reset custom max-width override
         contentArea.style.padding = ''; // Reset custom padding override
         contentArea.style.height = ''; // Reset custom height override
         contentArea.innerHTML = '';
         contentArea.classList.remove('layout-fixed');
+        closeModalTimeout = null;
     }, 300);
 }
 
@@ -2056,15 +2066,46 @@ export function updateParentSidebarBadges() {
                type === 'book_billing' || type === 'book_overdue' || type === 'book_paid';
     }).length;
 
+    // Calculate unread communication count (announcements + messages + surveys)
+    const announcements = stateStore.getAnnouncements();
+    const messages = stateStore.getMessagesForStudent(studentId);
+    const surveys = stateStore.getSurveys();
+
+    const readAnnIds = stateStore.getReadAnnouncementIds(user.id, studentId);
+    const unreadAnnCount = announcements.filter(a => !readAnnIds.includes(a.id)).length;
+
+    const unreadMsgCount = messages.filter(m => !m.isRead).length;
+
+    const readSurvIds = stateStore.getReadSurveyIds(user.id, studentId);
+    const unreadSurvCount = surveys.filter(s => !readSurvIds.includes(s.id)).length;
+
+    const commCount = unreadAnnCount + unreadMsgCount + unreadSurvCount;
+
+    // Calculate unread comment count
+    const attendanceRecords = stateStore.getAttendanceForStudent(studentId);
+    const readCommentIds = stateStore.getReadCommentIds(user.id, studentId);
+    const unreadCommentCount = attendanceRecords.filter(r => {
+        const hasNote = r.note && r.note.trim() !== '';
+        return hasNote && !readCommentIds.includes(r.id);
+    }).length;
+
     // Get menu items
     const attMenuItem = document.querySelector('.menu-item[data-view="stu-calendar"]');
     const billMenuItem = document.querySelector('.menu-item[data-view="stu-billing"]');
+    const commMenuItem = document.querySelector('.menu-item[data-view="stu-communication"]');
+    const journalMenuItem = document.querySelector('.menu-item[data-view="stu-journal"]');
 
     if (attMenuItem) {
         updateMenuItemBadge(attMenuItem, attendanceCount);
     }
     if (billMenuItem) {
         updateMenuItemBadge(billMenuItem, billingCount);
+    }
+    if (commMenuItem) {
+        updateMenuItemBadge(commMenuItem, commCount);
+    }
+    if (journalMenuItem) {
+        updateMenuItemBadge(journalMenuItem, unreadCommentCount);
     }
 }
 
@@ -2086,6 +2127,11 @@ function updateMenuItemBadge(menuItem, count) {
 
 // Subscribe to state change
 stateStore.subscribe('PARENT_MESSAGES_CHANGED', updateParentSidebarBadges);
+stateStore.subscribe('ANNOUNCEMENTS_CHANGED', updateParentSidebarBadges);
+stateStore.subscribe('MESSAGES_CHANGED', updateParentSidebarBadges);
+stateStore.subscribe('SURVEYS_CHANGED', updateParentSidebarBadges);
+stateStore.subscribe('ATTENDANCE_CHANGED', updateParentSidebarBadges);
 
 // Expose globally
 window.updateParentSidebarBadges = updateParentSidebarBadges;
+

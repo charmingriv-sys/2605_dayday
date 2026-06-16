@@ -2269,4 +2269,20 @@ body.kiosk-mode .content-container {
     vertical-align: middle;
 }
 
+/* Parent Portal Communication Cards */
+.announcement-card-item,
+.message-card-item,
+.survey-card-item {
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.2s ease !important;
+}
+
+.announcement-card-item:hover,
+.message-card-item:hover,
+.survey-card-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(9, 132, 227, 0.08) !important;
+    border-color: var(--border-color-focus) !important;
+    background-color: var(--bg-card-hover) !important;
+}
+
 

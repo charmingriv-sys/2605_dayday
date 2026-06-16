@@ -34,6 +34,78 @@ export const communicationMethods = {
         }
     },
 
+    getReadAnnouncementIds(parentUserId, studentId) {
+        const key = `dayday_read_announcements_${parentUserId || 'USR_PAR_DEMO'}_${studentId || 'S1'}`;
+        try {
+            const data = localStorage.getItem(key);
+            return data ? JSON.parse(data) : [];
+        } catch (e) {
+            return [];
+        }
+    },
+
+    markAnnouncementAsRead(id, parentUserId, studentId) {
+        const key = `dayday_read_announcements_${parentUserId || 'USR_PAR_DEMO'}_${studentId || 'S1'}`;
+        try {
+            const readIds = this.getReadAnnouncementIds(parentUserId, studentId);
+            if (!readIds.includes(id)) {
+                readIds.push(id);
+                localStorage.setItem(key, JSON.stringify(readIds));
+                this.notify('ANNOUNCEMENTS_CHANGED', this.db.announcements);
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    },
+
+    getReadSurveyIds(parentUserId, studentId) {
+        const key = `dayday_read_surveys_${parentUserId || 'USR_PAR_DEMO'}_${studentId || 'S1'}`;
+        try {
+            const data = localStorage.getItem(key);
+            return data ? JSON.parse(data) : [];
+        } catch (e) {
+            return [];
+        }
+    },
+
+    markSurveyAsRead(id, parentUserId, studentId) {
+        const key = `dayday_read_surveys_${parentUserId || 'USR_PAR_DEMO'}_${studentId || 'S1'}`;
+        try {
+            const readIds = this.getReadSurveyIds(parentUserId, studentId);
+            if (!readIds.includes(id)) {
+                readIds.push(id);
+                localStorage.setItem(key, JSON.stringify(readIds));
+                this.notify('SURVEYS_CHANGED', this.db.surveys);
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    },
+
+    getReadCommentIds(parentUserId, studentId) {
+        const key = `dayday_read_comments_${parentUserId || 'USR_PAR_DEMO'}_${studentId || 'S1'}`;
+        try {
+            const data = localStorage.getItem(key);
+            return data ? JSON.parse(data) : [];
+        } catch (e) {
+            return [];
+        }
+    },
+
+    markCommentAsRead(id, parentUserId, studentId) {
+        const key = `dayday_read_comments_${parentUserId || 'USR_PAR_DEMO'}_${studentId || 'S1'}`;
+        try {
+            const readIds = this.getReadCommentIds(parentUserId, studentId);
+            if (!readIds.includes(id)) {
+                readIds.push(id);
+                localStorage.setItem(key, JSON.stringify(readIds));
+                this.notify('ATTENDANCE_CHANGED', this.db.attendance);
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    },
+
     // --- MESSAGES ---
     getMessages() {
         if (!this.db.messages) this.db.messages = [];

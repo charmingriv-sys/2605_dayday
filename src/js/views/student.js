@@ -952,6 +952,10 @@ export function renderJournal(container) {
         const student = stateStore.getStudent(studentId);
         const teacher = student ? stateStore.getTeacher(student.teacherId) : null;
 
+        const user = stateStore.getCurrentUser();
+        const parentUserId = user ? user.id : 'USR_PAR_DEMO';
+        const readCommentIds = stateStore.getReadCommentIds(parentUserId, studentId);
+
         // Sort attendance chronologically descending (latest first)
         attendance.sort((a, b) => b.date.localeCompare(a.date));
 
@@ -967,10 +971,13 @@ export function renderJournal(container) {
         } else {
             attendance.forEach(record => {
                 const statusInfo = STATUS_MAP[record.status] || { text: record.status, badge: 'badge-info', color: 'var(--primary)' };
-                
+                const hasNote = record.note && record.note.trim() !== '';
+                const isRead = !hasNote || readCommentIds.includes(record.id);
+
                 timelineHtml += `
-                    <div class="glass-card" style="margin-bottom: 1.5rem; border-left: 4px solid ${statusInfo.color}; background: var(--bg-card); transition: var(--transition);">
-                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; flex-wrap: wrap; gap: 10px;">
+                    <div class="${hasNote ? 'journal-card-item' : ''} glass-card" data-id="${record.id}" style="margin-bottom: 1.5rem; border-left: 4px solid ${statusInfo.color}; background: var(--bg-card); transition: var(--transition); position: relative; ${hasNote ? 'cursor: pointer;' : ''}">
+                        ${hasNote && !isRead ? `<span class="unread-dot" style="position: absolute; top: 12px; left: 12px; width: 8px; height: 8px; background: var(--danger); border-radius: 50%;"></span>` : ''}
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; flex-wrap: wrap; gap: 10px; padding-left: ${hasNote && !isRead ? '12px' : '0'};">
                             <div style="display: flex; align-items: center; gap: 10px;">
                                 <i class="fa-solid fa-calendar-day" style="color: var(--primary);"></i>
                                 <span style="font-weight: 700; font-size: 1.1rem; color: var(--text-main);">${formatDate(record.date)}</span>
@@ -978,7 +985,7 @@ export function renderJournal(container) {
                             </div>
                             <span class="badge ${statusInfo.badge}">${statusInfo.text}</span>
                         </div>
-                        <div style="background: rgba(9, 132, 227, 0.02); border: 1px solid var(--border-color); padding: 1.2rem; border-radius: var(--radius-md);">
+                        <div style="background: rgba(9, 132, 227, 0.02); border: 1px solid var(--border-color); padding: 1.2rem; border-radius: var(--radius-md); margin-left: ${hasNote && !isRead ? '12px' : '0'};">
                             <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px; font-weight: 600;">
                                 <i class="fa-solid fa-clipboard-user" style="color: var(--accent); margin-right: 6px;"></i>수업일지 및 코멘트
                             </div>
@@ -1009,7 +1016,44 @@ export function renderJournal(container) {
                 ${timelineHtml}
             </div>
         `;
+
+        // Bind comment card click handlers
+        container.querySelectorAll('.journal-card-item').forEach(card => {
+            card.addEventListener('click', () => {
+                const id = card.dataset.id;
+                const record = attendance.find(r => r.id === id);
+                if (record) {
+                    stateStore.markCommentAsRead(record.id, parentUserId, studentId);
+                    openCommentDetailModal(record);
+                }
+            });
+        });
+
         bindSiblingSelector(container, render);
+    };
+
+    const openCommentDetailModal = (record) => {
+        const statusInfo = STATUS_MAP[record.status] || { text: record.status, badge: 'badge-info', color: 'var(--primary)' };
+        const modalHtml = `
+            <div class="modal-header">
+                <h3 class="modal-title">선생님 피드백 코멘트</h3>
+                <button class="modal-close" data-close-modal>&times;</button>
+            </div>
+            <div class="modal-body" style="padding-top: 10px;">
+                <div style="font-size: 1.15rem; font-weight: 700; color: var(--text-main); margin-bottom: 8px;">
+                    ${formatDate(record.date)} 수업 피드백
+                </div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1.5rem; display: flex; gap: 15px; align-items: center;">
+                    <span>수업일: ${record.date} ${record.time ? `(${record.time})` : ''}</span>
+                    <span class="badge ${statusInfo.badge}">${statusInfo.text}</span>
+                </div>
+                <div style="background: rgba(9, 132, 227, 0.01); border: 1px solid var(--border-color); padding: 1.5rem; border-radius: var(--radius-md); font-size: 0.95rem; line-height: 1.6; color: var(--text-main); white-space: pre-wrap; min-height: 150px;">${escapeHtml(record.note)}</div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-close-modal>닫기</button>
+            </div>
+        `;
+        openModal(modalHtml);
     };
 
     render();
@@ -1039,36 +1083,44 @@ export function renderStudentCommunication(container) {
 
     const render = () => {
         studentId = getActiveStudentId();
+        const user = stateStore.getCurrentUser();
+        const parentUserId = user ? user.id : 'USR_PAR_DEMO';
+
         const announcements = stateStore.getAnnouncements().sort((a, b) => b.date.localeCompare(a.date));
         const messages = stateStore.getMessagesForStudent(studentId).sort((a, b) => b.date.localeCompare(a.date));
         const surveys = stateStore.getSurveys().sort((a, b) => b.date.localeCompare(a.date));
 
-        // Get unread count for messages
+        // Get read sets
+        const readAnnIds = stateStore.getReadAnnouncementIds(parentUserId, studentId);
+        const readSurvIds = stateStore.getReadSurveyIds(parentUserId, studentId);
+
+        // Get unread counts
+        const unreadAnnCount = announcements.filter(a => !readAnnIds.includes(a.id)).length;
         const unreadMsgCount = messages.filter(m => !m.isRead).length;
-        // Get unanswered survey count
-        const unansweredSurveyCount = surveys.filter(s => s.isActive && !stateStore.hasStudentAnsweredSurvey(s.id, studentId)).length;
+        const unreadSurvCount = surveys.filter(s => !readSurvIds.includes(s.id)).length;
 
         container.innerHTML = `
             ${renderSiblingSelectorHeader(container, render)}
             <div class="glass-card" style="padding: 1.8rem; min-height: 500px; background: rgba(255, 255, 255, 0.7); border: 1px solid var(--border-color);">
                 <!-- Tab Menu Header -->
                 <div style="display: flex; gap: 10px; margin-bottom: 2rem; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; flex-wrap: wrap;">
-                    <button class="btn ${activeSubTab === 'announcements' ? 'btn-primary' : 'btn-secondary'}" id="tab-stu-ann" style="border-radius: 20px; font-weight: 700; padding: 8px 16px;">
+                    <button class="btn ${activeSubTab === 'announcements' ? 'btn-primary' : 'btn-secondary'}" id="tab-stu-ann" style="border-radius: 20px; font-weight: 700; padding: 8px 16px; position: relative;">
                         <i class="fa-solid fa-bullhorn" style="margin-right: 4px;"></i> 공지사항
+                        ${unreadAnnCount > 0 ? `<span class="tab-badge" style="position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.65rem; display: flex; align-items: center; justify-content: center; font-weight: bold;">${unreadAnnCount}</span>` : ''}
                     </button>
                     <button class="btn ${activeSubTab === 'messages' ? 'btn-primary' : 'btn-secondary'}" id="tab-stu-msg" style="border-radius: 20px; font-weight: 700; padding: 8px 16px; position: relative;">
                         <i class="fa-solid fa-envelope" style="margin-right: 4px;"></i> 개별 안내
-                        ${unreadMsgCount > 0 ? `<span style="position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.65rem; display: flex; align-items: center; justify-content: center; font-weight: bold;">${unreadMsgCount}</span>` : ''}
+                        ${unreadMsgCount > 0 ? `<span class="tab-badge" style="position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.65rem; display: flex; align-items: center; justify-content: center; font-weight: bold;">${unreadMsgCount}</span>` : ''}
                     </button>
                     <button class="btn ${activeSubTab === 'surveys' ? 'btn-primary' : 'btn-secondary'}" id="tab-stu-surv" style="border-radius: 20px; font-weight: 700; padding: 8px 16px; position: relative;">
                         <i class="fa-solid fa-square-poll-vertical" style="margin-right: 4px;"></i> 설문
-                        ${unansweredSurveyCount > 0 ? `<span style="position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.65rem; display: flex; align-items: center; justify-content: center; font-weight: bold;">${unansweredSurveyCount}</span>` : ''}
+                        ${unreadSurvCount > 0 ? `<span class="tab-badge" style="position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.65rem; display: flex; align-items: center; justify-content: center; font-weight: bold;">${unreadSurvCount}</span>` : ''}
                     </button>
                 </div>
 
                 <!-- Sub-tab Content Area -->
                 <div id="student-communication-content">
-                    ${renderSubTabContent(announcements, messages, surveys)}
+                    ${renderSubTabContent(announcements, messages, surveys, readAnnIds, readSurvIds)}
                 </div>
             </div>
         `;
@@ -1095,6 +1147,7 @@ export function renderStudentCommunication(container) {
                     const ann = announcements.find(a => a.id === id);
                     if (ann) {
                         stateStore.incrementAnnouncementViews(ann.id);
+                        stateStore.markAnnouncementAsRead(ann.id, parentUserId, studentId);
                         openAnnouncementDetailModal(ann);
                     }
                 });
@@ -1116,6 +1169,7 @@ export function renderStudentCommunication(container) {
                     const id = card.dataset.id;
                     const surv = surveys.find(s => s.id === id);
                     if (surv) {
+                        stateStore.markSurveyAsRead(surv.id, parentUserId, studentId);
                         openSurveyResponseModal(surv);
                     }
                 });
@@ -1123,35 +1177,49 @@ export function renderStudentCommunication(container) {
         }
     };
 
-    const renderSubTabContent = (announcements, messages, surveys) => {
+    const renderSubTabContent = (announcements, messages, surveys, readAnnIds, readSurvIds) => {
         if (activeSubTab === 'announcements') {
             if (announcements.length === 0) {
-                return `<div style="text-align: center; color: var(--text-muted); padding: 4rem 2rem;">등록된 공지사항이 없습니다.</div>`;
+                return `
+                    <div style="text-align: center; color: var(--text-muted); padding: 4rem 2rem; font-size: 0.95rem;">
+                        <i class="fa-solid fa-bullhorn" style="font-size: 3rem; display: block; margin-bottom: 1rem; color: rgba(0,0,0,0.06);"></i>
+                        아직 등록된 공지사항이 없습니다.
+                    </div>
+                `;
             }
             return `
                 <div style="display: flex; flex-direction: column; gap: 15px;">
-                    ${announcements.map(ann => `
-                        <div class="announcement-card-item glass-card" data-id="${ann.id}" style="padding: 1.2rem; cursor: pointer; border: 1px solid var(--border-color); transition: transform 0.2s, box-shadow 0.2s; background: #ffffff;">
-                            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
-                                <h4 style="margin: 0; font-weight: 700; color: var(--text-main); font-size: 1.05rem;">${escapeHtml(ann.title)}</h4>
-                                <span style="font-size: 0.8rem; color: var(--text-muted);">${ann.date}</span>
+                    ${announcements.map(ann => {
+                        const isRead = readAnnIds.includes(ann.id);
+                        return `
+                            <div class="announcement-card-item glass-card" data-id="${ann.id}" style="padding: 1.2rem; cursor: pointer; border: 1px solid ${isRead ? 'var(--border-color)' : 'rgba(9, 132, 227, 0.3)'}; transition: transform 0.2s, box-shadow 0.2s; background: ${isRead ? '#ffffff' : 'rgba(9, 132, 227, 0.02)'}; position: relative;">
+                                ${!isRead ? `<span style="position: absolute; top: 12px; left: 12px; width: 8px; height: 8px; background: var(--danger); border-radius: 50%;"></span>` : ''}
+                                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; padding-left: ${isRead ? '0' : '12px'};">
+                                    <h4 style="margin: 0; font-weight: 700; color: var(--text-main); font-size: 1.05rem;">${escapeHtml(ann.title)}</h4>
+                                    <span style="font-size: 0.8rem; color: var(--text-muted);">${ann.date}</span>
+                                </div>
+                                <p style="margin: 0 0 10px 0; color: var(--text-muted); font-size: 0.9rem; padding-left: ${isRead ? '0' : '12px'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                    ${escapeHtml(ann.content)}
+                                </p>
+                                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; padding-left: ${isRead ? '0' : '12px'};">
+                                    <span style="color: var(--primary); font-weight: bold;">조회수 ${ann.views || 0}회</span>
+                                    <span style="color: var(--text-muted);">자세히 보기 <i class="fa-solid fa-chevron-right" style="font-size: 0.75rem;"></i></span>
+                                </div>
                             </div>
-                            <p style="margin: 0 0 10px 0; color: var(--text-muted); font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                                ${escapeHtml(ann.content)}
-                            </p>
-                            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem;">
-                                <span style="color: var(--primary); font-weight: bold;">조회수 ${ann.views || 0}회</span>
-                                <span style="color: var(--text-muted);">자세히 보기 <i class="fa-solid fa-chevron-right" style="font-size: 0.75rem;"></i></span>
-                            </div>
-                        </div>
-                    `).join('')}
+                        `;
+                    }).join('')}
                 </div>
             `;
         }
 
         if (activeSubTab === 'messages') {
             if (messages.length === 0) {
-                return `<div style="text-align: center; color: var(--text-muted); padding: 4rem 2rem;">수신된 개별 안내가 없습니다.</div>`;
+                return `
+                    <div style="text-align: center; color: var(--text-muted); padding: 4rem 2rem; font-size: 0.95rem;">
+                        <i class="fa-solid fa-envelope" style="font-size: 3rem; display: block; margin-bottom: 1rem; color: rgba(0,0,0,0.06);"></i>
+                        아직 받은 안내가 없습니다.
+                    </div>
+                `;
             }
             return `
                 <div style="display: flex; flex-direction: column; gap: 15px;">
@@ -1184,11 +1252,17 @@ export function renderStudentCommunication(container) {
 
         if (activeSubTab === 'surveys') {
             if (surveys.length === 0) {
-                return `<div style="text-align: center; color: var(--text-muted); padding: 4rem 2rem;">등록된 설문이 없습니다.</div>`;
+                return `
+                    <div style="text-align: center; color: var(--text-muted); padding: 4rem 2rem; font-size: 0.95rem;">
+                        <i class="fa-solid fa-square-poll-vertical" style="font-size: 3rem; display: block; margin-bottom: 1rem; color: rgba(0,0,0,0.06);"></i>
+                        참여할 설문이 없습니다.
+                    </div>
+                `;
             }
             return `
                 <div style="display: flex; flex-direction: column; gap: 15px;">
                     ${surveys.map(surv => {
+                        const isRead = readSurvIds.includes(surv.id);
                         const hasAnswered = stateStore.hasStudentAnsweredSurvey(surv.id, studentId);
                         const statusBadge = hasAnswered 
                             ? `<span class="badge badge-success"><i class="fa-solid fa-circle-check"></i> 제출 완료</span>`
@@ -1197,15 +1271,16 @@ export function renderStudentCommunication(container) {
                                 : `<span class="badge" style="background: #bdc3c7; color: white;">종료됨</span>`);
                         
                         return `
-                            <div class="survey-card-item glass-card" data-id="${surv.id}" style="padding: 1.2rem; cursor: pointer; border: 1px solid var(--border-color); transition: transform 0.2s, box-shadow 0.2s; background: #ffffff;">
-                                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                            <div class="survey-card-item glass-card" data-id="${surv.id}" style="padding: 1.2rem; cursor: pointer; border: 1px solid ${isRead ? 'var(--border-color)' : 'rgba(9, 132, 227, 0.3)'}; transition: transform 0.2s, box-shadow 0.2s; background: ${isRead ? '#ffffff' : 'rgba(9, 132, 227, 0.02)'}; position: relative;">
+                                ${!isRead ? `<span style="position: absolute; top: 12px; left: 12px; width: 8px; height: 8px; background: var(--danger); border-radius: 50%;"></span>` : ''}
+                                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; padding-left: ${isRead ? '0' : '12px'};">
                                     <h4 style="margin: 0; font-weight: 700; color: var(--text-main); font-size: 1.05rem;">${escapeHtml(surv.title)}</h4>
                                     <span style="font-size: 0.8rem; color: var(--text-muted);">${surv.date}</span>
                                 </div>
-                                <p style="margin: 0 0 10px 0; color: var(--text-muted); font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                <p style="margin: 0 0 10px 0; color: var(--text-muted); font-size: 0.9rem; padding-left: ${isRead ? '0' : '12px'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                                     ${escapeHtml(surv.description)}
                                 </p>
-                                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; padding-left: ${isRead ? '0' : '12px'};">
                                     <span>${statusBadge}</span>
                                     <span style="color: var(--text-muted);">
                                         ${hasAnswered ? '답변 조회' : '설문 참여'} <i class="fa-solid fa-chevron-right" style="font-size: 0.75rem;"></i>
