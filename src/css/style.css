@@ -2226,4 +2226,47 @@ body.kiosk-mode .content-container {
     }
 }
 
+/* Phase 16N-Repair-E: Parent Portal App-style Indicators */
+.parent-menu-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--danger);
+    color: white;
+    font-size: 0.7rem;
+    font-weight: 700;
+    border-radius: 9px;
+    padding: 1px 5px;
+    min-width: 16px;
+    height: 16px;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.parent-tab-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--danger);
+    color: white;
+    font-size: 0.65rem;
+    font-weight: 700;
+    border-radius: 9px;
+    padding: 1px 5px;
+    min-width: 15px;
+    height: 15px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+.parent-row-red-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    background-color: var(--danger);
+    border-radius: 50%;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
 

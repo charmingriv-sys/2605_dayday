@@ -83,6 +83,9 @@ function bindSiblingSelector(container, reRenderFn) {
     if (select) {
         select.addEventListener('change', (e) => {
             sessionStorage.setItem('turing_active_student_id', e.target.value);
+            if (typeof window.updateParentSidebarBadges === 'function') {
+                window.updateParentSidebarBadges();
+            }
             reRenderFn();
         });
     }
@@ -116,7 +119,7 @@ export function renderCalendar(container) {
                     <i class="fa-solid fa-calendar-days" style="margin-right: 4px;"></i> 달력형
                 </button>
                 <button class="btn ${activeViewMode === 'list' ? 'btn-primary' : 'btn-secondary'}" id="btn-view-list" style="border-radius: 20px; font-weight: 700; padding: 8px 18px; cursor: pointer;">
-                    <i class="fa-solid fa-list" style="margin-right: 4px;"></i> 리스트형
+                    <i class="fa-solid fa-list" style="margin-right: 4px;"></i> 리스트형${unreadAttendanceCount > 0 ? ` <span class="parent-tab-badge">${unreadAttendanceCount}</span>` : ''}
                 </button>
             </div>
         `;
@@ -312,7 +315,7 @@ export function renderCalendar(container) {
                                         return isAttendanceMsg && m.createdAt.startsWith(record.date);
                                     });
 
-                                    const unreadBadge = '';
+                                    const unreadBadge = associatedMsg ? `<span class="parent-row-red-dot"></span>` : '';
 
                                     return `
                                         <tr class="attendance-list-row" data-date="${record.date}" style="cursor: pointer;">
@@ -492,10 +495,10 @@ export function renderBilling(container) {
         const tabHtml = `
             <div style="display: flex; gap: 10px; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
                 <button class="btn ${activeTab === 'unpaid' ? 'btn-primary' : 'btn-secondary'}" id="btn-tab-unpaid" style="border-radius: 20px; font-weight: 700; padding: 8px 18px; cursor: pointer;">
-                    <i class="fa-solid fa-receipt" style="margin-right: 4px;"></i> 미납/청구 내역
+                    <i class="fa-solid fa-receipt" style="margin-right: 4px;"></i> 미납/청구 내역${unreadUnpaidCount > 0 ? ` <span class="parent-tab-badge">${unreadUnpaidCount}</span>` : ''}
                 </button>
                 <button class="btn ${activeTab === 'paid' ? 'btn-primary' : 'btn-secondary'}" id="btn-tab-paid" style="border-radius: 20px; font-weight: 700; padding: 8px 18px; cursor: pointer;">
-                    <i class="fa-solid fa-circle-check" style="margin-right: 4px;"></i> 납부 완료 내역
+                    <i class="fa-solid fa-circle-check" style="margin-right: 4px;"></i> 납부 완료 내역${unreadPaidCount > 0 ? ` <span class="parent-tab-badge">${unreadPaidCount}</span>` : ''}
                 </button>
             </div>
         `;
@@ -556,7 +559,7 @@ export function renderBilling(container) {
                                 const dueDate = getPaymentDueDate(p, student);
 
                                 const associatedMsgs = getAssociatedMessages(p);
-                                const unreadBadge = '';
+                                const unreadBadge = associatedMsgs.length > 0 ? `<span class="parent-row-red-dot"></span>` : '';
 
                                 return `
                                     <tr class="billing-list-row" data-id="${p.id}" style="cursor: pointer;">
@@ -572,7 +575,10 @@ export function renderBilling(container) {
                                             </td>
                                         ` : `
                                             <td>${p.paidDate || '-'}</td>
-                                            <td>${PAYMENT_METHOD_MAP[p.method] || p.method || '일반'}</td>
+                                            <td>
+                                                ${PAYMENT_METHOD_MAP[p.method] || p.method || '일반'}
+                                                ${unreadBadge}
+                                            </td>
                                         `}
                                         <td>
                                             <button class="btn btn-secondary btn-sm" style="padding: 4px 8px; font-size: 0.75rem;">
@@ -591,14 +597,16 @@ export function renderBilling(container) {
         container.innerHTML = `
             ${renderSiblingSelectorHeader(container, render)}
             
-            <div class="metrics-grid">
+            ${tabHtml}
+            
+            <div class="metrics-grid" style="margin-bottom: 1.5rem;">
                 <div class="glass-card metric-card">
                     <div class="metric-icon red">
                         <i class="fa-solid fa-receipt"></i>
                     </div>
                     <div class="metric-info">
                         <span class="metric-value">${unpaidCount}건</span>
-                        <span class="metric-label">미납/청구 내역</span>
+                        <span class="metric-label">미납/청구 건수</span>
                     </div>
                 </div>
                 <div class="glass-card metric-card">
@@ -607,12 +615,10 @@ export function renderBilling(container) {
                     </div>
                     <div class="metric-info">
                         <span class="metric-value">${formatCurrency(totalUnpaidAmount)}</span>
-                        <span class="metric-label">미납 총액</span>
+                        <span class="metric-label">납부 필요 금액</span>
                     </div>
                 </div>
             </div>
-
-            ${tabHtml}
 
             <div class="glass-card">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 12px;">

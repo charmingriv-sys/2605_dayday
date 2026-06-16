@@ -1808,6 +1808,220 @@ try {
     hasError = true;
 }
 
+// --- Starting Phase 16N-Repair-E Parent Portal App-style Indicator Unit Tests ---
+console.log('--- Starting Phase 16N-Repair-E Parent Portal App-style Indicator Unit Tests ---');
+
+const testStudentIdE = 'S_TEST_16NE';
+const testParentUserIdE = 'P_USER_16NE';
+
+// Clean up
+stateStore.db.students = stateStore.db.students.filter(s => s.id !== testStudentIdE);
+stateStore.db.parentStudentLinks = stateStore.db.parentStudentLinks.filter(l => l.parentUserId !== testParentUserIdE);
+stateStore.db.parentMessages = stateStore.db.parentMessages.filter(m => m.studentId !== testStudentIdE);
+stateStore.db.payments = stateStore.db.payments.filter(p => p.studentId !== testStudentIdE);
+
+// Add student & parent link
+stateStore.db.students.push({
+    id: testStudentIdE,
+    name: '이원생',
+    phone: '010-1111-2222',
+    parentPhone: '010-3333-4444',
+    parentName: '이부모'
+});
+stateStore.db.parentStudentLinks.push({
+    parentUserId: testParentUserIdE,
+    studentId: testStudentIdE
+});
+
+// Create unread attendance and billing messages
+const msgAtt = stateStore.createParentMessage({
+    studentId: testStudentIdE,
+    recipientName: '이부모',
+    recipientPhone: '010-3333-4444',
+    category: 'attendance',
+    type: 'check_in',
+    title: '등원 알림',
+    body: '원생이 등원했습니다.',
+    dedupeKey: 'dedupe_test_att_16ne'
+});
+
+const paymentIdE = 'PAY_16NE';
+const msgBill = stateStore.createParentMessage({
+    studentId: testStudentIdE,
+    recipientName: '이부모',
+    recipientPhone: '010-3333-4444',
+    category: 'payment',
+    type: 'tuition_billing',
+    title: '수강료 안내',
+    body: '수강료가 청구되었습니다.',
+    dedupeKey: `dedupe_test_bill_16ne_${paymentIdE}`
+});
+
+// Fetch messages
+const unreadMsgs = stateStore.getParentMessagesForParent(testParentUserIdE, testStudentIdE).filter(m => m.status === 'unread');
+
+// 1. Verify unread attendance count
+const attendanceCount = unreadMsgs.filter(m => {
+    const category = m.category || '';
+    const type = m.type || '';
+    return category === 'attendance' || type === 'check_in' || type === 'check_out';
+}).length;
+
+if (attendanceCount === 1) {
+    console.log('[OK] Attendance unread count calculated correctly (1).');
+} else {
+    console.error('[FAIL] Attendance unread count calculation mismatch:', attendanceCount);
+    hasError = true;
+}
+
+// 2. Verify unread billing count
+const billingCount = unreadMsgs.filter(m => {
+    const category = m.category || '';
+    const type = m.type || '';
+    return category === 'payment' || 
+           type === 'tuition_billing' || type === 'tuition_overdue' || type === 'tuition_paid' ||
+           type === 'book_billing' || type === 'book_overdue' || type === 'book_paid';
+}).length;
+
+if (billingCount === 1) {
+    console.log('[OK] Billing unread count calculated correctly (1).');
+} else {
+    console.error('[FAIL] Billing unread count calculation mismatch:', billingCount);
+    hasError = true;
+}
+
+// 3. Verify row unread status mapping for payment
+const matchedBillMsg = unreadMsgs.filter(m => m.dedupeKey && m.dedupeKey.endsWith(`_${paymentIdE}`));
+if (matchedBillMsg.length === 1 && matchedBillMsg[0].id === msgBill.id) {
+    console.log('[OK] Payment ID matched successfully with unread parentMessage for row red dot.');
+} else {
+    console.error('[FAIL] Payment ID matching failed. Result:', matchedBillMsg);
+    hasError = true;
+}
+
+// 4. Verify count decreases after marking a message read
+stateStore.markParentMessageAsRead(msgAtt.id);
+const unreadMsgsAfterRead = stateStore.getParentMessagesForParent(testParentUserIdE, testStudentIdE).filter(m => m.status === 'unread');
+const attendanceCountAfterRead = unreadMsgsAfterRead.filter(m => {
+    const category = m.category || '';
+    const type = m.type || '';
+    return category === 'attendance' || type === 'check_in' || type === 'check_out';
+}).length;
+
+if (attendanceCountAfterRead === 0) {
+    console.log('[OK] Attendance unread count successfully decreased to 0 after marking read.');
+} else {
+    console.error('[FAIL] Attendance unread count did not decrease correctly. Got:', attendanceCountAfterRead);
+    hasError = true;
+}
+
+// Clean up Phase 16N-Repair-E test data
+stateStore.db.students = stateStore.db.students.filter(s => s.id !== testStudentIdE);
+stateStore.db.parentStudentLinks = stateStore.db.parentStudentLinks.filter(l => l.parentUserId !== testParentUserIdE);
+stateStore.db.parentMessages = stateStore.db.parentMessages.filter(m => m.studentId !== testStudentIdE);
+stateStore.saveDB();
+
+// --- Starting Phase 16N-Repair-D KPI Policy Unit Tests ---
+console.log('--- Starting Phase 16N-Repair-D KPI Policy Unit Tests ---');
+
+const testStudentIdD = 'S_TEST_16ND';
+// Clean up
+stateStore.db.students = stateStore.db.students.filter(s => s.id !== testStudentIdD);
+stateStore.db.payments = stateStore.db.payments.filter(p => p.studentId !== testStudentIdD);
+
+// Add student
+stateStore.db.students.push({
+    id: testStudentIdD,
+    name: '디원생'
+});
+
+// Add mock payments (2 unpaid, 1 paid)
+stateStore.db.payments.push({
+    id: 'P_D1',
+    studentId: testStudentIdD,
+    amount: 150000,
+    month: '2026-06',
+    status: 'unpaid',
+    type: 'education'
+});
+stateStore.db.payments.push({
+    id: 'P_D2',
+    studentId: testStudentIdD,
+    amount: 30000,
+    month: '2026-06',
+    status: 'requested',
+    type: 'book'
+});
+stateStore.db.payments.push({
+    id: 'P_D3',
+    studentId: testStudentIdD,
+    amount: 150000,
+    month: '2026-05',
+    status: 'paid',
+    type: 'education'
+});
+
+// Fetch payments
+const paymentsForD = stateStore.getPaymentsForStudent(testStudentIdD);
+const unpaidForD = paymentsForD.filter(p => p.status !== 'paid');
+const paidForD = paymentsForD.filter(p => p.status === 'paid');
+
+// 1. Verify counts
+if (unpaidForD.length === 2) {
+    console.log('[OK] Unpaid/requested payment count calculated correctly (2).');
+} else {
+    console.error('[FAIL] Unpaid payment count mismatch:', unpaidForD.length);
+    hasError = true;
+}
+
+// 2. Verify total unpaid amount
+const totalUnpaidD = unpaidForD.reduce((sum, p) => sum + p.amount, 0);
+if (totalUnpaidD === 180000) {
+    console.log('[OK] Total unpaid amount calculated correctly (180,000).');
+} else {
+    console.error('[FAIL] Total unpaid amount mismatch:', totalUnpaidD);
+    hasError = true;
+}
+
+// 3. Verify KPI remains based on unpaid list regardless of activeTab mode
+const getMockKPITemplate = (activeTab, unpaidList, paidList) => {
+    const unpaidCount = unpaidList.length;
+    const totalUnpaidAmount = unpaidList.reduce((sum, p) => sum + p.amount, 0);
+    
+    return `
+        <div class="metrics-grid">
+            <span class="metric-value-count">${unpaidCount}건</span>
+            <span class="metric-value-amount">${totalUnpaidAmount}원</span>
+        </div>
+        <div class="list-title">
+            ${activeTab === 'unpaid' ? '미납 및 청구 내역' : '납부 완료 내역'}
+        </div>
+    `;
+};
+
+// Test activeTab = 'unpaid'
+const htmlUnpaid = getMockKPITemplate('unpaid', unpaidForD, paidForD);
+if (htmlUnpaid.includes('2건') && htmlUnpaid.includes('180000원') && htmlUnpaid.includes('미납 및 청구 내역')) {
+    console.log('[OK] KPI and title correct for activeTab=unpaid.');
+} else {
+    console.error('[FAIL] Incorrect HTML for activeTab=unpaid:', htmlUnpaid);
+    hasError = true;
+}
+
+// Test activeTab = 'paid'
+const htmlPaid = getMockKPITemplate('paid', unpaidForD, paidForD);
+if (htmlPaid.includes('2건') && htmlPaid.includes('180000원') && htmlPaid.includes('납부 완료 내역') && !htmlPaid.includes('150000원')) {
+    console.log('[OK] KPI remains based on unpaid and title matches activeTab=paid.');
+} else {
+    console.error('[FAIL] Incorrect HTML for activeTab=paid:', htmlPaid);
+    hasError = true;
+}
+
+// Clean up
+stateStore.db.students = stateStore.db.students.filter(s => s.id !== testStudentIdD);
+stateStore.db.payments = stateStore.db.payments.filter(p => p.studentId !== testStudentIdD);
+stateStore.saveDB();
+
 // Clean up Phase 16N test data
 stateStore.db.students = stateStore.db.students.filter(s => s.id !== testStudentIdN && s.id !== otherStudentIdN);
 stateStore.db.parentStudentLinks = stateStore.db.parentStudentLinks.filter(l => l.parentUserId !== testParentUserId);

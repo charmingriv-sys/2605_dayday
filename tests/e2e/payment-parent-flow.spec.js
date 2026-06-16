@@ -163,11 +163,18 @@ test.describe('Parent Portal Payment and Billing Flow', () => {
       });
 
       window.stateStore.saveDB();
+      window.stateStore.notify('PARENT_MESSAGES_CHANGED');
     });
 
     // Navigate to "수강료 납부" tab
     const billingMenu = page.locator('.menu-item[data-view="stu-billing"]');
     await expect(billingMenu).toBeVisible();
+
+    // Verify sidebar menu unread badge
+    const menuBadge = billingMenu.locator('.parent-menu-badge');
+    await expect(menuBadge).toBeVisible();
+    await expect(menuBadge).toHaveText('1');
+
     await billingMenu.click();
 
     // Verify sidebar does not contain "학부모 메시지함"
@@ -180,9 +187,29 @@ test.describe('Parent Portal Payment and Billing Flow', () => {
     await expect(unpaidTabBtn).toBeVisible();
     await expect(paidTabBtn).toBeVisible();
 
-    // Unpaid tab should be active by default and unread count badge should NOT be visible
+    // Verify unread badge count on unpaid tab button is visible
+    const tabBadge = unpaidTabBtn.locator('.parent-tab-badge');
+    await expect(tabBadge).toBeVisible();
+    await expect(tabBadge).toHaveText('1');
+
+    // Unpaid tab should be active by default
     await expect(unpaidTabBtn).toHaveClass(/btn-primary/);
-    await expect(unpaidTabBtn.locator('.badge-unread-count')).not.toBeVisible();
+
+    // Verify Tab is above KPI metrics grid
+    const unpaidTabBox = await unpaidTabBtn.boundingBox();
+    const metricsGridBox = await page.locator('.metrics-grid').boundingBox();
+    expect(unpaidTabBox.y).toBeLessThan(metricsGridBox.y);
+
+    // Verify KPI cards initially (unpaid state)
+    const metricsGrid = page.locator('.metrics-grid');
+    await expect(metricsGrid).toContainText('2건');
+    await expect(metricsGrid).toContainText('175,000원');
+    await expect(metricsGrid).toContainText('미납/청구 건수');
+    await expect(metricsGrid).toContainText('납부 필요 금액');
+
+    // Verify list title for unpaid tab
+    const listTitle = page.locator('.glass-card h3');
+    await expect(listTitle).toContainText('미납 및 청구 내역');
 
     // Check unpaid billing list content
     const unpaidTable = page.locator('[data-testid="parent-billing-table"]');
@@ -197,6 +224,11 @@ test.describe('Parent Portal Payment and Billing Flow', () => {
     await expect(rowEdu.locator('td').nth(3)).toContainText('150,000원');
     await expect(rowEdu.locator('td').nth(4)).toContainText('2026-06-15'); // dueDay = 15
     await expect(rowEdu.locator('td').nth(5)).toContainText('미수납');
+
+    // Verify unread dot next to status badge on rowEdu
+    const rowDot = rowEdu.locator('.parent-row-red-dot');
+    await expect(rowDot).toBeVisible();
+
     // Unread badge "알림 확인 전" should NOT be visible on Row Edu
     await expect(rowEdu.locator('text=알림 확인 전')).not.toBeVisible();
 
@@ -240,12 +272,30 @@ test.describe('Parent Portal Payment and Billing Flow', () => {
       return msg ? msg.status : null;
     });
     expect(isUnreadAfter).toBe('read');
+
+    // Verify visual badges/dots are removed
+    await expect(menuBadge).not.toBeVisible();
+    await expect(tabBadge).not.toBeVisible();
+    await expect(rowDot).not.toBeVisible();
+
     await expect(rowEdu.locator('text=알림 확인 전')).not.toBeVisible();
 
     // Switch to Paid tab
     await paidTabBtn.click();
     await expect(paidTabBtn).toHaveClass(/btn-primary/);
     await expect(unpaidTabBtn).toHaveClass(/btn-secondary/);
+
+    // Verify KPI cards remain unchanged on paid tab
+    await expect(metricsGrid).toContainText('2건');
+    await expect(metricsGrid).toContainText('175,000원');
+    await expect(metricsGrid).toContainText('미납/청구 건수');
+    await expect(metricsGrid).toContainText('납부 필요 금액');
+    // Ensure paid count (1건) or paid amount (150,000원) is not displayed as KPI
+    await expect(metricsGrid).not.toContainText('1건');
+    await expect(metricsGrid).not.toContainText('150,000원');
+
+    // Verify list title changes for paid tab
+    await expect(listTitle).toContainText('납부 완료 내역');
 
     // Row Paid Education
     const rowPaidEdu = unpaidTable.locator('tr[data-id="P_MOCK_EDU_PAID"]');

@@ -243,6 +243,9 @@ function checkAuthAndRoute() {
         userAvatar.textContent = '학';
         userAvatar.style.background = 'linear-gradient(135deg, var(--success), var(--accent))';
         settingsQuickBar.style.display = 'none';
+        
+        // Update unread indicators on sidebar
+        updateParentSidebarBadges();
     }
 
     // Set default menu active tab
@@ -2016,3 +2019,73 @@ export function closeModal() {
 }
 
 window.closeModal = closeModal; // Allow inline triggers if needed
+
+// Phase 16N-Repair-E: Parent Portal App-style Sidebar Badge Controller
+export function updateParentSidebarBadges() {
+    const user = stateStore.getCurrentUser();
+    if (!user || user.role !== 'parent') return;
+
+    // Get linked students for parent
+    const students = stateStore.getStudentsForParent(user.id);
+    if (students.length === 0) return;
+
+    // Determine active student ID
+    let studentId = students[0].id;
+    const saved = localStorage.getItem(`dayday_active_student_${user.id}`);
+    if (saved) {
+        const found = students.find(s => s.id === saved);
+        if (found) studentId = found.id;
+    }
+
+    // Fetch unread parent messages for parent & active student
+    const unreadMsgs = stateStore.getParentMessagesForParent(user.id, studentId).filter(m => m.status === 'unread');
+
+    // Calculate unread attendance count
+    const attendanceCount = unreadMsgs.filter(m => {
+        const category = m.category || '';
+        const type = m.type || '';
+        return category === 'attendance' || type === 'check_in' || type === 'check_out';
+    }).length;
+
+    // Calculate unread billing count
+    const billingCount = unreadMsgs.filter(m => {
+        const category = m.category || '';
+        const type = m.type || '';
+        return category === 'payment' || 
+               type === 'tuition_billing' || type === 'tuition_overdue' || type === 'tuition_paid' ||
+               type === 'book_billing' || type === 'book_overdue' || type === 'book_paid';
+    }).length;
+
+    // Get menu items
+    const attMenuItem = document.querySelector('.menu-item[data-view="stu-calendar"]');
+    const billMenuItem = document.querySelector('.menu-item[data-view="stu-billing"]');
+
+    if (attMenuItem) {
+        updateMenuItemBadge(attMenuItem, attendanceCount);
+    }
+    if (billMenuItem) {
+        updateMenuItemBadge(billMenuItem, billingCount);
+    }
+}
+
+function updateMenuItemBadge(menuItem, count) {
+    let badge = menuItem.querySelector('.parent-menu-badge');
+    if (count > 0) {
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'parent-menu-badge';
+            menuItem.appendChild(badge);
+        }
+        badge.textContent = count > 9 ? '9+' : count;
+    } else {
+        if (badge) {
+            badge.remove();
+        }
+    }
+}
+
+// Subscribe to state change
+stateStore.subscribe('PARENT_MESSAGES_CHANGED', updateParentSidebarBadges);
+
+// Expose globally
+window.updateParentSidebarBadges = updateParentSidebarBadges;

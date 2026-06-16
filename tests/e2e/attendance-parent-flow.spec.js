@@ -302,11 +302,18 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
       });
 
       window.stateStore.saveDB();
+      window.stateStore.notify('PARENT_MESSAGES_CHANGED');
     });
 
     // Navigate to Attendance View
     const parentAttendanceTab = page.locator('.menu-item[data-view="stu-calendar"]');
     await expect(parentAttendanceTab).toBeVisible();
+
+    // Verify sidebar menu unread badge
+    const menuBadge = parentAttendanceTab.locator('.parent-menu-badge');
+    await expect(menuBadge).toBeVisible();
+    await expect(menuBadge).toHaveText('1');
+
     await parentAttendanceTab.click();
 
     // Verify view mode tabs are present
@@ -315,13 +322,15 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
     await expect(btnCal).toBeVisible();
     await expect(btnList).toBeVisible();
 
+    // Verify unread badge count on list tab button is visible
+    const tabBadge = btnList.locator('.parent-tab-badge');
+    await expect(tabBadge).toBeVisible();
+    await expect(tabBadge).toHaveText('1');
+
     // Toggle to list view
     await btnList.click();
     await expect(btnList).toHaveClass(/btn-primary/);
     await expect(btnCal).toHaveClass(/btn-secondary/);
-
-    // Verify unread badge count on list tab is NOT visible on UI
-    await expect(btnList.locator('.badge-unread-count')).not.toBeVisible();
 
     // Verify list rows are rendered
     const listTable = page.locator('[data-testid="parent-attendance-list"]');
@@ -340,6 +349,10 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
     await expect(row2).toContainText('지각 / 하원 기록 없음');
     await expect(row2).toContainText('14:15');
     await expect(row2).toContainText('하원 기록 없음');
+
+    // Verify unread dot next to status badge on row2
+    const rowDot = row2.locator('.parent-row-red-dot');
+    await expect(rowDot).toBeVisible();
 
     // Verify unread indicator "알림 확인 전" is NOT visible on row2
     await expect(row2.locator('text=알림 확인 전')).not.toBeVisible();
@@ -372,6 +385,11 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
       return msg ? msg.status : null;
     });
     expect(isUnreadAfter).toBe('read');
+
+    // Verify visual badges/dots are removed
+    await expect(menuBadge).not.toBeVisible();
+    await expect(tabBadge).not.toBeVisible();
+    await expect(rowDot).not.toBeVisible();
 
     // Turn off lateDetectionEnabled and verify "지각" label disappears
     await page.evaluate(() => {
