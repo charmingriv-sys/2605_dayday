@@ -1194,5 +1194,232 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
       window.stateStore.saveDB();
     });
   });
+
+  test('should support Guardian 1/2 selection UI with parentContacts and legacy fallbacks (Phase 16O-1)', async ({ page }) => {
+    // 1. Configure test student data via evaluate
+    await page.evaluate(() => {
+      // Find or create test student
+      const studentId = 'S_TEST_16O_UI';
+      const strucStudentId = 'S_TEST_16O_UI_STRUC';
+      const dupStudentId = 'S_TEST_16O_UI_DUP';
+      const noPhoneStudentId = 'S_TEST_16O_UI_NOPHONE';
+
+      // Clean up first
+      window.stateStore.db.students = window.stateStore.db.students.filter(s => 
+        s.id !== studentId && s.id !== strucStudentId && s.id !== dupStudentId && s.id !== noPhoneStudentId
+      );
+      window.stateStore.db.parentContacts = window.stateStore.db.parentContacts.filter(c => 
+        c.studentId !== studentId && c.studentId !== strucStudentId && c.studentId !== dupStudentId && c.studentId !== noPhoneStudentId
+      );
+
+      // Add S_TEST_16O_UI ("오원생") with studentPhone and legacy G1/G2 fallbacks
+      window.stateStore.db.students.push({
+        id: studentId,
+        name: '오원생',
+        phone: '010-9999-9999',
+        parentName: '오보호자1',
+        parentPhone: '010-1111-1111',
+        parentPhone2: '010-2222-2222',
+        parentPhone2Name: '오보호자2',
+        instrument: '피아노',
+        pay: 'paid',
+        school: '테스트초',
+        age: 10
+      });
+
+      // Add S_TEST_16O_UI_STRUC ("구원생")
+      window.stateStore.db.students.push({
+        id: strucStudentId,
+        name: '구원생',
+        phone: '010-7777-1111',
+        instrument: '피아노',
+        pay: 'paid'
+      });
+      // G1: valid. G2: canReceiveMessage = false (수신 불가)
+      window.stateStore.db.parentContacts.push({
+        id: 'pc_struc_g1',
+        studentId: strucStudentId,
+        slot: 'parent1',
+        name: '구보호자1',
+        relation: 'mother',
+        phone: '010-3333-3333',
+        canReceiveMessage: true,
+        isPrimary: true
+      });
+      window.stateStore.db.parentContacts.push({
+        id: 'pc_struc_g2',
+        studentId: strucStudentId,
+        slot: 'parent2',
+        name: '구보호자2',
+        relation: 'father',
+        phone: '010-4444-4444',
+        canReceiveMessage: false,
+        isPrimary: false
+      });
+
+      // Add S_TEST_16O_UI_DUP ("임원생") to check duplicate phone number detection (sharing 010-1111-1111)
+      window.stateStore.db.students.push({
+        id: dupStudentId,
+        name: '임원생',
+        phone: '010-7777-2222',
+        instrument: '피아노',
+        pay: 'paid'
+      });
+      window.stateStore.db.parentContacts.push({
+        id: 'pc_dup_g1',
+        studentId: dupStudentId,
+        slot: 'parent1',
+        name: '임보호자1',
+        relation: 'guardian',
+        phone: '010-1111-1111', // Duplicate of 오보호자1
+        canReceiveMessage: true,
+        isPrimary: true
+      });
+
+      // Add S_TEST_16O_UI_NOPHONE ("신원생") to check missing phone number detection (연락처 없음)
+      window.stateStore.db.students.push({
+        id: noPhoneStudentId,
+        name: '신원생',
+        phone: '010-7777-3333',
+        instrument: '피아노',
+        pay: 'paid'
+      });
+      window.stateStore.db.parentContacts.push({
+        id: 'pc_no_g1',
+        studentId: noPhoneStudentId,
+        slot: 'parent1',
+        name: '신보호자1',
+        relation: 'mother',
+        phone: '', // No phone number!
+        canReceiveMessage: true,
+        isPrimary: true
+      });
+
+      window.stateStore.saveDB();
+    });
+
+    // Navigate to Message Send view
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+
+    // 2. Search and select "오원생"
+    await page.locator('#studentSearchInput').fill('오원생');
+    const rowO = page.locator('.student-row', { hasText: '오원생' });
+    await rowO.click();
+
+    // Verify student is selected
+    await expect(page.locator('#selectedStudentsCount')).toContainText('1');
+
+    // Verify 3 subrows are visible: "본인", "보호자 1", "보호자 2"
+    const guardianRowsO = page.locator('.guardian-row[data-student-id="S_TEST_16O_UI"]');
+    await expect(guardianRowsO).toHaveCount(3);
+
+    // Verify G1 is checked by default, while "본인" and G2 are unchecked
+    const selfCheck = guardianRowsO.filter({ hasText: '본인' }).locator('.guardian-checkbox');
+    const g1Check = guardianRowsO.filter({ hasText: '보호자 1' }).locator('.guardian-checkbox');
+    const g2Check = guardianRowsO.filter({ hasText: '보호자 2' }).locator('.guardian-checkbox');
+
+    await expect(selfCheck.locator('svg')).not.toBeVisible();
+    await expect(g1Check.locator('svg')).toBeVisible();
+    await expect(g2Check.locator('svg')).not.toBeVisible();
+
+    // Toggle "본인" and "보호자 2" check options on by clicking their rows
+    await guardianRowsO.filter({ hasText: '본인' }).click();
+    await guardianRowsO.filter({ hasText: '보호자 2' }).click();
+
+    // Verify all 3 checkmarks are visible now
+    await expect(selfCheck.locator('svg')).toBeVisible();
+    await expect(g1Check.locator('svg')).toBeVisible();
+    await expect(g2Check.locator('svg')).toBeVisible();
+
+    // Uncheck "보호자 1" by clicking its row
+    await guardianRowsO.filter({ hasText: '보호자 1' }).click();
+    await expect(g1Check.locator('svg')).not.toBeVisible();
+
+    // Add to recipients (which should add "본인" and "보호자 2")
+    await page.locator('#btnAddToRecipients').click();
+    await expect(page.locator('#totalRecipientsLabel')).toContainText('2건');
+
+    // Verify card display tags ("본인" and "보호자2")
+    const cards = page.locator('.message-send-recipient-card');
+    await expect(cards.filter({ hasText: '본인' })).toBeVisible();
+    await expect(cards.filter({ hasText: '보호자2' })).toBeVisible();
+
+    // Clear recipients list
+    await page.locator('#btnClearRecipients').click();
+
+    // 3. Search and select "구원생" (to verify G2 has "수신 불가" status and is disabled)
+    await page.locator('#studentSearchInput').fill('구원생');
+    const rowGu = page.locator('.student-row', { hasText: '구원생' });
+    await rowGu.click();
+
+    const guardianRowsGu = page.locator('.guardian-row[data-student-id="S_TEST_16O_UI_STRUC"]');
+    const g2Gu = guardianRowsGu.filter({ hasText: '보호자 2' });
+    await expect(g2Gu.locator('.badge-cannot-receive')).toBeVisible();
+    await expect(g2Gu.locator('.badge-cannot-receive')).toContainText('수신 불가');
+    await expect(g2Gu.locator('button')).toBeDisabled();
+
+    // Unselect 구원생 to clean selection
+    await rowGu.click();
+
+    // 4. Search and select "신원생" (to verify G1 has "연락처 없음" status and is disabled)
+    await page.locator('#studentSearchInput').fill('신원생');
+    const rowShin = page.locator('.student-row', { hasText: '신원생' });
+    await rowShin.click();
+
+    const guardianRowsShin = page.locator('.guardian-row[data-student-id="S_TEST_16O_UI_NOPHONE"]');
+    const g1Shin = guardianRowsShin.filter({ hasText: '보호자 1' });
+    await expect(g1Shin.locator('.badge-no-contact')).toBeVisible();
+    await expect(g1Shin.locator('.badge-no-contact')).toContainText('연락처 없음');
+    await expect(g1Shin.locator('button')).toBeDisabled();
+
+    // Unselect 신원생
+    await rowShin.click();
+
+    // 5. Search for "원생" to select both "오원생" and "임원생" and test duplicates & deduplication
+    await page.locator('#studentSearchInput').fill('원생');
+    
+    // Select both rows
+    const rowOSelect = page.locator('.student-row', { hasText: '오원생' });
+    const rowDupSelect = page.locator('.student-row', { hasText: '임원생' });
+    await rowOSelect.click();
+    await rowDupSelect.click();
+
+    // Verify "동일 번호" warning badge is visible for G1 on both students
+    const g1RowO = page.locator('.guardian-row[data-student-id="S_TEST_16O_UI"]').filter({ hasText: '보호자 1' });
+    const g1RowDup = page.locator('.guardian-row[data-student-id="S_TEST_16O_UI_DUP"]').filter({ hasText: '보호자 1' });
+
+    await expect(g1RowO.locator('.badge-dup-number')).toBeVisible();
+    await expect(g1RowDup.locator('.badge-dup-number')).toBeVisible();
+
+    // Deduplicate checkbox is ON by default. Let's add to recipients.
+    await page.locator('#btnAddToRecipients').click();
+    // Since both were checked G1 with phone '010-1111-1111', only 1 should be added
+    await expect(page.locator('#totalRecipientsLabel')).toContainText('1건');
+    await page.locator('#btnClearRecipients').click();
+
+    // Toggle deduplication OFF
+    await page.locator('#btnToggleDedupe').click();
+
+    // Select them again
+    await rowOSelect.click();
+    await rowDupSelect.click();
+
+    // Add to recipients
+    await page.locator('#btnAddToRecipients').click();
+    // Since dedupe is OFF, both should be added!
+    await expect(page.locator('#totalRecipientsLabel')).toContainText('2건');
+
+    // Clean up
+    await page.locator('#btnClearRecipients').click();
+    await page.locator('#btnToggleDedupe').click(); // Restore default dedupe ON
+
+    // Cleanup db
+    await page.evaluate(() => {
+      const studentIds = ['S_TEST_16O_UI', 'S_TEST_16O_UI_STRUC', 'S_TEST_16O_UI_DUP', 'S_TEST_16O_UI_NOPHONE'];
+      window.stateStore.db.students = window.stateStore.db.students.filter(s => !studentIds.includes(s.id));
+      window.stateStore.db.parentContacts = window.stateStore.db.parentContacts.filter(c => !studentIds.includes(c.studentId));
+      window.stateStore.saveDB();
+    });
+  });
 });
 

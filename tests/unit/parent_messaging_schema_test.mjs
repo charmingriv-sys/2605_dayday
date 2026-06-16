@@ -2022,6 +2022,89 @@ stateStore.db.students = stateStore.db.students.filter(s => s.id !== testStudent
 stateStore.db.payments = stateStore.db.payments.filter(p => p.studentId !== testStudentIdD);
 stateStore.saveDB();
 
+// --- Starting Phase 16O-1 getGuardianCandidates Unit Tests ---
+console.log('--- Starting Phase 16O-1 getGuardianCandidates Unit Tests ---');
+
+const testStudentIdO1 = 'S_TEST_16O1';
+// Clean up
+stateStore.db.students = stateStore.db.students.filter(s => s.id !== testStudentIdO1);
+stateStore.db.parentContacts = stateStore.db.parentContacts.filter(c => c.studentId !== testStudentIdO1);
+
+// Add student with only primary legacy parentPhone
+stateStore.db.students.push({
+    id: testStudentIdO1,
+    name: '오원생',
+    parentName: '오보호자1',
+    parentPhone: '010-1111-1111'
+});
+stateStore.saveDB();
+
+// 1. Verify legacy primary fallback, g2 is null/undefined
+const candidates1 = stateStore.getGuardianCandidates(testStudentIdO1);
+if (candidates1.g1 && candidates1.g1.name === '오보호자1' && candidates1.g1.phone === '010-1111-1111' && candidates1.g1.canReceiveMessage === true && !candidates1.g2) {
+    console.log('[OK] Primary legacy fallback resolved correctly and g2 is null.');
+} else {
+    console.error('[FAIL] Legacy primary fallback mismatch:', candidates1);
+    hasError = true;
+}
+
+// 2. Add student secondary legacy parentPhone
+const testStudentO1 = stateStore.getStudent(testStudentIdO1);
+testStudentO1.parentPhone2 = '010-2222-2222';
+testStudentO1.parentPhone2Name = '부';
+stateStore.saveDB();
+
+const candidates2 = stateStore.getGuardianCandidates(testStudentIdO1);
+if (candidates2.g2 && candidates2.g2.name === '부' && candidates2.g2.phone === '010-2222-2222' && candidates2.g2.canReceiveMessage === true) {
+    console.log('[OK] Secondary legacy fallback resolved correctly.');
+} else {
+    console.error('[FAIL] Legacy secondary fallback mismatch:', candidates2);
+    hasError = true;
+}
+
+// 3. Add structured parentContacts
+stateStore.db.parentContacts.push({
+    id: 'pc_test_g1',
+    studentId: testStudentIdO1,
+    slot: 'parent1',
+    name: '구조화보호자1',
+    relation: 'mother',
+    phone: '010-3333-3333',
+    canReceiveMessage: true,
+    isPrimary: true
+});
+stateStore.db.parentContacts.push({
+    id: 'pc_test_g2',
+    studentId: testStudentIdO1,
+    slot: 'parent2',
+    name: '구조화보호자2',
+    relation: 'father',
+    phone: '010-4444-4444',
+    canReceiveMessage: false, // marked as unsendable/disabled
+    isPrimary: false
+});
+stateStore.saveDB();
+
+const candidates3 = stateStore.getGuardianCandidates(testStudentIdO1);
+if (candidates3.g1 && candidates3.g1.name === '구조화보호자1' && candidates3.g1.phone === '010-3333-3333' && candidates3.g1.canReceiveMessage === true) {
+    console.log('[OK] Structured parentContact slot=parent1 overrides legacy correctly.');
+} else {
+    console.error('[FAIL] Structured parentContact slot=parent1 mismatch:', candidates3.g1);
+    hasError = true;
+}
+
+if (candidates3.g2 && candidates3.g2.name === '구조화보호자2' && candidates3.g2.phone === '010-4444-4444' && candidates3.g2.canReceiveMessage === false) {
+    console.log('[OK] Structured parentContact slot=parent2 overrides legacy correctly with canReceiveMessage=false.');
+} else {
+    console.error('[FAIL] Structured parentContact slot=parent2 mismatch:', candidates3.g2);
+    hasError = true;
+}
+
+// Clean up
+stateStore.db.students = stateStore.db.students.filter(s => s.id !== testStudentIdO1);
+stateStore.db.parentContacts = stateStore.db.parentContacts.filter(c => c.studentId !== testStudentIdO1);
+stateStore.saveDB();
+
 // Clean up Phase 16N test data
 stateStore.db.students = stateStore.db.students.filter(s => s.id !== testStudentIdN && s.id !== otherStudentIdN);
 stateStore.db.parentStudentLinks = stateStore.db.parentStudentLinks.filter(l => l.parentUserId !== testParentUserId);

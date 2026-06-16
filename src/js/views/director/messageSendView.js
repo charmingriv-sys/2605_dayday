@@ -152,6 +152,7 @@ const viewState = {
   studentFilterPay: "all",
   studentSearchQuery: "",
   selectedStudentIds: new Set(),
+  selectedContacts: new Set(),
   contactTypes: {
     student: false,
     g1: true,
@@ -293,8 +294,8 @@ const getAdaptedStudents = () => {
       grade: grade,
       klass: student.instrument || '피아노',
       pay: pay,
-      studentPhone: student.phone || '010-0000-0000',
-      guardian1: { label: "모", phone: student.parentPhone || '010-0000-0000' },
+      studentPhone: student.phone || '',
+      guardian1: { label: "모", phone: student.parentPhone || '' },
       guardian2: guardian2,
       unpaidAmount: unpaidAmount,
       tuitionAmount: student.fee || 150000,
@@ -774,13 +775,192 @@ export function renderMessageSend(container) {
     const allChecked = filtered.length > 0 && filtered.every(s => viewState.selectedStudentIds.has(s.id));
     const someChecked = filtered.some(s => viewState.selectedStudentIds.has(s.id));
 
+    const getKoreanRelation = (relation) => {
+      if (!relation) return "";
+      const r = relation.toLowerCase().trim();
+      if (r === 'guardian' || r === 'parent' || r === '보호자') return '';
+      if (r === 'mother' || r === 'mom' || r === '모') return '모';
+      if (r === 'father' || r === 'dad' || r === '부') return '부';
+      if (r === 'grandmother' || r === '조모') return '조모';
+      if (r === 'grandfather' || r === '조부') return '조부';
+      return relation;
+    };
+
+    const phoneCounts = {};
+    students.forEach(s => {
+      const studentPhoneNorm = s.studentPhone ? s.studentPhone.replace(/[^0-9]/g, '') : '';
+      if (studentPhoneNorm && studentPhoneNorm !== '01000000000') {
+        phoneCounts[studentPhoneNorm] = (phoneCounts[studentPhoneNorm] || 0) + 1;
+      }
+      const { g1, g2 } = stateStore.getGuardianCandidates(s.id);
+      if (g1 && g1.phone) {
+        const norm = g1.phone.replace(/[^0-9]/g, '');
+        if (norm) phoneCounts[norm] = (phoneCounts[norm] || 0) + 1;
+      }
+      if (g2 && g2.phone) {
+        const norm = g2.phone.replace(/[^0-9]/g, '');
+        if (norm) phoneCounts[norm] = (phoneCounts[norm] || 0) + 1;
+      }
+    });
+
+    // Helper to render a single guardian row
+    const renderGuardianSubrow = (studentId, candidate, type) => {
+      if (!candidate) return '';
+      
+      const key = `${studentId}_${type}`;
+      const isChecked = viewState.selectedContacts.has(key);
+      
+      const hasPhone = candidate.phone && candidate.phone.trim() !== '';
+      const canReceive = candidate.canReceiveMessage !== false;
+      const isDisabled = !hasPhone || !canReceive;
+      
+      const typeLabel = type === 'student' ? '본인' : type === 'g1' ? '보호자 1' : '보호자 2';
+      
+      let statusBadge = '';
+      if (!hasPhone) {
+        statusBadge = `<span class="badge-no-contact" style="font-size: 10px; color: #ef4444; background: #fee2e2; padding: 1px 6px; border-radius: 4px; font-weight: 700; margin-left: 6px;">연락처 없음</span>`;
+      } else if (!canReceive) {
+        statusBadge = `<span class="badge-cannot-receive" style="font-size: 10px; color: #f97316; background: #ffedd5; padding: 1px 6px; border-radius: 4px; font-weight: 700; margin-left: 6px;">수신 불가</span>`;
+      }
+      
+      // Duplicate badge helper
+      let dupBadge = '';
+      if (hasPhone) {
+        const norm = candidate.phone.replace(/[^0-9]/g, '');
+        if (norm && phoneCounts[norm] > 1) {
+          dupBadge = `<span class="badge-dup-number" style="font-size: 10px; color: #8b5cf6; background: #f3e8ff; padding: 1px 6px; border-radius: 4px; font-weight: 700; margin-left: 6px;">동일 번호</span>`;
+        }
+      }
+
+      const checkboxBorderColor = isDisabled ? '#e2e8f0' : (isChecked ? 'var(--primary)' : '#cbd5e1');
+      const checkboxBgColor = isDisabled ? '#f1f5f9' : (isChecked ? 'var(--primary)' : '#fff');
+      const cursorStyle = isDisabled ? 'not-allowed' : 'pointer';
+      const textColor = isDisabled ? '#cbd5e1' : 'var(--text-main)';
+      const phoneColor = isDisabled ? '#cbd5e1' : 'var(--text-muted)';
+      
+      const rel = type === 'student' ? '' : (candidate.relation ? ` (${getKoreanRelation(candidate.relation)})` : '');
+      const displayDisplayName = `${candidate.name}${rel}`;
+
+      return `
+        <div class="guardian-row" data-student-id="${studentId}" data-type="${type}" style="
+          display: grid; grid-template-columns: 24px 1fr; gap: 8px; padding: 6px 16px 6px 40px;
+          align-items: center; cursor: ${cursorStyle};
+          background: transparent;
+          opacity: ${isDisabled ? 0.6 : 1};
+        ">
+          <button class="guardian-checkbox" data-student-id="${studentId}" data-type="${type}" ${isDisabled ? 'disabled' : ''} style="
+            width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+            border: 1.5px solid ${checkboxBorderColor}; background: ${checkboxBgColor};
+            cursor: ${cursorStyle}; padding: 0; margin-bottom: 0; pointer-events: none;
+          ">
+            ${isChecked && !isDisabled ? renderIcon('check', 8, '#fff', 2) : ''}
+          </button>
+          <div style="display: flex; align-items: center; justify-content: space-between; min-width: 0; flex-wrap: wrap; gap: 4px;">
+            <span style="font-size: 11.5px; font-weight: 600; color: ${textColor}; display: flex; align-items: center; gap: 5px; min-width: 0;">
+              <span style="color: #64748b; font-size: 10px; font-weight: 700; background: #f1f5f9; padding: 1px 5px; border-radius: 4px; flex-shrink: 0;">${typeLabel}</span>
+              <span style="font-weight: 700; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${displayDisplayName}</span>
+              ${statusBadge}
+              ${dupBadge}
+            </span>
+            <span style="font-size: 11px; color: ${phoneColor}; font-weight: 500;">${candidate.phone || '-'}</span>
+          </div>
+        </div>
+      `;
+    };
+
+    // Helper to generate the inner HTML of the student table list
+    const renderStudentItemsHTML = (studentsList) => {
+      return studentsList.map(s => {
+        const checked = viewState.selectedStudentIds.has(s.id);
+        const meta = PAY_META[s.pay] || { label: "미등록", tone: "slate" };
+        const badgeText = s.pay === "paid" ? "완납" : s.pay === "requested" ? "결제요청" : s.pay === "unpaid" ? "미납" : "미등록";
+
+        const initial = s.name.slice(-2);
+        const hue = (s.id.charCodeAt(1) || 5) % 6;
+        const avBg = ["#eff6ff", "#f5f3ff", "#ecfdf3", "#fff7ed", "#fef2f2", "#f5f5f5"][hue];
+        const avFg = ["#2563eb", "#7c3aed", "#16a34a", "#d97706", "#dc2626", "#4b5563"][hue];
+
+        const { g1, g2 } = stateStore.getGuardianCandidates(s.id);
+
+        return `
+          <div class="student-item-container" data-id="${s.id}" style="
+            border-top: 1px solid #f1f5f9; background: ${checked ? '#fafcff' : 'transparent'};
+          ">
+            <div class="student-row" data-id="${s.id}" style="
+              display: grid; grid-template-columns: 32px 1fr 70px; gap: 8px; padding: 8px 16px;
+              align-items: center; cursor: pointer;
+            ">
+              <button class="row-checkbox" data-id="${s.id}" style="
+                width: 16px; height: 16px; border-radius: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+                border: 1.5px solid ${checked ? 'var(--primary)' : '#cbd5e1'}; background: ${checked ? 'var(--primary)' : '#fff'};
+                cursor: pointer; padding: 0; margin-bottom: 0;
+              ">
+                ${checked ? renderIcon('check', 10, '#fff', 3) : ''}
+              </button>
+              <span style="display: flex; align-items: center; gap: 9px; min-width: 0;">
+                <span class="message-send-avatar" style="width: 28px; height: 28px; font-size: 11px; background: ${avBg}; color: ${avFg};">${initial}</span>
+                <span style="min-width: 0;">
+                  <span style="display: block; font-size: 12.5px; font-weight: 700; color: var(--text-main);">${s.name}</span>
+                  <span style="display: block; font-size: 10.5px; color: var(--text-muted);">${s.grade} · ${s.klass}</span>
+                </span>
+              </span>
+              <span style="display: flex; justify-content: center;">
+                <span class="message-send-chip tone-${meta.tone}" style="font-size: 10px; padding: 2px 7px;">${badgeText}</span>
+              </span>
+            </div>
+            ${checked ? `
+              <div class="guardian-list-container" style="border-top: 1px solid #f8fafc; background: #fafcff; padding-bottom: 6px;">
+                ${renderGuardianSubrow(s.id, { name: s.name, phone: s.studentPhone, relation: '', canReceiveMessage: true }, 'student')}
+                ${renderGuardianSubrow(s.id, g1, 'g1')}
+                ${renderGuardianSubrow(s.id, g2, 'g2')}
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
+    };
+
+    // Helper functions to manage state toggles
+    const toggleStudent = (studentId) => {
+      if (viewState.selectedStudentIds.has(studentId)) {
+        viewState.selectedStudentIds.delete(studentId);
+        viewState.selectedContacts.delete(`${studentId}_student`);
+        viewState.selectedContacts.delete(`${studentId}_g1`);
+        viewState.selectedContacts.delete(`${studentId}_g2`);
+      } else {
+        viewState.selectedStudentIds.add(studentId);
+        
+        const { g1 } = stateStore.getGuardianCandidates(studentId);
+        if (g1 && g1.phone && g1.canReceiveMessage !== false) {
+          viewState.selectedContacts.add(`${studentId}_g1`);
+        }
+      }
+    };
+
+    const toggleGuardian = (studentId, type) => {
+      const key = `${studentId}_${type}`;
+      if (viewState.selectedContacts.has(key)) {
+        viewState.selectedContacts.delete(key);
+      } else {
+        viewState.selectedContacts.add(key);
+      }
+      
+      const hasSelectedContact = viewState.selectedContacts.has(`${studentId}_student`) || viewState.selectedContacts.has(`${studentId}_g1`) || viewState.selectedContacts.has(`${studentId}_g2`);
+      if (hasSelectedContact) {
+        viewState.selectedStudentIds.add(studentId);
+      } else {
+        viewState.selectedStudentIds.delete(studentId);
+      }
+    };
+
     // Calculate recipient count preview
     let contactCount = 0;
     students.forEach(s => {
       if (!viewState.selectedStudentIds.has(s.id)) return;
-      if (viewState.contactTypes.student) contactCount++;
-      if (viewState.contactTypes.g1) contactCount++;
-      if (viewState.contactTypes.g2 && s.guardian2) contactCount++;
+      const { g1, g2 } = stateStore.getGuardianCandidates(s.id);
+      if (viewState.selectedContacts.has(`${s.id}_student`) && s.studentPhone) contactCount++;
+      if (viewState.selectedContacts.has(`${s.id}_g1`) && g1 && g1.phone) contactCount++;
+      if (viewState.selectedContacts.has(`${s.id}_g2`) && g2 && g2.phone) contactCount++;
     });
 
     const isPartial = !isFullRender && block && block.querySelector('#studentTableRows');
@@ -801,42 +981,7 @@ export function renderMessageSend(container) {
       // 3. Update Rows HTML
       const tableRowsDiv = block.querySelector('#studentTableRows');
       if (tableRowsDiv) {
-        tableRowsDiv.innerHTML = filtered.map(s => {
-          const checked = viewState.selectedStudentIds.has(s.id);
-          const meta = PAY_META[s.pay] || { label: "미등록", tone: "slate" };
-          const badgeText = s.pay === "paid" ? "완납" : s.pay === "requested" ? "결제요청" : s.pay === "unpaid" ? "미납" : "미등록";
-
-          const initial = s.name.slice(-2);
-          const hue = (s.id.charCodeAt(1) || 5) % 6;
-          const avBg = ["#eff6ff", "#f5f3ff", "#ecfdf3", "#fff7ed", "#fef2f2", "#f5f5f5"][hue];
-          const avFg = ["#2563eb", "#7c3aed", "#16a34a", "#d97706", "#dc2626", "#4b5563"][hue];
-
-          return `
-            <div class="student-row" data-id="${s.id}" style="
-              display: grid; grid-template-columns: 32px 1fr 70px; gap: 8px; padding: 8px 16px;
-              border-top: 1px solid #f1f5f9; align-items: center; cursor: pointer;
-              background: ${checked ? '#fafcff' : 'transparent'};
-            ">
-              <button class="row-checkbox" data-id="${s.id}" style="
-                width: 16px; height: 16px; border-radius: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
-                border: 1.5px solid ${checked ? 'var(--primary)' : '#cbd5e1'}; background: ${checked ? 'var(--primary)' : '#fff'};
-                cursor: pointer; padding: 0; margin-bottom: 0;
-              ">
-                ${checked ? renderIcon('check', 10, '#fff', 3) : ''}
-              </button>
-              <span style="display: flex; align-items: center; gap: 9px; min-width: 0;">
-                <span class="message-send-avatar" style="width: 28px; height: 28px; font-size: 11px; background: ${avBg}; color: ${avFg};">${initial}</span>
-                <span style="min-width: 0;">
-                  <span style="display: block; font-size: 12.5px; font-weight: 700; color: var(--text-main);">${s.name}</span>
-                  <span style="display: block; font-size: 10.5px; color: var(--text-muted);">${s.grade} · ${s.klass}</span>
-                </span>
-              </span>
-              <span style="display: flex; justify-content: center;">
-                <span class="message-send-chip tone-${meta.tone}" style="font-size: 10px; padding: 2px 7px;">${badgeText}</span>
-              </span>
-            </div>
-          `;
-        }).join('');
+        tableRowsDiv.innerHTML = renderStudentItemsHTML(filtered);
       }
 
       // 4. Update Footer count & button
@@ -845,7 +990,7 @@ export function renderMessageSend(container) {
 
       const addToRecipientsBtn = block.querySelector('#btnAddToRecipients');
       if (addToRecipientsBtn) {
-        const disabled = viewState.selectedStudentIds.size === 0 || (!viewState.contactTypes.student && !viewState.contactTypes.g1 && !viewState.contactTypes.g2);
+        const disabled = viewState.selectedContacts.size === 0;
         addToRecipientsBtn.disabled = disabled;
         addToRecipientsBtn.style.background = disabled ? '#c9d3e0' : 'var(--primary)';
         addToRecipientsBtn.style.cursor = disabled ? 'default' : 'pointer';
@@ -857,11 +1002,30 @@ export function renderMessageSend(container) {
       block.querySelectorAll('.student-row').forEach(row => {
         row.addEventListener('click', (e) => {
           const id = row.dataset.id;
-          if (viewState.selectedStudentIds.has(id)) {
-            viewState.selectedStudentIds.delete(id);
+          toggleStudent(id);
+          renderStudentList(false);
+        });
+      });
+
+      block.querySelectorAll('.guardian-row').forEach(row => {
+        row.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const studentId = row.dataset.studentId;
+          const type = row.dataset.type;
+          
+          let candidate = null;
+          if (type === 'student') {
+            const s = students.find(x => x.id === studentId);
+            candidate = { phone: s ? s.studentPhone : '', canReceiveMessage: true };
           } else {
-            viewState.selectedStudentIds.add(id);
+            const { g1, g2 } = stateStore.getGuardianCandidates(studentId);
+            candidate = type === 'g1' ? g1 : g2;
           }
+          if (!candidate || !candidate.phone || candidate.canReceiveMessage === false) {
+            return;
+          }
+          
+          toggleGuardian(studentId, type);
           renderStudentList(false);
         });
       });
@@ -924,43 +1088,7 @@ export function renderMessageSend(container) {
 
       <!-- Table Rows -->
       <div id="studentTableRows" style="overflow-y: auto; flex: 1; max-height: 350px;">
-        ${filtered.map(s => {
-          const checked = viewState.selectedStudentIds.has(s.id);
-          const meta = PAY_META[s.pay] || { label: "미등록", tone: "slate" };
-          const badgeText = s.pay === "paid" ? "완납" : s.pay === "requested" ? "결제요청" : s.pay === "unpaid" ? "미납" : "미등록";
-
-          // Determinate initials for avatar
-          const initial = s.name.slice(-2);
-          const hue = (s.id.charCodeAt(1) || 5) % 6;
-          const avBg = ["#eff6ff", "#f5f3ff", "#ecfdf3", "#fff7ed", "#fef2f2", "#f5f5f5"][hue];
-          const avFg = ["#2563eb", "#7c3aed", "#16a34a", "#d97706", "#dc2626", "#4b5563"][hue];
-
-          return `
-            <div class="student-row" data-id="${s.id}" style="
-              display: grid; grid-template-columns: 32px 1fr 70px; gap: 8px; padding: 8px 16px;
-              border-top: 1px solid #f1f5f9; align-items: center; cursor: pointer;
-              background: ${checked ? '#fafcff' : 'transparent'};
-            ">
-              <button class="row-checkbox" data-id="${s.id}" style="
-                width: 16px; height: 16px; border-radius: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
-                border: 1.5px solid ${checked ? 'var(--primary)' : '#cbd5e1'}; background: ${checked ? 'var(--primary)' : '#fff'};
-                cursor: pointer; padding: 0; margin-bottom: 0;
-              ">
-                ${checked ? renderIcon('check', 10, '#fff', 3) : ''}
-              </button>
-              <span style="display: flex; align-items: center; gap: 9px; min-width: 0;">
-                <span class="message-send-avatar" style="width: 28px; height: 28px; font-size: 11px; background: ${avBg}; color: ${avFg};">${initial}</span>
-                <span style="min-width: 0;">
-                  <span style="display: block; font-size: 12.5px; font-weight: 700; color: var(--text-main);">${s.name}</span>
-                  <span style="display: block; font-size: 10.5px; color: var(--text-muted);">${s.grade} · ${s.klass}</span>
-                </span>
-              </span>
-              <span style="display: flex; justify-content: center;">
-                <span class="message-send-chip tone-${meta.tone}" style="font-size: 10px; padding: 2px 7px;">${badgeText}</span>
-              </span>
-            </div>
-          `;
-        }).join('')}
+        ${renderStudentItemsHTML(filtered)}
       </div>
 
       <!-- Column Footer -->
@@ -979,43 +1107,43 @@ export function renderMessageSend(container) {
         <div style="display: flex; gap: 6px; margin-bottom: 11px; flex-wrap: wrap;">
           <!-- Contact Type: Student -->
           <button class="btn-toggle-contact-type" data-type="student" style="
-            display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 8px; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 8px; cursor: pointer;
             background: ${viewState.contactTypes.student ? '#eaf1fe' : '#fff'}; border: 1px solid ${viewState.contactTypes.student ? '#c9dbfb' : '#e2e8f0'};
             font-family: inherit; margin-bottom: 0;
           ">
-            <span style="width: 14px; height: 14px; border-radius: 4px; display: flex; align-items: center; justify-content: center; background: ${viewState.contactTypes.student ? 'var(--primary)' : '#fff'}; border: 1.5px solid ${viewState.contactTypes.student ? 'var(--primary)' : '#cbd5e1'};">
-              ${viewState.contactTypes.student ? renderIcon('check', 8, '#fff', 3) : ''}
+            <span style="width: 16px; height: 16px; border-radius: 4px; display: flex; align-items: center; justify-content: center; background: ${viewState.contactTypes.student ? 'var(--primary)' : '#fff'}; border: 1.5px solid ${viewState.contactTypes.student ? 'var(--primary)' : '#cbd5e1'};">
+              ${viewState.contactTypes.student ? renderIcon('check', 9, '#fff', 3) : ''}
             </span>
-            <span style="font-size: 11.5px; font-weight: 700; color: ${viewState.contactTypes.student ? 'var(--primary)' : 'var(--text-muted)'};">학생 본인</span>
+            <span style="font-size: 13.5px; font-weight: 700; color: ${viewState.contactTypes.student ? 'var(--primary)' : 'var(--text-muted)'};">본인</span>
           </button>
           <!-- Contact Type: Guardian 1 -->
           <button class="btn-toggle-contact-type" data-type="g1" style="
-            display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 8px; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 8px; cursor: pointer;
             background: ${viewState.contactTypes.g1 ? '#eaf1fe' : '#fff'}; border: 1px solid ${viewState.contactTypes.g1 ? '#c9dbfb' : '#e2e8f0'};
             font-family: inherit; margin-bottom: 0;
           ">
-            <span style="width: 14px; height: 14px; border-radius: 4px; display: flex; align-items: center; justify-content: center; background: ${viewState.contactTypes.g1 ? 'var(--primary)' : '#fff'}; border: 1.5px solid ${viewState.contactTypes.g1 ? 'var(--primary)' : '#cbd5e1'};">
-              ${viewState.contactTypes.g1 ? renderIcon('check', 8, '#fff', 3) : ''}
+            <span style="width: 16px; height: 16px; border-radius: 4px; display: flex; align-items: center; justify-content: center; background: ${viewState.contactTypes.g1 ? 'var(--primary)' : '#fff'}; border: 1.5px solid ${viewState.contactTypes.g1 ? 'var(--primary)' : '#cbd5e1'};">
+              ${viewState.contactTypes.g1 ? renderIcon('check', 9, '#fff', 3) : ''}
             </span>
-            <span style="font-size: 11.5px; font-weight: 700; color: ${viewState.contactTypes.g1 ? 'var(--primary)' : 'var(--text-muted)'};">보호자1</span>
+            <span style="font-size: 13.5px; font-weight: 700; color: ${viewState.contactTypes.g1 ? 'var(--primary)' : 'var(--text-muted)'};">보호자1</span>
           </button>
           <!-- Contact Type: Guardian 2 -->
           <button class="btn-toggle-contact-type" data-type="g2" style="
-            display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 8px; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 8px; cursor: pointer;
             background: ${viewState.contactTypes.g2 ? '#eaf1fe' : '#fff'}; border: 1px solid ${viewState.contactTypes.g2 ? '#c9dbfb' : '#e2e8f0'};
             font-family: inherit; margin-bottom: 0;
           ">
-            <span style="width: 14px; height: 14px; border-radius: 4px; display: flex; align-items: center; justify-content: center; background: ${viewState.contactTypes.g2 ? 'var(--primary)' : '#fff'}; border: 1.5px solid ${viewState.contactTypes.g2 ? 'var(--primary)' : '#cbd5e1'};">
-              ${viewState.contactTypes.g2 ? renderIcon('check', 8, '#fff', 3) : ''}
+            <span style="width: 16px; height: 16px; border-radius: 4px; display: flex; align-items: center; justify-content: center; background: ${viewState.contactTypes.g2 ? 'var(--primary)' : '#fff'}; border: 1.5px solid ${viewState.contactTypes.g2 ? 'var(--primary)' : '#cbd5e1'};">
+              ${viewState.contactTypes.g2 ? renderIcon('check', 9, '#fff', 3) : ''}
             </span>
-            <span style="font-size: 11.5px; font-weight: 700; color: ${viewState.contactTypes.g2 ? 'var(--primary)' : 'var(--text-muted)'};">보호자2</span>
+            <span style="font-size: 13.5px; font-weight: 700; color: ${viewState.contactTypes.g2 ? 'var(--primary)' : 'var(--text-muted)'};">보호자2</span>
           </button>
         </div>
-        <button id="btnAddToRecipients" ${viewState.selectedStudentIds.size === 0 || (!viewState.contactTypes.student && !viewState.contactTypes.g1 && !viewState.contactTypes.g2) ? 'disabled' : ''} style="
+        <button id="btnAddToRecipients" ${viewState.selectedContacts.size === 0 ? 'disabled' : ''} style="
           width: 100%; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 10px; font-size: 13px; font-weight: 700;
-          color: #fff; background: ${viewState.selectedStudentIds.size === 0 || (!viewState.contactTypes.student && !viewState.contactTypes.g1 && !viewState.contactTypes.g2) ? '#c9d3e0' : 'var(--primary)'};
-          border: none; border-radius: 9px; cursor: ${viewState.selectedStudentIds.size === 0 ? 'default' : 'pointer'};
-          box-shadow: ${viewState.selectedStudentIds.size === 0 ? 'none' : '0 4px 12px rgba(37,99,235,.2)'}; font-family: inherit;
+          color: #fff; background: ${viewState.selectedContacts.size === 0 ? '#c9d3e0' : 'var(--primary)'};
+          border: none; border-radius: 9px; cursor: ${viewState.selectedContacts.size === 0 ? 'default' : 'pointer'};
+          box-shadow: ${viewState.selectedContacts.size === 0 ? 'none' : '0 4px 12px rgba(37,99,235,.2)'}; font-family: inherit;
         ">
           ${renderIcon('arrowR', 15, '#fff')} 발송인원 추가 ${contactCount > 0 ? `(${contactCount}건)` : ''}
         </button>
@@ -1044,20 +1172,57 @@ export function renderMessageSend(container) {
     block.querySelectorAll('.student-row').forEach(row => {
       row.addEventListener('click', (e) => {
         const id = row.dataset.id;
-        if (viewState.selectedStudentIds.has(id)) {
-          viewState.selectedStudentIds.delete(id);
+        toggleStudent(id);
+        renderStudentList(false);
+      });
+    });
+
+    block.querySelectorAll('.guardian-row').forEach(row => {
+      row.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const studentId = row.dataset.studentId;
+        const type = row.dataset.type;
+        
+        let candidate = null;
+        if (type === 'student') {
+          const s = students.find(x => x.id === studentId);
+          candidate = { phone: s ? s.studentPhone : '', canReceiveMessage: true };
         } else {
-          viewState.selectedStudentIds.add(id);
+          const { g1, g2 } = stateStore.getGuardianCandidates(studentId);
+          candidate = type === 'g1' ? g1 : g2;
         }
+        if (!candidate || !candidate.phone || candidate.canReceiveMessage === false) {
+          return;
+        }
+        
+        toggleGuardian(studentId, type);
         renderStudentList(false);
       });
     });
 
     block.querySelector('#btnToggleAllStudents').addEventListener('click', () => {
       if (allChecked) {
-        filtered.forEach(s => viewState.selectedStudentIds.delete(s.id));
+        filtered.forEach(s => {
+          viewState.selectedStudentIds.delete(s.id);
+          viewState.selectedContacts.delete(`${s.id}_student`);
+          viewState.selectedContacts.delete(`${s.id}_g1`);
+          viewState.selectedContacts.delete(`${s.id}_g2`);
+        });
       } else {
-        filtered.forEach(s => viewState.selectedStudentIds.add(s.id));
+        filtered.forEach(s => {
+          viewState.selectedStudentIds.add(s.id);
+          
+          const { g1, g2 } = stateStore.getGuardianCandidates(s.id);
+          if (viewState.contactTypes.student && s.studentPhone && s.studentPhone.trim() !== '') {
+            viewState.selectedContacts.add(`${s.id}_student`);
+          }
+          if (viewState.contactTypes.g1 && g1 && g1.phone && g1.canReceiveMessage !== false) {
+            viewState.selectedContacts.add(`${s.id}_g1`);
+          }
+          if (viewState.contactTypes.g2 && g2 && g2.phone && g2.canReceiveMessage !== false) {
+            viewState.selectedContacts.add(`${s.id}_g2`);
+          }
+        });
       }
       renderStudentList(false);
     });
@@ -1071,6 +1236,40 @@ export function renderMessageSend(container) {
       btn.addEventListener('click', () => {
         const type = btn.dataset.type;
         viewState.contactTypes[type] = !viewState.contactTypes[type];
+        
+        if (type === 'student' || type === 'g1' || type === 'g2') {
+          viewState.selectedStudentIds.forEach(studentId => {
+            const s = students.find(x => x.id === studentId);
+            const { g1, g2 } = stateStore.getGuardianCandidates(studentId);
+            
+            let candidate = null;
+            if (type === 'student') {
+              candidate = { phone: s ? s.studentPhone : '', canReceiveMessage: true };
+            } else if (type === 'g1') {
+              candidate = g1;
+            } else if (type === 'g2') {
+              candidate = g2;
+            }
+            const key = `${studentId}_${type}`;
+            
+            if (viewState.contactTypes[type]) {
+              if (candidate && candidate.phone && candidate.canReceiveMessage !== false) {
+                viewState.selectedContacts.add(key);
+              }
+            } else {
+              viewState.selectedContacts.delete(key);
+            }
+          });
+        }
+        
+        // Clean up students who have no contacts checked
+        viewState.selectedStudentIds.forEach(studentId => {
+          const hasSelectedContact = viewState.selectedContacts.has(`${studentId}_student`) || viewState.selectedContacts.has(`${studentId}_g1`) || viewState.selectedContacts.has(`${studentId}_g2`);
+          if (!hasSelectedContact) {
+            viewState.selectedStudentIds.delete(studentId);
+          }
+        });
+        
         renderStudentList(false);
       });
     });
@@ -1080,14 +1279,46 @@ export function renderMessageSend(container) {
       students.forEach(s => {
         if (!viewState.selectedStudentIds.has(s.id)) return;
         
-        if (viewState.contactTypes.student) {
-          incoming.push({ name: s.name, phone: s.studentPhone, role: "본인", no: s.id, optOut: s.optOut, key: s.studentPhone + "|본인", source: "student" });
+        if (viewState.selectedContacts.has(`${s.id}_student`) && s.studentPhone) {
+          incoming.push({
+            name: s.name,
+            phone: s.studentPhone,
+            role: "본인",
+            no: s.id,
+            optOut: s.optOut,
+            key: s.studentPhone + "|본인",
+            source: "student"
+          });
         }
-        if (viewState.contactTypes.g1) {
-          incoming.push({ name: s.name, phone: s.guardian1.phone, role: `보호자(${s.guardian1.label})`, no: s.id, optOut: s.optOut, key: s.guardian1.phone + "|g1", source: "student" });
+        
+        const { g1, g2 } = stateStore.getGuardianCandidates(s.id);
+        
+        if (viewState.selectedContacts.has(`${s.id}_g1`) && g1 && g1.phone) {
+          incoming.push({
+            name: s.name,
+            guardianName: g1.name,
+            phone: g1.phone,
+            role: "보호자1",
+            relation: g1.relation,
+            no: s.id,
+            optOut: s.optOut,
+            key: g1.phone + "|g1",
+            source: "student"
+          });
         }
-        if (viewState.contactTypes.g2 && s.guardian2) {
-          incoming.push({ name: s.name, phone: s.guardian2.phone, role: `보호자(${s.guardian2.label})`, no: s.id, optOut: s.optOut, key: s.guardian2.phone + "|g2", source: "student" });
+        
+        if (viewState.selectedContacts.has(`${s.id}_g2`) && g2 && g2.phone) {
+          incoming.push({
+            name: s.name,
+            guardianName: g2.name,
+            phone: g2.phone,
+            role: "보호자2",
+            relation: g2.relation,
+            no: s.id,
+            optOut: s.optOut,
+            key: g2.phone + "|g2",
+            source: "student"
+          });
         }
       });
 
@@ -1103,6 +1334,7 @@ export function renderMessageSend(container) {
 
       // Clear selection
       viewState.selectedStudentIds.clear();
+      viewState.selectedContacts.clear();
       
       renderStudentList(true);
       renderRecipientList();
@@ -1152,11 +1384,26 @@ export function renderMessageSend(container) {
               const avFg = ["#2563eb", "#7c3aed", "#16a34a", "#d97706", "#dc2626", "#4b5563"][hue];
               
               let roleTone = "slate";
-              if (r.role.includes("모")) roleTone = "violet";
-              else if (r.role.includes("부")) roleTone = "violet";
+              if (r.role === "보호자1" || r.role === "보호자2" || r.role.includes("모") || r.role.includes("부")) roleTone = "violet";
               else if (r.role === "본인") roleTone = "blue";
               else if (r.role === "직접입력") roleTone = "amber";
               else if (r.role === "엑셀") roleTone = "teal";
+              
+              const getKoreanRelation = (relation) => {
+                if (!relation) return "";
+                const r = relation.toLowerCase().trim();
+                if (r === 'guardian' || r === 'parent' || r === '보호자') return '';
+                if (r === 'mother' || r === 'mom' || r === '모') return '모';
+                if (r === 'father' || r === 'dad' || r === '부') return '부';
+                if (r === 'grandmother' || r === '조모') return '조모';
+                if (r === 'grandfather' || r === '조부') return '조부';
+                return relation;
+              };
+
+              const relStr = r.relation ? getKoreanRelation(r.relation) : '';
+              const cardDisplayName = r.guardianName 
+                ? `${r.guardianName}${relStr ? ` (${relStr})` : ''}`
+                : r.name;
               
               return `
                 <span class="message-send-recipient-card" style="
@@ -1164,10 +1411,10 @@ export function renderMessageSend(container) {
                   background: #fff; border: 1px solid var(--border-color); border-radius: 9px;
                   box-shadow: var(--shadow-sm); position: relative;
                 ">
-                  <span class="message-send-avatar" style="width: 22px; height: 22px; font-size: 9px; background: ${avBg}; color: ${avFg};">${r.name.slice(-2)}</span>
+                  <span class="message-send-avatar" style="width: 22px; height: 22px; font-size: 9px; background: ${avBg}; color: ${avFg};">${cardDisplayName.slice(-2)}</span>
                   <span>
                     <span style="display: flex; align-items: center; gap: 4px; line-height: 1.2;">
-                      <span style="font-size: 12px; font-weight: 700; color: var(--text-main);">${r.name}</span>
+                      <span style="font-size: 12px; font-weight: 700; color: var(--text-main);">${cardDisplayName}</span>
                       <span class="message-send-chip tone-${roleTone}" style="padding: 0px 5px; font-size: 9px; border-radius: 4px; font-weight: 800;">${r.role}</span>
                     </span>
                     <span style="display: block; font-size: 10px; color: var(--text-muted-light); margin-top: 1px;">${formatPhoneDisplay(r.phone)}</span>

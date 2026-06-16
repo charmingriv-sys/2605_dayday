@@ -563,5 +563,48 @@ export const communicationMethods = {
             this.saveDB();
             this.notify('PARENT_MESSAGES_CHANGED', this.db.parentMessages);
         }
+    },
+
+    getGuardianCandidates(studentId) {
+        const student = this.getStudent(studentId);
+        if (!student) return { g1: null, g2: null };
+
+        const contacts = this.getParentContactsByStudent(studentId) || [];
+        let g1 = contacts.find(c => c.slot === 'parent1');
+        let g2 = contacts.find(c => c.slot === 'parent2');
+
+        // Fallback to legacy fields if parentContacts slot is missing
+        if (!g1) {
+            const hasPhone = student.parentPhone && student.parentPhone.trim() !== '';
+            g1 = {
+                id: null,
+                studentId: studentId,
+                slot: 'parent1',
+                name: student.parentName || `${student.name} 보호자`,
+                relation: '보호자',
+                phone: student.parentPhone || '',
+                canReceiveMessage: hasPhone,
+                isPrimary: true
+            };
+        }
+
+        if (!g2) {
+            const g2Phone = student.parentPhone2 || student.guardian2Phone || student.secondParentPhone || '';
+            const hasPhone = g2Phone && g2Phone.trim() !== '';
+            if (hasPhone) {
+                g2 = {
+                    id: null,
+                    studentId: studentId,
+                    slot: 'parent2',
+                    name: student.parentPhone2Name || `${student.name} 보호자2`,
+                    relation: '보호자2',
+                    phone: g2Phone,
+                    canReceiveMessage: true,
+                    isPrimary: false
+                };
+            }
+        }
+
+        return { g1, g2 };
     }
 };
