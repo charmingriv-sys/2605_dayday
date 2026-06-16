@@ -1421,5 +1421,267 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
       window.stateStore.saveDB();
     });
   });
+
+  test('should support Send Confirmation Modal before final dispatch (Phase 16O-2)', async ({ page }) => {
+    // 1. Configure test student data via evaluate
+    await page.evaluate(() => {
+      // Find or create test student
+      const studentId = 'S_TEST_16O2_UI';
+      const strucStudentId = 'S_TEST_16O2_UI_STRUC';
+      const dupStudentId = 'S_TEST_16O2_UI_DUP';
+      const noPhoneStudentId = 'S_TEST_16O2_UI_NOPHONE';
+
+      // Clean up first
+      window.stateStore.db.students = window.stateStore.db.students.filter(s => 
+        s.id !== studentId && s.id !== strucStudentId && s.id !== dupStudentId && s.id !== noPhoneStudentId
+      );
+      window.stateStore.db.parentContacts = window.stateStore.db.parentContacts.filter(c => 
+        c.studentId !== studentId && c.studentId !== strucStudentId && c.studentId !== dupStudentId && c.studentId !== noPhoneStudentId
+      );
+
+      // Add S_TEST_16O2_UI ("최원생") with studentPhone and legacy G1/G2 fallbacks
+      window.stateStore.db.students.push({
+        id: studentId,
+        name: '최원생',
+        phone: '010-9999-9999',
+        parentName: '최보호자1',
+        parentPhone: '010-1111-1111',
+        parentPhone2: '010-2222-2222',
+        parentPhone2Name: '최보호자2',
+        instrument: '피아노',
+        pay: 'paid',
+        school: '테스트초',
+        age: 10
+      });
+
+      // Add S_TEST_16O2_UI_STRUC ("한원생")
+      // G1: valid. G2: canReceiveMessage = false (수신 불가)
+      window.stateStore.db.students.push({
+        id: strucStudentId,
+        name: '한원생',
+        phone: '010-7777-1111',
+        instrument: '피아노',
+        pay: 'paid'
+      });
+      window.stateStore.db.parentContacts.push({
+        id: 'pc_struc_g1_16o2',
+        studentId: strucStudentId,
+        slot: 'parent1',
+        name: '한보호자1',
+        relation: 'mother',
+        phone: '010-3333-3333',
+        canReceiveMessage: true,
+        isPrimary: true
+      });
+      window.stateStore.db.parentContacts.push({
+        id: 'pc_struc_g2_16o2',
+        studentId: strucStudentId,
+        slot: 'parent2',
+        name: '한보호자2',
+        relation: 'father',
+        phone: '010-4444-4444',
+        canReceiveMessage: false,
+        isPrimary: false
+      });
+
+      // Add S_TEST_16O2_UI_DUP ("정원생") to check duplicate phone number detection (sharing 010-1111-1111)
+      window.stateStore.db.students.push({
+        id: dupStudentId,
+        name: '정원생',
+        phone: '010-7777-2222',
+        instrument: '피아노',
+        pay: 'paid'
+      });
+      window.stateStore.db.parentContacts.push({
+        id: 'pc_dup_g1_16o2',
+        studentId: dupStudentId,
+        slot: 'parent1',
+        name: '정보호자1',
+        relation: 'guardian',
+        phone: '010-1111-1111', // Duplicate of 최보호자1
+        canReceiveMessage: true,
+        isPrimary: true
+      });
+
+      // Add S_TEST_16O2_UI_NOPHONE ("진원생") to check missing phone number detection (연락처 없음)
+      window.stateStore.db.students.push({
+        id: noPhoneStudentId,
+        name: '진원생',
+        phone: '010-7777-3333',
+        instrument: '피아노',
+        pay: 'paid'
+      });
+      window.stateStore.db.parentContacts.push({
+        id: 'pc_no_g1_16o2',
+        studentId: noPhoneStudentId,
+        slot: 'parent1',
+        name: '진보호자1',
+        relation: 'mother',
+        phone: '', // No phone number!
+        canReceiveMessage: true,
+        isPrimary: true
+      });
+
+      window.stateStore.saveDB();
+    });
+
+    // Navigate to Message Send view
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+
+    // Fill message content with macro #{이름}
+    const composeBody = page.locator('#composeBodyInput');
+    await composeBody.fill('안녕하세요 #{이름} 학생 학부모님.');
+
+    // 1. Search and select "최원생"
+    await page.locator('#studentSearchInput').fill('최원생');
+    await page.locator('.student-row', { hasText: '최원생' }).click();
+    await page.locator('#btnAddToRecipients').click();
+
+    // 2. Search and select "정원생"
+    await page.locator('#studentSearchInput').fill('정원생');
+    await page.locator('.student-row', { hasText: '정원생' }).click();
+    // Before adding, toggle deduplication OFF so we can add duplicate to recipient list
+    await page.locator('#btnToggleDedupe').click();
+    await page.locator('#btnAddToRecipients').click();
+    // Toggle dedupe back ON
+    await page.locator('#btnToggleDedupe').click();
+
+    // Let's also programmatically add HanG2 (수신 불가) and JinG1 (연락처 없음) to recipients list to verify exclusion display
+    await page.evaluate(() => {
+      window.__DAYDAY_TEST_HOOKS__.injectRecipientsForTest([
+        {
+          name: '한원생',
+          guardianName: '한보호자2',
+          phone: '010-4444-4444',
+          role: '보호자2',
+          no: 'S_TEST_16O2_UI_STRUC',
+          source: 'student'
+        },
+        {
+          name: '진원생',
+          guardianName: '진보호자1',
+          phone: '',
+          role: '보호자1',
+          no: 'S_TEST_16O2_UI_NOPHONE',
+          source: 'student'
+        }
+      ]);
+    });
+
+    // Verify recipient panel list label (4건)
+    await expect(page.locator('#totalRecipientsLabel')).toContainText('4건');
+
+    // 3. Open Focus Review Modal (Send confirmation modal)
+    const initialLogLength = await page.evaluate(() => window.stateStore.getOutboundMessageLogs().length);
+    const reviewBtn = page.locator('#btnReviewSend');
+    await expect(reviewBtn).toBeVisible();
+    await reviewBtn.click();
+
+    const focusOverlay = page.locator('#focusConfirmOverlay');
+    await expect(focusOverlay).toBeVisible();
+
+    // Check modal title is "즉시발송 검토"
+    await expect(focusOverlay.locator('h3')).toContainText('즉시발송 검토');
+
+    // 4. Verify statistics (dedupe ON)
+    // 총 선택 수신자: 4명
+    // 실제 발송 예정: 1건 (최보호자1)
+    // 중복 병합: 1건 (정보호자1)
+    // 발송 제외: 2건 (한보호자2: 수신 불가, 진보호자1: 연락처 없음)
+    await expect(focusOverlay.locator('#focusTotalCount')).toContainText('4명');
+    await expect(focusOverlay.locator('#focusSendableCount')).toContainText('1명');
+    await expect(focusOverlay.locator('#focusDedupeMergedCount')).toContainText('1명');
+    await expect(focusOverlay.locator('#focusOtherExcludedCount')).toContainText('2명');
+
+    // Verify recipient list elements
+    const items = focusOverlay.locator('.confirm-recipient-item');
+    await expect(items).toHaveCount(4);
+
+    // Verify status badges
+    const statusBadges = items.locator('.status-badge');
+    await expect(statusBadges.filter({ hasText: '발송 예정' })).toHaveCount(1);
+    await expect(statusBadges.filter({ hasText: '중복 병합됨' })).toHaveCount(1);
+    await expect(statusBadges.filter({ hasText: '발송 제외 (수신 불가)' })).toHaveCount(1);
+    await expect(statusBadges.filter({ hasText: '발송 제외 (연락처 없음)' })).toHaveCount(1);
+
+    // 5. Test macro replacement preview (collapsible)
+    // Toggle preview of first recipient ("최보호자1" -> student name is "최원생")
+    const firstItem = items.filter({ hasText: '최보호자1' });
+    const toggleBtn = firstItem.locator('.btn-preview-toggle-item');
+    await toggleBtn.click();
+
+    const previewContainer = firstItem.locator('.preview-container-item');
+    await expect(previewContainer).toBeVisible();
+    // Must contain student name "최원생" instead of guardian "최보호자1"
+    await expect(previewContainer).toContainText('안녕하세요 최원생 학생 학부모님.');
+
+    // Close preview
+    await toggleBtn.click();
+    await expect(previewContainer).toBeHidden();
+
+    // 6. Cancel modal and assert no outbound log is saved
+    const cancelBtn = page.locator('#btnFocusCancel');
+    await cancelBtn.click();
+    await expect(focusOverlay).toBeHidden();
+
+    const midLogLength = await page.evaluate(() => window.stateStore.getOutboundMessageLogs().length);
+    expect(midLogLength).toBe(initialLogLength);
+
+    // 7. Toggle dedupe OFF and verify stats change inside modal
+    await page.locator('#btnToggleDedupe').click(); // Turn dedupe OFF
+    await reviewBtn.click();
+    await expect(focusOverlay).toBeVisible();
+
+    // Statistics with dedupe OFF:
+    // 총 선택 수신자: 4명
+    // 실제 발송 예정: 2건 (최보호자1, 정보호자1)
+    // 중복 병합: 0건
+    // 발송 제외: 2건 (한보호자2: 수신 불가, 진보호자1: 연락처 없음)
+    await expect(focusOverlay.locator('#focusSendableCount')).toContainText('2명');
+    await expect(focusOverlay.locator('#focusDedupeMergedCount')).toContainText('0명');
+    await expect(focusOverlay.locator('#focusOtherExcludedCount')).toContainText('2명');
+    await expect(items.locator('.status-badge').filter({ hasText: '발송 예정' })).toHaveCount(2);
+
+    // 8. Confirm final send and verify logs are written, excluded targets are not sent, and dialog triggered
+    let dialogText = '';
+    const dialogHandler = async (dialog) => {
+      dialogText = dialog.message();
+      await dialog.accept();
+    };
+    page.on('dialog', dialogHandler);
+    await page.locator('#btnFocusSendConfirm').click();
+    page.off('dialog', dialogHandler);
+
+    expect(dialogText).toContain('실제 발송은 아직 연동되지 않았고, 발송이력만 저장되었습니다.');
+    await expect(focusOverlay).toBeHidden();
+
+    // Verify outbound log length increased
+    const finalLogLength = await page.evaluate(() => window.stateStore.getOutboundMessageLogs().length);
+    expect(finalLogLength).toBe(initialLogLength + 1);
+
+    // Verify log details in stateStore
+    const lastLog = await page.evaluate(() => window.stateStore.getOutboundMessageLogs()[0]);
+    // 2 sent (dedupe OFF: 최원생, 정원생)
+    expect(lastLog.recipients.length).toBe(2);
+    expect(lastLog.recipients.some(r => r.name === '최원생' && r.phone === '010-1111-1111')).toBe(true);
+    expect(lastLog.recipients.some(r => r.name === '정원생' && r.phone === '010-1111-1111')).toBe(true);
+
+    // 2 excluded (수신 불가, 연락처 없음)
+    expect(lastLog.excludedRecipients.length).toBe(2);
+    expect(lastLog.excludedRecipients.some(r => r.name === '한원생' && r.reason === '수신 불가')).toBe(true);
+    expect(lastLog.excludedRecipients.some(r => r.name === '진원생' && r.reason === '연락처 없음')).toBe(true);
+
+    // Clean up
+    await page.locator('#btnClearRecipients').click();
+    await page.locator('#btnToggleDedupe').click(); // Restore dedupe ON
+
+    // Cleanup db
+    await page.evaluate(() => {
+      const studentIds = ['S_TEST_16O2_UI', 'S_TEST_16O2_UI_STRUC', 'S_TEST_16O2_UI_DUP', 'S_TEST_16O2_UI_NOPHONE'];
+      window.stateStore.db.students = window.stateStore.db.students.filter(s => !studentIds.includes(s.id));
+      window.stateStore.db.parentContacts = window.stateStore.db.parentContacts.filter(c => !studentIds.includes(c.studentId));
+      window.stateStore.saveDB();
+    });
+  });
 });
 

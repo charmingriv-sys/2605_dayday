@@ -386,69 +386,123 @@ const isRecipientOptedOut = (recipient) => {
 const validateRecipients = (recipients) => {
   const sendableList = [];
   const excludedList = [];
+  const validatedList = [];
   const seenPhones = new Set();
 
   recipients.forEach(r => {
     const phone = (r.phone || '').trim();
     const name = (r.name || '').trim() || "(이름 없음)";
+    const normalizedPhone = phone.replace(/[^0-9]/g, '');
 
-    // 1. 번호 없음
-    if (!phone) {
-      excludedList.push({
+    // Check if recipient has canReceiveMessage === false in parentContacts (if student-linked)
+    let canReceive = true;
+    let isNoContact = !phone;
+
+    const studentId = r.no || r.studentId;
+    if (studentId) {
+      const student = stateStore.getStudent(studentId);
+      const { g1, g2 } = stateStore.getGuardianCandidates(studentId);
+      if (r.role === "보호자1" && g1) {
+        if (g1.canReceiveMessage === false) canReceive = false;
+        if (!g1.phone) isNoContact = true;
+      } else if (r.role === "보호자2" && g2) {
+        if (g2.canReceiveMessage === false) canReceive = false;
+        if (!g2.phone) isNoContact = true;
+      } else if (r.role === "본인" && student) {
+        if (student.canReceiveMessage === false) canReceive = false;
+        if (!student.phone && !student.studentPhone) isNoContact = true;
+      }
+    }
+
+    if (r.canReceiveMessage === false) {
+      canReceive = false;
+    }
+
+    // 1. 연락처 없음
+    if (isNoContact) {
+      const item = {
         ...r,
         name,
         phone: "",
-        reason: "번호 없음"
-      });
+        isSendable: false,
+        reason: "연락처 없음"
+      };
+      excludedList.push(item);
+      validatedList.push(item);
       return;
     }
 
-    // 번호 정규화
-    const normalizedPhone = phone.replace(/[^0-9]/g, '');
+    // 2. 수신 불가
+    if (!canReceive) {
+      const item = {
+        ...r,
+        name,
+        phone,
+        isSendable: false,
+        reason: "수신 불가"
+      };
+      excludedList.push(item);
+      validatedList.push(item);
+      return;
+    }
 
-    // 2. 번호 오류 (숫자/하이픈 이외의 문자가 있거나 정규화된 숫자가 9~11자리가 아닌 경우)
+    // 3. 잘못된 번호 형식 (숫자/하이픈 이외의 문자가 있거나 정규화된 숫자가 9~11자리가 아닌 경우)
     const phoneRegex = /^[0-9-]+$/;
     if (!phoneRegex.test(phone) || normalizedPhone.length < 9 || normalizedPhone.length > 11) {
-      excludedList.push({
+      const item = {
         ...r,
         name,
         phone,
-        reason: "번호 오류"
-      });
+        isSendable: false,
+        reason: "잘못된 번호 형식"
+      };
+      excludedList.push(item);
+      validatedList.push(item);
       return;
     }
 
-    // 3. 중복 제외 (normalizedPhone 기준 비교)
-    if (seenPhones.has(normalizedPhone)) {
-      excludedList.push({
+    // 4. 중복 병합 (dedupe 옵션이 ON일 때만 적용)
+    if (viewState.dedupe && seenPhones.has(normalizedPhone)) {
+      const item = {
         ...r,
         name,
         phone,
+        isSendable: false,
         reason: "중복 제외"
-      });
+      };
+      excludedList.push(item);
+      validatedList.push(item);
       return;
     }
-    seenPhones.add(normalizedPhone);
+    if (viewState.dedupe) {
+      seenPhones.add(normalizedPhone);
+    }
 
-    // 4. 수신거부
+    // 5. 수신거부
     if (isRecipientOptedOut(r)) {
-      excludedList.push({
+      const item = {
         ...r,
         name,
         phone,
+        isSendable: false,
         reason: "수신거부"
-      });
+      };
+      excludedList.push(item);
+      validatedList.push(item);
       return;
     }
 
-    sendableList.push({
+    const item = {
       ...r,
       name,
-      phone
-    });
+      phone,
+      isSendable: true
+    };
+    sendableList.push(item);
+    validatedList.push(item);
   });
 
-  return { sendableList, excludedList };
+  return { sendableList, excludedList, validatedList };
 };
 
 
@@ -2530,15 +2584,14 @@ export function renderMessageSend(container) {
     block.style.background = 'rgba(15, 23, 42, 0.42)';
     block.style.animation = 'fadeIn 0.15s ease-out';
 
-    const { sendableList, excludedList } = validateRecipients(viewState.recipients);
+    const { sendableList, excludedList, validatedList } = validateRecipients(viewState.recipients);
     const kind = viewState.method === "PUSH" ? "PUSH" : viewState.method === "알림톡" ? "알림톡" : msgKind(viewState.title, viewState.body, !!viewState.image);
     const chipToneClass = kind === 'SMS' ? 'sky' : kind === 'LMS' ? 'violet' : kind === 'MMS' ? 'red' : kind === 'PUSH' ? 'green' : 'blue';
 
-    // 매크로 첫 수신자 치환 미리보기
-    const firstRecipient = sendableList[0] || viewState.recipients[0];
-    const previewBody = firstRecipient 
-      ? replaceMacros(viewState.body || "", { name: firstRecipient.name, studentId: firstRecipient.no })
-      : (viewState.body || "");
+    const totalCount = viewState.recipients.length;
+    const sendableCount = sendableList.length;
+    const dedupeMergedCount = excludedList.filter(r => r.reason === "중복 제외").length;
+    const otherExcludedCount = excludedList.filter(r => r.reason !== "중복 제외").length;
 
     const modalTitle = "즉시발송 검토";
 
@@ -2564,19 +2617,23 @@ export function renderMessageSend(container) {
 
         <!-- Body -->
         <div style="padding: 20px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; flex: 1;">
-          <!-- 통계 카드 3종 -->
-          <div style="display: flex; gap: 10px;">
-            <div style="flex: 1; padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; text-align: center;">
+          <!-- 통계 카드 4종 -->
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 120px; padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; text-align: center;">
               <div style="font-size: 11px; color: var(--text-muted); font-weight: 700; margin-bottom: 2px;">전체 대상</div>
-              <div style="font-size: 18px; font-weight: 800; color: var(--slate);">${viewState.recipients.length}명</div>
+              <div style="font-size: 18px; font-weight: 800; color: var(--slate);" id="focusTotalCount">${totalCount}명</div>
             </div>
-            <div style="flex: 1; padding: 10px 12px; background: #fff; border: 1px solid #c6f6d5; border-radius: 10px; text-align: center;">
+            <div style="flex: 1; min-width: 120px; padding: 10px 12px; background: #fff; border: 1px solid #c6f6d5; border-radius: 10px; text-align: center;">
               <div style="font-size: 11px; color: #15803d; font-weight: 700; margin-bottom: 2px;">발송 가능</div>
-              <div style="font-size: 18px; font-weight: 800; color: #166534;" id="focusSendableCount">${sendableList.length}명</div>
+              <div style="font-size: 18px; font-weight: 800; color: #166534;" id="focusSendableCount">${sendableCount}명</div>
             </div>
-            <div style="flex: 1; padding: 10px 12px; background: #fff; border: 1px solid #fed7d7; border-radius: 10px; text-align: center;">
+            <div style="flex: 1; min-width: 120px; padding: 10px 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; text-align: center;">
+              <div style="font-size: 11px; color: #475569; font-weight: 700; margin-bottom: 2px;">중복 병합</div>
+              <div style="font-size: 18px; font-weight: 800; color: #334155;" id="focusDedupeMergedCount">${dedupeMergedCount}명</div>
+            </div>
+            <div style="flex: 1; min-width: 120px; padding: 10px 12px; background: #fff; border: 1px solid #fed7d7; border-radius: 10px; text-align: center;">
               <div style="font-size: 11px; color: #b91c1c; font-weight: 700; margin-bottom: 2px;">제외 대상</div>
-              <div style="font-size: 18px; font-weight: 800; color: #991b1b;">${excludedList.length}명</div>
+              <div style="font-size: 18px; font-weight: 800; color: #991b1b;" id="focusOtherExcludedCount">${otherExcludedCount}명</div>
             </div>
           </div>
 
@@ -2586,79 +2643,95 @@ export function renderMessageSend(container) {
             <div style="color: var(--primary); font-weight: 700;">즉시 발송 (가상 실행)</div>
           </div>
 
-          <!-- 미리보기 패널 (원문 & 첫번째 치환본) -->
-          <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-            <div style="flex: 1; min-width: 250px; background: #fff; border: 1px solid #edf2f7; border-radius: 12px; padding: 12px;">
-              <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">메시지 원문 (매크로 미치환)</div>
-              <div style="font-size: 12px; color: #334155; white-space: pre-wrap; background: #f8fafc; border: 1px solid #e2e8f0; padding: 8px; border-radius: 6px; min-height: 100px;">${viewState.title ? `<b>[${viewState.title}]</b>\n` : ''}${viewState.body}</div>
+          <!-- 수신자 현황 목록 -->
+          <div style="background: #fff; border: 1px solid #edf2f7; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="font-size: 12.5px; font-weight: 800; color: var(--text-main); display: flex; justify-content: space-between; align-items: center;">
+              <span>수신자별 발송 현황 (${validatedList.length}명)</span>
+              <span style="font-size: 11px; font-weight: 500; color: var(--text-muted);">미리보기 버튼으로 본문을 확인할 수 있습니다.</span>
             </div>
-            <div style="flex: 1; min-width: 250px; background: #fff; border: 1px solid #edf2f7; border-radius: 12px; padding: 12px;">
-              <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">수신화면 미리보기 (${firstRecipient ? `${firstRecipient.name} 기준` : '대상 없음'})</div>
-              <div style="background: #eef2f6; border-radius: 10px; padding: 10px; border: 1px solid #e2e8f0; min-height: 100px;">
-                ${viewState.image ? `<div style="height: 50px; background: #cbd5e1; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #475569; margin-bottom: 6px;">[이미지 첨부됨]</div>` : ''}
-                ${viewState.title ? `<div style="font-weight: 700; font-size: 12px; color: #000; margin-bottom: 4px;">${replaceMacros(viewState.title, firstRecipient)}</div>` : ''}
-                <div style="font-size: 12px; color: #334155; line-height: 1.45; white-space: pre-wrap;">${previewBody}</div>
-              </div>
-            </div>
-          </div>
+            <div style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
+              ${validatedList.length === 0 ? `
+                <div style="padding: 24px; font-size: 12.5px; color: var(--text-muted); text-align: center;">추가된 수신자가 없습니다.</div>
+              ` : validatedList.map((r, idx) => {
+                // Determine Tag badge
+                let roleTag = r.role || "보호자";
+                let tagBg = "#f1f5f9";
+                let tagColor = "#334155";
+                if (roleTag === "본인") {
+                  tagBg = "#dbeafe";
+                  tagColor = "#1e40af";
+                } else if (roleTag === "보호자1") {
+                  tagBg = "#fef3c7";
+                  tagColor = "#92400e";
+                } else if (roleTag === "보호자2") {
+                  tagBg = "#f3e8ff";
+                  tagColor = "#6b21a8";
+                } else if (roleTag === "직접입력") {
+                  tagBg = "#f1f5f9";
+                  tagColor = "#334155";
+                } else if (roleTag === "엑셀") {
+                  tagBg = "#e2f2e9";
+                  tagColor = "#065f46";
+                }
 
-          <!-- 발송 가능 목록 테이블 -->
-          <div style="background: #fff; border: 1px solid #edf2f7; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 6px;">
-            <div style="font-size: 11.5px; font-weight: 800; color: #166534;">발송 가능 대상 명단 (${sendableList.length}명)</div>
-            <div style="max-height: 120px; overflow-y: auto; border: 1px solid #edf2f7; border-radius: 6px;">
-              ${sendableList.length === 0 ? `
-                <div style="padding: 12px; font-size: 12px; color: var(--text-muted); text-align: center;">발송 가능 대상이 없습니다.</div>
-              ` : `
-                <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
-                  <thead style="background: #f8fafc; border-bottom: 1px solid #edf2f7; font-weight: 800;">
-                    <tr>
-                      <th style="padding: 6px 8px;">이름</th>
-                      <th style="padding: 6px 8px;">연락처</th>
-                      <th style="padding: 6px 8px;">역할</th>
-                      <th style="padding: 6px 8px;">경로</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${sendableList.map(r => `
-                      <tr style="border-bottom: 1px solid #f1f5f9;">
-                        <td style="padding: 6px 8px; font-weight: 700;">${r.name}</td>
-                        <td style="padding: 6px 8px; font-family: monospace;">${formatPhoneDisplay(r.phone)}</td>
-                        <td style="padding: 6px 8px; color: var(--text-muted);">${r.role || '보호자'}</td>
-                        <td style="padding: 6px 8px; color: var(--text-muted);">${r.source === 'student' ? '원생연동' : r.source === 'excel' ? '엑셀' : '직접입력'}</td>
-                      </tr>
-                    `).join('')}
-                  </tbody>
-                </table>
-              `}
-            </div>
-          </div>
+                // Determine Status badge
+                let statusText = "발송 예정";
+                let statusBg = "#dcfce7";
+                let statusColor = "#166534";
 
-          <!-- 제외 대상 목록 테이블 -->
-          <div style="background: #fff; border: 1px solid #edf2f7; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 6px;">
-            <div style="font-size: 11.5px; font-weight: 800; color: #991b1b;">제외 대상 명단 (${excludedList.length}명)</div>
-            <div style="max-height: 120px; overflow-y: auto; border: 1px solid #edf2f7; border-radius: 6px;">
-              ${excludedList.length === 0 ? `
-                <div style="padding: 12px; font-size: 12px; color: var(--text-muted); text-align: center;">제외 대상 없음</div>
-              ` : `
-                <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
-                  <thead style="background: #fdf2f2; border-bottom: 1px solid #fecaca; font-weight: 800;">
-                    <tr>
-                      <th style="padding: 6px 8px; color: #991b1b;">이름</th>
-                      <th style="padding: 6px 8px; color: #991b1b;">연락처</th>
-                      <th style="padding: 6px 8px; color: #991b1b;">제외 사유</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${excludedList.map(r => `
-                      <tr style="border-bottom: 1px solid #fecaca; background: #fff8f8;">
-                        <td style="padding: 6px 8px; font-weight: 700; color: #991b1b;">${r.name}</td>
-                        <td style="padding: 6px 8px; font-family: monospace; color: #991b1b;">${r.phone ? formatPhoneDisplay(r.phone) : '번호 없음'}</td>
-                        <td style="padding: 6px 8px;"><span style="color: #fff; background: #ef4444; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 800;">${r.reason}</span></td>
-                      </tr>
-                    `).join('')}
-                  </tbody>
-                </table>
-              `}
+                if (!r.isSendable) {
+                  if (r.reason === "중복 제외") {
+                    statusText = "중복 병합됨";
+                    statusBg = "#e2e8f0";
+                    statusColor = "#475569";
+                  } else {
+                    statusText = `발송 제외 (${r.reason})`;
+                    statusBg = "#fee2e2";
+                    statusColor = "#991b1b";
+                  }
+                }
+
+                // Student and Recipient Name mapping
+                let studentName = r.name || "-";
+                let recipientName = r.guardianName || r.name || "-";
+                if (r.role === "직접입력" || r.role === "엑셀") {
+                  studentName = "-";
+                  recipientName = r.name || "(이름 없음)";
+                }
+
+                return `
+                  <div class="confirm-recipient-item" style="
+                    border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px; background: #fff;
+                    display: flex; flex-direction: column; gap: 4px; transition: all 0.2s;
+                  ">
+                    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span style="font-size: 13.5px; font-weight: 800; color: var(--text-main);">${recipientName}</span>
+                        ${studentName !== "-" ? `<span style="font-size: 11.5px; color: var(--text-muted);">(${studentName} 원생)</span>` : ''}
+                        <span style="font-size: 10.5px; padding: 2px 6px; border-radius: 4px; font-weight: 700; background: ${tagBg}; color: ${tagColor};">${roleTag}</span>
+                        <span style="font-family: monospace; font-size: 12px; color: var(--text-muted);">${formatPhoneDisplay(r.phone) || '번호 없음'}</span>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <span class="status-badge" style="font-size: 11px; padding: 2px 8px; border-radius: 6px; font-weight: 800; background: ${statusBg}; color: ${statusColor};">${statusText}</span>
+                        <button class="btn-preview-toggle-item" id="btn-preview-toggle-${idx}" style="
+                          background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 8px;
+                          font-size: 11px; cursor: pointer; color: var(--slate); font-weight: 700; display: inline-flex; align-items: center; gap: 2px;
+                        ">미리보기</button>
+                      </div>
+                    </div>
+                    
+                    <!-- Collapsible Preview panel -->
+                    <div class="preview-container-item" id="preview-container-${idx}" style="
+                      display: none; margin-top: 8px; padding: 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+                      font-size: 12px; color: #334155; line-height: 1.45;
+                    ">
+                      ${viewState.image ? `<div style="height: 45px; background: #cbd5e1; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10.5px; color: #475569; margin-bottom: 6px; font-weight: 600;">[이미지 첨부됨]</div>` : ''}
+                      ${viewState.title ? `<div style="font-weight: 800; font-size: 12.5px; color: #000; margin-bottom: 6px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">${replaceMacros(viewState.title, r)}</div>` : ''}
+                      <div style="white-space: pre-wrap; font-family: inherit;">${replaceMacros(viewState.body || "", r)}</div>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
             </div>
           </div>
 
@@ -2681,7 +2754,7 @@ export function renderMessageSend(container) {
             display: inline-flex; align-items: center; gap: 6px; padding: 10px 24px; font-size: 13.5px; font-weight: 800;
             color: #fff; background: var(--primary); border: none; border-radius: 10px; cursor: pointer;
             box-shadow: 0 4px 12px rgba(37,99,235,.2); font-family: inherit; margin-bottom: 0;
-          ">${renderIcon('check', 14, '#fff', 2.5)} 발송</button>
+          ">${renderIcon('check', 14, '#fff', 2.5)} 최종 발송</button>
         </div>
       </div>
     `;
@@ -2698,6 +2771,24 @@ export function renderMessageSend(container) {
     
     block.querySelector('#btnFocusSendConfirm').addEventListener('click', () => {
       processMessageSend(sendableList, excludedList);
+    });
+
+    validatedList.forEach((r, idx) => {
+      const toggleBtn = block.querySelector(`#btn-preview-toggle-${idx}`);
+      if (toggleBtn) {
+        toggleBtn.addEventListener('click', () => {
+          const previewDiv = block.querySelector(`#preview-container-${idx}`);
+          if (previewDiv.style.display === 'none') {
+            previewDiv.style.display = 'block';
+            toggleBtn.textContent = '접기';
+            toggleBtn.style.background = '#f1f5f9';
+          } else {
+            previewDiv.style.display = 'none';
+            toggleBtn.textContent = '미리보기';
+            toggleBtn.style.background = '#fff';
+          }
+        });
+      }
     });
   };
 
@@ -3408,6 +3499,19 @@ export function renderMessageSend(container) {
     block.querySelector('#btnRecipientDetailClose').addEventListener('click', closeDetail);
     block.querySelector('#btnRecipientDetailCloseBtn').addEventListener('click', closeDetail);
   };
+
+  // Expose local variables for E2E testing
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    window.__DAYDAY_TEST_HOOKS__ = {
+      injectRecipientsForTest(recipients) {
+        if (Array.isArray(recipients)) {
+          viewState.recipients.push(...recipients);
+          renderRecipientList();
+          renderSendBar();
+        }
+      }
+    };
+  }
 
   // Run initial render
   render();
