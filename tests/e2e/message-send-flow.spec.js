@@ -1683,5 +1683,112 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
       window.stateStore.saveDB();
     });
   });
+
+  test('should support message templates selection, draft generation, and overwrite guards (Phase 16O-3)', async ({ page }) => {
+    // 1. Seed database with a test student
+    const studentId = 'S_TEST_16O3_UI';
+    await page.evaluate((sid) => {
+      window.stateStore.db.students.push({
+        id: sid,
+        name: '유템플',
+        phone: '010-7777-5555',
+        instrument: '바이올린',
+        pay: 'paid'
+      });
+      window.stateStore.db.parentContacts.push({
+        id: 'pc_16o3_g1',
+        studentId: sid,
+        slot: 'parent1',
+        name: '유보호자',
+        relation: 'father',
+        phone: '010-5555-5555',
+        canReceiveMessage: true,
+        isPrimary: true
+      });
+      window.stateStore.saveDB();
+    }, studentId);
+
+    // Navigate to Message Send view
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+
+    // 2. Verify UI elements are visible
+    const selectEl = page.locator('#templateTypeSelect');
+    const applyBtn = page.locator('#btnApplyTemplateDraft');
+    await expect(selectEl).toBeVisible();
+    await expect(applyBtn).toBeVisible();
+
+    // Verify variable guide contains text
+    await expect(page.locator('text=지원 변수: #{이름}')).toBeVisible();
+
+    // 3. Test applying template draft when body is empty
+    await selectEl.selectOption('absent'); // 결석 확인
+    await applyBtn.click();
+
+    // Title and Body should be filled
+    await expect(page.locator('#composeTitleInput')).toHaveValue('출석 확인 요청');
+    await expect(page.locator('#composeBodyInput')).toHaveValue('#{이름} 원생의 수업 출석 기록이 확인되지 않았습니다.\n확인 부탁드립니다.');
+
+    // 4. Test overwrite guard when body is NOT empty - dismiss
+    await selectEl.selectOption('consulting'); // 상담 안내
+    
+    // Set up confirm dialog handler to cancel/dismiss
+    const dismissHandler = async (dialog) => {
+      expect(dialog.message()).toContain('이미 작성된 본문 내용이 있습니다. 선택한 템플릿 초안으로 덮어쓰시겠습니까?');
+      await dialog.dismiss();
+    };
+    page.once('dialog', dismissHandler);
+    await applyBtn.click();
+
+    // Verify title and body are NOT overwritten (remain as 'absent' template)
+    await expect(page.locator('#composeTitleInput')).toHaveValue('출석 확인 요청');
+    await expect(page.locator('#composeBodyInput')).toContainText('출석 기록이 확인되지 않았습니다');
+
+    // 5. Test overwrite guard when body is NOT empty - accept
+    const acceptHandler = async (dialog) => {
+      expect(dialog.message()).toContain('이미 작성된 본문 내용이 있습니다. 선택한 템플릿 초안으로 덮어쓰시겠습니까?');
+      await dialog.accept();
+    };
+    page.once('dialog', acceptHandler);
+    await applyBtn.click();
+
+    // Verify title and body ARE overwritten (now 'consulting' template)
+    await expect(page.locator('#composeTitleInput')).toHaveValue('상담 안내');
+    await expect(page.locator('#composeBodyInput')).toHaveValue('#{이름} 원생 관련 상담 안내드립니다.\n확인 부탁드립니다.');
+
+    // 6. Test macro replacement inside confirmation modal
+    // Search and select '유템플' student
+    await page.locator('#studentSearchInput').fill('유템플');
+    await page.locator('.student-row', { hasText: '유템플' }).click();
+    await page.locator('#btnAddToRecipients').click();
+
+    // Open Pre-Send Confirmation Modal
+    await page.locator('#btnReviewSend').click();
+    const focusOverlay = page.locator('#focusConfirmOverlay');
+    await expect(focusOverlay).toBeVisible();
+
+    // Toggle preview to check macro replacement
+    const recipientCard = focusOverlay.locator('.confirm-recipient-item', { hasText: '유보호자' });
+    const togglePreviewBtn = recipientCard.locator('.btn-preview-toggle-item');
+    await togglePreviewBtn.click();
+
+    // Preview container should contain replaced macro (원생명 '유템플' instead of '유보호자')
+    const previewContainer = recipientCard.locator('.preview-container-item');
+    await expect(previewContainer).toBeVisible();
+    await expect(previewContainer).toContainText('유템플 원생 관련 상담 안내드립니다.');
+
+    // Close preview & modal
+    await togglePreviewBtn.click();
+    await page.locator('#btnFocusCancel').click();
+
+    // Cleanup recipients
+    await page.locator('#btnClearRecipients').click();
+
+    // Cleanup db
+    await page.evaluate((sid) => {
+      window.stateStore.db.students = window.stateStore.db.students.filter(s => s.id !== sid);
+      window.stateStore.db.parentContacts = window.stateStore.db.parentContacts.filter(c => c.studentId !== sid);
+      window.stateStore.saveDB();
+    }, studentId);
+  });
 });
 

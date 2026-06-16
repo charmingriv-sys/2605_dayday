@@ -87,6 +87,54 @@ const SCENARIOS = [
   },
 ];
 
+const TEMPLATES_MAP = {
+  "general": {
+    label: "일반 안내",
+    title: "안내드립니다",
+    body: "#{이름} 원생 관련 안내드립니다."
+  },
+  "absent": {
+    label: "결석 확인",
+    title: "출석 확인 요청",
+    body: "#{이름} 원생의 수업 출석 기록이 확인되지 않았습니다.\n확인 부탁드립니다."
+  },
+  "tuition_info": {
+    label: "수강료 수납 안내",
+    title: "수강료 납부 안내",
+    body: "#{이름} 원생의 수강료 납부 안내드립니다.\n확인 부탁드립니다."
+  },
+  "tuition_unpaid": {
+    label: "수강료 미수납 안내",
+    title: "수강료 납부 확인 요청",
+    body: "#{이름} 원생의 수강료 납부가 아직 확인되지 않았습니다.\n확인 부탁드립니다."
+  },
+  "tuition_success": {
+    label: "수강료 수납 완료",
+    title: "수강료 납부 완료 안내",
+    body: "#{이름} 원생의 수강료 납부가 확인되었습니다.\n감사합니다."
+  },
+  "book_info": {
+    label: "교재비 수납 안내",
+    title: "교재비 납부 안내",
+    body: "#{이름} 원생의 교재비 납부 안내드립니다.\n확인 부탁드립니다."
+  },
+  "book_unpaid": {
+    label: "교재비 미수납 안내",
+    title: "교재비 납부 확인 요청",
+    body: "#{이름} 원생의 교재비 납부가 아직 확인되지 않았습니다.\n확인 부탁드립니다."
+  },
+  "book_success": {
+    label: "교재비 수납 완료",
+    title: "교재비 납부 완료 안내",
+    body: "#{이름} 원생의 교재비 납부가 확인되었습니다.\n감사합니다."
+  },
+  "consulting": {
+    label: "상담 안내",
+    title: "상담 안내",
+    body: "#{이름} 원생 관련 상담 안내드립니다.\n확인 부탁드립니다."
+  }
+};
+
 const ORG = { academy: "튜링음악학원", director: "주재경", unsubscribe: "080-123-4567" };
 
 // --- Icon Renderer -----------------------------------------------------------
@@ -160,6 +208,7 @@ const viewState = {
   },
   dedupe: true,
 
+  selectedTemplateKey: "general",
   recipients: [],
   senderNumber: "0212345678",
   customSenderNumber: "",
@@ -1623,6 +1672,31 @@ export function renderMessageSend(container) {
 
         <div style="height: 1px; background: #f1f5f9;"></div>
 
+        <!-- Message Type/Template Selection -->
+        <div style="display: flex; flex-direction: column; gap: 5px;">
+          <label style="display: block; font-size: 11.5px; font-weight: 700; color: var(--text-muted); margin-bottom: 0;">메시지 유형</label>
+          <div style="display: flex; gap: 8px; align-items: center; width: 100%;">
+            <div style="position: relative; flex: 1;">
+              <select id="templateTypeSelect" style="
+                width: 100%; padding: 8px 30px 8px 10px; font-size: 13px; color: var(--text-main);
+                background: #f8fafc; border: 1px solid var(--border-color); border-radius: 9px; appearance: none; font-weight: 600; cursor: pointer;
+              ">
+                ${Object.keys(TEMPLATES_MAP).map(k => `
+                  <option value="${k}" ${viewState.selectedTemplateKey === k ? 'selected' : ''}>${TEMPLATES_MAP[k].label}</option>
+                `).join('')}
+              </select>
+              <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none;">${renderIcon('chevronD', 14, '#94A3B8')}</span>
+            </div>
+            <button id="btnApplyTemplateDraft" style="
+              padding: 8px 16px; font-size: 12.5px; font-weight: 700; border-radius: 9px; border: 1px solid var(--border-color);
+              color: var(--slate); background: #f8fafc; cursor: pointer; font-family: inherit; margin-bottom: 0;
+              box-shadow: 0 1px 2px rgba(16,24,40,.05); transition: all 0.2s; white-space: nowrap;
+            ">초안 적용</button>
+          </div>
+        </div>
+
+        <div style="height: 1px; background: #f1f5f9;"></div>
+
         <!-- Macro variables -->
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px;">
           <label style="font-size: 11.5px; font-weight: 700; color: var(--text-muted);">제목</label>
@@ -1666,8 +1740,13 @@ export function renderMessageSend(container) {
             width: 100%; min-height: 110px; padding: 12px 14px; font-size: 13.5px; line-height: 1.55;
             color: var(--text-main); background: #ffffff; border: 1.5px solid var(--border-color);
             border-radius: 10px; outline: none; transition: all 0.2s ease; resize: vertical;
-            box-shadow: 0 1px 2px rgba(16,24,40,.05); font-family: inherit; margin-bottom: 12px;
+            box-shadow: 0 1px 2px rgba(16,24,40,.05); font-family: inherit; margin-bottom: 6px;
           " onfocus="this.style.borderColor='var(--primary)'; this.style.boxShadow='0 0 0 3px rgba(37,99,235,.15)';" onblur="this.style.borderColor='var(--border-color)'; this.style.boxShadow='none';">${viewState.body}</textarea>
+
+          <div style="font-size: 11px; color: var(--text-muted); font-weight: 600; margin-top: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;">
+            <span style="display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; background: #eef2f6; border-radius: 50%; font-size: 9px; font-weight: 800; color: var(--text-muted);">i</span>
+            지원 변수: <code style="font-family: monospace; font-size: 11px; color: var(--slate); background: #f1f5f9; padding: 1px 4px; border-radius: 4px; font-weight: 700; border: 1px solid var(--border-color);">#{이름}</code> (발송 시 원생명으로 자동 치환)
+          </div>
           
           <!-- Realistic Smartphone Preview Container -->
           <div class="phone-frame">
@@ -1813,6 +1892,28 @@ export function renderMessageSend(container) {
         </div>
       </div>
     `;
+
+    // Message Type / Template Draft Selection listeners
+    const templateSelect = block.querySelector('#templateTypeSelect');
+    templateSelect.addEventListener('change', (e) => {
+      viewState.selectedTemplateKey = e.target.value;
+    });
+
+    const applyDraftBtn = block.querySelector('#btnApplyTemplateDraft');
+    applyDraftBtn.addEventListener('click', () => {
+      const selected = TEMPLATES_MAP[viewState.selectedTemplateKey];
+      if (!selected) return;
+
+      if (viewState.body.trim()) {
+        const confirmOverwrite = confirm("이미 작성된 본문 내용이 있습니다. 선택한 템플릿 초안으로 덮어쓰시겠습니까?");
+        if (!confirmOverwrite) return;
+      }
+
+      viewState.title = selected.title;
+      viewState.body = selected.body;
+      renderComposePanel();
+      renderSendBar();
+    });
 
     // Hook listeners
     const senderSelect = block.querySelector('#senderNumberSelect');
