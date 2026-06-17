@@ -229,7 +229,8 @@ const viewState = {
 
   vaultActiveTab: "recommend",
   vaultSearchQuery: "",
-  vaultPages: { recommend: 0, saved: 0, recent: 0 },
+  vaultPages: { recommend: 0, saved: 0, recent: 0, deliveries: 0 },
+  deliveryFilter: "all",
 
   focusOpen: false,
   scenarioKey: null,
@@ -2310,18 +2311,41 @@ export function renderMessageSend(container) {
       listData = MOCK_RECOMMENDED;
     } else if (viewState.vaultActiveTab === "saved") {
       listData = stateStore.getMessageTemplates();
-    } else {
+    } else if (viewState.vaultActiveTab === "recent") {
       listData = stateStore.getOutboundMessageLogs().filter(log => log.sendType !== "scheduled");
+    } else if (viewState.vaultActiveTab === "deliveries") {
+      let rawDeliveries = stateStore.getOutboundMessageDeliveries() || [];
+      // Sort newest first
+      rawDeliveries = [...rawDeliveries].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      // Filter by status
+      if (viewState.deliveryFilter === "sent") {
+        listData = rawDeliveries.filter(d => d.status === "sent");
+      } else if (viewState.deliveryFilter === "failed") {
+        listData = rawDeliveries.filter(d => d.status === "failed");
+      } else {
+        listData = rawDeliveries;
+      }
+      // Limit to recent 20
+      listData = listData.slice(0, 20);
     }
 
     // Filter
     if (viewState.vaultSearchQuery) {
       const q = viewState.vaultSearchQuery.trim().toLowerCase();
-      listData = listData.filter(item => 
-        (item.title && item.title.toLowerCase().includes(q)) ||
-        (item.body && item.body.toLowerCase().includes(q)) ||
-        (item.name && item.name.toLowerCase().includes(q))
-      );
+      if (viewState.vaultActiveTab === "deliveries") {
+        listData = listData.filter(d => 
+          (d.recipientName && d.recipientName.toLowerCase().includes(q)) ||
+          (d.recipientPhoneMasked && d.recipientPhoneMasked.includes(q)) ||
+          (d.failureReason && d.failureReason.toLowerCase().includes(q)) ||
+          (d.failureCode && d.failureCode.toLowerCase().includes(q))
+        );
+      } else {
+        listData = listData.filter(item => 
+          (item.title && item.title.toLowerCase().includes(q)) ||
+          (item.body && item.body.toLowerCase().includes(q)) ||
+          (item.name && item.name.toLowerCase().includes(q))
+        );
+      }
     }
 
     const currentPage = viewState.vaultPages[viewState.vaultActiveTab] || 0;
@@ -2340,6 +2364,54 @@ export function renderMessageSend(container) {
     };
 
     const getVaultListHTML = () => {
+      if (viewState.vaultActiveTab === "deliveries") {
+        return paginatedData.length === 0 ? `
+          <div style="padding: 40px 10px; text-align: center; font-size: 12px; color: var(--text-muted);">
+            ${viewState.vaultSearchQuery ? "검색 결과가 없습니다." : "발송 결과 내역이 없습니다."}
+          </div>
+        ` : paginatedData.map(item => {
+          const isFailed = item.status === 'failed';
+          const dateLabel = formatDate(item.createdAt);
+          
+          const statusBg = isFailed ? '#fee2e2' : '#dcfce7';
+          const statusColor = isFailed ? '#991b1b' : '#15803d';
+          const statusText = isFailed ? '실패' : '성공';
+
+          const channelColor = item.channel === 'sms' ? '#0284c7' : item.channel === 'lms' ? '#7c3aed' : item.channel === 'push' ? '#16a34a' : '#2563eb';
+          const channelBg = item.channel === 'sms' ? '#e0f2fe' : item.channel === 'lms' ? '#f3e8ff' : item.channel === 'push' ? '#dcfce7' : '#eff6ff';
+
+          let metaLabel = '';
+          if (item.relatedTaskId) {
+            metaLabel = `<span style="font-size: 10px; color: #475569; background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-weight: 700; margin-left: 4px;">태스크: ${item.relatedTaskId}</span>`;
+          }
+
+          return `
+            <div class="delivery-result-card" style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 12px; background: #ffffff; border: 1.5px solid #f1f5f9; box-shadow: 0 2px 8px rgba(0,0,0,0.02); transition: all 0.2s ease;">
+              <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                <span class="delivery-recipient-name" style="font-size: 12px; font-weight: 800; color: var(--text-main);">${item.recipientName}</span>
+                <span class="delivery-recipient-phone" style="font-family: monospace; font-size: 11.5px; color: var(--text-muted);">${item.recipientPhoneMasked}</span>
+                <span style="font-size: 9px; font-weight: 800; color: ${channelColor}; background: ${channelBg}; padding: 2px 6px; border-radius: 6px; margin-left: 2px;">${item.channel.toUpperCase()}</span>
+                <span style="font-size: 9px; font-weight: 800; color: #4b5563; background: #f3f4f6; padding: 2px 6px; border-radius: 6px; margin-left: 2px;">${item.provider}</span>
+                ${metaLabel}
+              </div>
+              
+              <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 2px;">
+                <span class="delivery-status-badge" style="font-size: 11px; padding: 2px 8px; border-radius: 6px; font-weight: 800; background: ${statusBg}; color: ${statusColor};">${statusText}</span>
+                ${isFailed ? `
+                  <span class="delivery-failure-reason" style="font-size: 11.5px; font-weight: 700; color: #991b1b; background: #fef2f2; padding: 2px 8px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px;">
+                    ${item.failureReason || item.failureCode}
+                  </span>
+                ` : ''}
+              </div>
+
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px; border-top: 1px dashed #f1f5f9; padding-top: 6px;">
+                <span style="font-size: 11px; color: var(--text-muted); font-weight: 700;">${dateLabel}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
       return paginatedData.length === 0 ? `
         <div style="padding: 40px 10px; text-align: center; font-size: 12px; color: var(--text-muted);">
           ${viewState.vaultSearchQuery 
@@ -2477,7 +2549,13 @@ export function renderMessageSend(container) {
           </div>
         ` : ''}
         <p style="margin: 4px 0 0; font-size: 10px; color: var(--text-muted-light); text-align: center;">
-          ${viewState.vaultActiveTab === "recommend" ? "추천 문구 · 화면 입력칸에 즉시 대입" : "저장 템플릿 · 적용 단추로 덮어쓰기"}
+          ${viewState.vaultActiveTab === "recommend" 
+            ? "추천 문구 · 화면 입력칸에 즉시 대입" 
+            : viewState.vaultActiveTab === "deliveries"
+              ? "최근 20건의 Mock 발송 결과 내역입니다."
+              : viewState.vaultActiveTab === "recent"
+                ? "최근 발송한 메시지 내역입니다."
+                : "저장 템플릿 · 적용 단추로 덮어쓰기"}
         </p>
       `;
     };
@@ -2499,11 +2577,12 @@ export function renderMessageSend(container) {
 
     block.innerHTML = `
       <!-- Tab Header -->
-      <div style="display: flex; align-items: center; padding: 12px 12px 0; border-bottom: 1px solid #f1f5f9; gap: 2px;">
+      <div style="display: flex; align-items: center; padding: 12px 12px 0; border-bottom: 1px solid #f1f5f9; gap: 2px; flex-wrap: wrap;">
         ${[
           { key: "recommend", label: "추천", icon: "star", count: MOCK_RECOMMENDED.length },
           { key: "saved", label: "저장", icon: "note", count: stateStore.getMessageTemplates().length },
-          { key: "recent", label: "최근", icon: "clock", count: stateStore.getOutboundMessageLogs().length }
+          { key: "recent", label: "최근", icon: "clock", count: stateStore.getOutboundMessageLogs().filter(log => log.sendType !== "scheduled").length },
+          { key: "deliveries", label: "Mock 발송 결과", icon: "send", count: stateStore.getOutboundMessageDeliveries().length }
         ].map(tab => {
           const active = viewState.vaultActiveTab === tab.key;
           return `
@@ -2524,9 +2603,31 @@ export function renderMessageSend(container) {
       <div style="display: flex; gap: 7px; padding: 12px 14px 0;">
         <div style="display: flex; align-items: center; gap: 7px; padding: 7px 10px; background: #fff; border: 1px solid var(--border-color); border-radius: 9px; flex: 1;">
           ${renderIcon('search', 13, '#94A3B8')}
-          <input id="vaultSearchInput" value="${viewState.vaultSearchQuery}" placeholder="제목·내용 검색" style="border: none; outline: none; fontSize: 12px; flex: 1; background: transparent; padding: 0;" />
+          <input id="vaultSearchInput" value="${viewState.vaultSearchQuery}" placeholder="${viewState.vaultActiveTab === 'deliveries' ? '수신인·사유 검색' : '제목·내용 검색'}" style="border: none; outline: none; fontSize: 12px; flex: 1; background: transparent; padding: 0;" />
         </div>
       </div>
+
+      ${viewState.vaultActiveTab === "deliveries" ? `
+        <!-- Delivery Filters -->
+        <div style="display: flex; gap: 6px; padding: 8px 14px 0;">
+          ${[
+            { key: "all", label: "전체" },
+            { key: "sent", label: "성공" },
+            { key: "failed", label: "실패" }
+          ].map(f => {
+            const isSel = viewState.deliveryFilter === f.key;
+            return `
+              <button class="btn-delivery-filter" data-filter="${f.key}" style="
+                border: 1.5px solid ${isSel ? 'var(--primary)' : '#cbd5e1'};
+                background: ${isSel ? 'var(--primary-light, #eff6ff)' : '#fff'};
+                color: ${isSel ? 'var(--primary)' : '#475569'};
+                border-radius: 20px; padding: 4px 12px; font-size: 11.5px; font-weight: 700;
+                cursor: pointer; font-family: inherit; transition: all 0.15s; margin-bottom: 0;
+              ">${f.label}</button>
+            `;
+          }).join('')}
+        </div>
+      ` : ''}
 
       <!-- Paginated List with Speech Bubble Previews -->
       <div id="vaultListContainer" style="padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 180px; overflow-y: auto;">
@@ -2552,6 +2653,14 @@ export function renderMessageSend(container) {
       viewState.vaultSearchQuery = e.target.value;
       viewState.vaultPages[viewState.vaultActiveTab] = 0;
       renderMessageVault(false);
+    });
+
+    block.querySelectorAll('.btn-delivery-filter').forEach(btn => {
+      btn.addEventListener('click', () => {
+        viewState.deliveryFilter = btn.dataset.filter;
+        viewState.vaultPages["deliveries"] = 0;
+        renderMessageVault(true);
+      });
     });
 
     function hookVaultPartialListeners() {

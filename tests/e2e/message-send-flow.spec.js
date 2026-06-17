@@ -2247,6 +2247,58 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     expect(failDelivery.status).toBe('failed');
     expect(failDelivery.failureCode).toBe('MOCK_TEST_FAIL');
 
+    // Click deliveries tab in the vault panel to switch to deliveries tab
+    await page.locator('.btn-vault-tab[data-tab="deliveries"]').click();
+
+    // Verify UI rendering of delivery results
+    // Deliveries tab should be active
+    const activeTab = page.locator('.btn-vault-tab[data-tab="deliveries"]');
+    await expect(activeTab).toHaveAttribute('style', /border-bottom: 2.5px solid/);
+
+    const cards = page.locator('.delivery-result-card');
+    await expect(cards).toHaveCount(2);
+
+    const failCard = page.locator('.delivery-result-card', { hasText: '실패테스트' });
+    await expect(failCard.locator('.delivery-status-badge')).toContainText('실패');
+    await expect(failCard.locator('.delivery-failure-reason')).toContainText('테스트용 실패 번호입니다.');
+    await expect(failCard.locator('.delivery-recipient-phone')).toContainText('010-****-0000');
+    
+    // Ensure raw numbers are not shown
+    const failCardText = await failCard.innerText();
+    expect(failCardText).not.toContain('01000000000');
+    expect(failCardText).not.toContain('010-0000-0000');
+
+    const successCard = page.locator('.delivery-result-card').filter({ hasNotText: '실패테스트' });
+    await expect(successCard.locator('.delivery-status-badge')).toContainText('성공');
+    await expect(successCard.locator('.delivery-recipient-phone')).toContainText('-****-');
+    
+    const successCardText = await successCard.innerText();
+    // Raw number shouldn't be in the innerText
+    expect(successCardText).not.toMatch(/010-\d{4}-\d{4}/);
+    expect(successCardText).not.toMatch(/010\d{8}/);
+
+    // Filter by "실패"
+    await page.locator('.btn-delivery-filter', { hasText: '실패' }).click();
+    await expect(cards).toHaveCount(1);
+    await expect(failCard).toBeVisible();
+    await expect(successCard).not.toBeVisible();
+
+    // Filter by "성공"
+    await page.locator('.btn-delivery-filter', { hasText: '성공' }).click();
+    await expect(cards).toHaveCount(1);
+    await expect(successCard).toBeVisible();
+    await expect(failCard).not.toBeVisible();
+
+    // Search by "실패"
+    await page.locator('.btn-delivery-filter', { hasText: '전체' }).click();
+    await page.locator('#vaultSearchInput').fill('실패');
+    await expect(cards).toHaveCount(1);
+    await expect(failCard).toBeVisible();
+
+    // Reset search
+    await page.locator('#vaultSearchInput').fill('');
+    await expect(cards).toHaveCount(2);
+
     // Ensure parentMessages (학부모 앱 수신메시지) is NOT created
     const parentMessages = await page.evaluate(() => window.stateStore.db.parentMessages);
     expect(parentMessages.length).toBe(0);
