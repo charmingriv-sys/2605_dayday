@@ -1127,23 +1127,62 @@ export function renderStudentCommunication(container) {
         const unreadMsgCount = messages.filter(m => !m.isRead).length;
         const unreadSurvCount = surveys.filter(s => !readSurvIds.includes(s.id)).length;
 
+        // Parent communication tab settings
+        const tabSettings = stateStore.getParentCommunicationTabSettings();
+        const tabsOrder = [
+            { value: 'announcements', idSuffix: 'ann', label: '공지사항' },
+            { value: 'surveys', idSuffix: 'surv', label: '설문조사' },
+            { value: 'messages', idSuffix: 'msg', label: '안내사항' }
+        ];
+        const enabledTabs = tabsOrder.filter(t => tabSettings[t.value] && tabSettings[t.value].enabled);
+
+        // Auto redirect if current active tab is OFF
+        if (enabledTabs.length > 0) {
+            const isCurrentEnabled = enabledTabs.some(t => t.value === activeSubTab);
+            if (!isCurrentEnabled) {
+                activeSubTab = enabledTabs[0].value;
+            }
+        } else {
+            // All tabs are OFF -> Show empty state warning
+            container.innerHTML = `
+                ${renderSiblingSelectorHeader(container, render)}
+                <div class="glass-card" style="padding: 1.8rem; min-height: 500px; background: rgba(255, 255, 255, 0.7); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center;">
+                    <div style="text-align: center; color: var(--text-muted); padding: 4rem 2rem; font-size: 0.95rem;">
+                        <i class="fa-solid fa-bell-slash" style="font-size: 3rem; display: block; margin-bottom: 1rem; color: rgba(0,0,0,0.06);"></i>
+                        현재 표시 중인 알림 및 설문 항목이 없습니다.
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
         container.innerHTML = `
             ${renderSiblingSelectorHeader(container, render)}
             <div class="glass-card" style="padding: 1.8rem; min-height: 500px; background: rgba(255, 255, 255, 0.7); border: 1px solid var(--border-color);">
                 <!-- Tab Menu Header -->
                 <div style="display: flex; gap: 10px; margin-bottom: 2rem; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; flex-wrap: wrap;">
-                    <button class="btn ${activeSubTab === 'announcements' ? 'btn-primary' : 'btn-secondary'}" id="tab-stu-ann" style="border-radius: 20px; font-weight: 700; padding: 8px 16px; position: relative;">
-                        <i class="fa-solid fa-bullhorn" style="margin-right: 4px;"></i> 공지사항
-                        ${unreadAnnCount > 0 ? `<span class="tab-badge" style="position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.65rem; display: flex; align-items: center; justify-content: center; font-weight: bold;">${unreadAnnCount}</span>` : ''}
-                    </button>
-                    <button class="btn ${activeSubTab === 'messages' ? 'btn-primary' : 'btn-secondary'}" id="tab-stu-msg" style="border-radius: 20px; font-weight: 700; padding: 8px 16px; position: relative;">
-                        <i class="fa-solid fa-envelope" style="margin-right: 4px;"></i> 개별 안내
-                        ${unreadMsgCount > 0 ? `<span class="tab-badge" style="position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.65rem; display: flex; align-items: center; justify-content: center; font-weight: bold;">${unreadMsgCount}</span>` : ''}
-                    </button>
-                    <button class="btn ${activeSubTab === 'surveys' ? 'btn-primary' : 'btn-secondary'}" id="tab-stu-surv" style="border-radius: 20px; font-weight: 700; padding: 8px 16px; position: relative;">
-                        <i class="fa-solid fa-square-poll-vertical" style="margin-right: 4px;"></i> 설문
-                        ${unreadSurvCount > 0 ? `<span class="tab-badge" style="position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.65rem; display: flex; align-items: center; justify-content: center; font-weight: bold;">${unreadSurvCount}</span>` : ''}
-                    </button>
+                    ${enabledTabs.map(t => {
+                        let badgeHtml = '';
+                        if (t.value === 'announcements' && unreadAnnCount > 0) {
+                            badgeHtml = `<span class="tab-badge" style="position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.65rem; display: flex; align-items: center; justify-content: center; font-weight: bold;">${unreadAnnCount}</span>`;
+                        } else if (t.value === 'messages' && unreadMsgCount > 0) {
+                            badgeHtml = `<span class="tab-badge" style="position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.65rem; display: flex; align-items: center; justify-content: center; font-weight: bold;">${unreadMsgCount}</span>`;
+                        } else if (t.value === 'surveys' && unreadSurvCount > 0) {
+                            badgeHtml = `<span class="tab-badge" style="position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.65rem; display: flex; align-items: center; justify-content: center; font-weight: bold;">${unreadSurvCount}</span>`;
+                        }
+
+                        let iconHtml = '';
+                        if (t.value === 'announcements') iconHtml = `<i class="fa-solid fa-bullhorn" style="margin-right: 4px;"></i>`;
+                        else if (t.value === 'messages') iconHtml = `<i class="fa-solid fa-envelope" style="margin-right: 4px;"></i>`;
+                        else if (t.value === 'surveys') iconHtml = `<i class="fa-solid fa-square-poll-vertical" style="margin-right: 4px;"></i>`;
+
+                        return `
+                            <button class="btn ${activeSubTab === t.value ? 'btn-primary' : 'btn-secondary'}" id="tab-stu-${t.idSuffix}" style="border-radius: 20px; font-weight: 700; padding: 8px 16px; position: relative;">
+                                ${iconHtml} ${t.label}
+                                ${badgeHtml}
+                            </button>
+                        `;
+                    }).join('')}
                 </div>
 
                 <!-- Sub-tab Content Area -->
@@ -1154,17 +1193,11 @@ export function renderStudentCommunication(container) {
         `;
 
         // Bind events
-        container.querySelector('#tab-stu-ann').addEventListener('click', () => {
-            activeSubTab = 'announcements';
-            render();
-        });
-        container.querySelector('#tab-stu-msg').addEventListener('click', () => {
-            activeSubTab = 'messages';
-            render();
-        });
-        container.querySelector('#tab-stu-surv').addEventListener('click', () => {
-            activeSubTab = 'surveys';
-            render();
+        enabledTabs.forEach(t => {
+            container.querySelector(`#tab-stu-${t.idSuffix}`).addEventListener('click', () => {
+                activeSubTab = t.value;
+                render();
+            });
         });
 
         // Bind list item click events
@@ -1348,7 +1381,7 @@ export function renderStudentCommunication(container) {
     const openMessageDetailModal = (msg) => {
         const modalHtml = `
             <div class="modal-header">
-                <h3 class="modal-title">학부모 개별 안내</h3>
+                <h3 class="modal-title">학부모 안내사항</h3>
                 <button class="modal-close" data-close-modal>&times;</button>
             </div>
             <div class="modal-body" style="padding-top: 10px;">
@@ -1492,11 +1525,13 @@ export function renderStudentCommunication(container) {
     const unsubMsg = stateStore.subscribe('MESSAGES_CHANGED', render);
     const unsubSurv = stateStore.subscribe('SURVEYS_CHANGED', render);
     const unsubResp = stateStore.subscribe('SURVEY_RESPONSES_CHANGED', render);
+    const unsubSettings = stateStore.subscribe('SETTINGS_CHANGED', render);
 
     return () => {
         unsubAnn();
         unsubMsg();
         unsubSurv();
         unsubResp();
+        unsubSettings();
     };
 }

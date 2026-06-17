@@ -2079,7 +2079,17 @@ export function updateParentSidebarBadges() {
     const readSurvIds = stateStore.getReadSurveyIds(user.id, studentId);
     const unreadSurvCount = surveys.filter(s => !readSurvIds.includes(s.id)).length;
 
-    const commCount = unreadAnnCount + unreadMsgCount + unreadSurvCount;
+    const tabSettings = stateStore.getParentCommunicationTabSettings();
+    let commCount = 0;
+    if (tabSettings.announcements.enabled) {
+        commCount += unreadAnnCount;
+    }
+    if (tabSettings.surveys.enabled) {
+        commCount += unreadSurvCount;
+    }
+    if (tabSettings.messages.enabled) {
+        commCount += unreadMsgCount;
+    }
 
     // Calculate unread comment count
     const attendanceRecords = stateStore.getAttendanceForStudent(studentId);
@@ -2131,6 +2141,7 @@ stateStore.subscribe('ANNOUNCEMENTS_CHANGED', updateParentSidebarBadges);
 stateStore.subscribe('MESSAGES_CHANGED', updateParentSidebarBadges);
 stateStore.subscribe('SURVEYS_CHANGED', updateParentSidebarBadges);
 stateStore.subscribe('ATTENDANCE_CHANGED', updateParentSidebarBadges);
+stateStore.subscribe('SETTINGS_CHANGED', updateParentSidebarBadges);
 
 // Expose globally
 window.updateParentSidebarBadges = updateParentSidebarBadges;

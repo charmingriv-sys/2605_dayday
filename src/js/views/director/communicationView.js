@@ -14,14 +14,14 @@ export function renderCommunication(container) {
             <div class="glass-card" style="padding: 1.8rem; min-height: 500px;">
                 <!-- Tab Menu Header -->
                 <div style="display: flex; gap: 10px; margin-bottom: 2rem; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; flex-wrap: wrap;">
-                    <button class="btn ${activeSubTab === 'announcements' ? 'btn-primary' : 'btn-secondary'}" id="tab-comm-ann" style="border-radius: 20px; font-weight: 700; padding: 8px 16px;">
+                    <button class="btn \${activeSubTab === 'announcements' ? 'btn-primary' : 'btn-secondary'}" id="tab-comm-ann" style="border-radius: 20px; font-weight: 700; padding: 8px 16px;">
                         <i class="fa-solid fa-bullhorn" style="margin-right: 4px;"></i> 공지사항 관리
                     </button>
-                    <button class="btn ${activeSubTab === 'messages' ? 'btn-primary' : 'btn-secondary'}" id="tab-comm-msg" style="border-radius: 20px; font-weight: 700; padding: 8px 16px;">
-                        <i class="fa-solid fa-envelope" style="margin-right: 4px;"></i> 개별 안내장 발송
-                    </button>
-                    <button class="btn ${activeSubTab === 'surveys' ? 'btn-primary' : 'btn-secondary'}" id="tab-comm-surv" style="border-radius: 20px; font-weight: 700; padding: 8px 16px;">
+                    <button class="btn \${activeSubTab === 'surveys' ? 'btn-primary' : 'btn-secondary'}" id="tab-comm-surv" style="border-radius: 20px; font-weight: 700; padding: 8px 16px;">
                         <i class="fa-solid fa-square-poll-vertical" style="margin-right: 4px;"></i> 설문조사 시스템
+                    </button>
+                    <button class="btn \${activeSubTab === 'messages' ? 'btn-primary' : 'btn-secondary'}" id="tab-comm-msg" style="border-radius: 20px; font-weight: 700; padding: 8px 16px;">
+                        <i class="fa-solid fa-envelope" style="margin-right: 4px;"></i> 안내사항 관리
                     </button>
                 </div>
 

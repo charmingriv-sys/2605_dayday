@@ -494,6 +494,36 @@ class StateStore {
                 }
             }
 
+            // 5. Validate and clean parentCommunicationTabSettings
+            if (!this.db.settings.parentCommunicationTabSettings || typeof this.db.settings.parentCommunicationTabSettings !== 'object') {
+                this.db.settings.parentCommunicationTabSettings = {
+                    announcements: { enabled: false },
+                    surveys: { enabled: true },
+                    messages: { enabled: true }
+                };
+                migrated = true;
+            } else {
+                const currentSettings = this.db.settings.parentCommunicationTabSettings;
+                let subMigrated = false;
+                
+                if (!currentSettings.announcements || typeof currentSettings.announcements.enabled !== 'boolean') {
+                    currentSettings.announcements = { enabled: currentSettings.announcements ? !!currentSettings.announcements.enabled : false };
+                    subMigrated = true;
+                }
+                if (!currentSettings.surveys || typeof currentSettings.surveys.enabled !== 'boolean') {
+                    currentSettings.surveys = { enabled: currentSettings.surveys ? !!currentSettings.surveys.enabled : true };
+                    subMigrated = true;
+                }
+                if (!currentSettings.messages || typeof currentSettings.messages.enabled !== 'boolean') {
+                    currentSettings.messages = { enabled: currentSettings.messages ? !!currentSettings.messages.enabled : true };
+                    subMigrated = true;
+                }
+                
+                if (subMigrated) {
+                    migrated = true;
+                }
+            }
+
             if (migrated) {
                 this.saveDB();
             }

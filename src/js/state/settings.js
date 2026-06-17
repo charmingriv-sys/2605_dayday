@@ -277,6 +277,40 @@ export const settingsMethods = {
         this.notify('SETTINGS_CHANGED', this.db.settings);
     },
 
+    getParentCommunicationTabSettings() {
+        if (!this.db.settings) {
+            this.db.settings = {};
+        }
+        if (!this.db.settings.parentCommunicationTabSettings || typeof this.db.settings.parentCommunicationTabSettings !== 'object') {
+            this.db.settings.parentCommunicationTabSettings = {
+                announcements: { enabled: false },
+                surveys: { enabled: true },
+                messages: { enabled: true }
+            };
+        }
+        return this.db.settings.parentCommunicationTabSettings;
+    },
+
+    updateParentCommunicationTabSettings(settingsMap) {
+        if (!this.db.settings) {
+            this.db.settings = {};
+        }
+        if (!this.db.settings.parentCommunicationTabSettings || typeof this.db.settings.parentCommunicationTabSettings !== 'object') {
+            this.db.settings.parentCommunicationTabSettings = {
+                announcements: { enabled: false },
+                surveys: { enabled: true },
+                messages: { enabled: true }
+            };
+        }
+        for (const [key, val] of Object.entries(settingsMap)) {
+            if (this.db.settings.parentCommunicationTabSettings[key]) {
+                this.db.settings.parentCommunicationTabSettings[key].enabled = !!val.enabled;
+            }
+        }
+        this.saveDB();
+        this.notify('SETTINGS_CHANGED', this.db.settings);
+    },
+
     // --- ACADEMIES ---
     getAcademy(id) {
         if (!this.db.academies) this.db.academies = [];

@@ -70,6 +70,11 @@ test.describe('Parent Portal Communication Flow', () => {
     // Inject mock DB states: communication elements + automatic parentMessages + teacher comments
     await page.evaluate(() => {
       const db = window.stateStore.db;
+      db.settings.parentCommunicationTabSettings = {
+        announcements: { enabled: true },
+        surveys: { enabled: true },
+        messages: { enabled: true }
+      };
       db.announcements = [];
       db.messages = [];
       db.surveys = [];
@@ -494,5 +499,130 @@ test.describe('Parent Portal Communication Flow', () => {
     await page.waitForTimeout(300);
     await expect(commentCards.locator('.unread-dot')).toBeHidden();
     await expect(journalMenuBadge).toBeHidden();
+  });
+
+  test('should support parent communication tab visibility and order configurations (Phase 16T-2)', async ({ page }) => {
+    // 1. Log in as Director first to verify director view tab ordering and settings
+    const directorBtn = page.locator('#login-overlay .role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // Navigate to 학원정보관리 (Settings)
+    const settingsMenu = page.locator('.menu-item[data-view="dir-academy-info"]');
+    await expect(settingsMenu).toBeVisible();
+    await settingsMenu.click();
+
+    // Authenticate
+    const passwordInput = page.locator('#academy-auth-password');
+    const submitAuthBtn = page.locator('#btn-submit-academy-auth');
+    await passwordInput.fill('0000'); // Demo academy password is '0000'
+    await submitAuthBtn.click();
+
+    // Verify Tab Settings section is visible
+    const sectionTitle = page.locator('h4', { hasText: '학부모 알림 및 설문 탭 설정' });
+    await expect(sectionTitle).toBeVisible();
+
+    // Check defaults: announcements OFF, surveys ON, messages ON
+    const annToggle = page.locator('#tab-toggle-announcements');
+    const survToggle = page.locator('#tab-toggle-surveys');
+    const msgToggle = page.locator('#tab-toggle-messages');
+
+    await expect(annToggle).not.toBeChecked();
+    await expect(survToggle).toBeChecked();
+    await expect(msgToggle).toBeChecked();
+
+    // Verify Director Portal Communication View tab order: 공지사항 관리 -> 설문조사 시스템 -> 안내사항 관리
+    const commMenu = page.locator('.menu-item[data-view="dir-communication"]');
+    await expect(commMenu).toBeVisible();
+    await commMenu.click();
+
+    // Check tab elements and their order
+    const tabs = page.locator('.glass-card button[id^="tab-comm-"]');
+    await expect(tabs).toHaveCount(3);
+    await expect(tabs.nth(0)).toContainText('공지사항 관리');
+    await expect(tabs.nth(1)).toContainText('설문조사 시스템');
+    await expect(tabs.nth(2)).toContainText('안내사항 관리');
+
+    // 2. Log in as Parent to verify parent view tabs & ordering
+    await page.locator('#btn-logout').click();
+    await page.locator('.role-grid').waitFor({ state: 'attached', timeout: 5000 });
+
+    const parentBtn = page.locator('#login-overlay .role-btn.student');
+    await parentBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // Seed data so badges and lists can be checked
+    await page.evaluate(() => {
+      const db = window.stateStore.db;
+      db.announcements = [{ id: 'AN1', title: '공지1', content: '공지내용1', date: '2026-06-15', views: 0 }];
+      db.messages = [{ id: 'MSG1', studentId: 'S1', title: '안내1', content: '안내내용1', date: '2026-06-16', isRead: false }];
+      db.surveys = [{ id: 'SUR1', title: '설문1', description: '설문내용1', date: '2026-06-16', isActive: true, questions: [] }];
+      window.stateStore.saveDB();
+      if (window.updateParentSidebarBadges) {
+        window.updateParentSidebarBadges();
+      }
+    });
+
+    const parentCommMenu = page.locator('.menu-item[data-view="stu-communication"]');
+    await parentCommMenu.click();
+
+    // By default: announcements is OFF, surveys & messages are ON.
+    // Order: 설문조사 -> 안내사항 (공지사항 hidden)
+    const pTabs = page.locator('.glass-card button[id^="tab-stu-"]');
+    await expect(pTabs).toHaveCount(2);
+    await expect(pTabs.nth(0)).toContainText('설문조사');
+    await expect(pTabs.nth(1)).toContainText('안내사항');
+
+    // Sidebar badge should exclude announcements (1 unread survey + 1 unread message = 2)
+    const commMenuBadge = parentCommMenu.locator('.parent-menu-badge');
+    await expect(commMenuBadge).toHaveText('2');
+
+    // 3. Enable announcements via evaluate to verify parent view update
+    await page.evaluate(() => {
+      window.stateStore.updateParentCommunicationTabSettings({
+        announcements: { enabled: true },
+        surveys: { enabled: true },
+        messages: { enabled: true }
+      });
+    });
+
+    // Order should now be: 공지사항 -> 설문조사 -> 안내사항
+    await expect(pTabs).toHaveCount(3);
+    await expect(pTabs.nth(0)).toContainText('공지사항');
+    await expect(pTabs.nth(1)).toContainText('설문조사');
+    await expect(pTabs.nth(2)).toContainText('안내사항');
+
+    // Sidebar badge should include announcements (1 announcement + 1 survey + 1 message = 3)
+    await expect(commMenuBadge).toHaveText('3');
+
+    // 4. Disable messages (안내사항)
+    await page.evaluate(() => {
+      window.stateStore.updateParentCommunicationTabSettings({
+        announcements: { enabled: true },
+        surveys: { enabled: true },
+        messages: { enabled: false }
+      });
+    });
+
+    // Order should be: 공지사항 -> 설문조사
+    await expect(pTabs).toHaveCount(2);
+    await expect(pTabs.nth(0)).toContainText('공지사항');
+    await expect(pTabs.nth(1)).toContainText('설문조사');
+    await expect(commMenuBadge).toHaveText('2');
+
+    // 5. Disable all tabs to verify empty state
+    await page.evaluate(() => {
+      window.stateStore.updateParentCommunicationTabSettings({
+        announcements: { enabled: false },
+        surveys: { enabled: false },
+        messages: { enabled: false }
+      });
+    });
+
+    await expect(page.locator('#student-communication-content')).toBeHidden();
+    const emptyStateText = page.locator('.glass-card', { hasText: '현재 표시 중인 알림 및 설문 항목이 없습니다.' });
+    await expect(emptyStateText).toBeVisible();
+    await expect(commMenuBadge).toBeHidden();
   });
 });

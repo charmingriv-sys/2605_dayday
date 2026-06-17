@@ -35,6 +35,7 @@ export function renderAcademyInfo(container) {
         };
 
         const parentMessageSettings = stateStore.getParentMessageSettings();
+        const parentTabSettings = stateStore.getParentCommunicationTabSettings();
 
         container.innerHTML = `
             <div class="glass-card" style="padding: 2.2rem; max-width: 700px; margin: 0 auto; min-height: 500px;">
@@ -324,6 +325,40 @@ export function renderAcademyInfo(container) {
                                     <li>메시지함 저장을 끄면 푸시 발송도 함께 꺼집니다.</li>
                                     <li style="color: var(--warning); font-weight: 600; list-style-type: '※ ';">이 설정은 학부모님 앱 메시지함과 앱 푸시에만 적용되며, 문자(SMS/LMS)나 카카오 알림톡 자동 발송 설정이 아닙니다.</li>
                                 </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="border-top: 1px solid var(--border-color); padding-top: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5rem;">
+                        <h4 style="font-weight: 700; font-size: 1rem; color: var(--text-main); margin-bottom: 0.6rem; display: flex; align-items: center; gap: 8px;">
+                            <i class="fa-solid fa-list-check" style="color: var(--primary);"></i> 학부모 알림 및 설문 탭 설정
+                        </h4>
+                        <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 1.2rem; line-height: 1.55;">
+                            학부모 포털의 ‘알림 및 설문’ 화면에 표시할 탭을 설정합니다. 문자, 알림톡, 앱 푸시 발송 설정과는 별개입니다.<br>
+                            <span style="color: var(--warning); font-weight: 600;">※ OFF로 설정하면 학부모 화면에서 해당 탭과 미확인 배지만 숨겨지며, 기존 공지/설문/안내 데이터는 삭제되지 않습니다.</span>
+                        </p>
+                        
+                        <div style="display: flex; flex-direction: column; gap: 12px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 16px; border-radius: var(--radius-sm);">
+                            <div style="display: grid; grid-template-columns: 180px 140px; align-items: center; gap: 12px;">
+                                <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">공지사항</span>
+                                <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                    <input type="checkbox" id="tab-toggle-announcements" ${parentTabSettings.announcements.enabled ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                    표시함
+                                </label>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 180px 140px; align-items: center; gap: 12px;">
+                                <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">설문조사</span>
+                                <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                    <input type="checkbox" id="tab-toggle-surveys" ${parentTabSettings.surveys.enabled ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                    표시함
+                                </label>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 180px 140px; align-items: center; gap: 12px;">
+                                <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">안내사항</span>
+                                <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0; cursor: pointer;">
+                                    <input type="checkbox" id="tab-toggle-messages" ${parentTabSettings.messages.enabled ? 'checked' : ''} style="width: 16px; height: 16px; margin: 0; cursor: pointer;">
+                                    표시함
+                                </label>
                             </div>
                         </div>
                     </div>
@@ -664,6 +699,14 @@ export function renderAcademyInfo(container) {
                     parentMessageSettingsMap[eventKey] = { messageEnabled, pushEnabled };
                 });
                 stateStore.updateParentMessageSettingsBulk(parentMessageSettingsMap);
+
+                // Save parent communication tab settings
+                const parentTabSettingsMap = {
+                    announcements: { enabled: container.querySelector('#tab-toggle-announcements').checked },
+                    surveys: { enabled: container.querySelector('#tab-toggle-surveys').checked },
+                    messages: { enabled: container.querySelector('#tab-toggle-messages').checked }
+                };
+                stateStore.updateParentCommunicationTabSettings(parentTabSettingsMap);
 
                 stateStore.updateAcademy(academy.id, {
                     name: nameInput.value.trim(),
