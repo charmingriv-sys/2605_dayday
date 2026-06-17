@@ -1937,6 +1937,42 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     // Verify active view is Message Send view
     await expect(page.locator('.menu-item[data-view="dir-message-send"]')).toHaveClass(/active/);
 
+    // [Phase 16T-1B] Verify Handoff UX Banner
+    const handoffBanner = page.locator('.handoff-banner');
+    await expect(handoffBanner).toBeVisible();
+    await expect(handoffBanner).toContainText('오늘 원장 콘솔에서 전달된 메시지입니다.');
+    await expect(page.locator('.handoff-target-info')).toContainText('나핸드 / 결석 확인');
+
+    // [Phase 16T-1B] Verify Handoff Target Student Row is highlighted and visible in viewport
+    const targetRow = page.locator(`.student-item-container[data-id="${studentId}"]`);
+    await expect(targetRow).toHaveClass(/handoff-highlight/);
+    await expect(targetRow).toBeInViewport();
+
+    // Wait for highlight duration to expire
+    await page.waitForTimeout(1600);
+    await expect(targetRow).not.toHaveClass(/handoff-highlight/);
+
+    // [Phase 16T-1B] Click "오늘 콘솔로 돌아가기" button
+    await page.locator('#btnReturnToTodayConsole').click();
+
+    // Verify we are returned to Today Console
+    await expect(page.locator('.menu-item[data-view="dir-today-console"]')).toHaveClass(/active/);
+
+    // Verify target task is still Open (not completed)
+    const returnedAbsentCard = page.locator('#tasks-list-container .glass-card', { hasText: '나핸드 원생 결석 확인 필요' });
+    await expect(returnedAbsentCard).toBeVisible();
+    await expect(returnedAbsentCard.locator('.btn-done')).toBeVisible();
+
+    // [Phase 16T-1B] Enter Message Send directly and verify NO handoff banner and NO highlight
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+    await expect(page.locator('.handoff-banner')).toBeHidden();
+    await expect(targetRow).not.toHaveClass(/handoff-highlight/);
+
+    // Now re-trigger handoff to continue the original test flow
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+    await absentMessageBtn.click();
+    await expect(page.locator('.menu-item[data-view="dir-message-send"]')).toHaveClass(/active/);
+
     // 4. Verify selection state and class-time text parsing
     // Checkbox for '나핸드' in the student list should be checked
     const studentRow = page.locator('.student-row', { hasText: '나핸드' });

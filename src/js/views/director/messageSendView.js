@@ -256,7 +256,14 @@ const viewState = {
   recipientDetailModalOpen: false,
   recipientDetailLogId: null,
   expandedCardIds: new Set(),
-  previewRecipientIndex: 0
+  previewRecipientIndex: 0,
+
+  // Handoff UX States (Phase 16T-1B)
+  isHandoffMode: false,
+  handoffStudentId: null,
+  handoffStudentName: null,
+  handoffTaskTitle: null,
+  handoffScrolledAndHighlighted: false
 };
 
 // --- Time parsing & composition helpers for 3-column scroll picker ---
@@ -566,6 +573,24 @@ export function renderMessageSend(container) {
         sessionStorage.removeItem('dayday_handoff_payload');
         
         if (payload && payload.source === 'today_console' && payload.studentId) {
+          viewState.isHandoffMode = true;
+          viewState.handoffStudentId = payload.studentId;
+          viewState.handoffScrolledAndHighlighted = false;
+
+          // 원생명 검색
+          const dbStudents = stateStore.getStudents() || [];
+          const st = dbStudents.find(s => s.id === payload.studentId);
+          viewState.handoffStudentName = st ? st.name : '알 수 없는 원생';
+
+          // 업무 유형 매핑
+          let tTitle = payload.taskTitle || payload.meta?.taskTitle || '전달된 업무';
+          if (payload.suggestedTemplateType === 'absent') {
+            tTitle = '결석 확인';
+          } else if (payload.suggestedTemplateType === 'tuition_unpaid') {
+            tTitle = '수강료 미수납 확인';
+          }
+          viewState.handoffTaskTitle = tTitle;
+
           // Reset and apply selection
           viewState.selectedStudentIds.clear();
           viewState.selectedStudentIds.add(payload.studentId);
@@ -612,6 +637,10 @@ export function renderMessageSend(container) {
       }
     } else {
       // Clear handoff metadata for direct manual views
+      viewState.isHandoffMode = false;
+      viewState.handoffStudentId = null;
+      viewState.handoffStudentName = null;
+      viewState.handoffTaskTitle = null;
       viewState.handoffTaskId = null;
       viewState.handoffRelatedDomainType = null;
       viewState.handoffRelatedDomainId = null;
@@ -775,6 +804,12 @@ export function renderMessageSend(container) {
         position: relative;
       }
       
+      .handoff-highlight {
+        background-color: #f0fdf4 !important;
+        border-left: 4px solid #16a34a !important;
+        transition: background-color 0.5s ease, border-left-width 0.5s ease;
+      }
+      
       @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
       @keyframes popIn { from { opacity: 0; transform: translateY(-6px) scale(.98); } to { opacity: 1; transform: none; } }
       @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
@@ -838,7 +873,36 @@ export function renderMessageSend(container) {
   // 1. Disclaimer Yellow Box
   const renderDisclaimer = () => {
     const block = container.querySelector('#messageSendDisclaimer');
+    
+    let handoffBannerHtml = '';
+    if (viewState.isHandoffMode) {
+      handoffBannerHtml = `
+        <div class="handoff-banner" style="
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 10px 16px; margin-bottom: 12px; background: #f0fdf4; border: 1px solid #bbf7d0;
+          border-radius: 12px; color: #166534; font-size: 13px; font-weight: 700;
+          animation: fadeIn 0.3s ease;
+        ">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: #16a34a; color: #fff; font-size: 10px;">✓</span>
+            <span>오늘 원장 콘솔에서 전달된 메시지입니다.</span>
+            <span style="color: #15803d; font-size: 12px; font-weight: 800; background: #dcfce7; padding: 2px 8px; border-radius: 6px; margin-left: 6px;" class="handoff-target-info">
+              ${viewState.handoffStudentName} / ${viewState.handoffTaskTitle}
+            </span>
+          </div>
+          <button id="btnReturnToTodayConsole" style="
+            background: #16a34a; color: #fff; border: none; padding: 5px 12px; border-radius: 6px;
+            font-size: 11.5px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 4px;
+            transition: background 0.2s; font-family: inherit; margin-bottom: 0;
+          ">
+            오늘 콘솔로 돌아가기
+          </button>
+        </div>
+      `;
+    }
+
     block.innerHTML = `
+      ${handoffBannerHtml}
       <div style="display: flex; align-items: flex-start; gap: 11px; padding: 12px 16px; background: #FFFBF2; border: 1px solid #FAE9C4; border-radius: 13px; margin-bottom: 2px;">
         <span style="width: 26px; height: 26px; border-radius: 8px; background: #FEF0CF; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
           ${renderIcon('alert', 15, '#B45309', 2.2)}
@@ -849,6 +913,16 @@ export function renderMessageSend(container) {
         </div>
       </div>
     `;
+
+    const returnBtn = block.querySelector('#btnReturnToTodayConsole');
+    if (returnBtn) {
+      returnBtn.addEventListener('click', () => {
+        const todayConsoleMenu = document.querySelector('.menu-item[data-view="dir-today-console"]');
+        if (todayConsoleMenu) {
+          todayConsoleMenu.click();
+        }
+      });
+    }
   };
 
   // 2. Scenario Strip (Templates)
@@ -1512,6 +1586,23 @@ export function renderMessageSend(container) {
       renderComposePanel();
       renderSendBar();
     });
+
+    // Handoff Auto Scroll and Subtle Highlight (Phase 16T-1B)
+    if (viewState.isHandoffMode && viewState.handoffStudentId && !viewState.handoffScrolledAndHighlighted) {
+      viewState.handoffScrolledAndHighlighted = true;
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          const studentItem = container.querySelector(`.student-item-container[data-id="${viewState.handoffStudentId}"]`);
+          if (studentItem) {
+            studentItem.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            studentItem.classList.add('handoff-highlight');
+            setTimeout(() => {
+              studentItem.classList.remove('handoff-highlight');
+            }, 1500);
+          }
+        }, 50);
+      });
+    }
   };
 
   // 4. Column 2 Top: Recipient List
