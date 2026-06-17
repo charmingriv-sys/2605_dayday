@@ -349,4 +349,150 @@ test.describe('Parent Portal Communication Flow', () => {
 
     expect(consoleErrors.length).toBe(0);
   });
+
+  test('should support teacher comment details, badge counts, read status updates and student/parent isolation (Phase 16T-1C)', async ({ page }) => {
+    // 1. Seed database with multiple test students, parents and attendance records
+    await page.evaluate(() => {
+      const db = window.stateStore.db;
+      // Clear existing attendance
+      db.attendance = [];
+      
+      // Seed student S1 and S2 details
+      db.students = db.students.filter(s => s.id !== 'S1' && s.id !== 'S2');
+      db.students.push({
+        id: 'S1',
+        name: '최다은',
+        phone: '010-1111-2222',
+        instrument: '피아노',
+        teacherId: 'T1'
+      });
+      db.students.push({
+        id: 'S2',
+        name: '최이삭',
+        phone: '010-2222-3333',
+        instrument: '바이올린',
+        teacherId: 'T1'
+      });
+
+      // Sibling selector dropdown helper links
+      db.parentStudentLinks = db.parentStudentLinks || [];
+      db.parentStudentLinks = db.parentStudentLinks.filter(l => l.parentUserId !== 'USR_PAR_DEMO');
+      db.parentStudentLinks.push({ parentUserId: 'USR_PAR_DEMO', studentId: 'S1' });
+      db.parentStudentLinks.push({ parentUserId: 'USR_PAR_DEMO', studentId: 'S2' });
+
+      // S1 has note (unread), S1 has empty note (should not render), S2 has note (unread)
+      db.attendance.push({
+        id: 'ATT_S1_WITH_NOTE',
+        studentId: 'S1',
+        date: '2026-06-15',
+        time: '14:00',
+        status: 'present',
+        note: '최다은 수업 피드백 코멘트 내용입니다.'
+      });
+      db.attendance.push({
+        id: 'ATT_S1_EMPTY_NOTE',
+        studentId: 'S1',
+        date: '2026-06-14',
+        time: '14:00',
+        status: 'present',
+        note: '   ' // whitespace note
+      });
+      db.attendance.push({
+        id: 'ATT_S1_NULL_NOTE',
+        studentId: 'S1',
+        date: '2026-06-13',
+        time: '14:00',
+        status: 'present',
+        note: null // null note
+      });
+      db.attendance.push({
+        id: 'ATT_S2_WITH_NOTE',
+        studentId: 'S2',
+        date: '2026-06-15',
+        time: '15:00',
+        status: 'present',
+        note: '최이삭 수업 피드백 코멘트 내용입니다.'
+      });
+
+      window.stateStore.saveDB();
+      if (window.updateParentSidebarBadges) {
+        window.updateParentSidebarBadges();
+      }
+    });
+
+    // 2. Log in as Parent
+    await page.locator('#login-overlay .role-btn.student').click();
+
+    // 3. Verify unread count badge on "선생님 피드백 코멘트" menu
+    const journalMenu = page.locator('.menu-item[data-view="stu-journal"]');
+    await expect(journalMenu).toBeVisible();
+    const journalMenuBadge = journalMenu.locator('.parent-menu-badge');
+    await expect(journalMenuBadge).toHaveText('1'); // Initially 1 for S1
+
+    // Navigate to "선생님 피드백 코멘트" view
+    await journalMenu.click();
+    await expect(page.locator('#page-title')).toHaveText('선생님 피드백 코멘트');
+
+    // 4. Verify rendering filtering: only ATT_S1_WITH_NOTE should be rendered, others hidden
+    const commentCards = page.locator('.journal-card-item');
+    await expect(commentCards).toHaveCount(1);
+    await expect(commentCards).toContainText('최다은 수업 피드백 코멘트 내용입니다.');
+    
+    // Verify the empty/null/whitespace ones are NOT rendered
+    await expect(page.locator('.journal-card-item', { hasText: '이날은 별도의 수업일지 코멘트가 등록되지 않았습니다.' })).toHaveCount(0);
+
+    // Verify unread dot is visible on the card
+    await expect(commentCards.locator('.unread-dot')).toBeVisible();
+
+    // 5. Click card to open modal and verify modal contents (including class/instrument)
+    await commentCards.click();
+    const commonModal = page.locator('#common-modal');
+    const modalContent = page.locator('.modal-content');
+    await expect(commonModal).toHaveClass(/show/);
+    await expect(modalContent).toContainText('선생님 피드백 코멘트');
+    await expect(modalContent).toContainText('최다은 수업 피드백 코멘트 내용입니다.');
+    // Check 수강 과목 (instrument) name is present in the modal
+    await expect(modalContent).toContainText('피아노');
+
+    // Close modal
+    await modalContent.locator('[data-close-modal]').first().click();
+    await expect(commonModal).not.toHaveClass(/show/);
+
+    // 6. Verify unread dot is gone, and sidebar badge is gone
+    await expect(commentCards.locator('.unread-dot')).toBeHidden();
+    await expect(journalMenuBadge).toBeHidden();
+
+    // 7. Test Isolation: Switch child to S2 (최이삭)
+    const siblingSelect = page.locator('#app-sibling-select');
+    await expect(siblingSelect).toBeVisible();
+    await siblingSelect.selectOption('S2');
+    
+    // Wait for re-render
+    await page.waitForTimeout(300);
+
+    // Verify S2's unread comment card is rendered
+    const s2CommentCard = page.locator('.journal-card-item');
+    await expect(s2CommentCard).toHaveCount(1);
+    await expect(s2CommentCard).toContainText('최이삭 수업 피드백 코멘트 내용입니다.');
+    await expect(s2CommentCard.locator('.unread-dot')).toBeVisible();
+
+    // Verify S2 sidebar menu badge is visible and shows 1
+    await expect(journalMenuBadge).toHaveText('1');
+
+    // Click S2 card to read
+    await s2CommentCard.click();
+    await expect(commonModal).toHaveClass(/show/);
+    await expect(modalContent).toContainText('바이올린'); // Check S2's instrument
+    await modalContent.locator('[data-close-modal]').first().click();
+
+    // Verify S2 card unread dot and badge are gone
+    await expect(s2CommentCard.locator('.unread-dot')).toBeHidden();
+    await expect(journalMenuBadge).toBeHidden();
+
+    // Switch back to S1 and verify S1 comment remains read (dot is hidden, badge is hidden)
+    await siblingSelect.selectOption('S1');
+    await page.waitForTimeout(300);
+    await expect(commentCards.locator('.unread-dot')).toBeHidden();
+    await expect(journalMenuBadge).toBeHidden();
+  });
 });

@@ -41,6 +41,10 @@ function getActiveStudentId() {
     if (user && user.role === 'parent') {
         const siblings = stateStore.getStudentsForParent(user.id);
         if (siblings.length > 0) {
+            const saved = localStorage.getItem(`dayday_active_student_${user.id}`);
+            const found = siblings.find(s => s.id === saved);
+            if (found) return found.id;
+
             const stored = sessionStorage.getItem('turing_active_student_id') || sessionStorage.getItem('harmonia_active_student_id');
             const valid = siblings.some(s => s.id === stored);
             if (valid) return stored;
@@ -82,7 +86,11 @@ function bindSiblingSelector(container, reRenderFn) {
     const select = container.querySelector('#app-sibling-select');
     if (select) {
         select.addEventListener('change', (e) => {
+            const user = stateStore.getCurrentUser();
             sessionStorage.setItem('turing_active_student_id', e.target.value);
+            if (user && user.role === 'parent') {
+                localStorage.setItem(`dayday_active_student_${user.id}`, e.target.value);
+            }
             if (typeof window.updateParentSidebarBadges === 'function') {
                 window.updateParentSidebarBadges();
             }
@@ -959,8 +967,11 @@ export function renderJournal(container) {
         // Sort attendance chronologically descending (latest first)
         attendance.sort((a, b) => b.date.localeCompare(a.date));
 
+        // Filter out records where note is empty/null/whitespace
+        const comments = attendance.filter(record => record.note && record.note.trim() !== '');
+
         let timelineHtml = '';
-        if (attendance.length === 0) {
+        if (comments.length === 0) {
             timelineHtml = `
                 <div class="glass-card" style="text-align: center; padding: 4rem 2rem; color: var(--text-muted); margin-top: 1.5rem;">
                     <i class="fa-solid fa-feather-pointed" style="font-size: 3rem; margin-bottom: 1.2rem; display: block; color: var(--text-muted);"></i>
@@ -969,15 +980,14 @@ export function renderJournal(container) {
                 </div>
             `;
         } else {
-            attendance.forEach(record => {
+            comments.forEach(record => {
                 const statusInfo = STATUS_MAP[record.status] || { text: record.status, badge: 'badge-info', color: 'var(--primary)' };
-                const hasNote = record.note && record.note.trim() !== '';
-                const isRead = !hasNote || readCommentIds.includes(record.id);
+                const isRead = readCommentIds.includes(record.id);
 
                 timelineHtml += `
-                    <div class="${hasNote ? 'journal-card-item' : ''} glass-card" data-id="${record.id}" style="margin-bottom: 1.5rem; border-left: 4px solid ${statusInfo.color}; background: var(--bg-card); transition: var(--transition); position: relative; ${hasNote ? 'cursor: pointer;' : ''}">
-                        ${hasNote && !isRead ? `<span class="unread-dot" style="position: absolute; top: 12px; left: 12px; width: 8px; height: 8px; background: var(--danger); border-radius: 50%;"></span>` : ''}
-                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; flex-wrap: wrap; gap: 10px; padding-left: ${hasNote && !isRead ? '12px' : '0'};">
+                    <div class="journal-card-item glass-card" data-id="${record.id}" style="margin-bottom: 1.5rem; border-left: 4px solid ${statusInfo.color}; background: var(--bg-card); transition: var(--transition); position: relative; cursor: pointer;">
+                        ${!isRead ? `<span class="unread-dot" style="position: absolute; top: 12px; left: 12px; width: 8px; height: 8px; background: var(--danger); border-radius: 50%;"></span>` : ''}
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; flex-wrap: wrap; gap: 10px; padding-left: ${!isRead ? '12px' : '0'};">
                             <div style="display: flex; align-items: center; gap: 10px;">
                                 <i class="fa-solid fa-calendar-day" style="color: var(--primary);"></i>
                                 <span style="font-weight: 700; font-size: 1.1rem; color: var(--text-main);">${formatDate(record.date)}</span>
@@ -985,11 +995,11 @@ export function renderJournal(container) {
                             </div>
                             <span class="badge ${statusInfo.badge}">${statusInfo.text}</span>
                         </div>
-                        <div style="background: rgba(9, 132, 227, 0.02); border: 1px solid var(--border-color); padding: 1.2rem; border-radius: var(--radius-md); margin-left: ${hasNote && !isRead ? '12px' : '0'};">
+                        <div style="background: rgba(9, 132, 227, 0.02); border: 1px solid var(--border-color); padding: 1.2rem; border-radius: var(--radius-md); margin-left: ${!isRead ? '12px' : '0'};">
                             <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px; font-weight: 600;">
                                 <i class="fa-solid fa-clipboard-user" style="color: var(--accent); margin-right: 6px;"></i>수업일지 및 코멘트
                             </div>
-                            <div style="font-size: 0.95rem; line-height: 1.6; color: var(--text-main); white-space: pre-wrap;">${record.note || '이날은 별도의 수업일지 코멘트가 등록되지 않았습니다.'}</div>
+                            <div style="font-size: 0.95rem; line-height: 1.6; color: var(--text-main); white-space: pre-wrap;">${record.note}</div>
                         </div>
                     </div>
                 `;
@@ -1021,7 +1031,7 @@ export function renderJournal(container) {
         container.querySelectorAll('.journal-card-item').forEach(card => {
             card.addEventListener('click', () => {
                 const id = card.dataset.id;
-                const record = attendance.find(r => r.id === id);
+                const record = comments.find(r => r.id === id);
                 if (record) {
                     stateStore.markCommentAsRead(record.id, parentUserId, studentId);
                     openCommentDetailModal(record);
@@ -1033,6 +1043,9 @@ export function renderJournal(container) {
     };
 
     const openCommentDetailModal = (record) => {
+        const studentId = getActiveStudentId();
+        const student = stateStore.getStudent(studentId);
+        const instrument = student ? student.instrument : '피아노';
         const statusInfo = STATUS_MAP[record.status] || { text: record.status, badge: 'badge-info', color: 'var(--primary)' };
         const modalHtml = `
             <div class="modal-header">
@@ -1045,6 +1058,7 @@ export function renderJournal(container) {
                 </div>
                 <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1.5rem; display: flex; gap: 15px; align-items: center;">
                     <span>수업일: ${record.date} ${record.time ? `(${record.time})` : ''}</span>
+                    <span>수강 과목: ${instrument}</span>
                     <span class="badge ${statusInfo.badge}">${statusInfo.text}</span>
                 </div>
                 <div style="background: rgba(9, 132, 227, 0.01); border: 1px solid var(--border-color); padding: 1.5rem; border-radius: var(--radius-md); font-size: 0.95rem; line-height: 1.6; color: var(--text-main); white-space: pre-wrap; min-height: 150px;">${escapeHtml(record.note)}</div>
