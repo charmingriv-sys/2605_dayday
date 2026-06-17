@@ -261,29 +261,29 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
         db.parentStudentLinks.push({ parentUserId: 'USR_PAR_DEMO', studentId: 'S1' });
       }
 
-      // Add check-in attendance record for 2026-06-03
+      // Add check-in attendance record for 2026-05-03 (May 2026 to align with calendar view)
       db.attendance.push({
         id: 'ATT_E2E_LIST_1',
         studentId: 'S1',
-        date: '2026-06-03',
+        date: '2026-05-03',
         status: 'present',
         time: '09:00',
         leavingTime: '18:00',
         note: '양손 연습 잘함'
       });
 
-      // Add late check-in attendance record for 2026-06-02
+      // Add late check-in attendance record for 2026-05-02 (May 2026)
       db.attendance.push({
         id: 'ATT_E2E_LIST_2',
         studentId: 'S1',
-        date: '2026-06-02',
+        date: '2026-05-02',
         status: 'late',
         time: '14:15',
         leavingTime: '',
         note: '하원 누락됨'
       });
 
-      // Add unread check_in parent message for 2026-06-02
+      // Add unread check_in parent message for 2026-05-02
       db.parentMessages.push({
         id: 'pm_unread_attendance_e2e',
         studentId: 'S1',
@@ -298,7 +298,7 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
         pushRequired: false,
         pushStatus: 'not_required',
         dedupeKey: 'E2E_MSG_ATT_LIST_UNREAD',
-        createdAt: '2026-06-02T14:15:00.000Z'
+        createdAt: '2026-05-02T14:15:00.000Z'
       });
 
       window.stateStore.saveDB();
@@ -334,6 +334,10 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
     await expect(metricsGrid).toContainText('지각');
     await expect(metricsGrid).toContainText('결석');
 
+    // [Phase 16T-1D] Verify KPI count when lateDetectionEnabled is true
+    await expect(metricsGrid.locator('.metric-card', { hasText: '등원 완료' })).toContainText('1회');
+    await expect(metricsGrid.locator('.metric-card', { hasText: '지각' })).toContainText('1회');
+
     // Verify unread badge count on list tab button is visible
     const tabBadge = btnList.locator('.parent-tab-badge');
     await expect(tabBadge).toBeVisible();
@@ -356,15 +360,15 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
     const listTable = page.locator('[data-testid="parent-attendance-list"]');
     await expect(listTable).toBeVisible();
 
-    // Row for 2026-06-03: present + leavingTime -> "등원 완료 / 하원 완료"
-    const row1 = listTable.locator('tr.attendance-list-row', { hasText: '2026-06-03' });
+    // Row for 2026-05-03: present + leavingTime -> "등원 완료 / 하원 완료"
+    const row1 = listTable.locator('tr.attendance-list-row', { hasText: '2026-05-03' });
     await expect(row1).toBeVisible();
     await expect(row1).toContainText('등원 완료 / 하원 완료');
     await expect(row1).toContainText('09:00');
     await expect(row1).toContainText('18:00');
 
-    // Row for 2026-06-02: late + no leavingTime -> "지각 / 하원 기록 없음"
-    const row2 = listTable.locator('tr.attendance-list-row', { hasText: '2026-06-02' });
+    // Row for 2026-05-02: late + no leavingTime -> "지각 / 하원 기록 없음"
+    const row2 = listTable.locator('tr.attendance-list-row', { hasText: '2026-05-02' });
     await expect(row2).toBeVisible();
     await expect(row2).toContainText('지각 / 하원 기록 없음');
     await expect(row2).toContainText('14:15');
@@ -390,7 +394,7 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
     await expect(commonModal).toBeVisible();
     await expect(commonModal).toContainText('하원 기록 없음');
     
-    // Verify that notes are not shown in details modal
+    // Verify that notes are not shown in details modal (Maintain policy)
     await expect(commonModal).not.toContainText('선생님 수업일지');
     await expect(commonModal).not.toContainText('하원 누락됨');
 
@@ -431,6 +435,10 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
     await expect(commonModal).not.toHaveClass(/show/);
     await page.waitForTimeout(500);
 
+    // [Phase 16T-1D] Verify KPI count merges and late card disappears when late is OFF
+    await expect(metricsGrid.locator('.metric-card', { hasText: '등원 완료' })).toContainText('2회');
+    await expect(metricsGrid.locator('.metric-card', { hasText: '지각' })).toBeHidden();
+
     // Toggle back to calendar
     await btnCal.click();
     await expect(btnCal).toHaveClass(/btn-primary/);
@@ -438,6 +446,20 @@ test.describe('Kiosk Attendance and Parent Portal Synchronization Flow', () => {
 
     // Verify KPI cards are still visible after returning to calendar view
     await expect(metricsGrid).toBeVisible();
+
+    // [Phase 16T-1D] Verify calendar legend has no "지각"
+    const legendLate = page.locator('.calendar-day-status.late', { hasText: '지각' });
+    await expect(legendLate).toBeHidden();
+
+    // [Phase 16T-1D] Verify calendar cell status dot color is present (green) instead of late (orange) for 2026-05-02
+    const cell02 = page.locator('.calendar-day-cell[data-date="2026-05-02"]');
+    await expect(cell02.locator('.calendar-day-status')).toHaveClass(/present/);
+    await expect(cell02.locator('.calendar-day-status')).not.toHaveClass(/late/);
+
+    // [Phase 16T-1D] Verify calendar container is compact (max-width limit is applied)
+    const calendarGrid = page.locator('.attendance-calendar-grid');
+    const boundingBox = await calendarGrid.boundingBox();
+    expect(boundingBox.width).toBeLessThanOrEqual(760);
 
     // Verify that "학부모 메시지함" menu is NOT visible in sidebar
     await expect(page.locator('#parent-messages-menu-item')).toBeHidden();

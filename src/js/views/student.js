@@ -144,17 +144,20 @@ export function renderCalendar(container) {
         }).length;
         const absentCount = mayAttendance.filter(a => a.status === 'absent').length;
 
-        const metricsGridHtml = `
-            <div class="metrics-grid">
-                <div class="glass-card metric-card">
-                    <div class="metric-icon green">
-                        <i class="fa-solid fa-calendar-check"></i>
-                    </div>
-                    <div class="metric-info">
-                        <span class="metric-value">${presentCount}회</span>
-                        <span class="metric-label">등원 완료</span>
-                    </div>
+        let metricsCardsHtml = `
+            <div class="glass-card metric-card">
+                <div class="metric-icon green">
+                    <i class="fa-solid fa-calendar-check"></i>
                 </div>
+                <div class="metric-info">
+                    <span class="metric-value">${presentCount}회</span>
+                    <span class="metric-label">등원 완료</span>
+                </div>
+            </div>
+        `;
+
+        if (lateEnabled) {
+            metricsCardsHtml += `
                 <div class="glass-card metric-card">
                     <div class="metric-icon cyan">
                         <i class="fa-solid fa-clock"></i>
@@ -164,15 +167,24 @@ export function renderCalendar(container) {
                         <span class="metric-label">지각</span>
                     </div>
                 </div>
-                <div class="glass-card metric-card">
-                    <div class="metric-icon red">
-                        <i class="fa-solid fa-calendar-xmark"></i>
-                    </div>
-                    <div class="metric-info">
-                        <span class="metric-value">${absentCount}회</span>
-                        <span class="metric-label">결석</span>
-                    </div>
+            `;
+        }
+
+        metricsCardsHtml += `
+            <div class="glass-card metric-card">
+                <div class="metric-icon red">
+                    <i class="fa-solid fa-calendar-xmark"></i>
                 </div>
+                <div class="metric-info">
+                    <span class="metric-value">${absentCount}회</span>
+                    <span class="metric-label">결석</span>
+                </div>
+            </div>
+        `;
+
+        const metricsGridHtml = `
+            <div class="metrics-grid">
+                ${metricsCardsHtml}
             </div>
         `;
 
@@ -230,7 +242,7 @@ export function renderCalendar(container) {
                 ${renderSiblingSelectorHeader(container, render)}
                 ${viewModeToggleHtml}
                 ${metricsGridHtml}
-
+ 
                 <div class="glass-card" style="margin-top: 1.5rem;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 12px;">
                         <h3 style="font-weight: 700; font-size: 1.25rem; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
@@ -241,16 +253,18 @@ export function renderCalendar(container) {
                             <span style="display: flex; align-items: center; gap: 6px; color: var(--text-muted);">
                                 <span class="calendar-day-status present" style="margin: 0; display: inline-block;"></span> 등원
                             </span>
+                            ${lateEnabled ? `
                             <span style="display: flex; align-items: center; gap: 6px; color: var(--text-muted);">
                                 <span class="calendar-day-status late" style="margin: 0; display: inline-block;"></span> 지각
                             </span>
+                            ` : ''}
                             <span style="display: flex; align-items: center; gap: 6px; color: var(--text-muted);">
                                 <span class="calendar-day-status absent" style="margin: 0; display: inline-block;"></span> 결석
                             </span>
                         </div>
                     </div>
-
-                    <div class="attendance-calendar-grid">
+ 
+                    <div class="attendance-calendar-grid" style="max-width: 760px; margin: 1rem auto 0 auto;">
                         ${daysOfWeek.map(d => `<div class="calendar-header-day">${d}</div>`).join('')}
                         ${cellsHtml}
                     </div>
