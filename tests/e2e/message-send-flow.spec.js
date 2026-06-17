@@ -2182,5 +2182,74 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
       window.stateStore.saveDB();
     }, { sid: testStudentId });
   });
+
+  test('should trigger mock provider delivery creation on final send and display success/failure stats in alert', async ({ page }) => {
+    // Navigate to Message Send view
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+
+    // Clear outboundMessageDeliveries to start fresh
+    await page.evaluate(() => {
+      window.stateStore.db.outboundMessageDeliveries = [];
+      window.stateStore.db.parentMessages = [];
+      window.stateStore.saveDB();
+    });
+
+    // Select the first student row (최다은 or similar) and add
+    const studentRows = page.locator('.student-row');
+    await studentRows.first().click();
+    await page.locator('#btnAddToRecipients').click();
+
+    // Add a manual recipient with test number "010-0000-0000" to trigger mock failure
+    await page.locator('#btnDirectAddStub').click();
+    await page.locator('#directAddNameInp').fill('실패테스트');
+    await page.locator('#directAddPhoneInp').fill('010-0000-0000');
+    await page.locator('#btnDirectAddSubmit').click();
+    await page.locator('#btnDirectAddDone').click();
+
+    // Verify recipients added (should be 2: one valid student, one mock failure)
+    await expect(page.locator('#totalRecipientsLabel')).toContainText('2건');
+
+    // Apply template to ensure body is filled
+    const applyBtn = page.locator('.btn-apply-template').first();
+    await applyBtn.click();
+
+    // Setup dialog listener to verify alert text
+    let dialogTriggered = false;
+    let dialogText = '';
+    page.on('dialog', async (dialog) => {
+      dialogTriggered = true;
+      dialogText = dialog.message();
+      await dialog.accept();
+    });
+
+    // Click Send bar to open confirmation modal
+    await page.locator('#btnSendBarDirect').click();
+
+    // Click confirm send
+    await page.locator('#btnFocusSendConfirm').click();
+
+    // Verify dialog triggered and has correct text
+    expect(dialogTriggered).toBe(true);
+    expect(dialogText).toContain('발송 처리 완료: 성공 1건, 실패 1건');
+    expect(dialogText).toContain('실제 발송은 아직 연동되지 않았고, 발송이력만 저장되었습니다.');
+
+    // Retrieve database state to verify deliveries
+    const deliveries = await page.evaluate(() => window.stateStore.db.outboundMessageDeliveries);
+    expect(deliveries.length).toBe(2);
+    
+    const successDelivery = deliveries.find(d => d.recipientName !== '실패테스트');
+    const failDelivery = deliveries.find(d => d.recipientName === '실패테스트');
+
+    expect(successDelivery.status).toBe('sent');
+    expect(successDelivery.provider).toBe('mock_sms');
+    expect(successDelivery.recipientPhoneMasked).not.toBeNull();
+    
+    expect(failDelivery.status).toBe('failed');
+    expect(failDelivery.failureCode).toBe('MOCK_TEST_FAIL');
+
+    // Ensure parentMessages (학부모 앱 수신메시지) is NOT created
+    const parentMessages = await page.evaluate(() => window.stateStore.db.parentMessages);
+    expect(parentMessages.length).toBe(0);
+  });
 });
 

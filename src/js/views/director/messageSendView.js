@@ -2769,9 +2769,29 @@ export function renderMessageSend(container) {
       previewSamples
     };
 
-    stateStore.addOutboundMessageLog(logData);
+    const addedLog = stateStore.addOutboundMessageLog(logData);
 
-    alert("실제 발송은 아직 연동되지 않았고, 발송이력만 저장되었습니다.");
+    // Call Mock Provider and build deliveries
+    const outboundRequest = stateStore.createOutboundRequest({
+      method: method,
+      senderNumber: logData.senderNumber,
+      title: logData.title,
+      body: logData.body,
+      imageName: logData.imageName,
+      recipients: sendableList,
+      relatedTaskId: viewState.handoffTaskId || null,
+      relatedDomainType: viewState.handoffTaskId ? 'task' : null,
+      relatedDomainId: viewState.handoffTaskId || null
+    });
+    outboundRequest.logId = addedLog.id;
+
+    const providerResult = stateStore.sendSmsViaMockProvider(outboundRequest);
+    const deliveries = stateStore.buildOutboundDeliveries(outboundRequest, providerResult);
+
+    const successCount = deliveries.filter(d => d.status === 'sent').length;
+    const failCount = deliveries.filter(d => d.status === 'failed').length;
+
+    alert(`발송 처리 완료: 성공 ${successCount}건, 실패 ${failCount}건\n(실제 발송은 아직 연동되지 않았고, 발송이력만 저장되었습니다.)`);
 
     // 작성 내용과 수신자 목록은 유지합니다.
     viewState.focusOpen = false;

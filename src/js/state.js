@@ -11,6 +11,7 @@ import { authUsersMethods } from './state/authUsers.js';
 import { sessionsMethods } from './state/sessions.js';
 import { todayTaskMethods } from './state/todayTask.js';
 import { majorScheduleMethods } from './state/majorSchedule.js';
+import { outboundProviderMethods } from './state/outboundProvider.js';
 
 import { LocalStorageAdapter } from './state/adapters/localStorageAdapter.js';
 
@@ -282,7 +283,8 @@ const DEFAULT_DB = {
     teacherAttendanceLogs: [],
     teacherAttendanceEditLogs: [],
     parentContacts: [],
-    parentMessages: []
+    parentMessages: [],
+    outboundMessageDeliveries: []
 };
 
 const adapter = new LocalStorageAdapter({
@@ -403,6 +405,10 @@ class StateStore {
             }
             if (!this.db.parentMessages) {
                 this.db.parentMessages = [];
+                migrated = true;
+            }
+            if (!this.db.outboundMessageDeliveries) {
+                this.db.outboundMessageDeliveries = [];
                 migrated = true;
             }
             if (migrated) {
@@ -571,6 +577,7 @@ Object.assign(StateStore.prototype, authUsersMethods);
 Object.assign(StateStore.prototype, sessionsMethods);
 Object.assign(StateStore.prototype, todayTaskMethods);
 Object.assign(StateStore.prototype, majorScheduleMethods);
+Object.assign(StateStore.prototype, outboundProviderMethods);
 
 // Export a single instance to be used globally
 export const stateStore = new StateStore();
