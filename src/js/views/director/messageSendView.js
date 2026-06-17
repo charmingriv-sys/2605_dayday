@@ -233,6 +233,7 @@ const viewState = {
   deliveryFilter: "all",
 
   focusOpen: false,
+  isSending: false,
   scenarioKey: null,
 
   // Template creation modal state
@@ -2830,6 +2831,10 @@ export function renderMessageSend(container) {
   };
 
   const processMessageSend = (sendableList, excludedList) => {
+    if (viewState.isSending) {
+      return;
+    }
+
     if (sendableList.length === 0) {
       alert("발송 가능 대상이 0명입니다.");
       return;
@@ -2839,85 +2844,100 @@ export function renderMessageSend(container) {
       return;
     }
 
-    const sendType = "immediate";
-    const status = "stub_saved";
-    const method = viewState.method === "알림톡" ? "ALIMTALK" : viewState.method === "PUSH" ? "PUSH" : "SMS";
+    viewState.isSending = true;
+    const confirmBtn = container.querySelector('#btnFocusSendConfirm');
+    if (confirmBtn) {
+      confirmBtn.disabled = true;
+      confirmBtn.innerHTML = '발송 처리 중...';
+    }
 
-    const previewSamples = sendableList.slice(0, 3).map(r => ({
-      recipientName: r.name,
-      title: replaceMacros(viewState.title || "", { name: r.name, studentId: r.no }),
-      body: replaceMacros(viewState.body || "", { name: r.name, studentId: r.no })
-    }));
+    try {
+      const sendType = "immediate";
+      const status = "stub_saved";
+      const method = viewState.method === "알림톡" ? "ALIMTALK" : viewState.method === "PUSH" ? "PUSH" : "SMS";
 
-    const logData = {
-      sendType,
-      status,
-      method,
-      senderNumber: viewState.senderNumber || "0212345678",
-      title: viewState.title || "",
-      body: viewState.body || "",
-      recipients: sendableList.map(r => ({
-        name: r.name,
-        phone: r.phone,
-        role: r.role || "직접입력",
-        studentId: r.no || null,
-        source: r.source || "student"
-      })),
-      excludedRecipients: excludedList.map(r => ({
-        name: r.name,
-        phone: r.phone,
-        role: r.role || "직접입력",
-        studentId: r.no || null,
-        source: r.source || "student",
-        reason: r.reason
-      })),
-      recipientCount: sendableList.length,
-      originalRecipientCount: viewState.recipients.length,
-      scheduledAt: null,
-      imageName: viewState.image,
-      previewSamples
-    };
+      const previewSamples = sendableList.slice(0, 3).map(r => ({
+        recipientName: r.name,
+        title: replaceMacros(viewState.title || "", { name: r.name, studentId: r.no }),
+        body: replaceMacros(viewState.body || "", { name: r.name, studentId: r.no })
+      }));
 
-    const addedLog = stateStore.addOutboundMessageLog(logData);
+      const logData = {
+        sendType,
+        status,
+        method,
+        senderNumber: viewState.senderNumber || "0212345678",
+        title: viewState.title || "",
+        body: viewState.body || "",
+        recipients: sendableList.map(r => ({
+          name: r.name,
+          phone: r.phone,
+          role: r.role || "직접입력",
+          studentId: r.no || null,
+          source: r.source || "student"
+        })),
+        excludedRecipients: excludedList.map(r => ({
+          name: r.name,
+          phone: r.phone,
+          role: r.role || "직접입력",
+          studentId: r.no || null,
+          source: r.source || "student",
+          reason: r.reason
+        })),
+        recipientCount: sendableList.length,
+        originalRecipientCount: viewState.recipients.length,
+        scheduledAt: null,
+        imageName: viewState.image,
+        previewSamples
+      };
 
-    // Call Mock Provider and build deliveries
-    const outboundRequest = stateStore.createOutboundRequest({
-      method: method,
-      senderNumber: logData.senderNumber,
-      title: logData.title,
-      body: logData.body,
-      imageName: logData.imageName,
-      recipients: sendableList,
-      relatedTaskId: viewState.handoffTaskId || null,
-      relatedDomainType: viewState.handoffTaskId ? 'task' : null,
-      relatedDomainId: viewState.handoffTaskId || null
-    });
-    outboundRequest.logId = addedLog.id;
+      const addedLog = stateStore.addOutboundMessageLog(logData);
 
-    const providerResult = stateStore.sendSmsViaMockProvider(outboundRequest);
-    const deliveries = stateStore.buildOutboundDeliveries(outboundRequest, providerResult);
+      // Call Mock Provider and build deliveries
+      const outboundRequest = stateStore.createOutboundRequest({
+        method: method,
+        senderNumber: logData.senderNumber,
+        title: logData.title,
+        body: logData.body,
+        imageName: logData.imageName,
+        recipients: sendableList,
+        relatedTaskId: viewState.handoffTaskId || null,
+        relatedDomainType: viewState.handoffTaskId ? 'task' : null,
+        relatedDomainId: viewState.handoffTaskId || null
+      });
+      outboundRequest.logId = addedLog.id;
 
-    const successCount = deliveries.filter(d => d.status === 'sent').length;
-    const failCount = deliveries.filter(d => d.status === 'failed').length;
+      const providerResult = stateStore.sendSmsViaMockProvider(outboundRequest);
+      const deliveries = stateStore.buildOutboundDeliveries(outboundRequest, providerResult);
 
-    alert(`발송 처리 완료: 성공 ${successCount}건, 실패 ${failCount}건\n(실제 발송은 아직 연동되지 않았고, 발송이력만 저장되었습니다.)`);
+      const successCount = deliveries.filter(d => d.status === 'sent').length;
+      const failCount = deliveries.filter(d => d.status === 'failed').length;
 
-    // 작성 내용과 수신자 목록은 유지합니다.
-    viewState.focusOpen = false;
-    
-    // Auto toggle to recent tab to show the new item immediately
-    viewState.vaultActiveTab = "recent";
-    viewState.vaultPages["recent"] = 0;
+      alert(`발송 처리 완료: 성공 ${successCount}건, 실패 ${failCount}건\n(실제 발송은 아직 연동되지 않았고, 발송이력만 저장되었습니다.)`);
 
-    render();
+      // 작성 내용과 수신자 목록은 유지합니다.
+      viewState.focusOpen = false;
+      
+      // Auto toggle to recent tab to show the new item immediately
+      viewState.vaultActiveTab = "recent";
+      viewState.vaultPages["recent"] = 0;
 
-    // Handoff Return Confirmation Flow (Phase 16P-1)
-    if (viewState.handoffTaskId) {
-      if (confirm("발송이 완료되었습니다. 오늘 원장 콘솔로 돌아가시겠습니까?")) {
-        const todayConsoleMenu = document.querySelector('.menu-item[data-view="dir-today-console"]');
-        if (todayConsoleMenu) {
-          todayConsoleMenu.click();
+      render();
+
+      // Handoff Return Confirmation Flow (Phase 16P-1)
+      if (viewState.handoffTaskId) {
+        if (confirm("발송이 완료되었습니다. 오늘 원장 콘솔로 돌아가시겠습니까?")) {
+          const todayConsoleMenu = document.querySelector('.menu-item[data-view="dir-today-console"]');
+          if (todayConsoleMenu) {
+            todayConsoleMenu.click();
+          }
         }
+      }
+    } finally {
+      viewState.isSending = false;
+      if (viewState.focusOpen && confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.innerHTML = `${renderIcon('check', 14, '#fff', 2.5)} 최종 발송`;
       }
     }
   };

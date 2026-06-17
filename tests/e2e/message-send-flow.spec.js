@@ -2335,5 +2335,66 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     const parentMessages = await page.evaluate(() => window.stateStore.db.parentMessages);
     expect(parentMessages.length).toBe(0);
   });
+
+  test('should prevent double submission on rapid multiple clicks', async ({ page }) => {
+    // Navigate to Message Send view
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+
+    // Clear outboundMessageLogs and outboundMessageDeliveries
+    await page.evaluate(() => {
+      window.stateStore.db.outboundMessageLogs = [];
+      window.stateStore.db.outboundMessageDeliveries = [];
+      window.stateStore.saveDB();
+    });
+
+    // Select the first student row and add to recipients
+    const studentRows = page.locator('.student-row');
+    await studentRows.first().click();
+    await page.locator('#btnAddToRecipients').click();
+
+    // Verify recipients added
+    await expect(page.locator('#totalRecipientsLabel')).toContainText('1건');
+
+    // Apply template to ensure body is filled
+    const applyBtn = page.locator('.btn-apply-template').first();
+    await applyBtn.click();
+
+    // Setup dialog listener to track alert counts
+    let alertCount = 0;
+    page.on('dialog', async (dialog) => {
+      alertCount++;
+      await dialog.accept();
+    });
+
+    // Open confirmation modal
+    await page.locator('#btnSendBarDirect').click();
+
+    // Click confirm send rapidly 3 times to simulate double/triple click
+    const sendConfirmBtn = page.locator('#btnFocusSendConfirm');
+    await expect(sendConfirmBtn).toBeVisible();
+
+    // Click multiple times concurrently to trigger double submit scenarios
+    await Promise.all([
+      sendConfirmBtn.click(),
+      sendConfirmBtn.click().catch(() => {}),
+      sendConfirmBtn.click().catch(() => {})
+    ]);
+
+    // Give it a moment to process
+    await page.waitForTimeout(500);
+
+    // Verify dialog was triggered exactly once
+    expect(alertCount).toBe(1);
+
+    // Verify database counts
+    const logs = await page.evaluate(() => window.stateStore.db.outboundMessageLogs);
+    const deliveries = await page.evaluate(() => window.stateStore.db.outboundMessageDeliveries);
+
+    expect(logs.length).toBe(1);
+    expect(deliveries.length).toBe(1);
+
+    // Ensure Focus Modal is closed
+    await expect(page.locator('#focusConfirmOverlay')).toBeHidden();
+  });
 });
 
