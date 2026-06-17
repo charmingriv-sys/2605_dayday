@@ -10,18 +10,28 @@ export function renderCommunication(container) {
     const itemsPerPage = 10;
 
     const render = () => {
+        const tabSettings = stateStore.getSettings()?.parentCommunicationTabSettings || {};
+        const isAnnOff = tabSettings.announcements?.enabled === false;
+        const isSurvOff = tabSettings.surveys?.enabled === false;
+        const isMsgOff = tabSettings.messages?.enabled === false;
+
+        const offBadge = `<span class="badge-tab-off" style="font-size: 10px; padding: 2px 6px; background: #fee2e2; color: #ef4444; border-radius: 4px; margin-left: 6px; font-weight: 800; border: 1px solid #fecaca; display: inline-block; vertical-align: middle;">학부모 화면 숨김</span>`;
+
         container.innerHTML = `
             <div class="glass-card" style="padding: 1.8rem; min-height: 500px;">
                 <!-- Tab Menu Header -->
                 <div style="display: flex; gap: 10px; margin-bottom: 2rem; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; flex-wrap: wrap;">
-                    <button class="btn \${activeSubTab === 'announcements' ? 'btn-primary' : 'btn-secondary'}" id="tab-comm-ann" style="border-radius: 20px; font-weight: 700; padding: 8px 16px;">
+                    <button class="btn ${activeSubTab === 'announcements' ? 'btn-primary' : 'btn-secondary'}" id="tab-comm-ann" style="border-radius: 20px; font-weight: 700; padding: 8px 16px; display: inline-flex; align-items: center;">
                         <i class="fa-solid fa-bullhorn" style="margin-right: 4px;"></i> 공지사항 관리
+                        ${isAnnOff ? offBadge : ''}
                     </button>
-                    <button class="btn \${activeSubTab === 'surveys' ? 'btn-primary' : 'btn-secondary'}" id="tab-comm-surv" style="border-radius: 20px; font-weight: 700; padding: 8px 16px;">
+                    <button class="btn ${activeSubTab === 'surveys' ? 'btn-primary' : 'btn-secondary'}" id="tab-comm-surv" style="border-radius: 20px; font-weight: 700; padding: 8px 16px; display: inline-flex; align-items: center;">
                         <i class="fa-solid fa-square-poll-vertical" style="margin-right: 4px;"></i> 설문조사 시스템
+                        ${isSurvOff ? offBadge : ''}
                     </button>
-                    <button class="btn \${activeSubTab === 'messages' ? 'btn-primary' : 'btn-secondary'}" id="tab-comm-msg" style="border-radius: 20px; font-weight: 700; padding: 8px 16px;">
+                    <button class="btn ${activeSubTab === 'messages' ? 'btn-primary' : 'btn-secondary'}" id="tab-comm-msg" style="border-radius: 20px; font-weight: 700; padding: 8px 16px; display: inline-flex; align-items: center;">
                         <i class="fa-solid fa-envelope" style="margin-right: 4px;"></i> 안내사항 관리
+                        ${isMsgOff ? offBadge : ''}
                     </button>
                 </div>
 
@@ -51,7 +61,16 @@ export function renderCommunication(container) {
     };
 
     const renderAnnouncementsTab = (tabContainer) => {
+        const tabSettings = stateStore.getSettings()?.parentCommunicationTabSettings || {};
+        const isAnnOff = tabSettings.announcements?.enabled === false;
+
         tabContainer.innerHTML = `
+            ${isAnnOff ? `
+            <div class="alert-info-banner" style="padding: 12px 16px; background: #fff8eb; border: 1px solid #fce3b5; border-radius: 10px; display: flex; gap: 8px; align-items: center; margin-bottom: 16px;">
+                <i class="fa-solid fa-triangle-exclamation" style="color: var(--warning, #d97706); font-size: 1rem;"></i>
+                <span style="font-size: 0.85rem; color: #92610f; font-weight: 600;">현재 학부모 화면에는 표시되지 않습니다. 학원정보관리에서 ON으로 변경할 수 있습니다.</span>
+            </div>
+            ` : ''}
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 12px;">
                 <h3 style="font-size: 1.35rem; font-weight: 700; color: var(--text-main); margin: 0; display: flex; align-items: center; gap: 8px;">
                     <i class="fa-solid fa-bullhorn" style="color: var(--primary);"></i> 학원 공지사항
@@ -181,7 +200,16 @@ export function renderCommunication(container) {
 
     const renderMessagesTab = (tabContainer) => {
         const students = stateStore.getStudents();
+        const tabSettings = stateStore.getSettings()?.parentCommunicationTabSettings || {};
+        const isMsgOff = tabSettings.messages?.enabled === false;
+
         tabContainer.innerHTML = `
+            ${isMsgOff ? `
+            <div class="alert-info-banner" style="padding: 12px 16px; background: #fff8eb; border: 1px solid #fce3b5; border-radius: 10px; display: flex; gap: 8px; align-items: center; margin-bottom: 16px;">
+                <i class="fa-solid fa-triangle-exclamation" style="color: var(--warning, #d97706); font-size: 1rem;"></i>
+                <span style="font-size: 0.85rem; color: #92610f; font-weight: 600;">현재 학부모 화면에는 표시되지 않습니다. 학원정보관리에서 ON으로 변경할 수 있습니다.</span>
+            </div>
+            ` : ''}
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 12px;">
                 <h3 style="font-size: 1.35rem; font-weight: 700; color: var(--text-main); margin: 0; display: flex; align-items: center; gap: 8px;">
                     <i class="fa-solid fa-envelope" style="color: var(--primary);"></i> 개별 안내장 및 메시지 발송 목록
@@ -324,7 +352,16 @@ export function renderCommunication(container) {
     };
 
     const renderSurveysTab = (tabContainer) => {
+        const tabSettings = stateStore.getSettings()?.parentCommunicationTabSettings || {};
+        const isSurvOff = tabSettings.surveys?.enabled === false;
+
         tabContainer.innerHTML = `
+            ${isSurvOff ? `
+            <div class="alert-info-banner" style="padding: 12px 16px; background: #fff8eb; border: 1px solid #fce3b5; border-radius: 10px; display: flex; gap: 8px; align-items: center; margin-bottom: 16px;">
+                <i class="fa-solid fa-triangle-exclamation" style="color: var(--warning, #d97706); font-size: 1rem;"></i>
+                <span style="font-size: 0.85rem; color: #92610f; font-weight: 600;">현재 학부모 화면에는 표시되지 않습니다. 학원정보관리에서 ON으로 변경할 수 있습니다.</span>
+            </div>
+            ` : ''}
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 12px;">
                 <h3 style="font-size: 1.35rem; font-weight: 700; color: var(--text-main); margin: 0; display: flex; align-items: center; gap: 8px;">
                     <i class="fa-solid fa-square-poll-vertical" style="color: var(--primary);"></i> 학부모 설문조사 시스템

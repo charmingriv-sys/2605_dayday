@@ -625,4 +625,57 @@ test.describe('Parent Portal Communication Flow', () => {
     await expect(emptyStateText).toBeVisible();
     await expect(commMenuBadge).toBeHidden();
   });
+
+  test('should display "학부모 화면 숨김" badges and alert banners on disabled tabs in Director Portal (Phase 16W-6B)', async ({ page }) => {
+    // 1. Log in as Director
+    const directorBtn = page.locator('#login-overlay .role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // Seed settings: announcements is OFF, surveys is OFF, messages is ON
+    await page.evaluate(() => {
+      window.stateStore.updateParentCommunicationTabSettings({
+        announcements: { enabled: false },
+        surveys: { enabled: false },
+        messages: { enabled: true }
+      });
+    });
+
+    // Navigate to 학부모 소통관리 (Communication)
+    const commMenu = page.locator('.menu-item[data-view="dir-communication"]');
+    await expect(commMenu).toBeVisible();
+    await commMenu.click();
+
+    // Verify all 3 tabs are still visible in director portal
+    const tabs = page.locator('.glass-card button[id^="tab-comm-"]');
+    await expect(tabs).toHaveCount(3);
+
+    // Verify announcements (tab-comm-ann) has the "학부모 화면 숨김" badge
+    const annTab = page.locator('#tab-comm-ann');
+    const annBadge = annTab.locator('.badge-tab-off');
+    await expect(annBadge).toBeVisible();
+    await expect(annBadge).toContainText('학부모 화면 숨김');
+
+    // Verify surveys (tab-comm-surv) has the badge
+    const survTab = page.locator('#tab-comm-surv');
+    const survBadge = survTab.locator('.badge-tab-off');
+    await expect(survBadge).toBeVisible();
+
+    // Verify messages (tab-comm-msg) does NOT have the badge
+    const msgTab = page.locator('#tab-comm-msg');
+    const msgBadge = msgTab.locator('.badge-tab-off');
+    await expect(msgBadge).toBeHidden();
+
+    // Click announcements tab to verify content top alert banner
+    await annTab.click();
+    const annBanner = page.locator('#communication-subtab-content .alert-info-banner');
+    await expect(annBanner).toBeVisible();
+    await expect(annBanner).toContainText('현재 학부모 화면에는 표시되지 않습니다. 학원정보관리에서 ON으로 변경할 수 있습니다.');
+
+    // Click messages tab to verify no alert banner
+    await msgTab.click();
+    const msgBanner = page.locator('#communication-subtab-content .alert-info-banner');
+    await expect(msgBanner).toBeHidden();
+  });
 });
