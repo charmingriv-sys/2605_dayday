@@ -810,6 +810,10 @@ const openStudentDetailModal = (studentId) => {
                     <strong>${student.name}</strong>
                 </div>
                 <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(0,0,0,0.03); padding-bottom: 6px;">
+                    <span style="color: var(--text-muted);">원생 상태</span>
+                    <strong>${student.status === 'withdrawn' ? '퇴원' : (student.status === 'on_leave' ? '휴원' : '재원')}</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(0,0,0,0.03); padding-bottom: 6px;">
                     <span style="color: var(--text-muted);">생년월일</span>
                     <strong>${student.birthDate || '-'}</strong>
                 </div>
@@ -1416,7 +1420,12 @@ const openStudentModal = (studentId = null) => {
                             </select>
                         </div>
                         <div class="form-group">
-                            <!-- spacer -->
+                            <label for="modal-student-status">원생 상태 <span style="color: var(--danger);">*</span></label>
+                            <select id="modal-student-status" class="form-control" required>
+                                <option value="attending" ${!student || student.status === 'attending' ? 'selected' : ''}>재원</option>
+                                <option value="on_leave" ${student && student.status === 'on_leave' ? 'selected' : ''}>휴원</option>
+                                <option value="withdrawn" ${student && student.status === 'withdrawn' ? 'selected' : ''}>퇴원</option>
+                            </select>
                         </div>
                     </div>
 
@@ -1926,6 +1935,8 @@ const openStudentModal = (studentId = null) => {
             const hasInstrument = instSelect.value === 'custom' ? instCustom.value.trim() : instSelect.value;
             const purpose = contentArea.querySelector('#modal-student-purpose').value;
             const lessonStyle = contentArea.querySelector('#modal-student-lesson-style').value;
+            const statusEl = contentArea.querySelector('#modal-student-status');
+            const status = statusEl ? statusEl.value : 'attending';
 
             // Extract schedules from dynamic rows
             const scheduleRows = container.querySelectorAll('.modal-schedule-row');
@@ -1937,11 +1948,25 @@ const openStudentModal = (studentId = null) => {
                 return { dayOfWeek, time };
             });
 
+            // Confirm status change from attending to non-attending
+            if (isEdit && student && student.status === 'attending') {
+                if (status === 'on_leave') {
+                    if (!confirm("원생 상태를 휴원으로 변경하시겠습니까?")) {
+                        return;
+                    }
+                } else if (status === 'withdrawn') {
+                    if (!confirm("원생 상태를 퇴원으로 변경하시겠습니까?\n퇴원은 삭제가 아니며 기존 이력은 보존됩니다.")) {
+                        return;
+                    }
+                }
+            }
+
             let savedStudentId = studentId;
 
             if (isEdit) {
                 stateStore.updateStudent(studentId, {
                     name,
+                    status,
                     instrument,
                     phone,
                     parentName,
@@ -1971,6 +1996,7 @@ const openStudentModal = (studentId = null) => {
                 const enrollDate = new Date().toISOString().slice(0, 10);
                 const newStudent = stateStore.addStudent({
                     name,
+                    status,
                     instrument,
                     phone,
                     parentName,
@@ -2819,7 +2845,12 @@ export function renderStudents(container) {
             ].filter(Boolean).join(' | ');
 
             const isDischarged = s.status === 'withdrawn';
-            const statusBadge = isDischarged ? `<span class="badge badge-danger" style="margin-left: 6px; padding: 2px 8px; border-radius: 12px; background: var(--danger-light); color: var(--danger);">퇴원</span>` : '';
+            let statusBadge = '';
+            if (isDischarged) {
+                statusBadge = `<span class="badge badge-danger" style="margin-left: 6px; padding: 2px 8px; border-radius: 12px; background: var(--danger-light); color: var(--danger);">퇴원</span>`;
+            } else if (s.status === 'on_leave') {
+                statusBadge = `<span class="badge badge-warning" style="margin-left: 6px; padding: 2px 8px; border-radius: 12px; background: var(--warning-light); color: #d5a300;">휴원</span>`;
+            }
 
             const isIncomplete = isIncompleteStudent(s);
             const incompleteBadge = isIncomplete ? `<span class="badge badge-warning" style="margin-left: 6px; padding: 2px 8px; border-radius: 12px; background: var(--warning-light); color: var(--warning); border: 1px solid rgba(241, 196, 15, 0.3); font-size: 0.72rem; font-weight: bold;">정보 미완성</span>` : '';
@@ -2835,7 +2866,7 @@ export function renderStudents(container) {
                         <span class="student-name-link" data-id="${s.id}" style="font-size: 0.95rem; color: var(--secondary); cursor: pointer; text-decoration: underline; font-weight: 700;">${s.name}</span>
                         ${statusBadge}
                         ${incompleteBadge}
-                        <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 500; margin-top: 2px;">구분: ${s.status === 'withdrawn' ? '퇴원' : '재원'}</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 500; margin-top: 2px;">구분: ${s.status === 'withdrawn' ? '퇴원' : (s.status === 'on_leave' ? '휴원' : '재원')}</div>
                         ${ageSchoolText ? `<div style="font-size: 0.75rem; color: var(--secondary); font-weight: 500; margin-top: 2px;">${ageSchoolText}</div>` : ''}
                     </td>
                     <!-- 3. 등록일 -->
@@ -2912,7 +2943,7 @@ export function renderStudents(container) {
             btn.addEventListener('click', (e) => {
                 const id = e.currentTarget.dataset.id;
                 const student = stateStore.getStudent(id);
-                if (confirm(`정말로 '${student.name}' 원생을 퇴원 처리하시겠습니까?\n퇴원 처리 시 대시보드 현황에서 제외되며 수강생 대장에 퇴원일이 기록됩니다.`)) {
+                if (confirm(`정말로 '${student.name}' 원생을 퇴원 처리하시겠습니까?\n퇴원은 삭제가 아니며 기존 이력은 보존됩니다.\n출결/수납/메시지/대시보드 반영은 후속 정책에 따라 별도 적용됩니다.`)) {
                     stateStore.dischargeStudent(id);
                     showKakaoTalkToast(`'${student.name}' 원생이 퇴원 처리되었습니다.`);
                 }
