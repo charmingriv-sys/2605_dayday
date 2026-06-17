@@ -1,6 +1,29 @@
 // members.js - Students, Parent Student Links Domain State Module
 
 export const membersMethods = {
+    // --- STUDENTS STATUS HELPERS ---
+    normalizeStudentStatus(status) {
+        const allowed = ['attending', 'on_leave', 'withdrawn'];
+        if (allowed.includes(status)) {
+            return status;
+        }
+        return 'attending';
+    },
+
+    normalizeStudentRecord(student) {
+        if (!student) return student;
+        const normalized = this.normalizeStudentStatus(student.status);
+        if (student.status !== normalized) {
+            student.status = normalized;
+        }
+        return student;
+    },
+
+    getStudentStatus(student) {
+        if (!student) return 'attending';
+        return this.normalizeStudentStatus(student.status);
+    },
+
     // --- STUDENTS ---
     getStudents() {
         if (!this.db.students) this.db.students = [];
@@ -17,8 +40,9 @@ export const membersMethods = {
         const studentMemberNo = maxMemberNo + 1;
         const paymentStatus = student.paymentStatus || 'unpaid';
         const defaultClassDuration = parseInt(student.defaultClassDuration) || 50;
+        const status = this.normalizeStudentStatus(student.status);
         
-        const newStudent = { id, studentMemberNo, ...student, paymentStatus, defaultClassDuration };
+        const newStudent = { id, studentMemberNo, ...student, paymentStatus, defaultClassDuration, status };
         this.db.students.push(newStudent);
 
         // Add class schedules
@@ -81,8 +105,9 @@ export const membersMethods = {
             const studentMemberNo = nextMemberNo++;
             const paymentStatus = student.paymentStatus || 'unpaid';
             const defaultClassDuration = parseInt(student.defaultClassDuration) || 50;
+            const status = this.normalizeStudentStatus(student.status);
             
-            const newStudent = { id, studentMemberNo, ...student, paymentStatus, defaultClassDuration };
+            const newStudent = { id, studentMemberNo, ...student, paymentStatus, defaultClassDuration, status };
             this.db.students.push(newStudent);
             addedStudents.push(newStudent);
 
@@ -120,6 +145,9 @@ export const membersMethods = {
         const updatedData = { ...data };
         if (updatedData.defaultClassDuration !== undefined) {
             updatedData.defaultClassDuration = parseInt(updatedData.defaultClassDuration) || 50;
+        }
+        if (updatedData.status !== undefined) {
+            updatedData.status = this.normalizeStudentStatus(updatedData.status);
         }
         this.db.students = this.db.students.map(s => s.id === id ? { ...s, ...updatedData } : s);
         

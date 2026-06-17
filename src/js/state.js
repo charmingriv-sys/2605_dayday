@@ -424,6 +424,11 @@ class StateStore {
                     s.defaultClassDuration = 50;
                     migrated = true;
                 }
+                const normalizedStatus = this.normalizeStudentStatus ? this.normalizeStudentStatus(s.status) : (s.status || 'attending');
+                if (s.status !== normalizedStatus) {
+                    s.status = normalizedStatus;
+                    migrated = true;
+                }
             });
             if (migrated) {
                 this.saveDB();
