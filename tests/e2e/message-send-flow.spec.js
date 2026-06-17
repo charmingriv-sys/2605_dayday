@@ -2376,8 +2376,8 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     // Click multiple times concurrently to trigger double submit scenarios
     await Promise.all([
       sendConfirmBtn.click(),
-      sendConfirmBtn.click().catch(() => {}),
-      sendConfirmBtn.click().catch(() => {})
+      sendConfirmBtn.click({ timeout: 500 }).catch(() => {}),
+      sendConfirmBtn.click({ timeout: 500 }).catch(() => {})
     ]);
 
     // Give it a moment to process
@@ -2395,6 +2395,38 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
 
     // Ensure Focus Modal is closed
     await expect(page.locator('#focusConfirmOverlay')).toBeHidden();
+  });
+
+  test('should synchronize visual state of contact type toggle buttons on selection and toggle', async ({ page }) => {
+    // Navigate to Message Send view
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+
+    // Get contact type buttons
+    const studentBtn = page.locator('.btn-toggle-contact-type[data-type="student"]');
+    const g1Btn = page.locator('.btn-toggle-contact-type[data-type="g1"]');
+    const g2Btn = page.locator('.btn-toggle-contact-type[data-type="g2"]');
+
+    // Initial state check (g1 is selected by default, others not)
+    await expect(g1Btn).toHaveCSS('background-color', 'rgb(234, 241, 254)'); // #eaf1fe
+    await expect(g1Btn.locator('span:first-child svg')).toBeVisible();
+
+    await expect(studentBtn).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+    await expect(studentBtn.locator('span:first-child svg')).toBeHidden();
+
+    // Toggle student button ON
+    await studentBtn.click();
+    await expect(studentBtn).toHaveCSS('background-color', 'rgb(234, 241, 254)');
+    await expect(studentBtn.locator('span:first-child svg')).toBeVisible();
+
+    // Toggle student button OFF
+    await studentBtn.click();
+    await expect(studentBtn).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+    await expect(studentBtn.locator('span:first-child svg')).toBeHidden();
+
+    // Toggle g1 button OFF
+    await g1Btn.click();
+    await expect(g1Btn).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+    await expect(g1Btn.locator('span:first-child svg')).toBeHidden();
   });
 });
 

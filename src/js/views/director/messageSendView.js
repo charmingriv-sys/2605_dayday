@@ -1303,6 +1303,27 @@ export function renderMessageSend(container) {
         addToRecipientsBtn.innerHTML = `${renderIcon('arrowR', 15, '#fff')} 발송인원 추가 ${contactCount > 0 ? `(${contactCount}건)` : ''}`;
       }
 
+      // 5. Update Contact Type buttons styling
+      block.querySelectorAll('.btn-toggle-contact-type').forEach(btn => {
+        const type = btn.dataset.type;
+        const isSelected = viewState.contactTypes[type];
+        
+        btn.style.background = isSelected ? '#eaf1fe' : '#fff';
+        btn.style.borderColor = isSelected ? '#c9dbfb' : '#e2e8f0';
+        
+        const chkSpan = btn.querySelector('span:first-child');
+        if (chkSpan) {
+          chkSpan.style.background = isSelected ? 'var(--primary)' : '#fff';
+          chkSpan.style.borderColor = isSelected ? 'var(--primary)' : '#cbd5e1';
+          chkSpan.innerHTML = isSelected ? renderIcon('check', 9, '#fff', 3) : '';
+        }
+        
+        const labelSpan = btn.querySelector('span:last-child');
+        if (labelSpan) {
+          labelSpan.style.color = isSelected ? 'var(--primary)' : 'var(--text-muted)';
+        }
+      });
+
       // Re-bind row click listener
       bindListEvents(block);
       return;
