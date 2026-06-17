@@ -25,6 +25,27 @@ const maskPhone = (phone) => {
   return phone;
 };
 
+const computeBodyHash = (str) => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return Math.abs(hash).toString(36);
+};
+
+const computePhoneHash = (phone) => {
+  if (!phone) return 'no_phone';
+  const cleaned = phone.replace(/\D/g, '');
+  return computeBodyHash(cleaned);
+};
+
+const generateIdempotencyKey = (logOrRequestId, phoneHash, channel, bodyHash) => {
+  // TODO: 향후 실제 provider 전환 시 phoneHash 또는 tokenizedPhone으로 대체할 수 있습니다.
+  return `${logOrRequestId || 'no_log'}_${phoneHash || 'no_phone'}_${channel}_${bodyHash}`;
+};
+
 export const outboundProviderMethods = {
   // Getter for outboundMessageDeliveries
   getOutboundMessageDeliveries() {
@@ -129,9 +150,45 @@ export const outboundProviderMethods = {
       this.db.outboundMessageDeliveries = [];
     }
 
-    const newDeliveries = (providerResult.results || []).map(res => {
+    const existingDeliveries = this.db.outboundMessageDeliveries;
+    const newDeliveries = [];
+
+    (providerResult.results || []).forEach(res => {
+      const bodyHash = computeBodyHash(request.body || '');
+      const logOrRequestId = request.logId || request.id;
+      const phoneHash = computePhoneHash(res.normalizedPhone);
+      const idempotencyKey = generateIdempotencyKey(logOrRequestId, phoneHash, res.channel, bodyHash);
+
+      const duplicate = existingDeliveries.find(d => d.idempotencyKey === idempotencyKey);
+      if (duplicate) {
+        newDeliveries.push(duplicate);
+        return;
+      }
+
+      let retryable = false;
+      let retryPolicyReason = 'UNKNOWN_ERROR';
+
+      if (res.status === 'sent') {
+        retryable = false;
+        retryPolicyReason = 'SENT_NO_RETRY';
+      } else if (res.status === 'failed') {
+        if (res.failureCode === 'EMPTY_PHONE') {
+          retryable = false;
+          retryPolicyReason = 'HARD_FAILURE_EMPTY_PHONE';
+        } else if (res.failureCode === 'INVALID_PHONE_LENGTH') {
+          retryable = false;
+          retryPolicyReason = 'HARD_FAILURE_INVALID_PHONE';
+        } else if (res.failureCode === 'EMPTY_BODY') {
+          retryable = false;
+          retryPolicyReason = 'HARD_FAILURE_EMPTY_BODY';
+        } else if (res.failureCode === 'MOCK_TEST_FAIL') {
+          retryable = false;
+          retryPolicyReason = 'HARD_FAILURE_TEST_FAIL';
+        }
+      }
+
       const id = 'del_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
-      return {
+      const del = {
         id,
         requestId: request.id,
         outboundMessageLogId: request.logId || null,
@@ -149,11 +206,21 @@ export const outboundProviderMethods = {
         failedAt: res.failedAt,
         relatedTaskId: res.relatedTaskId,
         relatedDomainType: res.relatedDomainType,
-        relatedDomainId: res.relatedDomainId
+        relatedDomainId: res.relatedDomainId,
+        
+        // Expanded fields (16W-4)
+        idempotencyKey,
+        retryOfDeliveryId: null,
+        retryAttempt: 0,
+        retryable,
+        retryPolicyReason,
+        bodyHash
       };
+
+      existingDeliveries.push(del);
+      newDeliveries.push(del);
     });
 
-    this.db.outboundMessageDeliveries.push(...newDeliveries);
     this.saveDB();
     this.notify('OUTBOUND_MESSAGE_DELIVERIES_CHANGED', this.db.outboundMessageDeliveries);
     return newDeliveries;

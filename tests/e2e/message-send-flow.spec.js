@@ -2299,6 +2299,38 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     await page.locator('#vaultSearchInput').fill('');
     await expect(cards).toHaveCount(2);
 
+    // Verify idempotencyKey, bodyHash, and phoneHash are NOT exposed in the UI
+    const containerHtml = await page.locator('#vaultListContainer').innerHTML();
+    const successDeliveryObj = deliveries.find(d => d.recipientName !== '실패테스트');
+    expect(containerHtml).not.toContain(successDeliveryObj.idempotencyKey);
+    expect(containerHtml).not.toContain(successDeliveryObj.bodyHash);
+    const phoneHash = successDeliveryObj.idempotencyKey.split('_')[1];
+    expect(containerHtml).not.toContain(phoneHash);
+
+    // Verify duplicate delivery creation within the same request context is prevented (Idempotency check - Option A)
+    const dbSizeBefore = await page.evaluate(() => window.stateStore.db.outboundMessageDeliveries.length);
+    await page.evaluate(() => {
+      const db = window.stateStore.db;
+      // Get the last outbound request parameters from the last log
+      const lastLog = db.outboundMessageLogs[db.outboundMessageLogs.length - 1];
+      const outboundRequest = window.stateStore.createOutboundRequest({
+        method: lastLog.method,
+        senderNumber: lastLog.senderNumber,
+        title: lastLog.title,
+        body: lastLog.body,
+        imageName: lastLog.imageName,
+        recipients: lastLog.recipients
+      });
+      // Attach the same ID and log ID to simulate duplicate trigger
+      outboundRequest.id = lastLog.requestId || outboundRequest.id;
+      outboundRequest.logId = lastLog.id;
+
+      const providerResult = window.stateStore.sendSmsViaMockProvider(outboundRequest);
+      window.stateStore.buildOutboundDeliveries(outboundRequest, providerResult);
+    });
+    const dbSizeAfter = await page.evaluate(() => window.stateStore.db.outboundMessageDeliveries.length);
+    expect(dbSizeAfter).toBe(dbSizeBefore);
+
     // Ensure parentMessages (학부모 앱 수신메시지) is NOT created
     const parentMessages = await page.evaluate(() => window.stateStore.db.parentMessages);
     expect(parentMessages.length).toBe(0);

@@ -125,6 +125,58 @@ try {
   const nonExistentStatus = stateStore.getOutboundDeliveryStatus('del_nonexistent');
   assert.strictEqual(nonExistentStatus, null);
 
+  // 6. Verify Idempotency and Retry Metadata Fields (16W-4)
+  console.log('6. Verifying idempotency and retry metadata fields...');
+  const testDelivery = newDeliveries[0];
+  assert.ok(testDelivery.idempotencyKey, 'Delivery should contain an idempotencyKey');
+  assert.strictEqual(testDelivery.retryOfDeliveryId, null, 'retryOfDeliveryId should be null by default');
+  assert.strictEqual(testDelivery.retryAttempt, 0, 'retryAttempt should be 0 by default');
+  assert.ok(typeof testDelivery.retryable === 'boolean', 'retryable should be a boolean');
+  assert.ok(testDelivery.retryPolicyReason, 'Should have retryPolicyReason');
+  assert.ok(testDelivery.bodyHash, 'Should have bodyHash');
+  
+  // Verify body content is NOT stored raw in delivery
+  assert.strictEqual(testDelivery.body, undefined, 'Body text should not be saved raw in delivery');
+  assert.strictEqual(testDelivery.phone, undefined, 'Raw phone should not be saved in delivery');
+  assert.ok(!testDelivery.idempotencyKey.includes(request.recipients[0].phone.replace(/\D/g, '')), 'idempotencyKey should not contain raw phone number');
+
+  // Verify failure reasons and retryable status for various statuses
+  // sent delivery:
+  assert.strictEqual(newDeliveries[0].status, 'sent');
+  assert.strictEqual(newDeliveries[0].retryable, false);
+  assert.strictEqual(newDeliveries[0].retryPolicyReason, 'SENT_NO_RETRY');
+
+  // EMPTY_PHONE:
+  assert.strictEqual(newDeliveries[2].status, 'failed');
+  assert.strictEqual(newDeliveries[2].retryable, false);
+  assert.strictEqual(newDeliveries[2].retryPolicyReason, 'HARD_FAILURE_EMPTY_PHONE');
+
+  // INVALID_PHONE_LENGTH:
+  assert.strictEqual(newDeliveries[3].status, 'failed');
+  assert.strictEqual(newDeliveries[3].retryable, false);
+  assert.strictEqual(newDeliveries[3].retryPolicyReason, 'HARD_FAILURE_INVALID_PHONE');
+
+  // MOCK_TEST_FAIL:
+  assert.strictEqual(newDeliveries[1].status, 'failed');
+  assert.strictEqual(newDeliveries[1].retryable, false);
+  assert.strictEqual(newDeliveries[1].retryPolicyReason, 'HARD_FAILURE_TEST_FAIL');
+
+  // EMPTY_BODY:
+  const emptyBodyDel = stateStore.buildOutboundDeliveries(emptyBodyRequest, emptyBodyResult);
+  assert.strictEqual(emptyBodyDel[0].status, 'failed');
+  assert.strictEqual(emptyBodyDel[0].retryable, false);
+  assert.strictEqual(emptyBodyDel[0].retryPolicyReason, 'HARD_FAILURE_EMPTY_BODY');
+
+  // 7. Verify Idempotency Duplicate Prevention
+  console.log('7. Verifying idempotency duplicate prevention...');
+  const lenBefore = stateStore.getOutboundMessageDeliveries().length;
+  // Re-build same request with same providerResult
+  const rebuildDeliveries = stateStore.buildOutboundDeliveries(request, providerResult);
+  const lenAfter = stateStore.getOutboundMessageDeliveries().length;
+  assert.strictEqual(lenBefore, lenAfter, 'Database size should not increase for duplicate request');
+  assert.strictEqual(rebuildDeliveries.length, 4, 'Should return the existing deliveries');
+  assert.strictEqual(rebuildDeliveries[0].id, newDeliveries[0].id, 'Should return the identical delivery objects');
+
   console.log('✓ All Outbound Provider Unit Tests passed successfully.');
 } catch (error) {
   console.error('❌ Assertion failed:', error);
