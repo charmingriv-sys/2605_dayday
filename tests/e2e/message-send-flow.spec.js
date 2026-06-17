@@ -2010,5 +2010,141 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
       window.stateStore.saveDB();
     }, { sid: studentId, tidA: taskIdAbsent, tidB: taskIdBookCheck, tidBB: taskIdBookBilling, tidS: taskIdStaff });
   });
+
+  test('should synchronize checkboxes and recipients list properly on manual clicks', async ({ page }) => {
+    // Navigate to Message Send view
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+
+    const testStudentId = 'test-checkbox-sync-student';
+    await page.evaluate(({ sid }) => {
+      // Add a test student with both guardians having phone numbers and receive message enabled
+      window.stateStore.db.students.push({
+        id: sid,
+        name: '체크테스트원생',
+        phone: '01055554444',
+        parentPhone: '01066667777',
+        parentPhone2: '01088889999',
+        instrument: '피아노',
+        fee: 150000,
+        age: 10,
+        school: '테스트초'
+      });
+      window.stateStore.db.parentContacts.push(
+        { id: sid + '_student', studentId: sid, name: '체크테스트원생', phone: '01055554444', role: 'student', canReceiveMessage: true },
+        { id: sid + '_g1', studentId: sid, name: '보호자일', phone: '01066667777', role: 'g1', canReceiveMessage: true },
+        { id: sid + '_g2', studentId: sid, name: '보호자이', phone: '01088889999', role: 'g2', canReceiveMessage: true }
+      );
+      window.stateStore.saveDB();
+    }, { sid: testStudentId });
+
+    // Transition away and back to force re-render with new data
+    await page.locator('.menu-item[data-view="dir-major-schedule"]').click();
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+
+    const studentRowLocator = page.locator('.student-row').filter({ hasText: '체크테스트원생' });
+    await expect(studentRowLocator).toBeVisible();
+    
+    // 1. 원생 row 클릭 -> 보호자1만 선택됨
+    await studentRowLocator.click();
+    
+    const g1Checkbox = page.locator(`.guardian-checkbox[data-student-id="${testStudentId}"][data-type="g1"]`);
+    const studentCheckbox = page.locator(`.guardian-checkbox[data-student-id="${testStudentId}"][data-type="student"]`);
+    const g2Checkbox = page.locator(`.guardian-checkbox[data-student-id="${testStudentId}"][data-type="g2"]`);
+    
+    await expect(g1Checkbox.locator('svg')).toBeVisible();
+    await expect(studentCheckbox.locator('svg')).toBeHidden();
+    await expect(g2Checkbox.locator('svg')).toBeHidden();
+
+    // 2. 보호자1 다시 클릭 -> 해제됨
+    const g1Row = page.locator(`.guardian-row[data-student-id="${testStudentId}"][data-type="g1"]`);
+    await g1Row.click();
+    await expect(g1Checkbox.locator('svg')).toBeHidden();
+    await expect(page.locator('#selectedStudentsCount')).toContainText('0');
+
+    // 3. 본인 클릭 -> 본인만 추가/해제됨
+    // Re-open accordion
+    await studentRowLocator.click();
+    await expect(g1Checkbox.locator('svg')).toBeVisible();
+
+    const studentContactRow = page.locator(`.guardian-row[data-student-id="${testStudentId}"][data-type="student"]`);
+    await studentContactRow.click();
+    await expect(studentCheckbox.locator('svg')).toBeVisible();
+
+    // Turn off G1 to test only student is selected
+    await g1Row.click();
+    await expect(g1Checkbox.locator('svg')).toBeHidden();
+    await expect(page.locator('#selectedStudentsCount')).toContainText('1');
+    
+    // Toggle off student
+    await studentContactRow.click();
+    await expect(studentCheckbox.locator('svg')).toBeHidden();
+    await expect(page.locator('#selectedStudentsCount')).toContainText('0');
+
+    // 4. 보호자2 클릭 -> 보호자2만 추가/해제됨
+    // Re-open accordion
+    await studentRowLocator.click();
+    const g2Row = page.locator(`.guardian-row[data-student-id="${testStudentId}"][data-type="g2"]`);
+    await g2Row.click();
+    await expect(g2Checkbox.locator('svg')).toBeVisible();
+
+    // Turn off G1
+    await g1Row.click();
+    await expect(g1Checkbox.locator('svg')).toBeHidden();
+    await expect(page.locator('#selectedStudentsCount')).toContainText('1');
+    
+    // Toggle off G2
+    await g2Row.click();
+    await expect(g2Checkbox.locator('svg')).toBeHidden();
+    await expect(page.locator('#selectedStudentsCount')).toContainText('0');
+
+    // 5. 발송 인원 카드 삭제 -> 해당 체크박스 해제됨
+    // Re-open and select G1 & G2
+    await studentRowLocator.click();
+    await g2Row.click();
+    await expect(g1Checkbox.locator('svg')).toBeVisible();
+    await expect(g2Checkbox.locator('svg')).toBeVisible();
+    await page.locator('#btnAddToRecipients').click();
+    
+    // 발송 인원에 2건 추가되었는지 확인
+    await expect(page.locator('#totalRecipientsLabel')).toContainText('2건');
+    
+    // 왼쪽 체크박스는 해제되어 있어야 함
+    await expect(g1Checkbox.locator('svg')).toBeHidden();
+    await expect(g2Checkbox.locator('svg')).toBeHidden();
+    
+    // 다시 보호자1과 보호자2를 왼쪽에서 체크함 (동기화 확인을 위해 다시 선택하는 것임)
+    await studentRowLocator.click();
+    await g2Row.click();
+    await expect(g1Checkbox.locator('svg')).toBeVisible();
+    await expect(g2Checkbox.locator('svg')).toBeVisible();
+    
+    // 발송 인원 패널에서 보호자1(보호자일) X 버튼 클릭하여 삭제
+    const removeG1Btn = page.locator('.btn-remove-recipient[data-key="01066667777|g1"]');
+    await removeG1Btn.click();
+    
+    // 발송 인원이 1건으로 줄어들어야 함
+    await expect(page.locator('#totalRecipientsLabel')).toContainText('1건');
+    
+    // 왼쪽의 보호자1 체크박스는 해제되어야 하고, 보호자2 체크박스는 그대로 유지되어야 함
+    await expect(g1Checkbox.locator('svg')).toBeHidden();
+    await expect(g2Checkbox.locator('svg')).toBeVisible();
+
+    // 6. 전체 삭제 -> 모든 체크박스 해제됨
+    await page.locator('#btnClearRecipients').click();
+    
+    // 발송 인원이 0건(비표시)이어야 함
+    await expect(page.locator('#totalRecipientsLabel')).toBeHidden();
+    
+    // 모든 체크박스 해제
+    await expect(g1Checkbox.locator('svg')).toBeHidden();
+    await expect(g2Checkbox.locator('svg')).toBeHidden();
+
+    // Cleanup test data
+    await page.evaluate(({ sid }) => {
+      window.stateStore.db.students = window.stateStore.db.students.filter(s => s.id !== sid);
+      window.stateStore.db.parentContacts = window.stateStore.db.parentContacts.filter(c => c.studentId !== sid);
+      window.stateStore.saveDB();
+    }, { sid: testStudentId });
+  });
 });
 

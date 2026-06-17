@@ -1015,7 +1015,7 @@ export function renderMessageSend(container) {
           <button class="guardian-checkbox" data-student-id="${studentId}" data-type="${type}" ${isDisabled ? 'disabled' : ''} style="
             width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
             border: 1.5px solid ${checkboxBorderColor}; background: ${checkboxBgColor};
-            cursor: ${cursorStyle}; padding: 0; margin-bottom: 0; pointer-events: none;
+            cursor: ${cursorStyle}; padding: 0; margin-bottom: 0;
           ">
             ${isChecked && !isDisabled ? renderIcon('check', 8, '#fff', 2) : ''}
           </button>
@@ -1117,6 +1117,71 @@ export function renderMessageSend(container) {
       }
     };
 
+    const bindListEvents = (blockEl) => {
+      blockEl.querySelectorAll('.student-row').forEach(row => {
+        row.addEventListener('click', (e) => {
+          const id = row.dataset.id;
+          toggleStudent(id);
+          renderStudentList(false);
+        });
+      });
+
+      blockEl.querySelectorAll('.row-checkbox').forEach(chk => {
+        chk.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = chk.dataset.id;
+          toggleStudent(id);
+          renderStudentList(false);
+        });
+      });
+
+      blockEl.querySelectorAll('.guardian-row').forEach(row => {
+        row.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const studentId = row.dataset.studentId;
+          const type = row.dataset.type;
+          
+          let candidate = null;
+          if (type === 'student') {
+            const s = students.find(x => x.id === studentId);
+            candidate = { phone: s ? s.studentPhone : '', canReceiveMessage: true };
+          } else {
+            const { g1, g2 } = stateStore.getGuardianCandidates(studentId);
+            candidate = type === 'g1' ? g1 : g2;
+          }
+          if (!candidate || !candidate.phone || candidate.canReceiveMessage === false) {
+            return;
+          }
+          
+          toggleGuardian(studentId, type);
+          renderStudentList(false);
+        });
+      });
+
+      blockEl.querySelectorAll('.guardian-checkbox').forEach(chk => {
+        chk.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const studentId = chk.dataset.studentId;
+          const type = chk.dataset.type;
+          
+          let candidate = null;
+          if (type === 'student') {
+            const s = students.find(x => x.id === studentId);
+            candidate = { phone: s ? s.studentPhone : '', canReceiveMessage: true };
+          } else {
+            const { g1, g2 } = stateStore.getGuardianCandidates(studentId);
+            candidate = type === 'g1' ? g1 : g2;
+          }
+          if (!candidate || !candidate.phone || candidate.canReceiveMessage === false) {
+            return;
+          }
+          
+          toggleGuardian(studentId, type);
+          renderStudentList(false);
+        });
+      });
+    };
+
     // Calculate recipient count preview
     let contactCount = 0;
     students.forEach(s => {
@@ -1163,36 +1228,7 @@ export function renderMessageSend(container) {
       }
 
       // Re-bind row click listener
-      block.querySelectorAll('.student-row').forEach(row => {
-        row.addEventListener('click', (e) => {
-          const id = row.dataset.id;
-          toggleStudent(id);
-          renderStudentList(false);
-        });
-      });
-
-      block.querySelectorAll('.guardian-row').forEach(row => {
-        row.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const studentId = row.dataset.studentId;
-          const type = row.dataset.type;
-          
-          let candidate = null;
-          if (type === 'student') {
-            const s = students.find(x => x.id === studentId);
-            candidate = { phone: s ? s.studentPhone : '', canReceiveMessage: true };
-          } else {
-            const { g1, g2 } = stateStore.getGuardianCandidates(studentId);
-            candidate = type === 'g1' ? g1 : g2;
-          }
-          if (!candidate || !candidate.phone || candidate.canReceiveMessage === false) {
-            return;
-          }
-          
-          toggleGuardian(studentId, type);
-          renderStudentList(false);
-        });
-      });
+      bindListEvents(block);
       return;
     }
 
@@ -1333,36 +1369,7 @@ export function renderMessageSend(container) {
       renderStudentList(false);
     });
 
-    block.querySelectorAll('.student-row').forEach(row => {
-      row.addEventListener('click', (e) => {
-        const id = row.dataset.id;
-        toggleStudent(id);
-        renderStudentList(false);
-      });
-    });
-
-    block.querySelectorAll('.guardian-row').forEach(row => {
-      row.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const studentId = row.dataset.studentId;
-        const type = row.dataset.type;
-        
-        let candidate = null;
-        if (type === 'student') {
-          const s = students.find(x => x.id === studentId);
-          candidate = { phone: s ? s.studentPhone : '', canReceiveMessage: true };
-        } else {
-          const { g1, g2 } = stateStore.getGuardianCandidates(studentId);
-          candidate = type === 'g1' ? g1 : g2;
-        }
-        if (!candidate || !candidate.phone || candidate.canReceiveMessage === false) {
-          return;
-        }
-        
-        toggleGuardian(studentId, type);
-        renderStudentList(false);
-      });
-    });
+    bindListEvents(block);
 
     block.querySelector('#btnToggleAllStudents').addEventListener('click', () => {
       if (allChecked) {
@@ -1599,7 +1606,26 @@ export function renderMessageSend(container) {
     block.querySelectorAll('.btn-remove-recipient').forEach(btn => {
       btn.addEventListener('click', () => {
         const key = btn.dataset.key;
+        const removed = viewState.recipients.find(r => r.key === key);
         viewState.recipients = viewState.recipients.filter(r => r.key !== key);
+        
+        if (removed && removed.no && removed.role) {
+          const type = removed.role === "본인" ? "student" : removed.role === "보호자1" ? "g1" : removed.role === "보호자2" ? "g2" : null;
+          if (type) {
+            const contactKey = `${removed.no}_${type}`;
+            viewState.selectedContacts.delete(contactKey);
+            
+            const studentId = removed.no;
+            const hasSelected = viewState.selectedContacts.has(`${studentId}_student`) || 
+                                viewState.selectedContacts.has(`${studentId}_g1`) || 
+                                viewState.selectedContacts.has(`${studentId}_g2`);
+            if (!hasSelected) {
+              viewState.selectedStudentIds.delete(studentId);
+            }
+          }
+        }
+        
+        renderStudentList(false);
         renderRecipientList();
         renderComposePanel();
         renderSendBar();
@@ -1610,6 +1636,9 @@ export function renderMessageSend(container) {
     if (clearBtn) {
       clearBtn.addEventListener('click', () => {
         viewState.recipients = [];
+        viewState.selectedContacts.clear();
+        viewState.selectedStudentIds.clear();
+        renderStudentList(false);
         renderRecipientList();
         renderComposePanel();
         renderSendBar();
