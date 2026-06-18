@@ -2089,7 +2089,7 @@ body.kiosk-mode .content-container {
 /* --- KPI Chips Container & Card Styles for Phase 13I --- */
 .kpi-chips-container {
     display: grid;
-    grid-template-columns: repeat(9, 1fr);
+    grid-template-columns: repeat(10, 1fr);
     gap: 12px;
     margin-bottom: 24px;
     width: 100%;

@@ -1116,8 +1116,8 @@ test.describe('Director Today Console Flow Checks', () => {
 
     // 3. Verify recommendations are displayed in tasks list
     const testNow = new Date();
-    const billingTitle = `[미수납] 김추천 원생 ${testNow.getFullYear()}년 ${testNow.getMonth() + 1}월 수강료`;
-    const attendanceTitle = '김추천 원생 결석 확인 필요';
+    const billingTitle = `[미수납 확인] 김추천 원생 ${testNow.getFullYear()}년 ${testNow.getMonth() + 1}월 수강료`;
+    const attendanceTitle = '[결석 확인] 김추천 원생 결석 확인';
 
     await expect(page.locator(`#tasks-list-container :text("${billingTitle}")`)).toBeVisible();
     await expect(page.locator(`#tasks-list-container :text("${attendanceTitle}")`)).toBeVisible();
@@ -1682,13 +1682,14 @@ test.describe('Director Today Console Flow Checks', () => {
       { id: 'overdue', label: '미수납 확인' },
       { id: 'schedule', label: '일정확인' },
       { id: 'book_check', label: '교재 지급 확인' },
-      { id: 'book_billing', label: '교재 결제 확인' }
+      { id: 'book_billing', label: '교재 결제 확인' },
+      { id: 'book_recommendation', label: '교재 확인' }
     ];
 
     const kpiChips = page.locator('#kpi-chips-row-container .kpi-chip-card');
     
-    // Check total count (must be exactly 9 cards)
-    await expect(kpiChips).toHaveCount(9);
+    // Check total count (must be exactly 10 cards)
+    await expect(kpiChips).toHaveCount(10);
 
     // Verify order and spelling/spacing of labels
     for (let i = 0; i < expectedCards.length; i++) {
@@ -1699,27 +1700,27 @@ test.describe('Director Today Console Flow Checks', () => {
       expect(labelText.trim()).toBe(expectedCards[i].label);
     }
 
-    // 2. Resize viewport to 1200px to trigger 5 / 4 responsive grid layout
+    // 2. Resize viewport to 1200px to trigger 5 / 5 responsive grid layout
     await page.setViewportSize({ width: 1200, height: 900 });
     
     // Wait for styling or grid rendering stability
     await page.waitForTimeout(500);
 
-    // Get bounding boxes of all 9 KPI cards
+    // Get bounding boxes of all 10 KPI cards
     const boundingBoxes = [];
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < 10; i++) {
       const box = await kpiChips.nth(i).boundingBox();
       boundingBoxes.push(box);
     }
 
-    // Ensure all 9 cards are rendered correctly and have bounding box data
+    // Ensure all 10 cards are rendered correctly and have bounding box data
     for (const box of boundingBoxes) {
       expect(box).not.toBeNull();
     }
 
-    // In a 5 / 4 grid layout:
+    // In a 5 / 5 grid layout:
     // First 5 cards (index 0~4) should be on Row 1 (same Y coordinate)
-    // Next 4 cards (index 5~8) should be on Row 2 (same Y coordinate, larger than Row 1 Y coordinate)
+    // Next 5 cards (index 5~9) should be on Row 2 (same Y coordinate, larger than Row 1 Y coordinate)
     const row1Y = boundingBoxes[0].y;
     for (let i = 1; i < 5; i++) {
       // Allow minor rendering difference (within 2px)
@@ -1729,7 +1730,7 @@ test.describe('Director Today Console Flow Checks', () => {
     const row2Y = boundingBoxes[5].y;
     expect(row2Y).toBeGreaterThan(row1Y);
 
-    for (let i = 6; i < 9; i++) {
+    for (let i = 6; i < 10; i++) {
       expect(Math.abs(boundingBoxes[i].y - row2Y)).toBeLessThanOrEqual(2);
     }
 
@@ -1738,7 +1739,7 @@ test.describe('Director Today Console Flow Checks', () => {
     for (let i = 0; i < 4; i++) {
       expect(boundingBoxes[i+1].x).toBeGreaterThan(boundingBoxes[i].x);
     }
-    for (let i = 5; i < 8; i++) {
+    for (let i = 5; i < 9; i++) {
       expect(boundingBoxes[i+1].x).toBeGreaterThan(boundingBoxes[i].x);
     }
   });

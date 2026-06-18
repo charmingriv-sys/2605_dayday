@@ -494,7 +494,7 @@ export const todayTaskMethods = {
                                 dueAt: dueTime.toISOString(),
                                 startAt: dueTime.toISOString(),
                                 endAt: endTime.toISOString(),
-                                title: `[미수납] ${student.name} 원생 ${py}년 ${pm}월 수강료`,
+                                title: `[미수납 확인] ${student.name} 원생 ${py}년 ${pm}월 수강료`,
                                 description: `${student.name} 원생의 ${py}년 ${pm}월 수강료 ${payment.amount.toLocaleString()}원이 납부 예정일(${formattedDueDate})을 지났지만 아직 미수납 상태입니다. 수납 상태 확인 또는 학부모 안내가 필요합니다.`,
                                 relatedStudentIds: [student.id],
                                 dedupeKey: dedupeKey,
@@ -563,7 +563,7 @@ export const todayTaskMethods = {
             const payments = typeof this.getPayments === 'function' ? this.getPayments() : (this.db.payments || []);
             const bookIssueRequests = this.db.bookIssueRequests || [];
 
-            // A. 교재 확인 (book_check) - status: 'requested'인 BIR
+            // A. 교재 지급 확인 (book_check) - status: 'requested'인 BIR
             bookIssueRequests.forEach(request => {
                 if (request.status !== 'requested') return;
 
@@ -601,7 +601,7 @@ export const todayTaskMethods = {
                             dueAt: nowIso,
                             startAt: nowIso,
                             endAt: nowIso,
-                            title: `[교재확인] ${student.name} 원생 ${bookName}`,
+                            title: `[교재 지급 확인] ${student.name} 원생 ${bookName}`,
                             description: `${teacherName}가 ${student.name} 원생에게 ${bookName} 교재 지급 승인을 요청했습니다.${request.memo ? ` (메모: ${request.memo})` : ''}`,
                             relatedStudentIds: [student.id],
                             dedupeKey: dedupeKey,
@@ -634,7 +634,7 @@ export const todayTaskMethods = {
                 const invoiceDateAt = new Date(iy, im - 1, id, 0, 0, 0, 0);
 
                 if (invoiceDateAt.getTime() >= paymentDueAt.getTime()) {
-                    // 교재 확인 승인 직후 바로 미수납 안내가 생성되지 않도록 납부 예정일을 다음 달로 이월(Rollover)합니다.
+                    // 교재 지급 확인 승인 직후 바로 미수납 안내가 생성되지 않도록 납부 예정일을 다음 달로 이월(Rollover)합니다.
                     let nextYear = py;
                     let nextMonth = pm + 1;
                     if (nextMonth > 12) {
@@ -695,7 +695,7 @@ export const todayTaskMethods = {
                             dueAt: nowIso,
                             startAt: nowIso,
                             endAt: nowIso,
-                            title: `[교재결제확인] ${student.name} 원생 ${bookName} / ${sourceLabel}`,
+                            title: `[교재 결제 확인] ${student.name} 원생 ${bookName} / ${sourceLabel}`,
                             description: `학부모 안내 및 수납 확인이 필요합니다.`,
                             relatedStudentIds: [student.id],
                             dedupeKey: dedupeKey,
@@ -707,7 +707,74 @@ export const todayTaskMethods = {
                 }
             });
 
-            // C. Mute / remove obsolete textbook recommendations
+            // C. 교재 추천 (book_recommendation) - 출석 횟수가 권장일수의 90% 이상인 경우
+            const studentBooks = typeof this.getStudentBooks === 'function' ? this.getStudentBooks() : (this.db.studentBooks || []);
+            const attendance = typeof this.getAttendance === 'function' ? this.getAttendance() : (this.db.attendance || []);
+
+            students.forEach(student => {
+                const sBooks = studentBooks.filter(sb => sb.studentId === student.id);
+                if (sBooks.length === 0) return;
+
+                // Sort to find the latest one (latest by regDate descending, then orderNo descending if regDate is equal)
+                sBooks.sort((a, b) => {
+                    const cmp = (b.regDate || '').localeCompare(a.regDate || '');
+                    if (cmp !== 0) return cmp;
+                    return (b.orderNo || 0) - (a.orderNo || 0);
+                });
+                const latestSB = sBooks[0];
+                const book = books.find(b => b.id === latestSB.bookId);
+                if (!book) return;
+
+                const recommendedDays = parseInt(book.recommendedDays) || 90;
+                
+                // Count attendance on or after regDate
+                const attendedCount = attendance.filter(a => {
+                    return a.studentId === student.id && a.date >= latestSB.regDate && (a.status === 'present' || a.status === 'late');
+                }).length;
+
+                const ratio = recommendedDays > 0 ? (attendedCount / recommendedDays) : 0;
+                
+                if (ratio >= 0.9) {
+                    const dedupeKey = `SYSTEM_RECOMMEND_BOOK_RECOMMENDATION_${student.id}_${latestSB.bookId}_${latestSB.regDate}`;
+                    activeBookKeys.push(dedupeKey);
+
+                    // Check if manually completed / dismissed / snoozed
+                    const hasResolved = this.db.todayTasks.some(t =>
+                        t.source === 'system' &&
+                        (t.status === 'done' || t.status === 'dismissed' || (t.status === 'snoozed' && new Date(t.snoozedUntil).getTime() > parsedNow.getTime())) &&
+                        t.dedupeKey === dedupeKey
+                    );
+
+                    if (!hasResolved) {
+                        const isAlreadyOpen = this.db.todayTasks.some(t => t.dedupeKey === dedupeKey && t.status === 'open');
+                        if (!isAlreadyOpen) {
+                            const nowIso = parsedNow.toISOString();
+                            this.addTodayTask({
+                                organizationId: student.academyId || '',
+                                segment: 'academy_director_console',
+                                domain: 'academy',
+                                source: 'system',
+                                type: 'book',
+                                category: 'book_recommendation',
+                                priority: 'today',
+                                status: 'open',
+                                dueAt: nowIso,
+                                startAt: nowIso,
+                                endAt: nowIso,
+                                title: `[교재 확인] ${student.name} 원생 (${book.name})`,
+                                description: `${student.name} 원생이 ${book.name} 교재를 등록한 후 ${attendedCount}회 출석했습니다. 권장 학습일수(${recommendedDays}회)의 90% 이상이 경과하여 교체/추천이 필요합니다.`,
+                                relatedStudentIds: [student.id],
+                                dedupeKey: dedupeKey,
+                                visibilityRoles: ['director'],
+                                actionType: 'NAVIGATE',
+                                actionPayload: { route: '/catalog', studentId: student.id }
+                            });
+                        }
+                    }
+                }
+            });
+
+            // D. Mute / remove obsolete textbook recommendations
             // Resolve to 'done' if the status changed (e.g. payment status becomes 'paid', which syncs BIR status to 'paid')
             this.db.todayTasks = this.db.todayTasks.map(t => {
                 if (t.source === 'system' && t.status === 'open' && t.type === 'book') {
@@ -733,6 +800,30 @@ export const todayTaskMethods = {
                                 updatedAt: parsedNow.toISOString()
                             };
                         }
+                    } else if (t.category === 'book_recommendation') {
+                        const parts = t.dedupeKey.replace('SYSTEM_RECOMMEND_BOOK_RECOMMENDATION_', '').split('_');
+                        const studentId = parts[0];
+                        const bookId = parts[1];
+                        const regDate = parts[2];
+
+                        const sBooks = studentBooks.filter(sb => sb.studentId === studentId);
+                        const hasNewerSB = sBooks.some(sb => {
+                            const dateCmp = (sb.regDate || '').localeCompare(regDate || '');
+                            if (dateCmp > 0) return true;
+                            if (dateCmp === 0 && (sb.orderNo || 0) > (sBooks.find(item => item.bookId === bookId && item.regDate === regDate)?.orderNo || 0)) {
+                                return true;
+                            }
+                            return false;
+                        });
+
+                        if (hasNewerSB) {
+                            return {
+                                ...t,
+                                status: 'done',
+                                completedAt: parsedNow.toISOString(),
+                                updatedAt: parsedNow.toISOString()
+                            };
+                        }
                     }
                 }
                 return t;
@@ -741,7 +832,7 @@ export const todayTaskMethods = {
             // Filter out any open recommendations that are no longer active
             this.db.todayTasks = this.db.todayTasks.filter(t => {
                 if (t.source === 'system' && t.status === 'open' && t.type === 'book') {
-                    if (t.category === 'book_check' || t.category === 'book_billing') {
+                    if (t.category === 'book_check' || t.category === 'book_billing' || t.category === 'book_recommendation') {
                         return activeBookKeys.includes(t.dedupeKey);
                     }
                 }
@@ -865,23 +956,23 @@ export const todayTaskMethods = {
 
                         if (currentWarningState === 'ABSENT') {
                             category = 'absent';
-                            title = `${studentName} 원생 결석 확인 필요`;
+                            title = `[결석 확인] ${studentName} 원생 결석 확인`;
                             warningTypeLabel = '결석 확인';
                             reason = '수업이 끝났지만 출석 기록이 없습니다.';
                             dueAt = scheduledEndAt.toISOString();
                         } else if (currentWarningState === 'LATE') {
-                            title = `${studentName} 원생 지각 출석`;
+                            title = `[특이출결] ${studentName} 원생 지각`;
                             warningTypeLabel = '지각';
                             reason = '수업 시작 후 출석했습니다.';
                             dueAt = new Date(scheduledStartAt.getTime() + lateThresholdMinutes * 60 * 1000).toISOString();
                         } else if (currentWarningState === 'CHECKOUT_MISSING') {
-                            title = `[특이출결] ${studentName} 원생 하원누락`;
-                            warningTypeLabel = '하원누락';
+                            title = `[특이출결] ${studentName} 원생 하원 누락`;
+                            warningTypeLabel = '하원 누락';
                             reason = '수업 시간이 종료되었지만 하원 기록이 없습니다.';
                             dueAt = checkoutLimit ? checkoutLimit.toISOString() : scheduledEndAt.toISOString();
                         } else if (currentWarningState === 'LATE_CHECKOUT_MISSING') {
-                            title = `[특이출결] ${studentName} 원생 지각 및 하원누락`;
-                            warningTypeLabel = '지각 + 하원누락';
+                            title = `[특이출결] ${studentName} 원생 지각 및 하원 누락`;
+                            warningTypeLabel = '지각 + 하원 누락';
                             reason = '지각 출석 후 수업 시간이 종료되었지만 하원 기록이 없습니다.';
                             dueAt = checkoutLimit ? checkoutLimit.toISOString() : scheduledEndAt.toISOString();
                         }
@@ -1134,13 +1225,13 @@ export const todayTaskMethods = {
                             reason = '출근 예정시간보다 늦게 출근했습니다.';
                             dueAt = new Date(scheduledStartAt.getTime() + teacherLateGraceMinutes * 60 * 1000).toISOString();
                         } else if (currentWarningState === 'CHECKOUT_MISSING') {
-                            title = `[특이근태] ${t.name} 강사 퇴근누락`;
-                            warningTypeLabel = '퇴근누락';
+                            title = `[특이근태] ${t.name} 강사 퇴근 누락`;
+                            warningTypeLabel = '퇴근 누락';
                             reason = '근무 시간이 종료되었지만 퇴근 기록이 없습니다.';
                             dueAt = new Date(scheduledEndAt.getTime() + teacherCheckoutMissingGraceMinutes * 60 * 1000).toISOString();
                         } else if (currentWarningState === 'LATE_CHECKOUT_MISSING') {
-                            title = `[특이근태] ${t.name} 강사 지각 및 퇴근누락`;
-                            warningTypeLabel = '지각 + 퇴근누락';
+                            title = `[특이근태] ${t.name} 강사 지각 및 퇴근 누락`;
+                            warningTypeLabel = '지각 + 퇴근 누락';
                             reason = '늦게 출근했고, 근무 시간이 종료되었지만 퇴근 기록이 없습니다.';
                             dueAt = new Date(scheduledEndAt.getTime() + teacherCheckoutMissingGraceMinutes * 60 * 1000).toISOString();
                         }

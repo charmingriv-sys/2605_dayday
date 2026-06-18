@@ -1860,7 +1860,7 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
         dueAt: todayIso,
         startAt: todayIso,
         endAt: todayIso,
-        title: '[교재확인] 나핸드 원생 바이엘1',
+        title: '[교재 지급 확인] 나핸드 원생 바이엘1',
         description: '강사가 나핸드 원생에게 바이엘1 지급 승인을 요청했습니다.',
         relatedStudentIds: [sid],
         dedupeKey: 'SYSTEM_RECOMMEND_BOOK_CHECK_TEST_16P',
@@ -1881,7 +1881,7 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
         dueAt: todayIso,
         startAt: todayIso,
         endAt: todayIso,
-        title: '[교재결제확인] 나핸드 원생 바이엘1 / 직접 등록',
+        title: '[교재 결제 확인] 나핸드 원생 바이엘1 / 직접 등록',
         description: '학부모 안내 및 수납 확인이 필요합니다.',
         relatedStudentIds: [sid],
         dedupeKey: 'SYSTEM_RECOMMEND_BOOK_BILLING_TEST_16P',
@@ -1919,11 +1919,11 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     const absentMessageBtn = absentCard.locator('button:has-text("메시지 보내기")');
     await expect(absentMessageBtn).toBeVisible();
 
-    const bookCheckCard = page.locator('#tasks-list-container .glass-card', { hasText: '[교재확인] 나핸드 원생 바이엘1' });
+    const bookCheckCard = page.locator('#tasks-list-container .glass-card', { hasText: '[교재 지급 확인] 나핸드 원생 바이엘1' });
     const bookCheckMessageBtn = bookCheckCard.locator('button:has-text("메시지 보내기")');
     await expect(bookCheckMessageBtn).toBeHidden();
 
-    const bookBillingCard = page.locator('#tasks-list-container .glass-card', { hasText: '[교재결제확인] 나핸드 원생 바이엘1' });
+    const bookBillingCard = page.locator('#tasks-list-container .glass-card', { hasText: '[교재 결제 확인] 나핸드 원생 바이엘1' });
     const bookBillingMessageBtn = bookBillingCard.locator('button:has-text("메시지 보내기")');
     await expect(bookBillingMessageBtn).toBeVisible();
 

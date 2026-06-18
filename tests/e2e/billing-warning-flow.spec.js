@@ -147,14 +147,14 @@ test.describe('Billing & Overdue Warnings E2E Flow', () => {
     // 4. Test filtering: 수납확인 카드 클릭 시 하단에 수납확인만 표시
     await page.locator('.kpi-chip-card[data-filter-id="billing"]').click();
     let tasksListText = await page.locator('#tasks-list-container').innerText();
-    expect(tasksListText).toContain('수납확인');
-    expect(tasksListText).not.toContain('미수납');
+    expect(tasksListText).toContain('[수납확인]');
+    expect(tasksListText).not.toContain('[미수납 확인]');
 
     // 5. Test filtering: 미수납 확인 카드 클릭 시 하단에 미수납만 표시
     await page.locator('.kpi-chip-card[data-filter-id="overdue"]').click();
     tasksListText = await page.locator('#tasks-list-container').innerText();
-    expect(tasksListText).toContain('미수납');
-    expect(tasksListText).not.toContain('수납확인');
+    expect(tasksListText).toContain('[미수납 확인]');
+    expect(tasksListText).not.toContain('[수납확인]');
 
     // 6. Test state transition: 수납확인 -> 날짜 경과 후 미수납으로 전환
     // Change evaluation date to 2026-06-14 (S2 billing due 13th is now overdue)

@@ -168,7 +168,7 @@ test.describe('Teacher Book Issue Flow & Duplicate Prevention (Phase 13E-2)', ()
     await page.locator('[data-filter-id="book_check"]').click();
     const taskList = page.locator('#tasks-list-container .glass-card');
     await expect(taskList).toHaveCount(1);
-    await expect(taskList.first()).toContainText('[교재확인]');
+    await expect(taskList.first()).toContainText('[교재 지급 확인]');
     await expect(taskList.first()).toContainText('고승현 원생 세모둥이네꼬마바이엘 1');
     await expect(taskList.first()).toContainText('문승현가 고승현 원생에게 세모둥이네꼬마바이엘 1 교재 지급 승인을 요청했습니다. (메모: 강사 T1 지급 요청 메모)');
   });

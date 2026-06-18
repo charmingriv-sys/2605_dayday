@@ -19,7 +19,7 @@ export function renderTodayConsole(container) {
     let selectedScheduleId = null; // Track selected schedule ID for inline schedule details drawer
     let selectedDateStr = null; // Track clicked calendar date
     let activeTab = 'active'; // Tab state: active, done, hidden, all
-    let selectedCategoryFilter = 'all'; // Filter by category: 'all', 'overdue', 'staff_warning', 'absent', 'schedule', 'billing', 'attendance_warning', 'book_check', 'book_billing', 'memo'
+    let selectedCategoryFilter = 'all'; // Filter by category: 'all', 'overdue', 'staff_warning', 'absent', 'schedule', 'billing', 'attendance_warning', 'book_check', 'book_recommendation', 'book_billing', 'memo'
 
     const handleKeydown = (e) => {
         if (e.key === 'Escape' && (selectedTaskId || selectedScheduleId)) {
@@ -1129,6 +1129,7 @@ export function renderTodayConsole(container) {
                 billing: '수납확인',
                 book_billing: '교재 결제 확인',
                 book_check: '교재 지급 확인',
+                book_recommendation: '교재 확인',
                 absent: '결석 확인',
                 attendance_warning: '특이출결',
                 staff_warning: '특이근태',
@@ -1424,6 +1425,19 @@ export function renderTodayConsole(container) {
                 return cat === 'book_check';
             }).length;
         };
+        const getBookRecommendationCount = () => {
+            return activeTasksList.filter(t => {
+                let cat = t.category;
+                if (t.source === 'system' || t.source === 'auto') {
+                    if (t.type === 'book') {
+                        if (t.category === 'book_recommendation') {
+                            cat = 'book_recommendation';
+                        }
+                    }
+                }
+                return cat === 'book_recommendation';
+            }).length;
+        };
         const getBookBillingCount = () => {
             return activeTasksList.filter(t => {
                 let cat = t.category;
@@ -1464,7 +1478,8 @@ export function renderTodayConsole(container) {
             { id: 'overdue', label: '미수납 확인', count: getOverdueCount(), color: 'var(--danger)', icon: 'fa-file-invoice-dollar' },
             { id: 'schedule', label: '일정확인', count: getScheduleCount(), color: 'var(--primary)', icon: 'fa-calendar-day' },
             { id: 'book_check', label: '교재 지급 확인', count: getBookCheckCount(), color: '#a55eea', icon: 'fa-book' },
-            { id: 'book_billing', label: '교재 결제 확인', count: getBookBillingCount(), color: '#f1c40f', icon: 'fa-wallet' }
+            { id: 'book_billing', label: '교재 결제 확인', count: getBookBillingCount(), color: '#f1c40f', icon: 'fa-wallet' },
+            { id: 'book_recommendation', label: '교재 확인', count: getBookRecommendationCount(), color: '#a55eea', icon: 'fa-book-open' }
         ];
 
         const chipsHtml = cardsData.map(card => {
@@ -1514,6 +1529,7 @@ export function renderTodayConsole(container) {
                     else if (task.type === 'book') {
                         if (task.category === 'book_check') cat = 'book_check';
                         else if (task.category === 'book_billing') cat = 'book_billing';
+                        else if (task.category === 'book_recommendation') cat = 'book_recommendation';
                     }
                     else if (task.type === 'schedule') {
                         if (task.category === 'schedule' || task.category === 'schedule_check') cat = 'schedule';
@@ -1802,13 +1818,13 @@ export function renderTodayConsole(container) {
                 domain = '출결';
             } else if (category === 'staff_warning') {
                 domain = '근태';
-            } else if (category === 'billing_due') {
+            } else if (category === 'billing_due' || category === 'billing') {
                 domain = '수납';
-            } else if (category === 'billing_overdue') {
+            } else if (category === 'billing_overdue' || category === 'overdue') {
                 domain = '미수납';
             } else if (type === 'schedule' || category === 'schedule') {
                 domain = '주요일정';
-            } else if (category === 'book_check') {
+            } else if (category === 'book_check' || category === 'book_recommendation') {
                 domain = '교재';
             } else if (category === 'book_billing') {
                 domain = '교재결제';
@@ -2278,8 +2294,8 @@ export function renderTodayConsole(container) {
                                         `;
                                     } else if (task.category === 'schedule' || task.category === 'schedule_check') {
                                         actionsHtml = `
-                                            <button type="button" class="btn btn-sm btn-primary" data-action="confirm-schedule" data-id="${safeId}" style="padding: 6px 12px; font-size: 0.75rem; margin: 0; background: var(--primary); color: #fff; justify-content: center; border-radius: 4px; font-weight: 600;" title="일정 확인 처리">
-                                                일정 확인
+                                            <button type="button" class="btn btn-sm btn-primary" data-action="confirm-schedule" data-id="${safeId}" style="padding: 6px 12px; font-size: 0.75rem; margin: 0; background: var(--primary); color: #fff; justify-content: center; border-radius: 4px; font-weight: 600;" title="일정확인">
+                                                일정확인
                                             </button>
                                             <button type="button" class="task-action-btn btn-done" data-action="done" data-id="${safeId}" title="완료 처리">
                                                 완료

@@ -40,7 +40,7 @@ test.describe('Textbook Warning Life Cycle Flow (Phase 13E-1)', () => {
       }
 
       // B. Seed requested bookIssueRequests (requested by a teacher)
-      // This should trigger "교재 확인" (book_check) warning
+      // This should trigger "교재 지급 확인" (book_check) warning
       db.bookIssueRequests.push({
         id: 'BIR-REQ-1',
         studentId: 'S1',
@@ -118,17 +118,17 @@ test.describe('Textbook Warning Life Cycle Flow (Phase 13E-1)', () => {
     await expect(checkCardCount).toContainText('1');
     await expect(billingCardCount).toContainText('1');
 
-    // 4. Click "교재 확인" card to filter and check the row details
+    // 4. Click "교재 지급 확인" card to filter and check the row details
     await page.locator('[data-filter-id="book_check"]').click();
     const taskList = page.locator('#tasks-list-container .glass-card');
     await expect(taskList).toHaveCount(1);
-    await expect(taskList.first()).toContainText('[교재확인]');
+    await expect(taskList.first()).toContainText('[교재 지급 확인]');
     await expect(taskList.first()).toContainText('지급 요청합니다.');
 
     // 5. Click "교재 결제 확인" card to filter and check the row details
     await page.locator('[data-filter-id="book_billing"]').click();
     await expect(taskList).toHaveCount(1);
-    await expect(taskList.first()).toContainText('[교재결제확인]');
+    await expect(taskList.first()).toContainText('[교재 결제 확인]');
     await expect(taskList.first()).toContainText('학부모 안내 및 수납 확인이 필요합니다.');
 
     // 6. Test direct assignment by Director
@@ -276,7 +276,7 @@ test.describe('Textbook Warning Life Cycle Flow (Phase 13E-1)', () => {
       window.stateStore.saveDB();
     });
 
-    // 3. Verify KPI card counts and visibility of [교재 확인] warning row
+    // 3. Verify KPI card counts and visibility of [교재 지급 확인] warning row
     const checkCardCount = page.locator('[data-filter-id="book_check"] .badge');
     const billingCardCount = page.locator('[data-filter-id="book_billing"] .badge');
     await expect(checkCardCount).toContainText('1');
@@ -285,7 +285,7 @@ test.describe('Textbook Warning Life Cycle Flow (Phase 13E-1)', () => {
     await page.locator('[data-filter-id="book_check"]').click();
     const taskList = page.locator('#tasks-list-container .glass-card');
     await expect(taskList).toHaveCount(1);
-    await expect(taskList.first()).toContainText('[교재확인]');
+    await expect(taskList.first()).toContainText('[교재 지급 확인]');
 
     const confirmBtn = taskList.first().locator('[data-action="confirm-book"]');
     await expect(confirmBtn).toBeVisible({ timeout: 5000 });
@@ -590,5 +590,93 @@ test.describe('Textbook Warning Life Cycle Flow (Phase 13E-1)', () => {
       return newMessages.length > 0 || newLogs.length > 0;
     });
     expect(hasSideEffects).toBe(false);
+  });
+
+  test('should verify book recommendation queue lifecycle, KPI filter, and auto-resolution', async ({ page }) => {
+    // 1. Login as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // Navigate to Today Console
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+    await expect(page.locator('#page-title')).toContainText('오늘 원장 콘솔');
+
+    // 2. Setup mock data
+    await page.evaluate(() => {
+      const db = window.stateStore.db;
+      db.todayTasks = [];
+      db.payments = [];
+      db.studentBooks = [];
+      db.bookIssueRequests = [];
+      db.parentMessages = [];
+      db.attendance = [];
+
+      // S1 (최다은) has dueDay = 10
+      const student1 = db.students.find(s => s.id === 'S1');
+      if (student1) {
+        student1.academyId = 'AC1';
+      }
+
+      // 3. Assign textbook B1 to student S1 on 2026-06-01 (recommendedDays = 10)
+      const book1 = db.books.find(b => b.id === 'B1');
+      if (book1) {
+        book1.recommendedDays = 10;
+      }
+      
+      db.studentBooks.push({
+        id: 'SB-REC-1',
+        studentId: 'S1',
+        bookId: 'B1',
+        regDate: '2026-06-01',
+        orderNo: 1,
+        paymentId: 'P-REC-1'
+      });
+
+      // 4. Seed 9 attendance records (90% of recommendedDays = 10) starting from 2026-06-01
+      for (let i = 1; i <= 9; i++) {
+        db.attendance.push({
+          id: `ATT-REC-${i}`,
+          studentId: 'S1',
+          date: `2026-06-0${i}`,
+          status: 'present',
+          time: '14:00'
+        });
+      }
+
+      window.stateStore.syncSystemRecommendations();
+      window.stateStore.saveDB();
+    });
+
+    // 5. Verify recommendation task is generated
+    const recommendCardCount = page.locator('[data-filter-id="book_recommendation"] .badge');
+    await expect(recommendCardCount).toContainText('1');
+
+    await page.locator('[data-filter-id="book_recommendation"]').click();
+    const taskList = page.locator('#tasks-list-container .glass-card');
+    await expect(taskList).toHaveCount(1);
+    await expect(taskList.first()).toContainText('[교재 확인]');
+    await expect(taskList.first()).toContainText('최다은 원생이');
+
+    // 6. Test auto-resolution: assign a new textbook to student S1
+    await page.evaluate(() => {
+      const db = window.stateStore.db;
+      // Assign B2 as next book
+      db.studentBooks.push({
+        id: 'SB-REC-2',
+        studentId: 'S1',
+        bookId: 'B2',
+        regDate: '2026-06-10',
+        orderNo: 2,
+        paymentId: 'P-REC-2'
+      });
+      window.stateStore.syncSystemRecommendations();
+      window.stateStore.saveDB();
+    });
+
+    // The recommendation warning should be gone (automatically completed)
+    await expect(recommendCardCount).toContainText('0');
+    await expect(taskList).toHaveCount(0);
   });
 });
