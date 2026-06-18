@@ -1,4 +1,5 @@
 import { stateStore } from '../../state.js';
+import { openStudentDetailModalRef } from './shared.js';
 
 const escapeHtml = (value) => {
     if (value === null || value === undefined) return '';
@@ -14,15 +15,182 @@ export function renderTodayConsole(container) {
     const segmentId = 'academy_director_console'; // Segment-First Architecture Token
     let isEndTimeManuallyChanged = false; // Track manual override of end time
     let editingTaskId = null; // Track editing task ID
+    let selectedTaskId = null; // Track selected system task ID for details drawer
+    let selectedScheduleId = null; // Track selected schedule ID for inline schedule details drawer
     let selectedDateStr = null; // Track clicked calendar date
     let activeTab = 'active'; // Tab state: active, done, hidden, all
     let selectedCategoryFilter = 'all'; // Filter by category: 'all', 'overdue', 'staff_warning', 'absent', 'schedule', 'billing', 'attendance_warning', 'book_check', 'book_billing', 'memo'
+
+    const handleKeydown = (e) => {
+        if (e.key === 'Escape' && (selectedTaskId || selectedScheduleId)) {
+            selectedTaskId = null;
+            selectedScheduleId = null;
+            render();
+        }
+    };
 
     const isSystemCheck = (item) => {
         if (!item) return false;
         const src = item.taskSource || item.source;
         const cat = item.category;
         return src === 'system' || src === 'auto' || cat === 'system_check';
+    };
+
+    const triggerMessageHandoff = (taskId) => {
+        const task = stateStore.getTodayTasks().find(t => t.id === taskId);
+        if (!task) {
+            alert('해당 업무 정보를 찾을 수 없습니다.');
+            return;
+        }
+
+        const studentId = (task.relatedStudentIds && task.relatedStudentIds.length > 0) ? task.relatedStudentIds[0] : (task.studentId || '');
+        if (!studentId) {
+            alert('해당 업무에 연계된 원생 정보가 없습니다.');
+            return;
+        }
+        
+        let suggestedTemplateType = 'general';
+        let relatedDomainType = task.type || '';
+        if (task.category === 'absent') {
+            suggestedTemplateType = 'absent';
+            relatedDomainType = 'attendance';
+        } else if (task.category === 'billing') {
+            suggestedTemplateType = 'tuition_info';
+            relatedDomainType = 'billing';
+        } else if (task.category === 'overdue') {
+            suggestedTemplateType = 'tuition_unpaid';
+            relatedDomainType = 'billing';
+        } else if (task.category === 'book_billing') {
+            suggestedTemplateType = 'book_unpaid';
+            relatedDomainType = 'book';
+        } else if (task.category === 'consult' || task.category === 'counseling' || task.type === 'counseling') {
+            suggestedTemplateType = 'consulting';
+            relatedDomainType = 'counseling';
+        }
+
+        const student = stateStore.getStudent(studentId);
+        const studentName = student ? student.name : '';
+
+        // 1. 수업시간 또는 결석 관련 정보
+        let classTime = '';
+        if (task.startAt) {
+            const startDate = new Date(task.startAt);
+            const startTimeStr = startDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+            if (task.endAt) {
+                const endDate = new Date(task.endAt);
+                const endTimeStr = endDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                classTime = `${startTimeStr} ~ ${endTimeStr}`;
+            } else {
+                classTime = startTimeStr;
+            }
+        }
+        const timeMatch = task.description && task.description.match(/• 수업 시간:\s*([^\n]+)/);
+        if (timeMatch) {
+            classTime = timeMatch[1].trim();
+        }
+
+        // 2. 청구 월/금액/납부 예정일
+        let billingMonth = '';
+        let billingAmount = 0;
+        let billingDueDate = '';
+        if (task.type === 'billing') {
+            const key = task.dedupeKey || '';
+            let paymentId = '';
+            if (key.startsWith('SYSTEM_RECOMMEND_BILLING_DUE_')) {
+                paymentId = key.substring('SYSTEM_RECOMMEND_BILLING_DUE_'.length).split('_')[0];
+            } else if (key.startsWith('SYSTEM_RECOMMEND_BILLING_UNPAID_')) {
+                paymentId = key.substring('SYSTEM_RECOMMEND_BILLING_UNPAID_'.length).split('_')[0];
+            }
+            if (paymentId) {
+                const payment = stateStore.db.payments && stateStore.db.payments.find(p => p.id === paymentId);
+                if (payment) {
+                    billingMonth = payment.month;
+                    billingAmount = payment.amount;
+                    const dueDay = student ? (student.dueDay || 10) : 10;
+                    const [py, pm] = payment.month.split('-').map(Number);
+                    const lastDay = new Date(py, pm, 0).getDate();
+                    const safeDueDay = Math.min(dueDay, lastDay);
+                    billingDueDate = `${py}-${String(pm).padStart(2, '0')}-${String(safeDueDay).padStart(2, '0')}`;
+                }
+            }
+        }
+
+        // 3. 교재명/금액/납부 예정일
+        let bookName = '';
+        let bookAmount = 0;
+        let bookDueDate = '';
+        if (task.category === 'book_billing') {
+            const key = task.dedupeKey || '';
+            const paymentId = key.replace('SYSTEM_RECOMMEND_BOOK_BILLING_', '');
+            if (paymentId) {
+                const payment = stateStore.db.payments && stateStore.db.payments.find(p => p.id === paymentId);
+                if (payment) {
+                    bookAmount = payment.amount;
+                    const book = stateStore.db.books && stateStore.db.books.find(b => b.id === payment.bookId);
+                    bookName = book ? book.name : '교재';
+                    const [py, pm] = payment.month.split('-').map(Number);
+                    const safeDueDay = Math.min(student ? (student.dueDay || 14) : 14, new Date(py, pm, 0).getDate());
+                    let paymentDueAt = new Date(py, pm - 1, safeDueDay, 0, 0, 0, 0);
+                    const invoiceDateStr = payment.invoiceDate || payment.createdAt || new Date().toISOString().slice(0, 10);
+                    const [iy, im, id] = invoiceDateStr.slice(0, 10).split('-').map(Number);
+                    const invoiceDateAt = new Date(iy, im - 1, id, 0, 0, 0, 0);
+                    if (invoiceDateAt.getTime() >= paymentDueAt.getTime()) {
+                        let nextYear = py;
+                        let nextMonth = pm + 1;
+                        if (nextMonth > 12) {
+                            nextMonth = 1;
+                            nextYear += 1;
+                        }
+                        const nextSafeDueDay = Math.min(student ? (student.dueDay || 14) : 14, new Date(nextYear, nextMonth, 0).getDate());
+                        paymentDueAt = new Date(nextYear, nextMonth - 1, nextSafeDueDay, 0, 0, 0, 0);
+                    }
+                    const dy = paymentDueAt.getFullYear();
+                    const dm = String(paymentDueAt.getMonth() + 1).padStart(2, '0');
+                    const dd = String(paymentDueAt.getDate()).padStart(2, '0');
+                    bookDueDate = `${dy}-${dm}-${dd}`;
+                }
+            }
+        }
+
+        // 4. 상담 예정일/메모 등
+        let consultDate = '';
+        let consultMemo = '';
+        if (task.category === 'consult' || task.category === 'counseling' || task.type === 'counseling') {
+            if (task.startAt) {
+                const startDate = new Date(task.startAt);
+                consultDate = startDate.toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+            }
+            consultMemo = task.description || '';
+        }
+
+        const handoffPayload = {
+            source: 'today_console',
+            taskId: task.id,
+            studentId: studentId,
+            relatedDomainType: relatedDomainType,
+            relatedDomainId: (task.dedupeKey || '').split('_').slice(-1)[0] || '',
+            suggestedTemplateType: suggestedTemplateType,
+            returnView: 'dir-today-console',
+            meta: {
+                studentName: studentName,
+                classTime: classTime,
+                billingMonth: billingMonth,
+                billingAmount: billingAmount,
+                billingDueDate: billingDueDate,
+                bookName: bookName,
+                bookAmount: bookAmount,
+                bookDueDate: bookDueDate,
+                consultDate: consultDate,
+                consultMemo: consultMemo
+            }
+        };
+
+        sessionStorage.setItem('dayday_handoff_payload', JSON.stringify(handoffPayload));
+        
+        const menuItem = document.querySelector('.menu-item[data-view="dir-message-send"]');
+        if (menuItem) {
+            menuItem.click();
+        }
     };
 
     const isTodayTask = (task) => {
@@ -300,6 +468,815 @@ export function renderTodayConsole(container) {
         popover.style.display = 'flex';
     };
 
+    const renderDrawerContent = () => {
+        if (selectedScheduleId) {
+            try {
+                const event = stateStore.getMajorSchedules().find(item => item.id === selectedScheduleId);
+                if (!event) {
+                    return `
+                        <div class="today-task-drawer-header">
+                            <h3 class="today-task-drawer-title">일정 상세 정보</h3>
+                            <button type="button" class="today-task-drawer-close" id="btn-close-task-drawer" title="닫기">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+                        <div class="today-task-drawer-body">
+                            <div class="alert alert-danger" style="margin: 0; padding: 12px; font-size: 0.88rem; border-radius: 6px; background: rgba(235, 94, 85, 0.08); border: 1px solid rgba(235, 94, 85, 0.2); color: var(--danger);">
+                                <i class="fa-solid fa-triangle-exclamation" style="margin-right: 6px;"></i>
+                                일정 정보를 찾을 수 없습니다. (ID: ${escapeHtml(selectedScheduleId)})
+                            </div>
+                        </div>
+                    `;
+                }
+
+                const eventTypes = {
+                    academy: { label: "학원 행사" },
+                    lesson: { label: "보강/수업" },
+                    billing: { label: "수납/결제" },
+                    counsel: { label: "상담/학부모" },
+                    etc: { label: "기타" }
+                };
+                const meta = eventTypes[event.type] || { label: "기타" };
+                
+                const getAdaptedStudents = () => {
+                    return stateStore.getStudents ? stateStore.getStudents() : [];
+                };
+                const parts = getAdaptedStudents().filter(s => event.participantStudentIds && event.participantStudentIds.includes(s.id));
+
+                const fmt = (isoStr) => {
+                    if (!isoStr) return "-";
+                    return isoStr.slice(0, 10);
+                };
+                const dday = (dateStr) => {
+                    const now = new Date();
+                    const todayStr = now.toISOString().slice(0, 10);
+                    const target = new Date(dateStr);
+                    const today = new Date(todayStr);
+                    const diffTime = target - today;
+                    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                };
+                const formatDdayLabel = (diffDays) => {
+                    if (diffDays === 0) return "오늘 진행";
+                    if (diffDays < 0) return `종료 (${Math.abs(diffDays)}일 경과)`;
+                    return `진행 예정 (D-${diffDays})`;
+                };
+
+                const task = stateStore.getTodayTasks().find(t => 
+                    t.dedupeKey && t.dedupeKey.startsWith(`SYSTEM_RECOMMEND_MAJOR_SCHEDULE_${selectedScheduleId}`)
+                );
+
+                return `
+                    <div class="today-task-drawer-header">
+                        <h3 class="today-task-drawer-title">일정 상세 정보</h3>
+                        <button type="button" class="today-task-drawer-close" id="btn-close-task-drawer" title="닫기">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                    <div class="today-task-drawer-body" style="background: #f8fafc; padding: 14px 18px 18px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto;">
+                        <div class="drawer-student-card" style="padding: 0; border: none; background: transparent; display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+                            <div class="avatar" style="width: 48px; height: 48px; border-radius: 50%; background: var(--primary-soft); color: var(--primary); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1rem; flex-shrink: 0;">${meta.label.slice(0, 2)}</div>
+                            <div class="drawer-student-main" style="display: flex; flex-direction: column;">
+                                <strong style="font-size: 1.1rem; color: var(--text-main); font-weight: 700; line-height: 1.3;">${escapeHtml(event.name)}</strong>
+                                <span style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">${fmt(event.eventDate)} · ${formatDdayLabel(dday(event.eventDate))} · ${escapeHtml(event.place || "-")} · ${stateStore.getTeacherDisplayName ? stateStore.getTeacherDisplayName(event.ownerId) : event.ownerId}</span>
+                            </div>
+                        </div>
+
+                        <section class="drawer-section" style="margin-bottom: 0; border: 1px solid var(--border-color); border-radius: 6px; background: #fff;">
+                            <h3 style="margin: 0; padding: 12px 13px; border-bottom: 1px solid var(--border-color); font-size: 14px; font-weight: 950; color: var(--text-main);">일정 정보</h3>
+                            <div class="section-body" style="padding: 12px 13px;">
+                                <div class="detail-grid" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+                                    <div class="detail-item" style="padding: 10px; border: 1px solid var(--border-color); border-radius: 7px; background: #fff; display: flex; flex-direction: column;">
+                                        <span style="color: var(--text-muted); font-size: 11px; font-weight: 850;">구분</span>
+                                        <strong style="margin-top: 4px; font-size: 13px; font-weight: 950; color: var(--text-main);">${meta.label}</strong>
+                                    </div>
+                                    <div class="detail-item" style="padding: 10px; border: 1px solid var(--border-color); border-radius: 7px; background: #fff; display: flex; flex-direction: column;">
+                                        <span style="color: var(--text-muted); font-size: 11px; font-weight: 850;">진행/종료일</span>
+                                        <strong style="margin-top: 4px; font-size: 13px; font-weight: 950; color: var(--text-main);">${fmt(event.eventDate)} · ${formatDdayLabel(dday(event.eventDate))}</strong>
+                                    </div>
+                                    <div class="detail-item" style="padding: 10px; border: 1px solid var(--border-color); border-radius: 7px; background: #fff; display: flex; flex-direction: column;">
+                                        <span style="color: var(--text-muted); font-size: 11px; font-weight: 850;">접수마감</span>
+                                        <strong style="margin-top: 4px; font-size: 13px; font-weight: 950; color: var(--text-main);">${event.dueDate ? fmt(event.dueDate) + " · " + formatDdayLabel(dday(event.dueDate)) : "접수마감 없음"}</strong>
+                                    </div>
+                                    <div class="detail-item" style="padding: 10px; border: 1px solid var(--border-color); border-radius: 7px; background: #fff; display: flex; flex-direction: column;">
+                                        <span style="color: var(--text-muted); font-size: 11px; font-weight: 850;">장소</span>
+                                        <strong style="margin-top: 4px; font-size: 13px; font-weight: 950; color: var(--text-main);">${escapeHtml(event.place || "-")}</strong>
+                                    </div>
+                                    <div class="detail-item" style="padding: 10px; border: 1px solid var(--border-color); border-radius: 7px; background: #fff; display: flex; flex-direction: column;">
+                                        <span style="color: var(--text-muted); font-size: 11px; font-weight: 850;">담당자</span>
+                                        <strong style="margin-top: 4px; font-size: 13px; font-weight: 950; color: var(--text-main);">${stateStore.getTeacherDisplayName ? stateStore.getTeacherDisplayName(event.ownerId) : event.ownerId}</strong>
+                                    </div>
+                                    <div class="detail-item" style="padding: 10px; border: 1px solid var(--border-color); border-radius: 7px; background: #fff; display: flex; flex-direction: column;">
+                                        <span style="color: var(--text-muted); font-size: 11px; font-weight: 850;">공개여부</span>
+                                        <strong style="margin-top: 4px; font-size: 13px; font-weight: 950; color: var(--text-main);">${event.visible ? "학부모 공개" : "비공개"}</strong>
+                                    </div>
+                                </div>
+                                <p class="note" style="white-space: pre-wrap; font-size: 13px; color: var(--text-main); margin-top: 10px; padding: 10px; border-radius: 6px; background: #f8fafc; border: 1px solid var(--border-color);">${escapeHtml(event.memo || "등록된 메모가 없습니다.")}</p>
+                            </div>
+                        </section>
+
+                        <section class="drawer-section" style="margin-bottom: 0; border: 1px solid var(--border-color); border-radius: 6px; background: #fff;">
+                            <h3 style="margin: 0; padding: 12px 13px; border-bottom: 1px solid var(--border-color); font-size: 14px; font-weight: 950; color: var(--text-main);">참여 원생 ${parts.length === 0 ? "0" : parts.length}명</h3>
+                            <div class="section-body" style="padding: 12px 13px;">
+                                ${parts.length === 0 ? `<div style="font-size: 13px; color: var(--text-muted); text-align: center; padding: 12px;">참여 원생이 없습니다.</div>` : parts.map((student) => `
+                                    <div class="student-mini" style="display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 8px; align-items: center; padding: 9px 12px; border: 1px solid var(--border-color); border-radius: 7px; background: #fff; margin-bottom: 8px;">
+                                        <div class="mini-avatar" style="width: 32px; height: 32px; border-radius: 50%; background: var(--bg-card); color: var(--text-main); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 950; border: 1px solid var(--border-color);">${student.name.slice(-2)}</div>
+                                        <div class="queue-main" style="display: flex; flex-direction: column; gap: 2px;">
+                                            <strong style="font-size: 12px; color: var(--text-main); font-weight: 750;">${escapeHtml(student.name)} (${escapeHtml(student.studentMemberNo || student.memberNo || student.id)}) · ${escapeHtml(student.grade)} · ${escapeHtml(student.instrument)}</strong>
+                                            <span style="font-size: 11px; color: var(--text-muted); font-weight: 600;">담당강사: ${escapeHtml(student.teacher || "-")}</span>
+                                        </div>
+                                    </div>
+                                `).join("")}
+                            </div>
+                        </section>
+                    </div>
+                    <div class="today-task-drawer-footer" style="padding: 16px 24px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 8px; background: #fff;">
+                        <button type="button" class="btn btn-secondary" id="btn-close-task-drawer-footer" style="margin-bottom: 0;">닫기</button>
+                    </div>
+                `;
+            } catch (err) {
+                console.error(err);
+                return `<div class="alert alert-danger">에러 발생: ${err.message}</div>`;
+            }
+        }
+        if (!selectedTaskId) return '';
+        try {
+            const task = stateStore.getTodayTasks().find(t => t.id === selectedTaskId);
+            if (!task) {
+                return `
+                    <div class="today-task-drawer-header">
+                        <h3 class="today-task-drawer-title">업무 상세 정보</h3>
+                        <button type="button" class="today-task-drawer-close" id="btn-close-task-drawer" title="닫기">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                    <div class="today-task-drawer-body">
+                        <div class="alert alert-danger" style="margin: 0; padding: 12px; font-size: 0.88rem; border-radius: 6px; background: rgba(235, 94, 85, 0.08); border: 1px solid rgba(235, 94, 85, 0.2); color: var(--danger);">
+                            <i class="fa-solid fa-triangle-exclamation" style="margin-right: 6px;"></i>
+                            업무 정보를 찾을 수 없습니다. (ID: ${escapeHtml(selectedTaskId)})
+                        </div>
+                    </div>
+                `;
+            }
+
+            const studentId = (task.relatedStudentIds && task.relatedStudentIds.length > 0) ? task.relatedStudentIds[0] : (task.studentId || '');
+            const students = stateStore.getStudents ? stateStore.getStudents() : [];
+            const student = studentId ? students.find(s => s.id === studentId) : null;
+
+            if (student) {
+                // --- 1. 출결관제 원생 상세 드로어 데이터 재사용 방식 렌더링 ---
+                const todayStr = new Date().toISOString().slice(0, 10);
+                
+                // 출결관제와 완벽히 동일하게 E2E/데모 모의 데이터 합성
+                let attendance = [...(stateStore.getAttendance ? stateStore.getAttendance() : [])];
+                const get30DaysRange = (dateStr) => {
+                    const [y, m, d] = dateStr.split('-').map(Number);
+                    const end = new Date(y, m - 1, d);
+                    const start = new Date(y, m - 1, d);
+                    start.setDate(start.getDate() - 29);
+                    
+                    const dates = [];
+                    let current = new Date(start);
+                    while (current <= end) {
+                        const cy = current.getFullYear();
+                        const cm = String(current.getMonth() + 1).padStart(2, '0');
+                        const cd = String(current.getDate()).padStart(2, '0');
+                        dates.push(`${cy}-${cm}-${cd}`);
+                        current.setDate(current.getDate() + 1);
+                    }
+                    return dates;
+                };
+
+                const s1ClassDates = get30DaysRange(todayStr).filter(date => {
+                    const dayIndex = new Date(date).getDay();
+                    return dayIndex === 1 || dayIndex === 3; // 월요일(1) 또는 수요일(3)
+                });
+                const pastS1ClassDates = s1ClassDates.filter(d => d < todayStr);
+                if (pastS1ClassDates.length >= 4) {
+                    attendance = attendance.filter(a => !(a.studentId === 'S1' && pastS1ClassDates.includes(a.date)));
+                    const len = pastS1ClassDates.length;
+                    attendance.push({ id: 'V_A1', studentId: 'S1', date: pastS1ClassDates[len - 4], status: 'present', time: '14:02', note: '하농 연습 완료' });
+                    attendance.push({ id: 'V_A2', studentId: 'S1', date: pastS1ClassDates[len - 3], status: 'present', time: '13:58', note: '바이엘 2권 양손' });
+                    attendance.push({ id: 'V_A3', studentId: 'S1', date: pastS1ClassDates[len - 2], status: 'present', time: '14:00', note: '스케일 연습 진행함' });
+                    attendance.push({ id: 'V_A4', studentId: 'S1', date: pastS1ClassDates[len - 1], status: 'late', time: '14:15', note: '교통 체증으로 지각' });
+                }
+
+                const lateDetectionEnabled = typeof stateStore.getLateDetectionEnabled === 'function' ? stateStore.getLateDetectionEnabled() : true;
+                attendance = attendance.filter(a => !(a.studentId === 'S2' && a.date === todayStr));
+                attendance.push({
+                    id: 'V_A_S2_LATE_DEMO',
+                    studentId: 'S2',
+                    date: todayStr,
+                    time: '14:15',
+                    status: lateDetectionEnabled ? 'late' : 'present',
+                    note: '지각 판정 테스트용 모의 등원'
+                });
+
+                const get30DaysAttendanceStats = (dateStr, studentsList, attendanceList) => {
+                    const dates = get30DaysRange(dateStr);
+                    const statsMap = {};
+                    studentsList.forEach(s => {
+                        statsMap[s.id] = {
+                            student: s,
+                            total: 0,
+                            present: 0,
+                            late: 0,
+                            absent: 0,
+                            scheduled: 0,
+                            history: [],
+                            lastStatus: '예정',
+                            lastTimeText: '-'
+                        };
+                    });
+
+                    const now = new Date();
+                    const currentTodayStr = now.toISOString().slice(0, 10);
+
+                    dates.forEach(date => {
+                        const dailySchedule = stateStore.getTeacherStudentScheduleForDate(date) || [];
+                        dailySchedule.forEach(entry => {
+                            const sId = entry.studentId;
+                            if (!statsMap[sId]) return;
+
+                            const att = attendanceList.find(a => a.studentId === sId && a.date === date && (a.classTime === entry.time || !a.classTime));
+                            let status = '예정';
+                            let checkTime = '';
+                            let leavingTime = '';
+
+                            if (att) {
+                                checkTime = att.time || '';
+                                leavingTime = att.leavingTime || '';
+                                if (att.status === 'present') status = '출석';
+                                else if (att.status === 'late') status = '지각';
+                                else if (att.status === 'absent') status = '결석';
+                            } else {
+                                const [classHour, classMin] = entry.time.split(':').map(Number);
+                                const classTimeToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), classHour, classMin);
+                                const diffMins = (now - classTimeToday) / (1000 * 60);
+
+                                const lateThresholdMinutes = stateStore.getLateThresholdMinutes();
+                                if (date < currentTodayStr) {
+                                    status = '결석';
+                                } else if (date === currentTodayStr) {
+                                    if (diffMins > lateThresholdMinutes) {
+                                        status = '지각';
+                                    }
+                                }
+                            }
+
+                            statsMap[sId].total++;
+                            if (status === '출석') statsMap[sId].present++;
+                            else if (status === '지각') statsMap[sId].late++;
+                            else if (status === '결석') statsMap[sId].absent++;
+                            else statsMap[sId].scheduled++;
+
+                            statsMap[sId].history.push({ date, time: entry.time, status, checkTime, leavingTime, note: att ? (att.note || '') : '' });
+                        });
+                    });
+
+                    Object.keys(statsMap).forEach(sId => {
+                        const item = statsMap[sId];
+                        if (item.total > 0) {
+                            const totalRecorded = item.present + item.late + item.absent;
+                            if (totalRecorded > 0) {
+                                item.attendanceRate = Math.round(((item.present + item.late) / totalRecorded) * 100);
+                            } else {
+                                item.attendanceRate = null;
+                            }
+                        } else {
+                            item.attendanceRate = null;
+                        }
+                        
+                        item.history.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+                        
+                        const lastActive = item.history.find(h => h.status !== '예정');
+                        if (lastActive) {
+                            item.lastStatus = lastActive.status;
+                            item.lastTimeText = lastActive.checkTime ? `${lastActive.checkTime}${lastActive.leavingTime ? ' ~ ' + lastActive.leavingTime : ''}` : '-';
+                        }
+                    });
+
+                    return statsMap;
+                };
+
+                const statsMap30Days = get30DaysAttendanceStats(todayStr, students, attendance);
+                const studentStats = statsMap30Days[studentId] || {
+                    total: 0,
+                    present: 0,
+                    late: 0,
+                    absent: 0,
+                    scheduled: 0,
+                    history: [],
+                    attendanceRate: null,
+                    lastStatus: '예정'
+                };
+
+                const teachersList = stateStore.getTeachers();
+                const teacherObj = student ? teachersList.find(t => t.id === student.teacherId) : null;
+                const teacherName = teacherObj ? (teacherObj.employmentStatus === 'resigned' ? `${teacherObj.name} (퇴사)` : teacherObj.name) : '미배정';
+
+                // 1. Profile information
+                const memberNoText = student.studentMemberNo || student.memberNo || student.id;
+                const isAdultText = (student.isAdult === true || student.isAdult === 'adult') ? '성인' : ((student.isAdult === false || student.isAdult === 'minor') ? '비성인' : '-');
+                const ageText = student.age ? `${student.age}세` : '';
+                const adultAgeInfo = [isAdultText !== '-' ? isAdultText : '', ageText].filter(Boolean).join(' · ');
+                const phoneText = student.phone ? `본인: ${student.phone}` : '';
+                const parentNameText = student.parentName ? `보호자명: ${student.parentName}` : '';
+                const parentPhoneText = student.parentPhone ? `보호자1: ${student.parentPhone}` : '';
+                const parentPhone2Text = student.parentPhone2 ? `보호자2: ${student.parentPhone2}` : '';
+
+                const contactItems = [];
+                if (phoneText) contactItems.push(`<div>${phoneText}</div>`);
+                if (parentNameText) contactItems.push(`<div>${parentNameText}</div>`);
+                if (parentPhoneText) contactItems.push(`<div>${parentPhoneText}</div>`);
+                if (parentPhone2Text) contactItems.push(`<div>${parentPhone2Text}</div>`);
+                const contactsHtml = contactItems.join('');
+
+                const profileMetaHtml = `
+                    <div style="font-size:13px; color:var(--text-muted); margin-top:4px;">
+                        회원번호: #${memberNoText}
+                    </div>
+                    <div style="font-size:13px; color:var(--text-muted); margin-top:2px;">
+                        악기/반: ${student.instrument || '미지정'} · 강사: ${teacherName}
+                    </div>
+                    ${adultAgeInfo ? `<div style="font-size:13px; color:var(--text-muted); margin-top:2px;">구분: ${adultAgeInfo}</div>` : ''}
+                    ${contactsHtml ? `
+                        <div class="ac-inspector-contacts" style="font-size:13px; color:var(--text-muted); margin-top:6px; font-weight:600; line-height:1.4; word-break:break-all;">
+                            ${contactsHtml}
+                        </div>
+                    ` : ''}
+                `;
+
+                // 2. Warnings
+                const activeWarnings = [];
+                if (studentStats.absent >= 2) {
+                    activeWarnings.push({ label: '결석 잦음', detail: `최근 4주 결석 ${studentStats.absent}회` });
+                }
+                if (studentStats.attendanceRate !== null && studentStats.attendanceRate < 80) {
+                    activeWarnings.push({ label: '출결률 저조', detail: `최근 4주 출석률 ${studentStats.attendanceRate}%` });
+                }
+
+                let warningStackHtml = '';
+                if (activeWarnings.length > 0) {
+                    warningStackHtml = activeWarnings.map(w => `
+                        <div class="warning-box danger">
+                            <b>${w.label}</b>
+                            <span>${w.detail}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    warningStackHtml = `
+                        <div class="warning-box muted">
+                            <b>정상 범위</b>
+                            <span>이상 없음</span>
+                        </div>
+                    `;
+                }
+
+                // 3. Tuition
+                const studentPayments = stateStore.getPaymentsForStudent ? stateStore.getPaymentsForStudent(studentId) : [];
+                studentPayments.sort((a, b) => b.month.localeCompare(a.month));
+                const unpaidPayments = studentPayments.filter(p => p.status === 'unpaid' || p.status === 'requested');
+
+                let tuitionBoxHtml = '';
+                if (studentPayments.length > 0) {
+                    const htmlList = studentPayments.map(p => {
+                        const statusKo = p.status === 'paid' ? '완납' : (p.status === 'requested' ? '결제요청' : '미납');
+                        const statusColor = p.status === 'paid' ? '#2ecc71' : (p.status === 'requested' ? '#f1c40f' : '#e74c3c');
+                        const paidDateText = p.paidDate ? ` (결제일: ${p.paidDate})` : '';
+                        
+                        let paymentTitle = `${p.month.slice(0, 4)}년 ${p.month.slice(5, 7)}월 수강료`;
+                        if (p.type === 'book') {
+                            const book = stateStore.getBook ? stateStore.getBook(p.bookId) : null;
+                            paymentTitle = `${p.month.slice(0, 4)}년 ${p.month.slice(5, 7)}월 교재비 [${book ? book.name : '교재'}]`;
+                        }
+                        
+                        return `
+                            <div style="padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: rgba(0,0,0,0.01); margin-top: 6px; font-size: 14px; line-height: 1.5;">
+                                <div style="display:flex; justify-content:space-between; font-weight:700;">
+                                    <span>${paymentTitle}</span>
+                                    <span style="color: ${statusColor};">${statusKo}</span>
+                                </div>
+                                <div style="display:flex; justify-content:space-between; margin-top:4px; color:var(--text-muted); font-size:13px;">
+                                    <span>청구액: ${p.amount.toLocaleString()}원</span>
+                                    <span>${paidDateText}</span>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                    
+                    const overdueClass = unpaidPayments.length > 0 ? 'tuition-notice overdue' : 'tuition-notice';
+                    tuitionBoxHtml = `
+                        <div class="${overdueClass}" style="background: transparent; border: none; padding: 0;">
+                            ${htmlList}
+                        </div>
+                    `;
+                } else {
+                    tuitionBoxHtml = `
+                        <div class="tuition-notice">
+                            <div class="tuition-notice-head">
+                                <span id="ac-inspector-tuition-state">연동 대기</span>
+                                <span id="ac-inspector-tuition-due">-</span>
+                            </div>
+                            <div class="tuition-notice-body">
+                                등록된 청구/결제 정보가 없습니다.
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // 4. Mini Calendar
+                const rangeDates = get30DaysRange(todayStr);
+                const calMiniHtml = rangeDates.map(date => {
+                    const dayNum = parseInt(date.slice(8, 10));
+                    const historyEntry = studentStats.history.find(h => h.date === date);
+                    
+                    let tone = '';
+                    if (historyEntry) {
+                        if (historyEntry.status === '출석') tone = 'present';
+                        else if (historyEntry.status === '지각') tone = 'late';
+                        else if (historyEntry.status === '결석') tone = 'absent';
+                    }
+                    
+                    const isHighlighted = (date === todayStr) ? 'today' : '';
+                    return `<div class="cal-cell ${tone} ${isHighlighted}" title="${date} (${historyEntry ? historyEntry.status : '수업 없음'})">${dayNum}</div>`;
+                }).join('');
+
+                // 5. Recent History
+                let historyListHtml = '';
+                if (studentStats.history.length > 0) {
+                    historyListHtml = studentStats.history.map(h => {
+                        const getDayOfWeekKo = (dateStr) => {
+                            const days = ['일', '월', '화', '수', '목', '금', '토'];
+                            const [y, m, d] = dateStr.split('-').map(Number);
+                            const dayIndex = new Date(y, m - 1, d).getDay();
+                            return days[dayIndex];
+                        };
+                        const dayOfWeekKo = getDayOfWeekKo(h.date);
+                        
+                        let statusBadge = `<span class="badge gray" style="font-size:0.75rem;">예정</span>`;
+                        if (h.status === '출석') statusBadge = `<span class="badge good" style="font-size:0.75rem;">출석</span>`;
+                        else if (h.status === '지각') statusBadge = `<span class="badge warn" style="font-size:0.75rem;">지각</span>`;
+                        else if (h.status === '결석') statusBadge = `<span class="badge danger" style="font-size:0.75rem;">결석</span>`;
+
+                        const checkTimeText = h.checkTime ? `${h.checkTime}${h.leavingTime ? ' ~ ' + h.leavingTime : ''}` : '-';
+
+                        return `
+                            <div class="log-item" style="margin-top: 6px;">
+                                <div class="log-item-head">
+                                    <span>${h.date} (${dayOfWeekKo}) ${h.time}</span>
+                                    ${statusBadge}
+                                </div>
+                                <div class="log-item-body" style="margin-top:4px; font-size:14px; color:var(--text-muted); line-height:1.5;">
+                                    <div>등하원: <b>${checkTimeText}</b></div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    historyListHtml = `<div style="text-align:center; padding:15px; color:var(--text-muted); font-size:0.75rem;">출결 이력이 없습니다.</div>`;
+                }
+
+                // 6. Recent Audit Logs
+                const auditLogs = stateStore.getAttendanceChangeLogs ? stateStore.getAttendanceChangeLogs({ studentId }).sort((a, b) => b.changedAt.localeCompare(a.changedAt)) : [];
+                const recentAuditLogs = auditLogs.slice(0, 5);
+                let auditListHtml = '';
+                if (recentAuditLogs.length > 0) {
+                    auditListHtml = recentAuditLogs.map(log => {
+                        const statusMapping = {
+                            present: '출석',
+                            late: '지각',
+                            absent: '결석',
+                            null: '예정'
+                        };
+                        const prevText = statusMapping[log.previousStatus] || '예정';
+                        const nextText = statusMapping[log.nextStatus] || '예정';
+                        const prevBadgeClass = log.previousStatus === 'present' ? 'good' : (log.previousStatus === 'late' ? 'warn' : (log.previousStatus === 'absent' ? 'danger' : 'gray'));
+                        const nextBadgeClass = log.nextStatus === 'present' ? 'good' : (log.nextStatus === 'late' ? 'warn' : (log.nextStatus === 'absent' ? 'danger' : 'gray'));
+                        
+                        const timeLabel = log.classTime ? ` (${log.classTime})` : '';
+                        const formatChangedAt = (isoStr) => {
+                            const d = new Date(isoStr);
+                            const m = String(d.getMonth() + 1).padStart(2, '0');
+                            const day = String(d.getDate()).padStart(2, '0');
+                            const hrs = String(d.getHours()).padStart(2, '0');
+                            const mins = String(d.getMinutes()).padStart(2, '0');
+                            return `${m}/${day} ${hrs}:${mins}`;
+                        };
+                        const dateDisplay = formatChangedAt(log.changedAt);
+
+                        return `
+                            <div class="log-item" style="margin-top: 6px; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 6px; background: rgba(0,0,0,0.01);">
+                                <div class="log-item-head" style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
+                                    <span><b>${log.date}</b>${timeLabel}</span>
+                                    <span style="font-size: 11px; color: var(--text-muted);">${dateDisplay}</span>
+                                </div>
+                                <div class="log-item-body" style="margin-top: 4px; display: flex; align-items: center; gap: 6px; font-size: 13px;">
+                                    <span class="badge ${prevBadgeClass}" style="font-size:10px; padding: 2px 4px;">${prevText}</span>
+                                    <span style="color: var(--text-muted); font-size: 11px;">→</span>
+                                    <span class="badge ${nextBadgeClass}" style="font-size:10px; padding: 2px 4px;">${nextText}</span>
+                                    <span style="margin-left: auto; font-size: 11px; color: var(--text-muted);">수동변경</span>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    auditListHtml = `<div style="text-align:center; padding:15px; color:var(--text-muted); font-size:0.75rem;">변경 이력이 없습니다.</div>`;
+                }
+
+                // 7. Recent Message History Logs
+                const realMessages = stateStore.getMessagesForStudent ? stateStore.getMessagesForStudent(studentId) : [];
+                realMessages.sort((a, b) => (b.created_at || b.date).localeCompare(a.created_at || a.date));
+                let msgListHtml = '';
+                if (realMessages.length > 0) {
+                    msgListHtml = realMessages.map(msg => {
+                        const formattedDate = msg.created_at ? msg.created_at.slice(5, 16).replace('T', ' ') : msg.date;
+                        const statusText = '발송완료';
+                        return `
+                            <div class="log-item" style="margin-top: 6px;">
+                                <div class="log-item-head" style="align-items: flex-start; gap: 8px;">
+                                    <span style="flex: 1; min-width: 0; word-break: break-all;">■ 제목: ${msg.title} (알림톡)</span>
+                                    <span style="color:#2ecc71; white-space: nowrap; flex-shrink: 0; display: inline-flex; align-items: center;">${statusText}</span>
+                                </div>
+                                <div class="log-item-body" style="margin-top:4px; font-size:14px; line-height:1.5;">
+                                    ${msg.content || ''}
+                                    <div style="font-size:13px; color:var(--text-muted); margin-top:2px;">${formattedDate}</div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    msgListHtml = `<div style="text-align:center; padding:15px; color:var(--text-muted); font-size:0.75rem;">메시지 전송 이력이 없습니다.</div>`;
+                }
+
+                const startRange = new Date(todayStr);
+                startRange.setDate(startRange.getDate() - 27);
+                const formatLocalDate = (d) => {
+                    const year = d.getFullYear();
+                    const month = String(d.getMonth() + 1).padStart(2, '0');
+                    const date = String(d.getDate()).padStart(2, '0');
+                    return `${year}-${month}-${date}`;
+                };
+                const historySectionTitle = `최근 4주 출결 요약 (${formatLocalDate(startRange)} ~ ${todayStr})`;
+
+                return `
+                    <div class="today-task-drawer-header" style="padding: 20px 24px; border-bottom: 1px solid var(--border-color);">
+                        <h3 class="today-task-drawer-title">원생 상세 정보</h3>
+                        <button type="button" class="today-task-drawer-close" id="btn-close-task-drawer" title="닫기">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="today-task-drawer-body" style="padding: 0; gap: 0;">
+                        <div class="inspector-head">
+                            <div class="head-student-card">
+                                <div class="avatar">${escapeHtml(student.name[0])}</div>
+                                <div class="profile-main">
+                                    <strong>${escapeHtml(student.name)}</strong>
+                                    <span>${profileMetaHtml}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="inspector-body">
+                            <section class="drawer-section">
+                                <div class="section-title">
+                                    <h3>${historySectionTitle}</h3>
+                                    <span>${activeWarnings.length ? '워닝 ' + activeWarnings.length + '건' : '정상'}</span>
+                                </div>
+                                <div class="ac-stat-grid" style="grid-template-columns: repeat(5, 1fr); gap: 6px;">
+                                    <div class="ac-stat-box" style="padding: 8px 4px;">
+                                        <span>예정 수업</span>
+                                        <strong style="font-size: 1.15rem;">${studentStats.total}</strong>
+                                    </div>
+                                    <div class="ac-stat-box" style="padding: 8px 4px;">
+                                        <span>출석</span>
+                                        <strong style="font-size: 1.15rem; color: #2ecc71;">${studentStats.present}</strong>
+                                    </div>
+                                    <div class="ac-stat-box" style="padding: 8px 4px;">
+                                        <span>지각</span>
+                                        <strong style="font-size: 1.15rem; color: #f1c40f;">${studentStats.late}</strong>
+                                    </div>
+                                    <div class="ac-stat-box" style="padding: 8px 4px;">
+                                        <span>결석</span>
+                                        <strong style="font-size: 1.15rem; color: #e74c3c;">${studentStats.absent}</strong>
+                                    </div>
+                                    <div class="ac-stat-box" style="padding: 8px 4px;">
+                                        <span>출석률</span>
+                                        <strong style="font-size: 1.15rem; color: var(--primary);">${studentStats.attendanceRate !== null ? studentStats.attendanceRate + '%' : '-'}</strong>
+                                    </div>
+                                </div>
+                                <div class="warning-stack">
+                                    ${warningStackHtml}
+                                </div>
+                            </section>
+
+                            <section class="drawer-section">
+                                <div class="section-title">
+                                    <h3>수납 정보</h3>
+                                </div>
+                                ${tuitionBoxHtml}
+                            </section>
+
+                            <section class="drawer-section">
+                                <div class="section-title">
+                                    <h3>최근 30일 출결 현황</h3>
+                                </div>
+                                <div class="cal-mini">
+                                    ${calMiniHtml}
+                                </div>
+                            </section>
+
+                            <section class="drawer-section">
+                                <div class="section-title">
+                                    <h3>최근 출결 이력</h3>
+                                    <span>${studentStats.history.length}건</span>
+                                </div>
+                                <div class="log-list" style="max-height: 200px; overflow-y: auto;">
+                                    ${historyListHtml}
+                                </div>
+                            </section>
+
+                            <section class="drawer-section">
+                                <div class="section-title">
+                                    <h3>최근 수정 이력</h3>
+                                    <span>${auditLogs.length}건</span>
+                                </div>
+                                <div class="log-list" style="max-height: 150px; overflow-y: auto;">
+                                    ${auditListHtml}
+                                </div>
+                            </section>
+
+                            <section class="drawer-section">
+                                <div class="section-title">
+                                    <h3>메시지 이력</h3>
+                                    <span>${realMessages.length}건</span>
+                                </div>
+                                <div class="log-list" style="max-height: 200px; overflow-y: auto;">
+                                    ${msgListHtml}
+                                </div>
+                            </section>
+                        </div>
+                    </div>
+                    <div class="inspector-footer" style="padding: 1rem 1.5rem; border-top: 1px solid var(--border-color); display: flex; gap: 10px; background: #ffffff;">
+                        <button type="button" class="btn btn-secondary" data-action="drawer-send-message" data-id="${task.id}" style="flex: 1; justify-content: center; height: 38px; font-weight: 600; margin-bottom: 0;">메시지 보내기</button>
+                        <button type="button" class="btn btn-primary" data-action="drawer-detail" data-student-id="${student.id}" style="flex: 1; justify-content: center; height: 38px; font-weight: 600; margin-bottom: 0;">상세정보</button>
+                    </div>
+                `;
+            }
+
+            // --- 2. Fallback: 연계 원생이 없는 태스크는 최소 정보만 표시 ---
+            const catLabels = {
+                overdue: '미수납 확인',
+                billing: '수납확인',
+                book_billing: '교재 결제 확인',
+                book_check: '교재 지급 확인',
+                absent: '결석 확인',
+                attendance_warning: '특이출결',
+                staff_warning: '특이근태',
+                schedule: '일정확인',
+                schedule_check: '일정확인'
+            };
+            const typeLabel = catLabels[task.category] || catLabels[task.type] || task.category || '운영업무';
+
+            const priorityLabels = {
+                urgent: '긴급',
+                today: '오늘',
+                info: '보통',
+                closing: '마감'
+            };
+            const priorityLabel = priorityLabels[task.priority] || '보통';
+
+            const statusLabels = {
+                open: '대기',
+                done: '완료',
+                snoozed: '보류',
+                dismissed: '제외'
+            };
+            const statusLabel = statusLabels[task.status] || '대기';
+
+            const formatDateTime = (isoStr) => {
+                if (!isoStr) return '-';
+                try {
+                    const date = new Date(isoStr);
+                    if (isNaN(date.getTime())) return '-';
+                    const y = date.getFullYear();
+                    const m = String(date.getMonth() + 1).padStart(2, '0');
+                    const d = String(date.getDate()).padStart(2, '0');
+                    const h = String(date.getHours()).padStart(2, '0');
+                    const min = String(date.getMinutes()).padStart(2, '0');
+                    return `${y}-${m}-${d} ${h}:${min}`;
+                } catch (e) {
+                    return '-';
+                }
+            };
+            const timeText = formatDateTime(task.startAt || task.dueAt);
+
+            let timeStampHtml = '';
+            if (task.status === 'done' && task.completedAt) {
+                timeStampHtml = `
+                    <div class="today-task-drawer-section">
+                        <div class="today-task-drawer-section-title">완료 일시</div>
+                        <div class="today-task-drawer-section-content" style="color: var(--success); font-weight: 600;">
+                            ${formatDateTime(task.completedAt)}
+                        </div>
+                    </div>
+                `;
+            } else if (task.status === 'dismissed' && task.dismissedAt) {
+                timeStampHtml = `
+                    <div class="today-task-drawer-section">
+                        <div class="today-task-drawer-section-title">제외 일시</div>
+                        <div class="today-task-drawer-section-content" style="color: var(--text-muted); font-weight: 600;">
+                            ${formatDateTime(task.dismissedAt)}
+                        </div>
+                    </div>
+                `;
+            } else if (task.status === 'snoozed' && task.snoozedUntil) {
+                timeStampHtml = `
+                    <div class="today-task-drawer-section">
+                        <div class="today-task-drawer-section-title">보류 기한</div>
+                        <div class="today-task-drawer-section-content" style="color: var(--accent); font-weight: 600;">
+                            ${formatDateTime(task.snoozedUntil)}
+                        </div>
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="today-task-drawer-header">
+                    <h3 class="today-task-drawer-title">업무 상세 정보</h3>
+                    <button type="button" class="today-task-drawer-close" id="btn-close-task-drawer" title="닫기">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div class="today-task-drawer-body">
+                    <div class="today-task-drawer-section">
+                        <div class="today-task-drawer-section-title">업무명</div>
+                        <div class="today-task-drawer-section-content" style="font-weight: 700; font-size: 1.05rem;">
+                            ${escapeHtml(task.title)}
+                        </div>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                        <div class="today-task-drawer-section">
+                            <div class="today-task-drawer-section-title">업무 유형</div>
+                            <div class="today-task-drawer-section-content">
+                                <span class="badge" style="background: rgba(9, 132, 227, 0.08); color: var(--primary); padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 0.8rem;">
+                                    ${escapeHtml(typeLabel)}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="today-task-drawer-section">
+                            <div class="today-task-drawer-section-title">중요도</div>
+                            <div class="today-task-drawer-section-content">
+                                <span class="badge" style="background: rgba(235, 94, 85, 0.08); color: var(--danger); padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 0.8rem;">
+                                    ${escapeHtml(priorityLabel)}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                        <div class="today-task-drawer-section">
+                            <div class="today-task-drawer-section-title">현재 상태</div>
+                            <div class="today-task-drawer-section-content" style="font-weight: 600;">
+                                ${escapeHtml(statusLabel)}
+                            </div>
+                        </div>
+                        <div class="today-task-drawer-section">
+                            <div class="today-task-drawer-section-title">기준일시</div>
+                            <div class="today-task-drawer-section-content">
+                                ${escapeHtml(timeText)}
+                            </div>
+                        </div>
+                    </div>
+
+                    ${timeStampHtml}
+
+                    <div class="today-task-drawer-section" style="border-top: 1px solid var(--border-color); padding-top: 16px;">
+                        <div class="today-task-drawer-section-title">상세 설명</div>
+                        <div class="today-task-drawer-section-content" style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: 6px; padding: 14px; color: var(--text-main); font-size: 0.88rem; max-height: 250px; overflow-y: auto;">
+                            ${escapeHtml(task.description) || '<span style="color: var(--text-muted);">설명이 없습니다.</span>'}
+                        </div>
+                    </div>
+                </div>
+            `;
+        } catch (e) {
+            return `
+                <div class="today-task-drawer-header">
+                    <h3 class="today-task-drawer-title">업무 상세 정보</h3>
+                    <button type="button" class="today-task-drawer-close" id="btn-close-task-drawer" title="닫기">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div class="today-task-drawer-body">
+                    <div class="alert alert-danger" style="margin: 0; padding: 12px; font-size: 0.88rem; border-radius: 6px; background: rgba(235, 94, 85, 0.08); border: 1px solid rgba(235, 94, 85, 0.2); color: var(--danger);">
+                        <i class="fa-solid fa-triangle-exclamation" style="margin-right: 6px;"></i>
+                        렌더링 중 오류 발생: ${escapeHtml(e.message)}
+                    </div>
+                </div>
+            `;
+        }
+    };
+
     const render = () => {
         const savedScrollY = typeof window !== 'undefined' ? window.scrollY : 0;
         if (typeof window !== 'undefined' && container) {
@@ -406,13 +1383,8 @@ export function renderTodayConsole(container) {
                         cat = 'schedule';
                     }
                 }
-                const match = cat === 'schedule';
-                if (match) {
-                    console.log('DEBUG [getScheduleCount] MATCHED TASK:', JSON.stringify(t));
-                }
-                return match;
+                return cat === 'schedule';
             });
-            console.log('DEBUG [getScheduleCount] total count:', list.length, 'from activeTasksList length:', activeTasksList.length);
             return list.length;
         };
         const getBillingCount = () => {
@@ -491,7 +1463,7 @@ export function renderTodayConsole(container) {
             { id: 'billing', label: '수납확인', count: getBillingCount(), color: 'var(--success)', icon: 'fa-receipt' },
             { id: 'overdue', label: '미수납 확인', count: getOverdueCount(), color: 'var(--danger)', icon: 'fa-file-invoice-dollar' },
             { id: 'schedule', label: '일정확인', count: getScheduleCount(), color: 'var(--primary)', icon: 'fa-calendar-day' },
-            { id: 'book_check', label: '교재 확인', count: getBookCheckCount(), color: '#a55eea', icon: 'fa-book' },
+            { id: 'book_check', label: '교재 지급 확인', count: getBookCheckCount(), color: '#a55eea', icon: 'fa-book' },
             { id: 'book_billing', label: '교재 결제 확인', count: getBookBillingCount(), color: '#f1c40f', icon: 'fa-wallet' }
         ];
 
@@ -1300,14 +2272,23 @@ export function renderTodayConsole(container) {
                                     let actionsHtml = '';
                                     if (task.category === 'book_check') {
                                         actionsHtml = `
-                                            <button type="button" class="btn btn-sm btn-primary" data-action="confirm-book" data-id="${safeId}" style="padding: 6px 12px; font-size: 0.75rem; margin: 0; background: var(--primary); color: #fff; justify-content: center; border-radius: 4px; font-weight: 600;" title="교재 지급 승인">
-                                                교재 확인
+                                            <button type="button" class="btn btn-sm btn-primary" data-action="confirm-book" data-id="${safeId}" style="padding: 6px 12px; font-size: 0.75rem; margin: 0; background: var(--primary); color: #fff; justify-content: center; border-radius: 4px; font-weight: 600;" title="교재 지급 확인">
+                                                교재 지급 확인
                                             </button>
                                         `;
-                                    } else if (task.category === 'schedule_check') {
+                                    } else if (task.category === 'schedule' || task.category === 'schedule_check') {
                                         actionsHtml = `
                                             <button type="button" class="btn btn-sm btn-primary" data-action="confirm-schedule" data-id="${safeId}" style="padding: 6px 12px; font-size: 0.75rem; margin: 0; background: var(--primary); color: #fff; justify-content: center; border-radius: 4px; font-weight: 600;" title="일정 확인 처리">
                                                 일정 확인
+                                            </button>
+                                            <button type="button" class="task-action-btn btn-done" data-action="done" data-id="${safeId}" title="완료 처리">
+                                                완료
+                                            </button>
+                                            <button type="button" class="task-action-btn btn-snooze" data-action="snooze" data-id="${safeId}" title="보류 처리">
+                                                보류
+                                            </button>
+                                            <button type="button" class="task-action-btn btn-dismiss" data-action="dismiss" data-id="${safeId}" title="오늘 큐에서 제외">
+                                                제외
                                             </button>
                                         `;
                                     } else if (isRestorable) {
@@ -1344,7 +2325,7 @@ export function renderTodayConsole(container) {
 
                                     return `
                                         <div class="glass-card" style="${cardStyle}" ${!isRestorable ? `onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='rgba(255,255,255,0.01)'"` : ''}>
-                                            <div style="display: flex; align-items: center; gap: 16px; flex-grow: 1; cursor: ${!isSystemCheck(task) ? 'pointer' : 'default'};" class="${!isSystemCheck(task) ? 'task-card-click-zone' : ''}" data-id="${safeId}">
+                                            <div style="display: flex; align-items: center; gap: 16px; flex-grow: 1; cursor: pointer;" class="task-card-click-zone" data-id="${safeId}">
                                                 <div style="flex-shrink: 0;">
                                                     ${badgeHtml}
                                                 </div>
@@ -1387,6 +2368,14 @@ export function renderTodayConsole(container) {
                     }
                 }
             </style>
+            
+            <!-- Backdrop for today task drawer -->
+            <div class="today-task-drawer-backdrop ${selectedTaskId || selectedScheduleId ? 'open' : ''}" id="task-drawer-backdrop"></div>
+            
+            <!-- Today Task Details slide Drawer -->
+            <div class="today-task-drawer ${selectedTaskId || selectedScheduleId ? 'open' : ''}" id="today-task-drawer">
+                ${renderDrawerContent()}
+            </div>
         `;
 
         if (popoverOpen && popoverDate) {
@@ -1571,15 +2560,68 @@ export function renderTodayConsole(container) {
                 return;
             }
 
-            // Intercept task card click zone to trigger Edit mode
+            // Intercept task drawer close
+            const btnCloseDrawer = e.target.closest('#btn-close-task-drawer') || e.target.closest('#btn-close-task-drawer-footer');
+            if (btnCloseDrawer) {
+                e.stopPropagation();
+                e.preventDefault();
+                selectedTaskId = null;
+                selectedScheduleId = null;
+                render();
+                return;
+            }
+
+            if (e.target && e.target.id === 'task-drawer-backdrop') {
+                e.stopPropagation();
+                e.preventDefault();
+                selectedTaskId = null;
+                selectedScheduleId = null;
+                render();
+                return;
+            }
+
+            // Intercept task card click zone to trigger Edit mode or Details drawer
             const clickZone = e.target.closest('.task-card-click-zone');
             if (clickZone) {
-                const taskId = clickZone.dataset.id;
-                const task = stateStore.getTodayTasks().find(t => t.id === taskId);
-                if (task && !isSystemCheck(task)) {
-                    editingTaskId = taskId;
-                    render();
-                    return;
+                // Guard: Action buttons clicks inside the card should not trigger the drawer
+                if (
+                    e.target.closest('[data-action]') || 
+                    e.target.closest('.task-actions-container') ||
+                    e.target.closest('.task-action-btn') ||
+                    e.target.closest('.btn-message-send')
+                ) {
+                    // Do nothing here, let the handler down below catch it.
+                } else {
+                    const taskId = clickZone.dataset.id;
+                    const task = stateStore.getTodayTasks().find(t => t.id === taskId);
+                    if (task) {
+                        if (isSystemCheck(task)) {
+                            // Check if this is a schedule task to show inline drawer instead of redirecting
+                            if (task.category === 'schedule' || task.category === 'schedule_check' || task.type === 'schedule') {
+                                const dedupeKey = task.dedupeKey || '';
+                                if (dedupeKey.startsWith('SYSTEM_RECOMMEND_MAJOR_SCHEDULE_')) {
+                                    const scheduleId = dedupeKey.substring('SYSTEM_RECOMMEND_MAJOR_SCHEDULE_'.length).split('_')[0];
+                                    if (scheduleId) {
+                                        selectedScheduleId = scheduleId;
+                                        selectedTaskId = null;
+                                        editingTaskId = null;
+                                        render();
+                                        return;
+                                    }
+                                }
+                            }
+                            selectedTaskId = taskId;
+                            selectedScheduleId = null;
+                            editingTaskId = null;
+                            render();
+                        } else {
+                            editingTaskId = taskId;
+                            selectedTaskId = null;
+                            selectedScheduleId = null;
+                            render();
+                        }
+                        return;
+                    }
                 }
             }
 
@@ -1769,6 +2811,8 @@ export function renderTodayConsole(container) {
                     if (confirmed) {
                         try {
                             stateStore.confirmMajorSchedule(scheduleId);
+                            selectedScheduleId = null;
+                            render();
                             alert('일정이 확인 완료 처리되었습니다.');
                         } catch (err) {
                             alert(err.message);
@@ -1825,152 +2869,48 @@ export function renderTodayConsole(container) {
             const btnSendMessage = e.target.closest('[data-action="send-message"]');
             if (btnSendMessage) {
                 const taskId = btnSendMessage.dataset.id;
-                const task = stateStore.getTodayTasks().find(t => t.id === taskId);
-                if (task) {
-                    const studentId = (task.relatedStudentIds && task.relatedStudentIds.length > 0) ? task.relatedStudentIds[0] : (task.studentId || '');
-                    
-                    let suggestedTemplateType = 'general';
-                    let relatedDomainType = task.type || '';
-                    if (task.category === 'absent') {
-                        suggestedTemplateType = 'absent';
-                        relatedDomainType = 'attendance';
-                    } else if (task.category === 'billing') {
-                        suggestedTemplateType = 'tuition_info';
-                        relatedDomainType = 'billing';
-                    } else if (task.category === 'overdue') {
-                        suggestedTemplateType = 'tuition_unpaid';
-                        relatedDomainType = 'billing';
-                    } else if (task.category === 'book_billing') {
-                        suggestedTemplateType = 'book_unpaid';
-                        relatedDomainType = 'book';
-                    } else if (task.category === 'consult' || task.category === 'counseling' || task.type === 'counseling') {
-                        suggestedTemplateType = 'consulting';
-                        relatedDomainType = 'counseling';
-                    }
+                triggerMessageHandoff(taskId);
+                return;
+            }
 
-                    const student = stateStore.getStudent(studentId);
-                    const studentName = student ? student.name : '';
+            // Drawer Message Handoff Action
+            const btnDrawerSendMessage = e.target.closest('[data-action="drawer-send-message"]');
+            if (btnDrawerSendMessage) {
+                const taskId = btnDrawerSendMessage.dataset.id;
+                selectedTaskId = null; // Close drawer
+                render();
+                triggerMessageHandoff(taskId);
+                return;
+            }
 
-                    // 1. 수업시간 또는 결석 관련 정보
-                    let classTime = '';
-                    if (task.startAt) {
-                        const startDate = new Date(task.startAt);
-                        const startTimeStr = startDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-                        if (task.endAt) {
-                            const endDate = new Date(task.endAt);
-                            const endTimeStr = endDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-                            classTime = `${startTimeStr} ~ ${endTimeStr}`;
-                        } else {
-                            classTime = startTimeStr;
-                        }
+            // Drawer Student Details Action
+            const btnDrawerDetail = e.target.closest('[data-action="drawer-detail"]');
+            if (btnDrawerDetail) {
+                const studentId = btnDrawerDetail.dataset.studentId;
+                selectedTaskId = null; // Close drawer
+                render();
+                if (openStudentDetailModalRef) {
+                    try {
+                        openStudentDetailModalRef(studentId);
+                    } catch (err) {
+                        alert('원생 상세 모달을 여는 중 오류가 발생했습니다.');
                     }
-                    const timeMatch = task.description && task.description.match(/• 수업 시간:\s*([^\n]+)/);
-                    if (timeMatch) {
-                        classTime = timeMatch[1].trim();
-                    }
-
-                    // 2. 청구 월/금액/납부 예정일
-                    let billingMonth = '';
-                    let billingAmount = 0;
-                    let billingDueDate = '';
-                    if (task.type === 'billing') {
-                        const key = task.dedupeKey || '';
-                        let paymentId = '';
-                        if (key.startsWith('SYSTEM_RECOMMEND_BILLING_DUE_')) {
-                            paymentId = key.substring('SYSTEM_RECOMMEND_BILLING_DUE_'.length).split('_')[0];
-                        } else if (key.startsWith('SYSTEM_RECOMMEND_BILLING_UNPAID_')) {
-                            paymentId = key.substring('SYSTEM_RECOMMEND_BILLING_UNPAID_'.length).split('_')[0];
-                        }
-                        if (paymentId) {
-                            const payment = stateStore.db.payments && stateStore.db.payments.find(p => p.id === paymentId);
-                            if (payment) {
-                                billingMonth = payment.month;
-                                billingAmount = payment.amount;
-                                const dueDay = student ? (student.dueDay || 10) : 10;
-                                const [py, pm] = payment.month.split('-').map(Number);
-                                const lastDay = new Date(py, pm, 0).getDate();
-                                const safeDueDay = Math.min(dueDay, lastDay);
-                                billingDueDate = `${py}-${String(pm).padStart(2, '0')}-${String(safeDueDay).padStart(2, '0')}`;
-                            }
-                        }
-                    }
-
-                    // 3. 교재명/금액/납부 예정일
-                    let bookName = '';
-                    let bookAmount = 0;
-                    let bookDueDate = '';
-                    if (task.category === 'book_billing') {
-                        const key = task.dedupeKey || '';
-                        const paymentId = key.replace('SYSTEM_RECOMMEND_BOOK_BILLING_', '');
-                        if (paymentId) {
-                            const payment = stateStore.db.payments && stateStore.db.payments.find(p => p.id === paymentId);
-                            if (payment) {
-                                bookAmount = payment.amount;
-                                const book = stateStore.db.books && stateStore.db.books.find(b => b.id === payment.bookId);
-                                bookName = book ? book.name : '교재';
-                                const [py, pm] = payment.month.split('-').map(Number);
-                                const safeDueDay = Math.min(student ? (student.dueDay || 14) : 14, new Date(py, pm, 0).getDate());
-                                let paymentDueAt = new Date(py, pm - 1, safeDueDay, 0, 0, 0, 0);
-                                const invoiceDateStr = payment.invoiceDate || payment.createdAt || new Date().toISOString().slice(0, 10);
-                                const [iy, im, id] = invoiceDateStr.slice(0, 10).split('-').map(Number);
-                                const invoiceDateAt = new Date(iy, im - 1, id, 0, 0, 0, 0);
-                                if (invoiceDateAt.getTime() >= paymentDueAt.getTime()) {
-                                    let nextYear = py;
-                                    let nextMonth = pm + 1;
-                                    if (nextMonth > 12) {
-                                        nextMonth = 1;
-                                        nextYear += 1;
-                                    }
-                                    const nextSafeDueDay = Math.min(student ? (student.dueDay || 14) : 14, new Date(nextYear, nextMonth, 0).getDate());
-                                    paymentDueAt = new Date(nextYear, nextMonth - 1, nextSafeDueDay, 0, 0, 0, 0);
+                } else {
+                    import('./membersView.js')
+                        .then(() => {
+                            if (openStudentDetailModalRef) {
+                                try {
+                                    openStudentDetailModalRef(studentId);
+                                } catch (err) {
+                                    alert('원생 상세 모달을 여는 중 오류가 발생했습니다.');
                                 }
-                                const dy = paymentDueAt.getFullYear();
-                                const dm = String(paymentDueAt.getMonth() + 1).padStart(2, '0');
-                                const dd = String(paymentDueAt.getDate()).padStart(2, '0');
-                                bookDueDate = `${dy}-${dm}-${dd}`;
+                            } else {
+                                alert('원생 상세 보기 모듈을 초기화할 수 없습니다.');
                             }
-                        }
-                    }
-
-                    // 4. 상담 예정일/메모 등
-                    let consultDate = '';
-                    let consultMemo = '';
-                    if (task.category === 'consult' || task.category === 'counseling' || task.type === 'counseling') {
-                        if (task.startAt) {
-                            const startDate = new Date(task.startAt);
-                            consultDate = startDate.toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
-                        }
-                        consultMemo = task.description || '';
-                    }
-
-                    const handoffPayload = {
-                        source: 'today_console',
-                        taskId: task.id,
-                        studentId: studentId,
-                        relatedDomainType: relatedDomainType,
-                        relatedDomainId: (task.dedupeKey || '').split('_').slice(-1)[0] || '',
-                        suggestedTemplateType: suggestedTemplateType,
-                        returnView: 'dir-today-console',
-                        meta: {
-                            studentName: studentName,
-                            classTime: classTime,
-                            billingMonth: billingMonth,
-                            billingAmount: billingAmount,
-                            billingDueDate: billingDueDate,
-                            bookName: bookName,
-                            bookAmount: bookAmount,
-                            bookDueDate: bookDueDate,
-                            consultDate: consultDate,
-                            consultMemo: consultMemo
-                        }
-                    };
-
-                    sessionStorage.setItem('dayday_handoff_payload', JSON.stringify(handoffPayload));
-                    
-                    const menuItem = document.querySelector('.menu-item[data-view="dir-message-send"]');
-                    if (menuItem) {
-                        menuItem.click();
-                    }
+                        })
+                        .catch((err) => {
+                            alert('원생 상세 보기 모듈을 불러오는 데 실패했습니다.');
+                        });
                 }
                 return;
             }
@@ -1983,6 +2923,7 @@ export function renderTodayConsole(container) {
     container.addEventListener('submit', handleEvents);
     container.addEventListener('click', handleEvents);
     container.addEventListener('change', handleEvents);
+    document.addEventListener('keydown', handleKeydown);
 
     // Subscribe to TodayTask, Payments, StudentBooks, Attendance, and MajorSchedules store changes to reflect real-time queue states
     const unsubTodayTasks = stateStore.subscribe('TODAY_TASKS_CHANGED', render);
@@ -2001,5 +2942,6 @@ export function renderTodayConsole(container) {
         container.removeEventListener('submit', handleEvents);
         container.removeEventListener('click', handleEvents);
         container.removeEventListener('change', handleEvents);
+        document.removeEventListener('keydown', handleKeydown);
     };
 }

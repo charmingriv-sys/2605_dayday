@@ -1459,8 +1459,12 @@ export function renderMajorSchedule(container) {
   };
 
   const openEvent = (id) => {
+    console.log('[DEBUG_SCHEDULE_HANDOFF] openEvent called for ID:', id);
     const event = stateStore.getMajorSchedules().find((item) => item.id === id);
-    if (!event) return;
+    if (!event) {
+        console.warn('[DEBUG_SCHEDULE_HANDOFF] Event not found in stateStore.getMajorSchedules(). List of IDs:', stateStore.getMajorSchedules().map(item => item.id));
+        return;
+    }
     const adaptedStudents = getAdaptedStudents();
     const parts = adaptedStudents.filter(s => event.participantStudentIds && event.participantStudentIds.includes(s.id));
     
@@ -2104,6 +2108,25 @@ export function renderMajorSchedule(container) {
   };
 
   render();
+
+  // Handoff check from today console (Phase 17G-4C-Schedule-Drawer-Routing)
+  if (typeof window !== 'undefined' && typeof sessionStorage !== 'undefined') {
+    const rawHandoff = sessionStorage.getItem('dayday_major_schedule_handoff');
+    console.log('[DEBUG_SCHEDULE_HANDOFF] rawHandoff:', rawHandoff);
+    if (rawHandoff) {
+      try {
+        const payload = JSON.parse(rawHandoff);
+        sessionStorage.removeItem('dayday_major_schedule_handoff');
+        console.log('[DEBUG_SCHEDULE_HANDOFF] Parsed payload:', payload);
+        if (payload && payload.eventId) {
+          console.log('[DEBUG_SCHEDULE_HANDOFF] Calling openEvent with:', payload.eventId);
+          openEvent(payload.eventId);
+        }
+      } catch (e) {
+        console.error('Error parsing major schedule handoff payload', e);
+      }
+    }
+  }
 
   return () => {
     // Clean up global header actions and restore defaults

@@ -97,6 +97,44 @@ export const majorScheduleMethods = {
         return false;
     },
 
+    confirmMajorSchedule(eventId) {
+        // 1. Try to mark the event itself as confirmed if possible
+        try {
+            const event = this.getMajorSchedules().find(e => e.id === eventId);
+            if (event) {
+                this.updateMajorSchedule(eventId, { confirmed: true });
+            }
+        } catch (e) {
+            console.error('Error updating major schedule confirmation state:', e);
+        }
+
+        // 2. Resolve associated system recommendation tasks in today queue
+        if (this.db.todayTasks) {
+            let changed = false;
+            const nowIso = new Date().toISOString();
+            this.db.todayTasks = this.db.todayTasks.map(t => {
+                if (t.source === 'system' && t.status === 'open' && t.type === 'schedule') {
+                    const keyPrefix = `SYSTEM_RECOMMEND_MAJOR_SCHEDULE_${eventId}_`;
+                    if (t.dedupeKey && t.dedupeKey.startsWith(keyPrefix)) {
+                        changed = true;
+                        return {
+                            ...t,
+                            status: 'done',
+                            completedAt: nowIso,
+                            updatedAt: nowIso
+                        };
+                    }
+                }
+                return t;
+            });
+
+            if (changed) {
+                this.saveDB();
+                this.notify('TODAY_TASKS_CHANGED', this.db.todayTasks);
+            }
+        }
+    },
+
     getMajorScheduleStudentNotes(studentId) {
         if (!this.db.majorScheduleStudentNotes) {
             this.db.majorScheduleStudentNotes = [];

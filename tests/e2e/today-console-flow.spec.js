@@ -1681,7 +1681,7 @@ test.describe('Director Today Console Flow Checks', () => {
       { id: 'billing', label: '수납확인' },
       { id: 'overdue', label: '미수납 확인' },
       { id: 'schedule', label: '일정확인' },
-      { id: 'book_check', label: '교재 확인' },
+      { id: 'book_check', label: '교재 지급 확인' },
       { id: 'book_billing', label: '교재 결제 확인' }
     ];
 
@@ -1741,6 +1741,233 @@ test.describe('Director Today Console Flow Checks', () => {
     for (let i = 5; i < 8; i++) {
       expect(boundingBoxes[i+1].x).toBeGreaterThan(boundingBoxes[i].x);
     }
+  });
+
+  test('should open system task details drawer on clicking card and verify close actions and action button protection', async ({ page }) => {
+    page.on('console', msg => console.log('BROWSER_CONSOLE:', msg.text()));
+    // 1. Seed an unpaid overdue payment to trigger a system recommendation
+    await page.evaluate(() => {
+      window.stateStore.db.todayTasks = [];
+      window.stateStore.db.payments = [{
+        id: 'test-payment-id-e2e-1',
+        studentId: 'S1', // S1 (최다은) is pre-seeded in database
+        month: '2026-05', // overdue as mock date is 2026-06-03
+        amount: 120000,
+        type: 'education',
+        status: 'unpaid',
+        invoiceDate: '2026-05-10',
+        createdAt: '2026-05-01'
+      }];
+      window.stateStore.saveDB();
+      window.stateStore.syncSystemRecommendations(new Date(), false);
+    });
+
+    // Verify task card is rendered
+    const taskCard = page.locator('#tasks-list-container .glass-card:has-text("미수납")');
+    await expect(taskCard).toBeVisible();
+
+    // 2. Click snooze button (action button) and ensure drawer does NOT open
+    const snoozeBtn = taskCard.locator('button[data-action="snooze"]');
+    await snoozeBtn.click();
+
+    // The task should disappear (be snoozed), verify drawer is not open
+    await expect(page.locator('#today-task-drawer')).not.toHaveClass(/open/);
+
+    // Re-seed to keep it open
+    await page.evaluate(() => {
+      if (window.stateStore.db.todayTasks.length > 0) {
+        window.stateStore.db.todayTasks[0].status = 'open';
+        window.stateStore.saveDB();
+        window.stateStore.notify('TODAY_TASKS_CHANGED', window.stateStore.db.todayTasks);
+      }
+    });
+    await expect(taskCard).toBeVisible();
+
+    // 3. Click the card click zone to open details drawer
+    const clickZone = taskCard.locator('.task-card-click-zone');
+    await clickZone.click();
+
+    // Verify drawer opens
+    const drawer = page.locator('#today-task-drawer');
+    await expect(drawer).toHaveClass(/open/);
+    await expect(drawer.locator('.today-task-drawer-title')).toContainText('상세 정보');
+    await expect(drawer.locator('.today-task-drawer-body')).toContainText('수강료');
+
+    // 4. Click close button to close drawer
+    const closeBtn = page.locator('#btn-close-task-drawer');
+    await closeBtn.click();
+    await expect(drawer).not.toHaveClass(/open/);
+
+    // 5. Open drawer again
+    await clickZone.click();
+    await expect(drawer).toHaveClass(/open/);
+
+    // Click backdrop to close
+    const backdrop = page.locator('#task-drawer-backdrop');
+    await backdrop.click();
+    await expect(drawer).not.toHaveClass(/open/);
+
+    // 6. Open drawer again
+    await clickZone.click();
+    await expect(drawer).toHaveClass(/open/);
+
+    // Press ESC key to close
+    await page.keyboard.press('Escape');
+    await expect(drawer).not.toHaveClass(/open/);
+
+    // 7. Add a manual task and ensure clicking it does NOT open the drawer but opens edit form
+    const manualTaskTitle = 'E2E 수동 운영 메모';
+    await page.fill('#task-content-input', manualTaskTitle);
+    await page.click('#form-add-task button[type="submit"]');
+
+    const manualTaskCard = page.locator(`#tasks-list-container .glass-card:has-text("${manualTaskTitle}")`);
+    await expect(manualTaskCard).toBeVisible();
+
+    // Click manual task click zone
+    await manualTaskCard.locator('.task-card-click-zone').click();
+
+    // Drawer should NOT open
+    await expect(drawer).not.toHaveClass(/open/);
+    
+    // Instead, the input form should contain the title (editing mode)
+    await expect(page.locator('#task-content-input')).toHaveValue(new RegExp(manualTaskTitle));
+
+    // 8. Verify drawer message sending button action
+    // Re-open details drawer first
+    await taskCard.locator('.task-card-click-zone').click();
+    await expect(drawer).toHaveClass(/open/);
+
+    // Verify footer buttons are visible
+    const drawerSendMessageBtn = drawer.locator('button[data-action="drawer-send-message"]');
+    const drawerDetailBtn = drawer.locator('button[data-action="drawer-detail"]');
+    await expect(drawerSendMessageBtn).toBeVisible();
+    await expect(drawerDetailBtn).toBeVisible();
+
+    // Click "메시지 보내기" inside drawer
+    await drawerSendMessageBtn.click();
+
+    // Drawer should immediately close
+    await expect(drawer).toBeHidden();
+
+    // Verify view has changed to message-send screen (menu-item dir-message-send should be active)
+    await expect(page.locator('.menu-item[data-view="dir-message-send"]')).toHaveClass(/active/);
+
+    // Verify UI reflects handoff mode
+    await expect(page.locator('.handoff-banner')).toBeVisible();
+    await expect(page.locator('.handoff-target-info')).toContainText('최다은');
+    await expect(page.locator('.handoff-target-info')).toContainText('수강료 미수납');
+
+    // Go back to today console view
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+    await expect(page.locator('.menu-item[data-view="dir-today-console"]')).toHaveClass(/active/);
+
+    // Re-open drawer
+    await taskCard.locator('.task-card-click-zone').click();
+    await expect(drawer).toHaveClass(/open/);
+
+    // Click "상세정보" inside drawer
+    await drawerDetailBtn.click();
+
+    // Drawer should immediately close
+    await expect(drawer).not.toHaveClass(/open/);
+
+    // Student detail modal should open
+    await expect(page.locator('#common-modal')).toHaveClass(/show/);
+    await expect(page.locator('#common-modal .modal-title')).toContainText('최다은');
+    
+    // Close the detail modal
+    await page.locator('#common-modal [data-close-modal], #common-modal .modal-close').first().click();
+    await expect(page.locator('#common-modal')).not.toHaveClass(/show/);
+  });
+
+  test('should display major schedule drawer inline inside today console without redirecting and support confirmation', async ({ page }) => {
+    page.on('console', msg => console.log('BROWSER_CONSOLE:', msg.text()));
+    // 1. Seed a schedule task recommendation and major schedule into stateStore
+    await page.evaluate(() => {
+      window.stateStore.db.todayTasks = [{
+        id: 'test-schedule-task-e2e',
+        organizationId: '',
+        segment: 'academy_director_console',
+        domain: 'academy',
+        source: 'system',
+        type: 'schedule',
+        priority: 'today',
+        status: 'open',
+        dueAt: '2026-06-03T00:00:00.000Z',
+        title: '[일정확인] 테스트 콩쿠르 일정이 D-day입니다.',
+        description: '일정 확인 설명\n• 일정명: 테스트 콩쿠르\n• 날짜: 2026-06-03\n• 장소: 예술의전당',
+        visibilityRoles: ['director'],
+        createdAt: '2026-06-03T00:00:00.000Z',
+        updatedAt: '2026-06-03T00:00:00.000Z',
+        category: 'schedule',
+        startAt: '2026-06-03T00:00:00.000Z',
+        endAt: '2026-06-03T01:00:00.000Z',
+        relatedStudentIds: ['S1'],
+        dedupeKey: 'SYSTEM_RECOMMEND_MAJOR_SCHEDULE_test-event-id-e2e-1_event_end_2026-06-03'
+      }];
+      window.stateStore.db.majorSchedules = [{
+        id: 'test-event-id-e2e-1',
+        organizationId: '',
+        name: '테스트 콩쿠르',
+        eventDate: '2026-06-03',
+        dueDate: '2026-06-01',
+        place: '예술의전당',
+        ownerId: 'T1',
+        type: 'exam',
+        participantStudentIds: ['S1'],
+        memo: 'E2E 테스트용 모의 콩쿠르 일정',
+        createdAt: '2026-06-03T00:00:00.000Z',
+        updatedAt: '2026-06-03T00:00:00.000Z'
+      }];
+      window.stateStore.saveDB();
+      window.stateStore.notify('TODAY_TASKS_CHANGED', window.stateStore.db.todayTasks);
+      window.stateStore.notify('MAJOR_SCHEDULES_CHANGED', window.stateStore.db.majorSchedules);
+    });
+
+    // Go to today console view
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+    await expect(page.locator('.menu-item[data-view="dir-today-console"]')).toHaveClass(/active/);
+
+    // Verify task card is rendered
+    const scheduleCard = page.locator('#tasks-list-container .glass-card:has-text("테스트 콩쿠르")');
+    await expect(scheduleCard).toBeVisible();
+
+    // 2. Click schedule task click zone
+    await scheduleCard.locator('.task-card-click-zone').click();
+
+    // 3. Today task drawer should be open and display the schedule details instead of navigating
+    const todayDrawer = page.locator('#today-task-drawer');
+    await expect(todayDrawer).toHaveClass(/open/);
+    await expect(page.locator('.menu-item[data-view="dir-today-console"]')).toHaveClass(/active/);
+
+    // 4. Verify schedule info is rendered in the drawer
+    await expect(todayDrawer.locator('.drawer-student-main')).toContainText('테스트 콩쿠르');
+    await expect(todayDrawer.locator('.note')).toContainText('테스트용 모의 콩쿠르 일정');
+
+    // 5. Verify confirm-schedule button is NOT visible inside the drawer
+    const drawerConfirmBtn = todayDrawer.locator('button[data-action="confirm-schedule"]');
+    await expect(drawerConfirmBtn).toBeHidden();
+
+    // 6. Click close button inside the drawer to close it
+    await todayDrawer.locator('#btn-close-task-drawer-footer').click();
+    await expect(todayDrawer).not.toHaveClass(/open/);
+
+    // 7. Verify the confirm-schedule button on the task card is still visible
+    const cardConfirmBtn = scheduleCard.locator('button[data-action="confirm-schedule"]');
+    await expect(cardConfirmBtn).toBeVisible();
+
+    // Handle confirm and alert dialogs
+    page.on('dialog', async dialog => {
+      console.log('BROWSER_DIALOG:', dialog.type(), dialog.message());
+      await dialog.accept();
+    });
+
+    // 8. Click confirm-schedule button on the card and verify it completes without redirecting
+    await cardConfirmBtn.click();
+
+    // The task should disappear (be completed), and view should remain dir-today-console
+    await expect(scheduleCard).not.toBeVisible();
+    await expect(page.locator('.menu-item[data-view="dir-today-console"]')).toHaveClass(/active/);
   });
 });
 

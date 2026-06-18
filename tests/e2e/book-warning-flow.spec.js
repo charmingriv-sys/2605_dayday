@@ -289,7 +289,7 @@ test.describe('Textbook Warning Life Cycle Flow (Phase 13E-1)', () => {
 
     const confirmBtn = taskList.first().locator('[data-action="confirm-book"]');
     await expect(confirmBtn).toBeVisible({ timeout: 5000 });
-    await expect(confirmBtn).toHaveText('교재 확인');
+    await expect(confirmBtn).toHaveText('교재 지급 확인');
 
     // 4. Test confirm dialog Cancellation (Should not change DB state)
     page.once('dialog', async dialog => {
