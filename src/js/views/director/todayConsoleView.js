@@ -1,5 +1,6 @@
 import { stateStore } from '../../state.js';
 import { openStudentDetailModalRef } from './shared.js';
+import { renderKpiChipsHtml, filterTasksByKpi } from './todayConsoleKpi.js';
 
 const escapeHtml = (value) => {
     if (value === null || value === undefined) return '';
@@ -1340,166 +1341,7 @@ export function renderTodayConsole(container) {
         const hiddenTasksList = todayTasksAll.filter(t => t.status === 'dismissed' || (t.snoozedUntil && new Date(t.snoozedUntil).getTime() > Date.now()));
         const allTasksList = todayTasksAll;
 
-        // ==========================================
-        // Placeholder counts for Phase 13B ~ 13E domain integrations
-        // ==========================================
-        const getOverdueCount = () => {
-            return activeTasksList.filter(t => {
-                let cat = t.category;
-                if (t.source === 'system' || t.source === 'auto') {
-                    if (t.type === 'billing' && t.category === 'overdue') {
-                        cat = 'overdue';
-                    }
-                }
-                return cat === 'overdue';
-            }).length;
-        };
-        const getStaffWarningCount = () => {
-            return activeTasksList.filter(t => {
-                let cat = t.category;
-                if (t.source === 'system' || t.source === 'auto') {
-                    if (t.type === 'attendance' && t.category === 'staff_warning') {
-                        cat = 'staff_warning';
-                    }
-                }
-                return cat === 'staff_warning';
-            }).length;
-        };
-        const getAbsentCount = () => {
-            return activeTasksList.filter(t => {
-                let cat = t.category;
-                if (t.source === 'system' || t.source === 'auto') {
-                    if (t.type === 'attendance' && t.category === 'absent') {
-                        cat = 'absent';
-                    }
-                }
-                return cat === 'absent';
-            }).length;
-        };
-        const getScheduleCount = () => {
-            const list = activeTasksList.filter(t => {
-                let cat = t.category;
-                if (t.source === 'system' || t.source === 'auto') {
-                    if (t.type === 'schedule' && (t.category === 'schedule' || t.category === 'schedule_check')) {
-                        cat = 'schedule';
-                    }
-                }
-                return cat === 'schedule';
-            });
-            return list.length;
-        };
-        const getBillingCount = () => {
-            return activeTasksList.filter(t => {
-                let cat = t.category;
-                if (t.source === 'system' || t.source === 'auto') {
-                    if (t.type === 'billing' && t.category === 'billing') {
-                        cat = 'billing';
-                    }
-                }
-                return cat === 'billing';
-            }).length;
-        };
-        const getAttendanceWarningCount = () => {
-            return activeTasksList.filter(t => {
-                let cat = t.category;
-                if (t.source === 'system' || t.source === 'auto') {
-                    if (t.type === 'attendance') {
-                        if (t.category !== 'absent' && t.category !== 'staff_warning') {
-                            cat = 'attendance_warning';
-                        }
-                    }
-                }
-                return cat === 'attendance_warning';
-            }).length;
-        };
-        const getBookCheckCount = () => {
-            return activeTasksList.filter(t => {
-                let cat = t.category;
-                if (t.source === 'system' || t.source === 'auto') {
-                    if (t.type === 'book') {
-                        if (t.category === 'book_check') {
-                            cat = 'book_check';
-                        }
-                    }
-                }
-                return cat === 'book_check';
-            }).length;
-        };
-        const getBookRecommendationCount = () => {
-            return activeTasksList.filter(t => {
-                let cat = t.category;
-                if (t.source === 'system' || t.source === 'auto') {
-                    if (t.type === 'book') {
-                        if (t.category === 'book_recommendation') {
-                            cat = 'book_recommendation';
-                        }
-                    }
-                }
-                return cat === 'book_recommendation';
-            }).length;
-        };
-        const getBookBillingCount = () => {
-            return activeTasksList.filter(t => {
-                let cat = t.category;
-                if (t.source === 'system' || t.source === 'auto') {
-                    if (t.type === 'book') {
-                        if (t.category === 'book_billing') {
-                            cat = 'book_billing';
-                        }
-                    }
-                }
-                return cat === 'book_billing';
-            }).length;
-        };
-        const getMemoCount = () => {
-            return activeTasksList.filter(t => {
-                let cat = t.category || 'memo';
-                if (t.source === 'system' || t.source === 'auto') {
-                    if (t.type === 'billing') {
-                        if (t.category === 'billing') cat = 'billing';
-                        else cat = 'overdue';
-                    }
-                    else if (t.type === 'attendance') {
-                        if (t.category === 'absent') cat = 'absent';
-                        else if (t.category === 'staff_warning') cat = 'staff_warning';
-                        else cat = 'attendance_warning';
-                    }
-                }
-                return cat === 'memo';
-            }).length;
-        };
-
-        const cardsData = [
-            { id: 'memo', label: '운영메모', count: getMemoCount(), color: 'var(--primary)', icon: 'fa-note-sticky' },
-            { id: 'absent', label: '결석 확인', count: getAbsentCount(), color: 'var(--danger)', icon: 'fa-user-slash' },
-            { id: 'attendance_warning', label: '특이출결', count: getAttendanceWarningCount(), color: 'var(--danger)', icon: 'fa-triangle-exclamation' },
-            { id: 'staff_warning', label: '특이근태', count: getStaffWarningCount(), color: '#f1c40f', icon: 'fa-user-clock' },
-            { id: 'billing', label: '수납확인', count: getBillingCount(), color: 'var(--success)', icon: 'fa-receipt' },
-            { id: 'overdue', label: '미수납 확인', count: getOverdueCount(), color: 'var(--danger)', icon: 'fa-file-invoice-dollar' },
-            { id: 'schedule', label: '일정확인', count: getScheduleCount(), color: 'var(--primary)', icon: 'fa-calendar-day' },
-            { id: 'book_check', label: '교재 지급 확인', count: getBookCheckCount(), color: '#a55eea', icon: 'fa-book' },
-            { id: 'book_billing', label: '교재 결제 확인', count: getBookBillingCount(), color: '#f1c40f', icon: 'fa-wallet' },
-            { id: 'book_recommendation', label: '교재 확인', count: getBookRecommendationCount(), color: '#a55eea', icon: 'fa-book-open' }
-        ];
-
-        const chipsHtml = cardsData.map(card => {
-            const isSelected = selectedCategoryFilter === card.id;
-            const cardClass = isSelected ? 'kpi-chip-card selected' : 'kpi-chip-card';
-            const textClass = isSelected ? 'color: var(--text-main); font-weight: 800;' : 'color: var(--text-muted); font-weight: 600;';
-            const countBadgeStyle = card.count > 0 
-                ? `background-color: ${card.color}; color: #fff; font-weight: 700;` 
-                : `background-color: rgba(255,255,255,0.08); color: var(--text-muted);`;
-
-            return `
-                <div class="${cardClass}" data-filter-id="${card.id}" title="${card.id === 'memo' ? '오늘 등록된 운영 메모 및 할 일 수' : `${card.label} (향후 비즈니스 연동 예정)`}" style="--card-color: ${card.color};">
-                    <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
-                        <i class="fa-solid ${card.icon}" style="color: ${card.color}; font-size: 0.95rem; flex-shrink: 0;"></i>
-                        <span style="font-size: 0.76rem; ${textClass} overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${card.label}</span>
-                    </div>
-                    <span class="badge" style="font-size: 0.72rem; padding: 3px 7px; border-radius: 12px; margin: 0; flex-shrink: 0; ${countBadgeStyle}">${card.count}</span>
-                </div>
-            `;
-        }).join('');
+        const chipsHtml = renderKpiChipsHtml(activeTasksList, selectedCategoryFilter);
 
         let filteredTasks = [];
         if (activeTab === 'active') {
@@ -1512,32 +1354,7 @@ export function renderTodayConsole(container) {
             filteredTasks = allTasksList;
         }
 
-        // Apply selectedCategoryFilter for Phase 13A-1 UI skeleton
-        if (selectedCategoryFilter !== 'all') {
-            filteredTasks = filteredTasks.filter(task => {
-                let cat = task.category || 'memo';
-                if (task.source === 'system' || task.source === 'auto') {
-                    if (task.type === 'billing') {
-                        if (task.category === 'billing') cat = 'billing';
-                        else cat = 'overdue';
-                    }
-                    else if (task.type === 'attendance') {
-                        if (task.category === 'absent') cat = 'absent';
-                        else if (task.category === 'staff_warning') cat = 'staff_warning';
-                        else cat = 'attendance_warning';
-                    }
-                    else if (task.type === 'book') {
-                        if (task.category === 'book_check') cat = 'book_check';
-                        else if (task.category === 'book_billing') cat = 'book_billing';
-                        else if (task.category === 'book_recommendation') cat = 'book_recommendation';
-                    }
-                    else if (task.type === 'schedule') {
-                        if (task.category === 'schedule' || task.category === 'schedule_check') cat = 'schedule';
-                    }
-                }
-                return cat === selectedCategoryFilter;
-            });
-        }
+        filteredTasks = filterTasksByKpi(filteredTasks, selectedCategoryFilter);
 
         // Apply startAt/dueAt time-based sorting policy for Phase 8C-3E
         const getTaskSortTime = (task) => {
