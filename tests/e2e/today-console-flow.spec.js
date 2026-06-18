@@ -1970,5 +1970,74 @@ test.describe('Director Today Console Flow Checks', () => {
     await expect(scheduleCard).not.toBeVisible();
     await expect(page.locator('.menu-item[data-view="dir-today-console"]')).toHaveClass(/active/);
   });
+
+  test('should isolate domain errors and validate task requirements during system recommendation sync', async ({ page }) => {
+    // 1. Force a domain to throw an error (e.g. getPayments throws an error)
+    await page.evaluate(() => {
+      window.stateStore.db.todayTaskSyncErrors = [];
+      window.stateStore.saveDB();
+
+      const originalGetPayments = window.stateStore.getPayments;
+      window.stateStore.getPayments = () => {
+        throw new Error('Billing test simulated error');
+      };
+
+      // Seed mock data for schedule domain to verify it still runs
+      window.stateStore.db.majorSchedules = [{
+        id: 'test-isolate-event-id',
+        organizationId: '',
+        name: 'Isolate Test Event',
+        eventDate: '2026-06-03',
+        dueDate: '2026-06-01',
+        place: '원내',
+        ownerId: 'T1',
+        type: 'exam',
+        participantStudentIds: [],
+        memo: 'Isolate test memo',
+        createdAt: '2026-06-03T00:00:00.000Z',
+        updatedAt: '2026-06-03T00:00:00.000Z'
+      }];
+      window.stateStore.saveDB();
+
+      // Run system recommendation sync (which catches billing error but proceeds to schedule)
+      window.stateStore.db.settings = window.stateStore.db.settings || {};
+      window.stateStore.db.settings.DAYDAY_DEBUG_EVAL_TIME = '2026-06-03T10:00:00.000Z';
+      window.stateStore.syncSystemRecommendations(new Date('2026-06-03T10:00:00.000Z'), false);
+
+      window.stateStore.getPayments = originalGetPayments;
+    });
+
+    // 2. Verify that schedule warning task was successfully created
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+
+    const eventCard = page.locator('#tasks-list-container .glass-card:has-text("Isolate Test Event")');
+    await expect(eventCard).toBeVisible();
+
+    // 3. Verify that the billing error was recorded in todayTaskSyncErrors
+    const syncErrors = await page.evaluate(() => {
+      return window.stateStore.db.todayTaskSyncErrors || [];
+    });
+    expect(syncErrors.length).toBeGreaterThan(0);
+    const billingErr = syncErrors.find(e => e.domain === 'billing');
+    expect(billingErr).toBeDefined();
+    expect(billingErr.errorMessage).toContain('Billing test simulated error');
+
+    // 4. Verify task validation works
+    await page.evaluate(() => {
+      window.stateStore.db.todayTaskSyncErrors = [];
+      const validationTask = {
+        description: 'Missing required fields'
+      };
+      window.stateStore._testValidateTask(validationTask, { domain: 'validation', silent: true });
+    });
+
+    const validationErrors = await page.evaluate(() => {
+      return window.stateStore.db.todayTaskSyncErrors || [];
+    });
+    expect(validationErrors.length).toBeGreaterThan(0);
+    const valErr = validationErrors.find(e => e.domain === 'validation');
+    expect(valErr).toBeDefined();
+    expect(valErr.errorMessage).toContain('Validation failed');
+  });
 });
 
