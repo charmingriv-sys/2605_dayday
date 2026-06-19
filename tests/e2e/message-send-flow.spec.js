@@ -2427,6 +2427,142 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
     await g1Btn.click();
     await expect(g1Btn).toHaveCSS('background-color', 'rgb(255, 255, 255)');
     await expect(g1Btn.locator('span:first-child svg')).toBeHidden();
+
+    // Turn top G1 button back ON to match initial state expectations
+    await g1Btn.click();
+    await expect(g1Btn).toHaveCSS('background-color', 'rgb(234, 241, 254)');
+
+    // -- New Sync Checks --
+    // Select first student row (e.g. 최다은)
+    const studentRow = page.locator('.student-row').first();
+    await studentRow.click(); // Expand & Select
+    
+    // G1 checkbox is active because top G1 button was ON initially, and toggling student ON inherited G1.
+    // Let's verify top G1 is ON
+    await expect(g1Btn).toHaveCSS('background-color', 'rgb(234, 241, 254)');
+    
+    // Check if the student's subrow G1 is checked, but student/G2 is unchecked
+    const subrows = page.locator('.guardian-row');
+    const selfCheckbox = subrows.filter({ hasText: '본인' }).locator('.guardian-checkbox');
+    const g1Checkbox = subrows.filter({ hasText: '보호자 1' }).locator('.guardian-checkbox');
+    
+    await expect(g1Checkbox.locator('svg')).toBeVisible();
+    await expect(selfCheckbox.locator('svg')).toBeHidden();
+    
+    // 2. Toggle top "student" (본인) ON
+    await studentBtn.click();
+    // Since studentBtn is toggled ON, and the student is selected, it should activate the subrow student checkbox
+    await expect(selfCheckbox.locator('svg')).toBeVisible();
+    
+    // 3. Manually toggle off subrow "보호자 1"
+    const g1Subrow = subrows.filter({ hasText: '보호자 1' });
+    await g1Subrow.click();
+    // Subrow G1 should be unchecked
+    await expect(g1Checkbox.locator('svg')).toBeHidden();
+    // Since G1 is unchecked for the selected student, the top G1 button should sync and turn OFF
+    await expect(g1Btn).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+    await expect(g1Btn.locator('span:first-child svg')).toBeHidden();
+    
+    // 4. Manually toggle back on subrow "보호자 1"
+    await g1Subrow.click();
+    // Subrow G1 should be checked again
+    await expect(g1Checkbox.locator('svg')).toBeVisible();
+    // Top G1 button should sync and turn back ON
+    await expect(g1Btn).toHaveCSS('background-color', 'rgb(234, 241, 254)');
+    await expect(g1Btn.locator('span:first-child svg')).toBeVisible();
+    
+    // Clean up student selection
+    await studentRow.click();
+  });
+
+  test('should clear previously selected recipients when entering via console handoff (Phase 16W-6B Isolation)', async ({ page }) => {
+    // 1. 일반 진입하여 수신인 한 명 지정해두기
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+    const studentRow = page.locator('.student-row').first();
+    await studentRow.click();
+    await page.locator('#btnAddToRecipients').click();
+    
+    // 수신인에 1건 추가된 것을 확인
+    await expect(page.locator('#totalRecipientsLabel')).toContainText('1건');
+    
+    // 2. 오늘 콘솔로 이동하여 태스크 핸드오프로 진입 시뮬레이션
+    const testStudentId = 'S_TEST_16W_ISOLATION';
+    const testTaskId = 'TASK_16W_ISOLATION';
+    
+    await page.evaluate(({ sid, tid }) => {
+      window.stateStore.db.students = window.stateStore.db.students.filter(s => s.id !== sid);
+      window.stateStore.db.parentContacts = window.stateStore.db.parentContacts.filter(c => c.studentId !== sid);
+      window.stateStore.db.todayTasks = window.stateStore.db.todayTasks.filter(t => t.id !== tid);
+      
+      window.stateStore.db.students.push({
+        id: sid,
+        name: '격리원생',
+        phone: '010-9999-0000',
+        instrument: '피아노',
+        pay: 'unpaid'
+      });
+      window.stateStore.db.parentContacts.push({
+        id: 'pc_16w_g1',
+        studentId: sid,
+        slot: 'parent1',
+        name: '격리학부모',
+        relation: 'mother',
+        phone: '010-8888-1111',
+        canReceiveMessage: true,
+        isPrimary: true
+      });
+      
+      const todayIso = new Date().toISOString();
+      window.stateStore.db.todayTasks.push({
+        id: tid,
+        organizationId: '',
+        segment: 'academy_director_console',
+        domain: 'academy',
+        source: 'system',
+        type: 'attendance',
+        category: 'absent',
+        priority: 'today',
+        status: 'open',
+        dueAt: todayIso,
+        title: '격리원생 결석 확인 필요',
+        description: '• 원생명: 격리원생\n• 수업 시간: 10:00 ~ 11:00\n• 워닝 유형: 결석 확인',
+        relatedStudentIds: [sid],
+        dedupeKey: 'SYSTEM_ABSENT_SESSION_TEST_16W',
+        visibilityRoles: ['director']
+      });
+      window.stateStore.saveDB();
+    }, { sid: testStudentId, tid: testTaskId });
+    
+    // 오늘 콘솔로 이동
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+    await expect(page.locator('.menu-item[data-view="dir-today-console"]')).toHaveClass(/active/);
+    
+    // "격리원생 결석 확인 필요" 카드의 "메시지 보내기" 버튼 클릭
+    const absentCard = page.locator('#tasks-list-container .glass-card', { hasText: '격리원생 결석 확인 필요' });
+    await expect(absentCard).toBeVisible();
+    await absentCard.locator('button:has-text("메시지 보내기")').click();
+    
+    // 메시지 화면으로 넘어오면서, 기존 1건 수신자(최다은 등)는 초기화되어 있어야 함
+    // 즉, recipients는 격리되어 비어있고, 핸드오프 대상(격리원생)만 1명 선택 상태여야 함
+    await expect(page.locator('#totalRecipientsLabel')).toBeHidden(); // recipients가 비었으므로 숨김 상태
+    await expect(page.locator('#selectedStudentsCount')).toContainText('1'); // 격리원생 1명 선택 상태
+    
+    // 상단 "보호자1" 버튼 활성화 상태 확인 (나머지 비활성)
+    const g1Btn = page.locator('.btn-toggle-contact-type[data-type="g1"]');
+    const studentBtn = page.locator('.btn-toggle-contact-type[data-type="student"]');
+    const g2Btn = page.locator('.btn-toggle-contact-type[data-type="g2"]');
+    
+    await expect(g1Btn).toHaveCSS('background-color', 'rgb(234, 241, 254)'); // #eaf1fe
+    await expect(studentBtn).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+    await expect(g2Btn).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+    
+    // clean up db
+    await page.evaluate(({ sid, tid }) => {
+      window.stateStore.db.students = window.stateStore.db.students.filter(s => s.id !== sid);
+      window.stateStore.db.parentContacts = window.stateStore.db.parentContacts.filter(c => c.studentId !== sid);
+      window.stateStore.db.todayTasks = window.stateStore.db.todayTasks.filter(t => t.id !== tid);
+      window.stateStore.saveDB();
+    }, { sid: testStudentId, tid: testTaskId });
   });
 });
 

@@ -600,6 +600,8 @@ export function renderMessageSend(container) {
           viewState.selectedContacts.clear();
           viewState.selectedContacts.add(`${payload.studentId}_g1`);
           
+          viewState.recipients = [];
+          
           viewState.contactTypes = {
             student: false,
             g1: true,
@@ -995,6 +997,46 @@ export function renderMessageSend(container) {
   const renderStudentList = (isFullRender = true) => {
     const block = container.querySelector('#studentListPanel');
     const students = getAdaptedStudents();
+
+    // Sync contactTypes with selectedContacts status
+    const syncContactTypesWithSelection = () => {
+      if (viewState.selectedStudentIds.size === 0) return;
+      
+      const types = ['student', 'g1', 'g2'];
+      types.forEach(type => {
+        let eligibleCount = 0;
+        let selectedCount = 0;
+        
+        viewState.selectedStudentIds.forEach(studentId => {
+          const s = students.find(x => x.id === studentId);
+          const { g1, g2 } = stateStore.getGuardianCandidates(studentId);
+          
+          let candidate = null;
+          if (type === 'student') {
+            candidate = { phone: s ? s.studentPhone : '', canReceiveMessage: true };
+          } else if (type === 'g1') {
+            candidate = g1;
+          } else if (type === 'g2') {
+            candidate = g2;
+          }
+          
+          if (candidate && candidate.phone && candidate.phone.trim() !== '' && candidate.canReceiveMessage !== false) {
+            eligibleCount++;
+            if (viewState.selectedContacts.has(`${studentId}_${type}`)) {
+              selectedCount++;
+            }
+          }
+        });
+        
+        if (eligibleCount > 0) {
+          viewState.contactTypes[type] = (selectedCount === eligibleCount);
+        } else {
+          viewState.contactTypes[type] = false;
+        }
+      });
+    };
+
+    syncContactTypesWithSelection();
 
     // Filter students
     const filtered = students.filter(s => {
