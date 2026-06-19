@@ -679,4 +679,122 @@ test.describe('Textbook Warning Life Cycle Flow (Phase 13E-1)', () => {
     await expect(recommendCardCount).toContainText('0');
     await expect(taskList).toHaveCount(0);
   });
+
+  test('should verify book recommendation guards (student status and date upper limit)', async ({ page }) => {
+    // 1. Login as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // Navigate to today console
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+
+    // 1. Set student S1 status to 'on_leave' and verify no recommendation task is generated
+    await page.evaluate(() => {
+      const db = window.stateStore.db;
+      db.todayTasks = [];
+      db.studentBooks = [];
+      db.attendance = [];
+
+      // Setup S1 (attending by default) but set status to 'on_leave'
+      const s1 = db.students.find(s => s.id === 'S1');
+      if (s1) {
+        s1.status = 'on_leave';
+      }
+
+      const book1 = db.books.find(b => b.id === 'B1');
+      if (book1) {
+        book1.recommendedDays = 10;
+      }
+      
+      db.studentBooks.push({
+        id: 'SB-REC-GUARD-1',
+        studentId: 'S1',
+        bookId: 'B1',
+        regDate: '2026-06-01',
+        orderNo: 1,
+        paymentId: 'P-REC-GUARD-1'
+      });
+
+      // Seed 9 attendance records (90% of recommendedDays = 10) starting from 2026-06-01
+      for (let i = 1; i <= 9; i++) {
+        db.attendance.push({
+          id: `ATT-REC-GUARD-${i}`,
+          studentId: 'S1',
+          date: `2026-06-0${i}`,
+          status: 'present',
+          time: '14:00'
+        });
+      }
+
+      if (!db.settings) db.settings = {};
+      db.settings.DAYDAY_DEBUG_EVAL_TIME = '2026-06-09T10:00:00.000Z';
+
+      window.stateStore.syncSystemRecommendations();
+      window.stateStore.saveDB();
+    });
+
+    // Verify recommendation task is NOT generated for 'on_leave' student
+    const recommendCardCount = page.locator('[data-filter-id="book_recommendation"] .badge');
+    await expect(recommendCardCount).toContainText('0');
+
+    // 2. Set student S1 status back to 'attending' but add future attendance (e.g. on 2026-06-15)
+    // while checking recommendations on 2026-06-09. Attended count should not count the future attendance.
+    await page.evaluate(() => {
+      const db = window.stateStore.db;
+      db.todayTasks = [];
+      db.attendance = [];
+
+      const s1 = db.students.find(s => s.id === 'S1');
+      if (s1) {
+        s1.status = 'attending';
+      }
+
+      // Seed only 8 valid attendance records (80%) on or before 2026-06-09
+      for (let i = 1; i <= 8; i++) {
+        db.attendance.push({
+          id: `ATT-REC-GUARD-${i}`,
+          studentId: 'S1',
+          date: `2026-06-0${i}`,
+          status: 'present',
+          time: '14:00'
+        });
+      }
+
+      // Seed 2 future attendance records (on 2026-06-15 and 2026-06-16)
+      db.attendance.push({
+        id: `ATT-REC-GUARD-FUTURE-1`,
+        studentId: 'S1',
+        date: `2026-06-15`,
+        status: 'present',
+        time: '14:00'
+      });
+      db.attendance.push({
+        id: `ATT-REC-GUARD-FUTURE-2`,
+        studentId: 'S1',
+        date: `2026-06-16`,
+        status: 'present',
+        time: '14:00'
+      });
+
+      db.settings.DAYDAY_DEBUG_EVAL_TIME = '2026-06-09T10:00:00.000Z';
+
+      window.stateStore.syncSystemRecommendations();
+      window.stateStore.saveDB();
+    });
+
+    // Verify recommendation task is NOT generated because future attendance is ignored
+    await expect(recommendCardCount).toContainText('0');
+
+    // 3. Sync on 2026-06-16. Now future attendance is past/present, total count = 10 (>= 9), recommendation should generate.
+    await page.evaluate(() => {
+      const db = window.stateStore.db;
+      db.settings.DAYDAY_DEBUG_EVAL_TIME = '2026-06-16T10:00:00.000Z';
+      window.stateStore.syncSystemRecommendations();
+      window.stateStore.saveDB();
+    });
+
+    await expect(recommendCardCount).toContainText('1');
+  });
 });

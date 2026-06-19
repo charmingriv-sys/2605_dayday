@@ -164,6 +164,9 @@ export function syncTextbookRecommendations(ctx, options) {
         const attendance = typeof ctx.getAttendance === 'function' ? ctx.getAttendance() : (ctx.db.attendance || []);
 
         students.forEach(student => {
+            // 휴원(on_leave) 또는 퇴원(withdrawn) 원생 제외 (Phase 18A-Repair)
+            if (student.status === 'on_leave' || student.status === 'withdrawn') return;
+
             const sBooks = studentBooks.filter(sb => sb.studentId === student.id);
             if (sBooks.length === 0) return;
 
@@ -179,9 +182,12 @@ export function syncTextbookRecommendations(ctx, options) {
 
             const recommendedDays = parseInt(book.recommendedDays) || 90;
             
-            // Count attendance on or after regDate
+            // Count attendance on or after regDate and on or before dateStr (Phase 18A-Repair)
             const attendedCount = attendance.filter(a => {
-                return a.studentId === student.id && a.date >= latestSB.regDate && (a.status === 'present' || a.status === 'late');
+                return a.studentId === student.id &&
+                       a.date >= latestSB.regDate &&
+                       a.date <= dateStr &&
+                       (a.status === 'present' || a.status === 'late');
             }).length;
 
             const ratio = recommendedDays > 0 ? (attendedCount / recommendedDays) : 0;
