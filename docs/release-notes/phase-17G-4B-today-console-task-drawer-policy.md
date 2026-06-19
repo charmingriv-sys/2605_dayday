@@ -203,3 +203,67 @@
    - 영향 범위가 특정된 단일 E2E 테스트 스펙(예: `book-warning-flow.spec.js`, `billing-warning-flow.spec.js`, `today-console-flow.spec.js`)만 개별 기동하여 빌드 시간을 단축하고 회귀 현상을 신속히 확인합니다.
    - 전체 테스트는 코어 상태 저장소 구조 개편, 대형 스키마 변경, 보안 기능 보완 등 공통 영향력이 거대하다고 증명된 경우에만 최종 배포 승인 직전 단계에서 선택적으로 수행합니다.
 
+---
+
+## 10. 오늘 콘솔 추천 생성 엔진 모듈화 완료 및 정책 동기화 (Phase 18E)
+
+Phase 18A부터 Phase 18D에 걸쳐 `todayTask.js` 내부에 집중되어 있던 자동 추천 생성 엔진을 도메인별 전용 generator 파일로 분리하고 상태 구조를 완전히 리팩토링 및 모듈화하였습니다. 이에 따른 물리 구조 및 향후 개발/테스트 정책을 규정합니다.
+
+### 10-1. 모듈 분리 구조 요약
+오늘 콘솔의 모든 추천 생성 및 자동 제거/무효화 로직은 다음과 같이 단일 책임 원칙에 맞추어 평면 파일 구조로 분리되어 관리됩니다.
+1. **`todayTask.js` (Orchestrator)**
+   - 추천 생성을 조율하는 Orchestrator 역할을 수행합니다.
+   - `syncSystemRecommendations(now, silent)` 메소드에서 각 도메인별 generator 함수를 직접 호출합니다.
+   - `runTodayTaskRecommendationDomain` 래퍼를 통해 도메인별 실행 도중 오류를 격리합니다.
+   - `addValidatedSystemTodayTask` 헬퍼를 통해 최소 데이터 정밀 검증(Validation)을 공통 수행합니다.
+   - 전체 도메인 동기화가 끝난 후, 최하단에서 일괄 데이터베이스 저장(`saveDB`) 및 UI 통지(`notify`)를 수행합니다.
+2. **`todayTaskBilling.js` (Billing)**
+   - 수납확인 및 미수납 확인 큐(`billing`, `overdue`)를 다룹니다.
+3. **`todayTaskTextbook.js` (Textbook)**
+   - 교재 지급 확인, 교재 결제 확인, 교재 확인 큐(`book_check`, `book_billing`, `book_recommendation`)를 다룹니다.
+4. **`todayTaskAttendance.js` (Student Attendance)**
+   - 원생의 결석 확인 및 특이출결 큐(`absent`, `attendance_warning`)를 다룹니다.
+5. **`todayTaskStaffAttendance.js` (Staff Attendance)**
+   - 강사 근태 및 특이근태 큐(`staff_warning`)를 다룹니다.
+6. **`todayTaskSchedule.js` (Schedule)**
+   - 주요 일정확인 D-day 큐(`schedule`)를 다룹니다.
+
+### 10-2. 도메인 오류 격리 정책 (Error Isolation)
+- 개별 도메인 generator의 실행 오류가 발생하더라도 타 도메인의 추천 정보 생성이 전면 중단되거나 지장을 받지 않도록 `runTodayTaskRecommendationDomain` 격리 경계를 반드시 준수하여 호출합니다.
+- 동기화 오류 발생 시 디버깅 편의를 위해 `ctx.db.todayTaskSyncErrors` 배열에 최근 오류 기록을 최대 **30개** 제한으로 보관하되, 일반 원장/강사 운영 UI에는 경고 에러가 노출되지 않도록 제어합니다.
+
+### 10-3. 태스크 데이터 검증 정책 (Validation Policy)
+- 시스템 자동 추천 태스크 생성 요청 시 데이터 유실 또는 포맷 깨짐을 방지하기 위해 공통 검증 단계를 수행합니다.
+- 다음 6가지 필수 키가 유효하게 존재하는지 검증하며, 누락된 항목이 있을 시 `todayTaskSyncErrors`에 에러를 기록하고 생성을 차단합니다:
+  - `title`
+  - `category`
+  - `type`
+  - `source`
+  - `status`
+  - `dedupeKey`
+
+### 10-4. saveDB/notify 일괄 실행 정책
+- 상태 동기화 및 렌더링 성능 최적화를 위해 개별 도메인 generator 모듈 내부에서는 직접 `saveDB()` 혹은 `this.notify()`를 호출할 수 없도록 격리합니다.
+- 모든 도메인 동기화가 성공적으로 종결된 후 `todayTask.js`의 최하단에서 일괄적으로 물리 스토어 동기화와 UI 바인딩 갱신을 1회만 단독 실행합니다.
+
+### 10-5. 사용자 수기 확인 정책 (Manual Verification)
+- 향후 generator 리팩토링이나 기능 변경 발생 시, 변경 사항이 UI 흐름에 영향을 주거나 연동되는 경우 아래 항목들을 반드시 테스트 및 수동 검증 단계에서 명시적으로 확인하고 결과 보고서에 첨부해야 합니다:
+  - 대시보드 상단 KPI 카드 카운트 및 배지 노출 상태
+  - 카드를 클릭했을 때 해당되는 세부 인라인 드로어/원생 정보 드로어가 올바르게 오픈되는지 여부
+  - 드로어/카드 내 액션 버튼(확인 완료, 보류, 제외, 메시지 보내기 등) 동작 및 상태 전이
+  - 메시지 Handoff에 따른 화면 전환 및 메시지 폼 파라미터 매핑 정상 작동 여부
+  - 일정/출결/수납 등 상세 화면과의 연동 흐름 정상 유지 여부
+
+### 10-6. 테스트 실행 및 산술 보고 정책 (Test Execution & Math Assertions)
+- 변경 영향도가 전역으로 확인되지 않는 한, 불필요한 리소스 낭비를 방지하기 위해 **전체 테스트(`npm run test:full`)는 임의로 실행하지 않는 것**을 원칙으로 삼습니다.
+- 리팩토링이 완료된 해당 도메인에 연동되는 개별 E2E 파일(예: `schedule-warning-flow.spec.js`, `today-console-flow.spec.js` 등)만 선택적으로 타겟팅하여 테스트를 구동합니다.
+- 결과 보고서 작성 시 테스트 프레임워크가 반환한 개별 파일별 통과 카운트와 전체 합계의 **산술적 덧셈 결과를 직접 검증**하여 오기나 누락이 없도록 검토를 필수로 진행합니다.
+
+### 10-7. 보호 대상 산출물 유지 정책 (Protected Assets Policy)
+- 시스템 백업본, 디자인 시안, 마크업 리소스 등의 보호를 위해 다음 산출물은 명시적인 사용자 동의나 승인 없이는 **임의로 수정/삭제하거나 커밋/스테이징 영역에 포함하지 않는 것**을 철저히 엄수합니다:
+  - `docs/superpowers/` 폴더 전체
+  - `docs/*.html` 시안/목업 파일들 전체
+  - `docs/devrun_context_summary.md` 문서
+- 현재 작업 트리에 남아 있는 이들의 `untracked` 상태는 커밋 오염을 일으키지 않으므로, 별도의 최종 정책 결정 전까지 해당 상태 그대로 안전하게 보존합니다.
+
+
