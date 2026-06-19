@@ -329,11 +329,14 @@ export function renderTodayConsole(container) {
                                 <i class="fa-solid fa-xmark"></i>
                             </button>
                         </div>
-                        <div class="today-task-drawer-body">
+                        <div class="today-task-drawer-body" style="padding: 18px;">
                             <div class="alert alert-danger" style="margin: 0; padding: 12px; font-size: 0.88rem; border-radius: 6px; background: rgba(235, 94, 85, 0.08); border: 1px solid rgba(235, 94, 85, 0.2); color: var(--danger);">
                                 <i class="fa-solid fa-triangle-exclamation" style="margin-right: 6px;"></i>
-                                일정 정보를 찾을 수 없습니다. (ID: ${escapeHtml(selectedScheduleId)})
+                                연계된 일정 정보를 찾을 수 없습니다. (ID: ${escapeHtml(selectedScheduleId)})
                             </div>
+                        </div>
+                        <div class="today-task-drawer-footer" style="padding: 16px 24px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 8px; background: #fff;">
+                            <button type="button" class="btn btn-secondary" id="btn-close-task-drawer-footer" style="margin-bottom: 0;">닫기</button>
                         </div>
                     `;
                 }
@@ -444,7 +447,23 @@ export function renderTodayConsole(container) {
                 `;
             } catch (err) {
                 console.error(err);
-                return `<div class="alert alert-danger">에러 발생: ${err.message}</div>`;
+                return `
+                    <div class="today-task-drawer-header">
+                        <h3 class="today-task-drawer-title">일정 상세 정보</h3>
+                        <button type="button" class="today-task-drawer-close" id="btn-close-task-drawer" title="닫기">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                    <div class="today-task-drawer-body" style="padding: 18px;">
+                        <div class="alert alert-danger" style="margin: 0; padding: 12px; font-size: 0.88rem; border-radius: 6px; background: rgba(235, 94, 85, 0.08); border: 1px solid rgba(235, 94, 85, 0.2); color: var(--danger);">
+                            <i class="fa-solid fa-triangle-exclamation" style="margin-right: 6px;"></i>
+                            일정 상세 정보를 불러올 수 없습니다. (${escapeHtml(err.message)})
+                        </div>
+                    </div>
+                    <div class="today-task-drawer-footer" style="padding: 16px 24px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 8px; background: #fff;">
+                        <button type="button" class="btn btn-secondary" id="btn-close-task-drawer-footer" style="margin-bottom: 0;">닫기</button>
+                    </div>
+                `;
             }
         }
         if (!selectedTaskId) return '';
@@ -970,6 +989,24 @@ export function renderTodayConsole(container) {
                         <button type="button" class="btn btn-primary" data-action="drawer-detail" data-student-id="${student.id}" style="flex: 1; justify-content: center; height: 38px; font-weight: 600; margin-bottom: 0;">상세정보</button>
                     </div>
                 `;
+            } else if (studentId) {
+                return `
+                    <div class="today-task-drawer-header">
+                        <h3 class="today-task-drawer-title">원생 상세 정보</h3>
+                        <button type="button" class="today-task-drawer-close" id="btn-close-task-drawer" title="닫기">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                    <div class="today-task-drawer-body" style="padding: 18px;">
+                        <div class="alert alert-danger" style="margin: 0; padding: 12px; font-size: 0.88rem; border-radius: 6px; background: rgba(235, 94, 85, 0.08); border: 1px solid rgba(235, 94, 85, 0.2); color: var(--danger);">
+                            <i class="fa-solid fa-user-slash" style="margin-right: 6px;"></i>
+                            연계된 원생 정보를 찾을 수 없습니다. 잠시 후 다시 시도하거나 원생 관리 화면에서 정보를 확인해 주세요.
+                        </div>
+                    </div>
+                    <div class="today-task-drawer-footer" style="padding: 16px 24px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 8px; background: #fff;">
+                        <button type="button" class="btn btn-secondary" id="btn-close-task-drawer-footer" style="margin-bottom: 0;">닫기</button>
+                    </div>
+                `;
             }
 
             // --- 2. Fallback: 연계 원생이 없는 태스크는 최소 정보만 표시 ---
@@ -1112,16 +1149,19 @@ export function renderTodayConsole(container) {
         } catch (e) {
             return `
                 <div class="today-task-drawer-header">
-                    <h3 class="today-task-drawer-title">업무 상세 정보</h3>
+                    <h3 class="today-task-drawer-title">원생 상세 정보</h3>
                     <button type="button" class="today-task-drawer-close" id="btn-close-task-drawer" title="닫기">
                         <i class="fa-solid fa-xmark"></i>
                     </button>
                 </div>
-                <div class="today-task-drawer-body">
+                <div class="today-task-drawer-body" style="padding: 18px;">
                     <div class="alert alert-danger" style="margin: 0; padding: 12px; font-size: 0.88rem; border-radius: 6px; background: rgba(235, 94, 85, 0.08); border: 1px solid rgba(235, 94, 85, 0.2); color: var(--danger);">
                         <i class="fa-solid fa-triangle-exclamation" style="margin-right: 6px;"></i>
-                        렌더링 중 오류 발생: ${escapeHtml(e.message)}
+                        원생 상세 정보를 불러올 수 없습니다. (${escapeHtml(e.message)})
                     </div>
+                </div>
+                <div class="today-task-drawer-footer" style="padding: 16px 24px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 8px; background: #fff;">
+                    <button type="button" class="btn btn-secondary" id="btn-close-task-drawer-footer" style="margin-bottom: 0;">닫기</button>
                 </div>
             `;
         }
