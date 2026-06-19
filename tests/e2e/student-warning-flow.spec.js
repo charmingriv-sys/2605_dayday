@@ -171,7 +171,7 @@ test.describe('Student Attendance Warning Engine E2E Flow', () => {
     let systemTasks = res.tasks.filter(t => t.source === 'system');
     expect(systemTasks).toHaveLength(1);
     expect(systemTasks[0].category).toBe('absent');
-    expect(systemTasks[0].title).toBe('홍길동 원생 결석 확인 필요');
+    expect(systemTasks[0].title).toBe('[결석 확인] 홍길동 원생 결석 확인');
     expect(systemTasks[0].description).toContain('수업이 끝났지만 출석 기록이 없습니다.');
 
     // ----------------------------------------------------
@@ -188,7 +188,7 @@ test.describe('Student Attendance Warning Engine E2E Flow', () => {
     systemTasks = res.tasks.filter(t => t.source === 'system');
     expect(systemTasks).toHaveLength(1);
     expect(systemTasks[0].category).toBe('attendance_warning');
-    expect(systemTasks[0].title).toBe('홍길동 원생 지각 출석');
+    expect(systemTasks[0].title).toBe('[특이출결] 홍길동 원생 지각');
     expect(systemTasks[0].description).toContain('지각');
 
     // ----------------------------------------------------
@@ -218,7 +218,7 @@ test.describe('Student Attendance Warning Engine E2E Flow', () => {
     systemTasks = res.tasks.filter(t => t.source === 'system');
     expect(systemTasks.filter(t => t.category === 'absent')).toHaveLength(0);
     expect(systemTasks.filter(t => t.category === 'attendance_warning')).toHaveLength(1);
-    expect(systemTasks[0].title).toBe('홍길동 원생 지각 출석');
+    expect(systemTasks[0].title).toBe('[특이출결] 홍길동 원생 지각');
 
     // ----------------------------------------------------
     // Rule 6: 정상 출석 후 하원 없음 → 종료시간 + grace 초과 시 하원누락 생성
@@ -233,7 +233,7 @@ test.describe('Student Attendance Warning Engine E2E Flow', () => {
     });
     systemTasks = res.tasks.filter(t => t.source === 'system');
     expect(systemTasks).toHaveLength(1);
-    expect(systemTasks[0].title).toBe('[특이출결] 홍길동 원생 하원누락');
+    expect(systemTasks[0].title).toBe('[특이출결] 홍길동 원생 하원 누락');
     expect(systemTasks[0].description).toContain('수업 시간이 종료되었지만 하원 기록이 없습니다.');
 
     // ----------------------------------------------------
@@ -250,7 +250,7 @@ test.describe('Student Attendance Warning Engine E2E Flow', () => {
     systemTasks = res.tasks.filter(t => t.source === 'system');
     expect(systemTasks).toHaveLength(1);
     // At 15:10, checkoutLimit (15:15) is not exceeded, so only LATE is active
-    expect(systemTasks[0].title).toBe('홍길동 원생 지각 출석');
+    expect(systemTasks[0].title).toBe('[특이출결] 홍길동 원생 지각');
 
     // Exceeding 15:15 limit
     res = await setupWarningTestState({
@@ -263,7 +263,7 @@ test.describe('Student Attendance Warning Engine E2E Flow', () => {
     });
     systemTasks = res.tasks.filter(t => t.source === 'system');
     expect(systemTasks).toHaveLength(1);
-    expect(systemTasks[0].title).toBe('[특이출결] 홍길동 원생 지각 및 하원누락');
+    expect(systemTasks[0].title).toBe('[특이출결] 홍길동 원생 지각 및 하원 누락');
 
     // ----------------------------------------------------
     // Rule 8: 출석 없음 + 하원 없음 → 결석 확인만 생성, 하원누락 없음
@@ -345,7 +345,7 @@ test.describe('Student Attendance Warning Engine E2E Flow', () => {
     });
     systemTasks = res.tasks.filter(t => t.source === 'system');
     expect(systemTasks).toHaveLength(1);
-    expect(systemTasks[0].title).toBe('홍길동 원생 지각 출석');
+    expect(systemTasks[0].title).toBe('[특이출결] 홍길동 원생 지각');
 
     // ----------------------------------------------------
     // Rule 14: 동일 워닝 중복 생성 방지
