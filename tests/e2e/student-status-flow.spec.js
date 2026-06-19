@@ -190,6 +190,26 @@ test.describe('Student Status Management Flow', () => {
     await expect(row).toBeVisible();
     await expect(row.locator('.badge-danger:has-text("퇴원")')).toBeVisible();
 
+    // 12. Navigate to Dashboard View and Verify new KPI metrics
+    await page.locator('.menu-item[data-view="dir-dashboard"]').click();
+    await expect(page.locator('.metric-card').first()).toBeVisible();
+
+    // Verify "재원생 수" KPI card label, values and sublabel
+    const attendingCard = page.locator('.metric-card', { hasText: '재원생 수' });
+    await expect(attendingCard).toBeVisible();
+    await expect(attendingCard.locator('.metric-sublabel')).toContainText('휴원');
+    await expect(attendingCard.locator('.metric-sublabel')).toContainText('퇴원');
+
+    // Verify "이번 달 미납 수강료" KPI card label, values and sublabel (separated withdrawn unpaid)
+    const unpaidCard = page.locator('.metric-card', { hasText: '이번 달 미납 수강료' });
+    await expect(unpaidCard).toBeVisible();
+    await expect(unpaidCard.locator('.metric-sublabel')).toContainText('퇴원생 미수금');
+
+    // Verify "이번 달 납부 완료" KPI card label and sublabel (static ledger info)
+    const paidCard = page.locator('.metric-card', { hasText: '이번 달 납부 완료' });
+    await expect(paidCard).toBeVisible();
+    await expect(paidCard.locator('.metric-sublabel')).toContainText('결제 이력 기준');
+
     expect(consoleErrors.length).toBe(0);
   });
 });

@@ -8,10 +8,29 @@ export function renderDashboard(container) {
         const classes = stateStore.getClasses();
         const attendance = stateStore.getAttendance();
 
+        // 1. Calculate student status counts (attending, on_leave, withdrawn)
+        // Attending counts include undefined/null/empty status for backward compatibility
+        const attendingCount = students.filter(s => !s.status || s.status === 'attending').length;
+        const leaveCount = students.filter(s => s.status === 'on_leave').length;
+        const withdrawnCount = students.filter(s => s.status === 'withdrawn').length;
+
         const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
         const currentMonthPayments = payments.filter(p => p.month === currentMonth);
         const paidTuition = currentMonthPayments.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.amount, 0);
-        const unpaidTuition = currentMonthPayments.filter(p => p.status === 'unpaid').reduce((sum, p) => sum + p.amount, 0);
+
+        // 2. Separate unpaid tuition for attending/on_leave vs withdrawn students
+        let unpaidTuition = 0;
+        let withdrawnUnpaidTuition = 0;
+        
+        currentMonthPayments.filter(p => p.status === 'unpaid').forEach(p => {
+            const student = students.find(s => s.id === p.studentId);
+            const status = student ? (student.status || 'attending') : 'attending';
+            if (status === 'withdrawn') {
+                withdrawnUnpaidTuition += p.amount;
+            } else {
+                unpaidTuition += p.amount;
+            }
+        });
 
         // Revenue chart calculations (April vs May)
         const aprilPayments = payments.filter(p => p.month === '2026-04');
@@ -67,13 +86,14 @@ export function renderDashboard(container) {
         container.innerHTML = `
             <!-- KPI Metrics -->
             <div class="metrics-grid">
-                <div class="glass-card metric-card">
+                <div class="glass-card metric-card" title="재원생 수는 현재 상태가 재원인 원생만 집계합니다. 휴원/퇴원 원생은 보조 요약에 별도 표시됩니다.">
                     <div class="metric-icon purple">
                         <i class="fa-solid fa-graduation-cap"></i>
                     </div>
                     <div class="metric-info">
-                        <span class="metric-label">총 원생 수</span>
-                        <span class="metric-value">${students.filter(s => s.status !== 'withdrawn').length}명</span>
+                        <span class="metric-label">재원생 수</span>
+                        <span class="metric-value">${attendingCount}명</span>
+                        <span class="metric-sublabel" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px; display: block;">휴원 ${leaveCount}명 | 퇴원 ${withdrawnCount}명</span>
                     </div>
                 </div>
                 <div class="glass-card metric-card">
@@ -85,22 +105,24 @@ export function renderDashboard(container) {
                         <span class="metric-value">${teachers.length}명</span>
                     </div>
                 </div>
-                <div class="glass-card metric-card">
+                <div class="glass-card metric-card" title="납부 완료 금액은 결제 이력 기준입니다. 원생 상태 기준과 다를 수 있습니다.">
                     <div class="metric-icon green">
                         <i class="fa-solid fa-wallet"></i>
                     </div>
                     <div class="metric-info">
                         <span class="metric-label">이번 달 납부 완료</span>
                         <span class="metric-value">${paidTuition.toLocaleString()}원</span>
+                        <span class="metric-sublabel" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px; display: block;">결제 이력 기준</span>
                     </div>
                 </div>
-                <div class="glass-card metric-card">
+                <div class="glass-card metric-card" title="기본 미납 수강료는 운영 대상 원생 기준입니다. 퇴원생 미수금은 별도로 표시합니다.">
                     <div class="metric-icon red">
                         <i class="fa-solid fa-receipt"></i>
                     </div>
                     <div class="metric-info">
                         <span class="metric-label">이번 달 미납 수강료</span>
                         <span class="metric-value">${unpaidTuition.toLocaleString()}원</span>
+                        <span class="metric-sublabel" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px; display: block;">퇴원생 미수금 ${withdrawnUnpaidTuition.toLocaleString()}원 별도</span>
                     </div>
                 </div>
             </div>
