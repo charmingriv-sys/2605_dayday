@@ -2,6 +2,7 @@ import { stateStore } from '../../state.js';
 import { openStudentDetailModalRef } from './shared.js';
 import { renderKpiChipsHtml, filterTasksByKpi } from './todayConsoleKpi.js';
 import { triggerTodayConsoleMessageHandoff } from './todayConsoleHandoff.js';
+import { buildTodayConsoleScheduleDrawerData } from './todayConsoleScheduleData.js';
 
 const escapeHtml = (value) => {
     if (value === null || value === undefined) return '';
@@ -320,8 +321,8 @@ export function renderTodayConsole(container) {
     const renderDrawerContent = () => {
         if (selectedScheduleId) {
             try {
-                const event = stateStore.getMajorSchedules().find(item => item.id === selectedScheduleId);
-                if (!event) {
+                const data = buildTodayConsoleScheduleDrawerData(selectedScheduleId, stateStore);
+                if (data.error === 'NOT_FOUND') {
                     return `
                         <div class="today-task-drawer-header">
                             <h3 class="today-task-drawer-title">일정 상세 정보</h3>
@@ -340,42 +341,11 @@ export function renderTodayConsole(container) {
                         </div>
                     `;
                 }
+                if (data.error) {
+                    throw new Error(data.errorMessage || '일정 데이터를 빌드할 수 없습니다.');
+                }
 
-                const eventTypes = {
-                    academy: { label: "학원 행사" },
-                    lesson: { label: "보강/수업" },
-                    billing: { label: "수납/결제" },
-                    counsel: { label: "상담/학부모" },
-                    etc: { label: "기타" }
-                };
-                const meta = eventTypes[event.type] || { label: "기타" };
-                
-                const getAdaptedStudents = () => {
-                    return stateStore.getStudents ? stateStore.getStudents() : [];
-                };
-                const parts = getAdaptedStudents().filter(s => event.participantStudentIds && event.participantStudentIds.includes(s.id));
-
-                const fmt = (isoStr) => {
-                    if (!isoStr) return "-";
-                    return isoStr.slice(0, 10);
-                };
-                const dday = (dateStr) => {
-                    const now = new Date();
-                    const todayStr = now.toISOString().slice(0, 10);
-                    const target = new Date(dateStr);
-                    const today = new Date(todayStr);
-                    const diffTime = target - today;
-                    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                };
-                const formatDdayLabel = (diffDays) => {
-                    if (diffDays === 0) return "오늘 진행";
-                    if (diffDays < 0) return `종료 (${Math.abs(diffDays)}일 경과)`;
-                    return `진행 예정 (D-${diffDays})`;
-                };
-
-                const task = stateStore.getTodayTasks().find(t => 
-                    t.dedupeKey && t.dedupeKey.startsWith(`SYSTEM_RECOMMEND_MAJOR_SCHEDULE_${selectedScheduleId}`)
-                );
+                const { event, meta, parts, formattedDate, ddayLabel, place, ownerName, formattedDueDate, visibleText, memoText } = data;
 
                 return `
                     <div class="today-task-drawer-header">
@@ -389,7 +359,7 @@ export function renderTodayConsole(container) {
                             <div class="avatar" style="width: 48px; height: 48px; border-radius: 50%; background: var(--primary-soft); color: var(--primary); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1rem; flex-shrink: 0;">${meta.label.slice(0, 2)}</div>
                             <div class="drawer-student-main" style="display: flex; flex-direction: column;">
                                 <strong style="font-size: 1.1rem; color: var(--text-main); font-weight: 700; line-height: 1.3;">${escapeHtml(event.name)}</strong>
-                                <span style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">${fmt(event.eventDate)} · ${formatDdayLabel(dday(event.eventDate))} · ${escapeHtml(event.place || "-")} · ${stateStore.getTeacherDisplayName ? stateStore.getTeacherDisplayName(event.ownerId) : event.ownerId}</span>
+                                <span style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">${formattedDate} · ${ddayLabel} · ${escapeHtml(place)} · ${ownerName}</span>
                             </div>
                         </div>
 
@@ -403,26 +373,26 @@ export function renderTodayConsole(container) {
                                     </div>
                                     <div class="detail-item" style="padding: 10px; border: 1px solid var(--border-color); border-radius: 7px; background: #fff; display: flex; flex-direction: column;">
                                         <span style="color: var(--text-muted); font-size: 11px; font-weight: 850;">진행/종료일</span>
-                                        <strong style="margin-top: 4px; font-size: 13px; font-weight: 950; color: var(--text-main);">${fmt(event.eventDate)} · ${formatDdayLabel(dday(event.eventDate))}</strong>
+                                        <strong style="margin-top: 4px; font-size: 13px; font-weight: 950; color: var(--text-main);">${formattedDate} · ${ddayLabel}</strong>
                                     </div>
                                     <div class="detail-item" style="padding: 10px; border: 1px solid var(--border-color); border-radius: 7px; background: #fff; display: flex; flex-direction: column;">
                                         <span style="color: var(--text-muted); font-size: 11px; font-weight: 850;">접수마감</span>
-                                        <strong style="margin-top: 4px; font-size: 13px; font-weight: 950; color: var(--text-main);">${event.dueDate ? fmt(event.dueDate) + " · " + formatDdayLabel(dday(event.dueDate)) : "접수마감 없음"}</strong>
+                                        <strong style="margin-top: 4px; font-size: 13px; font-weight: 950; color: var(--text-main);">${formattedDueDate}</strong>
                                     </div>
                                     <div class="detail-item" style="padding: 10px; border: 1px solid var(--border-color); border-radius: 7px; background: #fff; display: flex; flex-direction: column;">
                                         <span style="color: var(--text-muted); font-size: 11px; font-weight: 850;">장소</span>
-                                        <strong style="margin-top: 4px; font-size: 13px; font-weight: 950; color: var(--text-main);">${escapeHtml(event.place || "-")}</strong>
+                                        <strong style="margin-top: 4px; font-size: 13px; font-weight: 950; color: var(--text-main);">${escapeHtml(place)}</strong>
                                     </div>
                                     <div class="detail-item" style="padding: 10px; border: 1px solid var(--border-color); border-radius: 7px; background: #fff; display: flex; flex-direction: column;">
                                         <span style="color: var(--text-muted); font-size: 11px; font-weight: 850;">담당자</span>
-                                        <strong style="margin-top: 4px; font-size: 13px; font-weight: 950; color: var(--text-main);">${stateStore.getTeacherDisplayName ? stateStore.getTeacherDisplayName(event.ownerId) : event.ownerId}</strong>
+                                        <strong style="margin-top: 4px; font-size: 13px; font-weight: 950; color: var(--text-main);">${ownerName}</strong>
                                     </div>
                                     <div class="detail-item" style="padding: 10px; border: 1px solid var(--border-color); border-radius: 7px; background: #fff; display: flex; flex-direction: column;">
                                         <span style="color: var(--text-muted); font-size: 11px; font-weight: 850;">공개여부</span>
-                                        <strong style="margin-top: 4px; font-size: 13px; font-weight: 950; color: var(--text-main);">${event.visible ? "학부모 공개" : "비공개"}</strong>
+                                        <strong style="margin-top: 4px; font-size: 13px; font-weight: 950; color: var(--text-main);">${visibleText}</strong>
                                     </div>
                                 </div>
-                                <p class="note" style="white-space: pre-wrap; font-size: 13px; color: var(--text-main); margin-top: 10px; padding: 10px; border-radius: 6px; background: #f8fafc; border: 1px solid var(--border-color);">${escapeHtml(event.memo || "등록된 메모가 없습니다.")}</p>
+                                <p class="note" style="white-space: pre-wrap; font-size: 13px; color: var(--text-main); margin-top: 10px; padding: 10px; border-radius: 6px; background: #f8fafc; border: 1px solid var(--border-color);">${escapeHtml(memoText)}</p>
                             </div>
                         </section>
 
