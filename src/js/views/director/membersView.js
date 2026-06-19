@@ -742,6 +742,17 @@ const openNtsCertificatePrintModal = (studentId) => {
     openModal(modalHtml, onInit);
 };
 
+// Helper to calculate leave duration in days (inclusive)
+const calculateLeaveDays = (startDate, endDate) => {
+    if (!startDate || !endDate) return 0;
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
+    const diffTime = end.getTime() - start.getTime();
+    if (diffTime < 0) return 0;
+    return Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1;
+};
+
 // Shared Modal Manager for Student Detailed Info Profile
 const openStudentDetailModal = (studentId) => {
     const student = stateStore.getStudent(studentId);
@@ -796,6 +807,59 @@ const openStudentDetailModal = (studentId) => {
     const p2Relation = parent2 ? parent2.relation : '';
     const p2RelationText = relationKo[p2Relation] || p2Relation || '';
 
+    // Cumulative leave periods history
+    let periods = [];
+    if (student.leavePeriods && student.leavePeriods.length > 0) {
+        periods = [...student.leavePeriods];
+    } else if (student.leaveStartDate && student.leaveEndDate) {
+        periods = [{ startDate: student.leaveStartDate, endDate: student.leaveEndDate }];
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    let currentLeavePeriod = null;
+    if (student.status === 'on_leave') {
+        currentLeavePeriod = periods.find(p => p.startDate <= today && today <= p.endDate);
+    }
+
+    let statusDatesHtml = '';
+    if (student.status === 'on_leave' && currentLeavePeriod) {
+        const days = calculateLeaveDays(currentLeavePeriod.startDate, currentLeavePeriod.endDate);
+        statusDatesHtml += `
+            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(0,0,0,0.03); padding-bottom: 6px;">
+                <span style="color: var(--text-muted);">현재 휴원 기간</span>
+                <strong>휴원 ${currentLeavePeriod.startDate} ~ ${currentLeavePeriod.endDate} (${days}일)</strong>
+            </div>
+        `;
+    } else if (student.status === 'withdrawn') {
+        statusDatesHtml += `
+            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(0,0,0,0.03); padding-bottom: 6px;">
+                <span style="color: var(--text-muted);">퇴원일</span>
+                <strong>${student.withdrawalDate || student.leaveDate || '-'}</strong>
+            </div>
+        `;
+    }
+
+    if (periods.length > 0) {
+        // Sort descending by startDate to show latest first
+        periods.sort((a, b) => b.startDate.localeCompare(a.startDate));
+
+        const historyRows = periods.map(p => {
+            const days = calculateLeaveDays(p.startDate, p.endDate);
+            return `<div style="font-weight: 500; font-size: 0.85rem; color: var(--text-main); text-align: right; margin-bottom: 2px;">
+                휴원 ${p.startDate} ~ ${p.endDate} (${days}일)
+            </div>`;
+        }).join('');
+
+        statusDatesHtml += `
+            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(0,0,0,0.03); padding-bottom: 6px; align-items: flex-start;">
+                <span style="color: var(--text-muted);">휴원 이력</span>
+                <div style="display: flex; flex-direction: column; align-items: flex-end;">
+                    ${historyRows}
+                </div>
+            </div>
+        `;
+    }
+
     const html = `
         <div class="modal-header">
             <h3 class="modal-title"><i class="fa-solid fa-graduation-cap" style="color: var(--primary); margin-right: 8px;"></i><strong>${student.name}</strong> 원생 상세 정보</h3>
@@ -813,6 +877,7 @@ const openStudentDetailModal = (studentId) => {
                     <span style="color: var(--text-muted);">원생 상태</span>
                     <strong>${student.status === 'withdrawn' ? '퇴원' : (student.status === 'on_leave' ? '휴원' : '재원')}</strong>
                 </div>
+                ${statusDatesHtml}
                 <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(0,0,0,0.03); padding-bottom: 6px;">
                     <span style="color: var(--text-muted);">생년월일</span>
                     <strong>${student.birthDate || '-'}</strong>
@@ -912,6 +977,7 @@ const openStudentDetailModal = (studentId) => {
         </div>
         <div class="modal-footer" style="padding: 1.2rem; border-top: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 8px;">
             <button class="btn btn-primary" id="btn-edit-student-from-detail" style="width: 100%; justify-content: center; height: 38px; font-weight: 600;">정보 수정하기</button>
+            <button class="btn btn-warning" id="btn-change-status-from-detail" style="width: 100%; justify-content: center; height: 38px; font-weight: 600; background: #ff9f43; border-color: #ff9f43; color: #fff;">원생 상태 변경하기</button>
             <button class="btn btn-success" id="btn-preview-parent-view" style="width: 100%; justify-content: center; height: 38px; font-weight: 600; background: var(--accent); border-color: var(--accent); color: var(--bg-main);">
                 <i class="fa-solid fa-mobile-screen-button" style="margin-right: 6px;"></i>학부모 화면 미리보기
             </button>
@@ -930,6 +996,12 @@ const openStudentDetailModal = (studentId) => {
                 openStudentModal(studentId);
             });
         }
+        const changeStatusBtn = contentArea.querySelector('#btn-change-status-from-detail');
+        if (changeStatusBtn) {
+            changeStatusBtn.addEventListener('click', () => {
+                openStudentStatusModal(studentId);
+            });
+        }
         const previewBtn = contentArea.querySelector('#btn-preview-parent-view');
         if (previewBtn) {
             previewBtn.addEventListener('click', () => {
@@ -945,6 +1017,219 @@ const openStudentDetailModal = (studentId) => {
     };
     
     openModal(html, onInitDetailModal);
+};
+
+const openStudentStatusModal = (studentId) => {
+    const student = stateStore.getStudent(studentId);
+    if (!student) return;
+
+    const statusOptions = `
+        <option value="attending" ${student.status === 'attending' ? 'selected' : ''}>재원</option>
+        <option value="on_leave" ${student.status === 'on_leave' ? 'selected' : ''}>휴원</option>
+        <option value="withdrawn" ${student.status === 'withdrawn' ? 'selected' : ''}>퇴원</option>
+    `;
+
+    const html = `
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <i class="fa-solid fa-user-gear" style="color: var(--primary); margin-right: 8px;"></i>
+                <strong>${student.name}</strong> 원생 상태 변경
+            </h3>
+            <button class="modal-close" data-close-modal><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="modal-body" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem;">
+            
+            <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.2rem; background: rgba(0, 0, 0, 0.01);">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="modal-student-status" style="font-weight: 600;">원생 상태 <span style="color: var(--danger);">*</span></label>
+                    <select id="modal-student-status" class="form-control" required style="width: 100%;">
+                        ${statusOptions}
+                    </select>
+                </div>
+            </div>
+
+            <!-- 상태 날짜 정보 섹션 -->
+            <div id="modal-status-dates-section" style="border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1.2rem; background: rgba(0, 0, 0, 0.01); display: none;">
+                <div style="font-weight: 700; font-size: 0.95rem; color: var(--primary); margin: 0 0 1.2rem 0; border-left: 3px solid var(--primary); padding-left: 8px;">상태 날짜 정보</div>
+                <div id="modal-status-dates-row" class="form-row" style="display: flex; gap: 1rem;">
+                    <!-- Dynamically populated date inputs -->
+                </div>
+            </div>
+
+        </div>
+        <div class="modal-footer" style="padding: 1.2rem; border-top: 1px solid var(--border-color); display: flex; gap: 8px;">
+            <button class="btn btn-secondary" id="btn-status-cancel" style="flex: 1; justify-content: center; height: 38px; font-weight: 600;">취소</button>
+            <button class="btn btn-primary" id="btn-status-submit" style="flex: 1; justify-content: center; height: 38px; font-weight: 600;">저장</button>
+        </div>
+    `;
+
+    const onInitStatusModal = (contentArea) => {
+        const statusEl = contentArea.querySelector('#modal-student-status');
+        const statusDatesSection = contentArea.querySelector('#modal-status-dates-section');
+        const statusDatesRow = contentArea.querySelector('#modal-status-dates-row');
+        const cancelBtn = contentArea.querySelector('#btn-status-cancel');
+        const submitBtn = contentArea.querySelector('#btn-status-submit');
+
+        const resetErrorStyle = (el) => {
+            if (!el) return;
+            el.addEventListener('input', () => {
+                el.style.borderColor = '';
+                el.style.boxShadow = '';
+            });
+            el.addEventListener('change', () => {
+                el.style.borderColor = '';
+                el.style.boxShadow = '';
+            });
+        };
+
+        const updateStatusDatesUI = () => {
+            const currentStatus = statusEl.value;
+            if (currentStatus === 'on_leave') {
+                statusDatesSection.style.display = 'block';
+                statusDatesRow.style.display = 'flex';
+                const defaultStart = student.leaveStartDate || new Date().toISOString().slice(0, 10);
+                const defaultEnd = student.leaveEndDate || new Date().toISOString().slice(0, 10);
+                statusDatesRow.innerHTML = `
+                    <div class="form-group" style="flex: 1;">
+                        <label for="modal-student-leave-start-date">휴원 시작일 <span style="color: var(--danger);">*</span></label>
+                        <input type="date" id="modal-student-leave-start-date" class="form-control" value="${defaultStart}" required style="width: 100%;">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="modal-student-leave-end-date">휴원 종료일 <span style="color: var(--danger);">*</span></label>
+                        <input type="date" id="modal-student-leave-end-date" class="form-control" value="${defaultEnd}" required style="width: 100%;">
+                    </div>
+                `;
+                const startEl = statusDatesRow.querySelector('#modal-student-leave-start-date');
+                const endEl = statusDatesRow.querySelector('#modal-student-leave-end-date');
+                resetErrorStyle(startEl);
+                resetErrorStyle(endEl);
+            } else if (currentStatus === 'withdrawn') {
+                statusDatesSection.style.display = 'block';
+                statusDatesRow.style.display = 'flex';
+                const defaultWithdrawn = student.withdrawalDate || student.leaveDate || new Date().toISOString().slice(0, 10);
+                statusDatesRow.innerHTML = `
+                    <div class="form-group" style="flex: 1;">
+                        <label for="modal-student-withdrawal-date">퇴원일 <span style="color: var(--danger);">*</span></label>
+                        <input type="date" id="modal-student-withdrawal-date" class="form-control" value="${defaultWithdrawn}" required style="width: 100%;">
+                    </div>
+                    <div class="form-group" style="flex: 1;"></div>
+                `;
+                const withdrawEl = statusDatesRow.querySelector('#modal-student-withdrawal-date');
+                resetErrorStyle(withdrawEl);
+            } else {
+                statusDatesSection.style.display = 'none';
+                statusDatesRow.innerHTML = '';
+            }
+        };
+
+        if (statusEl && statusDatesRow) {
+            statusEl.addEventListener('change', updateStatusDatesUI);
+            updateStatusDatesUI();
+        }
+
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => {
+                openStudentDetailModal(studentId);
+            });
+        }
+
+        const closeBtn = contentArea.querySelector('.modal-close');
+        if (closeBtn) {
+            closeBtn.removeAttribute('data-close-modal');
+            closeBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                openStudentDetailModal(studentId);
+            });
+        }
+
+        if (submitBtn) {
+            submitBtn.addEventListener('click', () => {
+                const status = statusEl.value;
+                let leaveStartDate = student.leaveStartDate || null;
+                let leaveEndDate = student.leaveEndDate || null;
+                let withdrawalDate = student.withdrawalDate || null;
+                let validationPassed = true;
+
+                if (status === 'on_leave') {
+                    const leaveStartEl = contentArea.querySelector('#modal-student-leave-start-date');
+                    const leaveEndEl = contentArea.querySelector('#modal-student-leave-end-date');
+                    const leaveStartVal = leaveStartEl ? leaveStartEl.value : '';
+                    const leaveEndVal = leaveEndEl ? leaveEndEl.value : '';
+
+                    if (!leaveStartVal) {
+                        alert('휴원 시작일을 입력해 주세요.');
+                        if (leaveStartEl) leaveStartEl.style.borderColor = 'var(--danger)';
+                        validationPassed = false;
+                    } else {
+                        leaveStartDate = leaveStartVal;
+                    }
+
+                    if (!leaveEndVal) {
+                        alert('휴원 종료일을 입력해 주세요.');
+                        if (leaveEndEl) leaveEndEl.style.borderColor = 'var(--danger)';
+                        validationPassed = false;
+                    } else {
+                        leaveEndDate = leaveEndVal;
+                    }
+
+                    if (leaveStartVal && leaveEndVal && leaveEndVal < leaveStartVal) {
+                        alert('휴원 종료일은 휴원 시작일보다 빠를 수 없습니다.');
+                        if (leaveEndEl) leaveEndEl.style.borderColor = 'var(--danger)';
+                        validationPassed = false;
+                    }
+                } else if (status === 'withdrawn') {
+                    const withdrawalDateEl = contentArea.querySelector('#modal-student-withdrawal-date');
+                    const withdrawalDateVal = withdrawalDateEl ? withdrawalDateEl.value : '';
+
+                    if (!withdrawalDateVal) {
+                        alert('퇴원일을 입력해 주세요.');
+                        if (withdrawalDateEl) withdrawalDateEl.style.borderColor = 'var(--danger)';
+                        validationPassed = false;
+                    } else {
+                        withdrawalDate = withdrawalDateVal;
+                    }
+                }
+
+                if (!validationPassed) {
+                    return;
+                }
+
+                // Confirm status change
+                if (student.status === 'attending' && status === 'on_leave') {
+                    if (!confirm("원생 상태를 휴원으로 변경하시겠습니까?")) {
+                        return;
+                    }
+                } else if (student.status !== 'withdrawn' && status === 'withdrawn') {
+                    if (!confirm("원생 상태를 퇴원으로 변경하시겠습니까?\n퇴원은 삭제가 아니며 기존 이력은 보존됩니다.")) {
+                        return;
+                    }
+                }
+
+                // Preserve dates logic
+                if (status === 'attending') {
+                    leaveStartDate = student.leaveStartDate || null;
+                    leaveEndDate = student.leaveEndDate || null;
+                    withdrawalDate = student.withdrawalDate || null;
+                } else if (status === 'on_leave') {
+                    withdrawalDate = student.withdrawalDate || null;
+                } else if (status === 'withdrawn') {
+                    leaveStartDate = student.leaveStartDate || null;
+                    leaveEndDate = student.leaveEndDate || null;
+                }
+
+                stateStore.updateStudent(studentId, {
+                    status,
+                    leaveStartDate,
+                    leaveEndDate,
+                    withdrawalDate
+                });
+
+                openStudentDetailModal(studentId);
+            });
+        }
+    };
+
+    openModal(html, onInitStatusModal);
 };
 
 // Shared Modal Manager for Student Books History Management
@@ -1419,14 +1704,7 @@ const openStudentModal = (studentId = null) => {
                                 ${durationOptionsHtml}
                             </select>
                         </div>
-                        <div class="form-group">
-                            <label for="modal-student-status">원생 상태 <span style="color: var(--danger);">*</span></label>
-                            <select id="modal-student-status" class="form-control" required>
-                                <option value="attending" ${!student || student.status === 'attending' ? 'selected' : ''}>재원</option>
-                                <option value="on_leave" ${student && student.status === 'on_leave' ? 'selected' : ''}>휴원</option>
-                                <option value="withdrawn" ${student && student.status === 'withdrawn' ? 'selected' : ''}>퇴원</option>
-                            </select>
-                        </div>
+                        <div class="form-group"></div>
                     </div>
 
                     <div class="form-row">
@@ -1775,6 +2053,7 @@ const openStudentModal = (studentId = null) => {
 
         // Enable real-time validation reset style when inputs are edited
         const resetErrorStyle = (el) => {
+            if (!el) return;
             el.addEventListener('input', () => {
                 el.style.borderColor = '';
                 el.style.boxShadow = '';
@@ -1784,6 +2063,7 @@ const openStudentModal = (studentId = null) => {
                 el.style.boxShadow = '';
             });
         };
+
 
         const requiredInputs = [
             contentArea.querySelector('#modal-student-name'),
@@ -1803,6 +2083,10 @@ const openStudentModal = (studentId = null) => {
         const form = contentArea.querySelector('#student-modal-form');
         form.addEventListener('submit', (e) => {
             e.preventDefault();
+
+            let leaveStartDate = null;
+            let leaveEndDate = null;
+            let withdrawalDate = null;
 
             const nameEl = contentArea.querySelector('#modal-student-name');
             const birthdateEl = contentArea.querySelector('#modal-student-birthdate');
@@ -1889,6 +2173,12 @@ const openStudentModal = (studentId = null) => {
                 validationPassed = false;
             }
 
+            // Preserve status and date fields from the existing student record
+            const status = student ? student.status : 'attending';
+            leaveStartDate = student ? student.leaveStartDate : null;
+            leaveEndDate = student ? student.leaveEndDate : null;
+            withdrawalDate = student ? student.withdrawalDate : null;
+
             if (!validationPassed) {
                 return;
             }
@@ -1935,8 +2225,6 @@ const openStudentModal = (studentId = null) => {
             const hasInstrument = instSelect.value === 'custom' ? instCustom.value.trim() : instSelect.value;
             const purpose = contentArea.querySelector('#modal-student-purpose').value;
             const lessonStyle = contentArea.querySelector('#modal-student-lesson-style').value;
-            const statusEl = contentArea.querySelector('#modal-student-status');
-            const status = statusEl ? statusEl.value : 'attending';
 
             // Extract schedules from dynamic rows
             const scheduleRows = container.querySelectorAll('.modal-schedule-row');
@@ -1947,19 +2235,6 @@ const openStudentModal = (studentId = null) => {
                 const time = `${hour}:${minute}`;
                 return { dayOfWeek, time };
             });
-
-            // Confirm status change from attending to non-attending
-            if (isEdit && student && student.status === 'attending') {
-                if (status === 'on_leave') {
-                    if (!confirm("원생 상태를 휴원으로 변경하시겠습니까?")) {
-                        return;
-                    }
-                } else if (status === 'withdrawn') {
-                    if (!confirm("원생 상태를 퇴원으로 변경하시겠습니까?\n퇴원은 삭제가 아니며 기존 이력은 보존됩니다.")) {
-                        return;
-                    }
-                }
-            }
 
             let savedStudentId = studentId;
 
@@ -1990,7 +2265,10 @@ const openStudentModal = (studentId = null) => {
                     consultationNotes,
                     scheduleNotes,
                     paymentStatus,
-                    defaultClassDuration
+                    defaultClassDuration,
+                    leaveStartDate,
+                    leaveEndDate,
+                    withdrawalDate
                 }, classSchedules);
             } else {
                 const enrollDate = new Date().toISOString().slice(0, 10);
@@ -2021,7 +2299,10 @@ const openStudentModal = (studentId = null) => {
                     consultationNotes,
                     scheduleNotes,
                     paymentStatus,
-                    defaultClassDuration
+                    defaultClassDuration,
+                    leaveStartDate,
+                    leaveEndDate,
+                    withdrawalDate
                 }, classSchedules);
                 savedStudentId = newStudent.id;
             }

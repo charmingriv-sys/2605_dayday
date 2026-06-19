@@ -41,8 +41,16 @@ export const membersMethods = {
         const paymentStatus = student.paymentStatus || 'unpaid';
         const defaultClassDuration = parseInt(student.defaultClassDuration) || 50;
         const status = this.normalizeStudentStatus(student.status);
+        let leavePeriods = student.leavePeriods || [];
+        if (status === 'on_leave' && student.leaveStartDate && student.leaveEndDate) {
+            const exists = leavePeriods.some(p => p.startDate === student.leaveStartDate && p.endDate === student.leaveEndDate);
+            if (!exists) {
+                leavePeriods.push({ startDate: student.leaveStartDate, endDate: student.leaveEndDate });
+            }
+            leavePeriods.sort((a, b) => a.startDate.localeCompare(b.startDate));
+        }
         
-        const newStudent = { id, studentMemberNo, ...student, paymentStatus, defaultClassDuration, status };
+        const newStudent = { id, studentMemberNo, ...student, paymentStatus, defaultClassDuration, status, leavePeriods };
         this.db.students.push(newStudent);
 
         // Add class schedules
@@ -106,8 +114,16 @@ export const membersMethods = {
             const paymentStatus = student.paymentStatus || 'unpaid';
             const defaultClassDuration = parseInt(student.defaultClassDuration) || 50;
             const status = this.normalizeStudentStatus(student.status);
+            let leavePeriods = student.leavePeriods || [];
+            if (status === 'on_leave' && student.leaveStartDate && student.leaveEndDate) {
+                const exists = leavePeriods.some(p => p.startDate === student.leaveStartDate && p.endDate === student.leaveEndDate);
+                if (!exists) {
+                    leavePeriods.push({ startDate: student.leaveStartDate, endDate: student.leaveEndDate });
+                }
+                leavePeriods.sort((a, b) => a.startDate.localeCompare(b.startDate));
+            }
             
-            const newStudent = { id, studentMemberNo, ...student, paymentStatus, defaultClassDuration, status };
+            const newStudent = { id, studentMemberNo, ...student, paymentStatus, defaultClassDuration, status, leavePeriods };
             this.db.students.push(newStudent);
             addedStudents.push(newStudent);
 
@@ -149,6 +165,31 @@ export const membersMethods = {
         if (updatedData.status !== undefined) {
             updatedData.status = this.normalizeStudentStatus(updatedData.status);
         }
+
+        // Cumulative leave history logic
+        if (updatedData.status === 'on_leave' && updatedData.leaveStartDate && updatedData.leaveEndDate) {
+            const student = this.getStudent(id);
+            if (student) {
+                const leavePeriods = student.leavePeriods ? [...student.leavePeriods] : [];
+                
+                // Fallback migration: if there was leaveStartDate/leaveEndDate, but no leavePeriods, seed it
+                if (leavePeriods.length === 0 && student.leaveStartDate && student.leaveEndDate) {
+                    leavePeriods.push({ startDate: student.leaveStartDate, endDate: student.leaveEndDate });
+                }
+
+                // Check for duplicate
+                const exists = leavePeriods.some(p => p.startDate === updatedData.leaveStartDate && p.endDate === updatedData.leaveEndDate);
+                if (!exists) {
+                    leavePeriods.push({ startDate: updatedData.leaveStartDate, endDate: updatedData.leaveEndDate });
+                }
+
+                // Sort by startDate ascending
+                leavePeriods.sort((a, b) => a.startDate.localeCompare(b.startDate));
+                
+                updatedData.leavePeriods = leavePeriods;
+            }
+        }
+
         this.db.students = this.db.students.map(s => s.id === id ? { ...s, ...updatedData } : s);
         
         // Sync paymentStatus with monthly education payments
@@ -227,7 +268,8 @@ export const membersMethods = {
         const student = this.db.students.find(s => s.id === id);
         if (!student) throw new Error('원생을 찾을 수 없습니다.');
         student.status = 'withdrawn';
-        student.leaveDate = new Date().toISOString().slice(0, 10);
+        student.withdrawalDate = new Date().toISOString().slice(0, 10);
+        student.leaveDate = student.withdrawalDate;
         this.saveDB();
         this.notify('STUDENTS_CHANGED', this.db.students);
     },

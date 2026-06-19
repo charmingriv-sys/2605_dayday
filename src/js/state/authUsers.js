@@ -289,8 +289,9 @@ export const authUsersMethods = {
         if (user.role === 'parent') {
             const siblings = this.getStudentsForParent(userId);
             siblings.forEach(student => {
-                student.status = 'discharged';
-                student.leaveDate = new Date().toISOString().slice(0, 10);
+                student.status = 'withdrawn';
+                student.withdrawalDate = new Date().toISOString().slice(0, 10);
+                student.leaveDate = student.withdrawalDate;
             });
         }
 
