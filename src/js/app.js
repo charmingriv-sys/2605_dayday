@@ -2025,7 +2025,7 @@ export function closeModal() {
         contentArea.innerHTML = '';
         contentArea.classList.remove('layout-fixed');
         closeModalTimeout = null;
-    }, 300);
+    }, 150);
 }
 
 window.closeModal = closeModal; // Allow inline triggers if needed

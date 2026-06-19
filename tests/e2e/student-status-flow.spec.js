@@ -290,4 +290,103 @@ test.describe('Student Status Management Flow', () => {
 
     expect(consoleErrors.length).toBe(0);
   });
+
+  test('should return to student details modal from subviews on cancel/close', async ({ page }) => {
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Navigate to Student Management Tab
+    await page.locator('.menu-item[data-view="dir-students"]').click();
+    await expect(page.locator('#page-title')).toContainText('원생 명부 관리');
+
+    // 3. Click the first student name link in the table to open details modal
+    const firstStudentLink = page.locator('.student-name-link').first();
+    await expect(firstStudentLink).toBeVisible();
+    await firstStudentLink.click();
+
+    const detailModal = page.locator('#common-modal');
+    await expect(detailModal).toBeVisible();
+    await expect(detailModal).toContainText('원생 상세 정보');
+
+    // --- Subview 1: Edit Student Modal ---
+    const editBtn = page.locator('#btn-edit-student-from-detail');
+    await expect(editBtn).toBeVisible();
+    await editBtn.click();
+
+    // Verify Edit Modal is open
+    await expect(page.locator('#student-modal-form')).toBeVisible();
+
+    // Click Cancel button in edit modal
+    const cancelEditBtn = page.locator('#btn-edit-student-cancel');
+    await expect(cancelEditBtn).toBeVisible();
+    await cancelEditBtn.click();
+
+    // Verify returned back to Student Details Modal
+    await expect(detailModal).toBeVisible();
+    await expect(detailModal).toContainText('원생 상세 정보');
+
+    // --- Subview 2: Status Change Modal ---
+    const changeStatusBtn = page.locator('#btn-change-status-from-detail');
+    await expect(changeStatusBtn).toBeVisible();
+    await changeStatusBtn.click();
+
+    // Verify Status Modal is open
+    await expect(page.locator('#modal-student-status')).toBeVisible();
+
+    // Click Cancel button in status modal
+    const cancelStatusBtn = page.locator('#btn-status-cancel');
+    await expect(cancelStatusBtn).toBeVisible();
+    await cancelStatusBtn.click();
+
+    // Verify returned back to Student Details Modal
+    await expect(detailModal).toBeVisible();
+    await expect(detailModal).toContainText('원생 상세 정보');
+
+    // --- Subview 3: Parent Preview Modal ---
+    const previewBtn = page.locator('#btn-preview-parent-view');
+    await expect(previewBtn).toBeVisible();
+    await previewBtn.click();
+
+    // Verify Preview Modal is open
+    await expect(page.locator('#smartphone-content-container')).toBeVisible();
+
+    // Click Close (닫기) button in parent preview modal
+    const closePreviewBtn = page.locator('#btn-close-parent-preview');
+    await expect(closePreviewBtn).toBeVisible();
+    await closePreviewBtn.click();
+
+    // Verify returned back to Student Details Modal
+    await expect(detailModal).toBeVisible();
+    await expect(detailModal).toContainText('원생 상세 정보');
+
+    // --- Subview 4: NTS Certificate Print Modal ---
+    const ntsBtn = page.locator('#btn-nts-certificate');
+    await expect(ntsBtn).toBeVisible();
+    await ntsBtn.click();
+
+    // Verify NTS Modal is open
+    await expect(page.locator('#nts-input-form')).toBeVisible();
+
+    // Click Cancel (취소) button in NTS modal
+    const cancelNtsBtn = page.locator('#btn-cancel-nts-print');
+    await expect(cancelNtsBtn).toBeVisible();
+    await cancelNtsBtn.click();
+
+    // Verify returned back to Student Details Modal
+    await expect(detailModal).toBeVisible();
+    await expect(detailModal).toContainText('원생 상세 정보');
+
+    // Close the detail modal completely using the header close button
+    const closeDetailModalBtn = page.locator('.modal-close').first();
+    await expect(closeDetailModalBtn).toBeVisible();
+    await closeDetailModalBtn.click();
+
+    // Verify modal is completely closed
+    await expect(detailModal).not.toHaveClass(/show/);
+
+    expect(consoleErrors.length).toBe(0);
+  });
 });

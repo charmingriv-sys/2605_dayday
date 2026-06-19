@@ -71,7 +71,7 @@ import { formatPhoneNumber, isIncompleteStudent, showKakaoTalkToast, showLocalCo
             <h3 class="modal-title"><i class="fa-solid fa-mobile-screen-button" style="color: var(--accent); margin-right: 8px;"></i><strong>${student.name}</strong> 학부모 화면 미리보기</h3>
             <button class="modal-close" data-close-modal>&times;</button>
         </div>
-        <div class="modal-body" style="padding: 1.5rem; display: flex; justify-content: center; align-items: center; background: rgba(0,0,0,0.25);">
+        <div class="modal-form-scroll-body" style="padding: 1.5rem; display: flex; justify-content: center; align-items: center; background: rgba(0,0,0,0.25);">
             <!-- Smartphone frame mockup wrapper -->
             <div class="smartphone-preview-frame" style="width: 360px; height: 680px; border: 12px solid #2d3436; border-radius: 36px; box-shadow: 0 15px 35px rgba(0,0,0,0.6); background: #0f0f1b; overflow: hidden; position: relative; display: flex; flex-direction: column; border-color: #2b2b3a;">
                 <!-- Speaker slot -->
@@ -83,12 +83,22 @@ import { formatPhoneNumber, isIncompleteStudent, showKakaoTalkToast, showLocalCo
                 </div>
             </div>
         </div>
+        <div class="modal-footer" style="padding: 1.2rem; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; background: rgba(0, 0, 0, 0.01);">
+            <button class="btn btn-secondary" id="btn-close-parent-preview" style="width: 100%; justify-content: center; height: 38px; font-weight: 600;">닫기</button>
+        </div>
     `;
 
     const onInit = (contentArea) => {
+        contentArea.classList.add('layout-fixed');
         const smartContainer = contentArea.querySelector('#smartphone-content-container');
         if (smartContainer) {
             renderParentPortal(smartContainer, studentId);
+        }
+        const closeBtn = contentArea.querySelector('#btn-close-parent-preview');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                openStudentDetailModal(studentId);
+            });
         }
     };
 
@@ -668,8 +678,8 @@ const openNtsCertificatePrintModal = (studentId) => {
                 </div>
             </form>
         </div>
-        <div class="modal-footer" style="padding: 1.2rem; border-top: 1px solid var(--border-color); display: flex; gap: 8px;">
-            <button class="btn btn-secondary" data-close-modal style="flex: 1; justify-content: center;">취소</button>
+        <div class="modal-footer" style="padding: 1.2rem; border-top: 1px solid var(--border-color); display: flex; gap: 8px; background: rgba(0, 0, 0, 0.01);">
+            <button class="btn btn-secondary" id="btn-cancel-nts-print" style="flex: 1; justify-content: center;">취소</button>
             <button class="btn btn-primary" id="btn-submit-nts-print" style="flex: 1; justify-content: center; background: #00adb5; border-color: #00adb5; color: #fff;">인쇄하기</button>
         </div>
     `;
@@ -685,6 +695,14 @@ const openNtsCertificatePrintModal = (studentId) => {
         const destroyBinder = () => {
             addressBinder.destroy();
         };
+
+        const cancelBtn = contentArea.querySelector('#btn-cancel-nts-print');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => {
+                destroyBinder();
+                openStudentDetailModal(studentId);
+            });
+        }
 
         contentArea.querySelectorAll('[data-close-modal], .modal-close').forEach(el => {
             el.addEventListener('click', destroyBinder);
@@ -1774,7 +1792,7 @@ const openStudentModal = (studentId = null) => {
             </div>
 
             <div class="modal-footer" style="padding: 1rem 2rem 1.5rem 2rem; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 8px; background: rgba(0, 0, 0, 0.01);">
-                <button type="button" class="btn btn-secondary" data-close-modal>취소</button>
+                <button type="button" class="btn btn-secondary" ${isEdit ? 'id="btn-edit-student-cancel"' : 'data-close-modal'}>취소</button>
                 <button type="submit" id="btn-student-submit" class="btn btn-primary">${isEdit ? '수정 저장' : '신규 등록'}</button>
             </div>
         </form>
@@ -1957,6 +1975,16 @@ const openStudentModal = (studentId = null) => {
             parent2PhoneBinder.destroy();
             addressBinder.destroy();
         };
+
+        if (isEdit) {
+            const cancelBtn = contentArea.querySelector('#btn-edit-student-cancel');
+            if (cancelBtn) {
+                cancelBtn.addEventListener('click', () => {
+                    destroyAllBinders();
+                    openStudentDetailModal(studentId);
+                });
+            }
+        }
 
         contentArea.querySelectorAll('[data-close-modal], .modal-close').forEach(el => {
             el.addEventListener('click', destroyAllBinders);
