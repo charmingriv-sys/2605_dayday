@@ -397,6 +397,7 @@ export function renderPayments(container) {
     let selectedMonth = '2026-05'; // Default mock month matching seed data
     let selectedStudentStatus = 'all'; // 'all', 'attending', 'on_leave', 'withdrawn'
     let selectedPaymentStatus = 'all'; // 'all', 'paid', 'unpaid'
+    let selectedPaymentType = 'all'; // 'all', 'education', 'book', 'other'
 
     // Consume handoff payload if exists
     try {
@@ -447,6 +448,14 @@ export function renderPayments(container) {
                             <option value="all" ${selectedPaymentStatus === 'all' ? 'selected' : ''}>전체</option>
                             <option value="paid" ${selectedPaymentStatus === 'paid' ? 'selected' : ''}>완납</option>
                             <option value="unpaid" ${selectedPaymentStatus === 'unpaid' ? 'selected' : ''}>미납</option>
+                        </select>
+ 
+                        <label for="payment-type-filter" style="font-weight: 600; font-size: 0.9rem; color: var(--text-muted); margin-left: 8px;">수납 구분:</label>
+                        <select id="payment-type-filter" class="form-control" style="min-width: 110px; margin-bottom: 0;">
+                            <option value="all" ${selectedPaymentType === 'all' ? 'selected' : ''}>전체</option>
+                            <option value="education" ${selectedPaymentType === 'education' ? 'selected' : ''}>원비</option>
+                            <option value="book" ${selectedPaymentType === 'book' ? 'selected' : ''}>교재비</option>
+                            <option value="other" ${selectedPaymentType === 'other' ? 'selected' : ''}>기타</option>
                         </select>
 
                         <button class="btn btn-secondary" id="btn-print-receipt-register" style="height: 38px; border-color: rgba(0, 206, 201, 0.4); background: rgba(0, 206, 201, 0.15); color: var(--accent); font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px;">
@@ -510,6 +519,14 @@ export function renderPayments(container) {
         if (paymentStatusSelect) {
             paymentStatusSelect.addEventListener('change', (e) => {
                 selectedPaymentStatus = e.target.value;
+                renderTableBody();
+            });
+        }
+ 
+        const paymentTypeFilter = container.querySelector('#payment-type-filter');
+        if (paymentTypeFilter) {
+            paymentTypeFilter.addEventListener('change', (e) => {
+                selectedPaymentType = e.target.value;
                 renderTableBody();
             });
         }
@@ -806,6 +823,18 @@ export function renderPayments(container) {
                     if (p.status !== 'paid') return false;
                 } else if (selectedPaymentStatus === 'unpaid') {
                     if (p.status !== 'unpaid') return false;
+                }
+            }
+
+            // 3. Payment Type Filter
+            if (selectedPaymentType !== 'all') {
+                const type = p.type || 'other';
+                if (selectedPaymentType === 'education') {
+                    if (type !== 'education') return false;
+                } else if (selectedPaymentType === 'book') {
+                    if (type !== 'book') return false;
+                } else if (selectedPaymentType === 'other') {
+                    if (type === 'education' || type === 'book') return false;
                 }
             }
 

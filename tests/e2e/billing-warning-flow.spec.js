@@ -491,6 +491,24 @@ test.describe('Billing & Overdue Warnings E2E Flow', () => {
           type: 'education',
           status: 'unpaid',
           invoiceDate: '2026-05-10'
+        },
+        {
+          id: 'P-FILTER-4',
+          studentId: 'S1',
+          amount: 50000,
+          month: '2026-05',
+          type: 'book',
+          status: 'unpaid',
+          invoiceDate: '2026-05-10'
+        },
+        {
+          id: 'P-FILTER-5',
+          studentId: 'S2',
+          amount: 30000,
+          month: '2026-05',
+          type: undefined,
+          status: 'unpaid',
+          invoiceDate: '2026-05-10'
         }
       );
 
@@ -504,24 +522,27 @@ test.describe('Billing & Overdue Warnings E2E Flow', () => {
     // 3. Verify status filters exist with default values 'all'
     const studentStatusSelect = page.locator('#payment-student-status-select');
     const paymentStatusSelect = page.locator('#payment-status-select');
+    const paymentTypeFilter = page.locator('#payment-type-filter');
     await expect(studentStatusSelect).toBeVisible();
     await expect(paymentStatusSelect).toBeVisible();
+    await expect(paymentTypeFilter).toBeVisible();
     await expect(studentStatusSelect).toHaveValue('all');
     await expect(paymentStatusSelect).toHaveValue('all');
+    await expect(paymentTypeFilter).toHaveValue('all');
 
     // 4. Verify info banner is displayed
     const infoBanner = page.locator('.glass-card >> text=수납 및 결제 현황은 전체 이력 기준입니다. 필터 조건에 따라 대시보드 표시와 다를 수 있습니다.');
     await expect(infoBanner).toBeVisible();
 
-    // 5. Verify default summaries calculation (Total: 600,000 / Paid: 100,000 / Unpaid: 500,000)
+    // 5. Verify default summaries calculation (Total: 680,000 / Paid: 100,000 / Unpaid: 580,000)
     const summaryStats = page.locator('#payment-summary-stats');
-    await expect(summaryStats).toContainText('600,000원');
+    await expect(summaryStats).toContainText('680,000원');
     await expect(summaryStats).toContainText('완납: 100,000원');
-    await expect(summaryStats).toContainText('미납: 500,000원');
+    await expect(summaryStats).toContainText('미납: 580,000원');
 
-    // 6. Verify row count (3 rows)
+    // 6. Verify row count (5 rows)
     const paymentRows = page.locator('#payments-table-body tr');
-    await expect(paymentRows).toHaveCount(3);
+    await expect(paymentRows).toHaveCount(5);
 
     // 7. Verify status badges on rows
     // S2 (on_leave) row should have [휴원] badge
@@ -549,15 +570,17 @@ test.describe('Billing & Overdue Warnings E2E Flow', () => {
     await paymentStatusSelect.selectOption('unpaid');
     await page.waitForTimeout(300);
 
-    // Only S2 & S3 rows should be visible, row count = 2
-    await expect(paymentRows).toHaveCount(2);
+    // Only S2, S3, S4, S5 rows should be visible, row count = 4
+    await expect(paymentRows).toHaveCount(4);
     await expect(page.locator('[data-testid="payment-row-P-FILTER-2"]')).toBeVisible();
     await expect(page.locator('[data-testid="payment-row-P-FILTER-3"]')).toBeVisible();
+    await expect(page.locator('[data-testid="payment-row-P-FILTER-4"]')).toBeVisible();
+    await expect(page.locator('[data-testid="payment-row-P-FILTER-5"]')).toBeVisible();
     
-    // Summaries recalculated (Total: 500,000 / Paid: 0 / Unpaid: 500,000)
-    await expect(summaryStats).toContainText('500,000원');
+    // Summaries recalculated (Total: 580,000 / Paid: 0 / Unpaid: 580,000)
+    await expect(summaryStats).toContainText('580,000원');
     await expect(summaryStats).toContainText('완납: 0원');
-    await expect(summaryStats).toContainText('미납: 500,000원');
+    await expect(summaryStats).toContainText('미납: 580,000원');
 
     // 10. Filter by both: 퇴원생 + 미납
     await studentStatusSelect.selectOption('withdrawn');
@@ -592,8 +615,8 @@ test.describe('Billing & Overdue Warnings E2E Flow', () => {
     await paymentStatusSelect.selectOption('unpaid');
     await page.waitForTimeout(300);
 
-    // Should see S2 & S3
-    await expect(paymentRows).toHaveCount(2);
+    // Should see P-FILTER-2, P-FILTER-3, P-FILTER-4, P-FILTER-5
+    await expect(paymentRows).toHaveCount(4);
 
     // Click pay processing on S2 row (P-FILTER-2)
     const payBtn = page.locator('[data-testid="payment-row-P-FILTER-2"] .btn-pay-action');
@@ -605,16 +628,89 @@ test.describe('Billing & Overdue Warnings E2E Flow', () => {
     await expect(cardPayModalBtn).toBeVisible();
     await cardPayModalBtn.click();
 
-    // After payment, since filter is unpaid, S2 should disappear from list, only S3 remains
+    // After payment, S2 should disappear from list, remaining 3 rows (P-FILTER-3, P-FILTER-4, P-FILTER-5)
     await page.waitForTimeout(300);
-    await expect(paymentRows).toHaveCount(1);
+    await expect(paymentRows).toHaveCount(3);
     await expect(page.locator('[data-testid="payment-row-P-FILTER-2"]')).toBeHidden();
     await expect(page.locator('[data-testid="payment-row-P-FILTER-3"]')).toBeVisible();
+    await expect(page.locator('[data-testid="payment-row-P-FILTER-4"]')).toBeVisible();
+    await expect(page.locator('[data-testid="payment-row-P-FILTER-5"]')).toBeVisible();
 
-    // Summaries recalculated (Total: 300,000 / Paid: 0 / Unpaid: 300,000 for filtered list)
+    // Summaries recalculated (Total: 380,000 / Paid: 0 / Unpaid: 380,000 for filtered list)
+    await expect(summaryStats).toContainText('380,000원');
+    await expect(summaryStats).toContainText('완납: 0원');
+    await expect(summaryStats).toContainText('미납: 380,000원');
+
+    // 13. Verify payment-type-filter exists with default value 'all'
+    await expect(paymentTypeFilter).toBeVisible();
+    await expect(paymentTypeFilter).toHaveValue('all');
+
+    // 14. Filter by payment type: 원비 (education)
+    // S1(100k paid), S2(200k paid -> won't show in unpaid but let's check with all/all filters)
+    await studentStatusSelect.selectOption('all');
+    await paymentStatusSelect.selectOption('all');
+    await paymentTypeFilter.selectOption('education');
+    await page.waitForTimeout(300);
+
+    // Education rows should be visible (P-FILTER-1: paid 100k, P-FILTER-2: paid 200k, P-FILTER-3: unpaid 300k)
+    // Note: S2 P-FILTER-2 was marked paid in step 12
+    await expect(paymentRows).toHaveCount(3);
+    await expect(page.locator('[data-testid="payment-row-P-FILTER-1"]')).toBeVisible();
+    await expect(page.locator('[data-testid="payment-row-P-FILTER-2"]')).toBeVisible();
+    await expect(page.locator('[data-testid="payment-row-P-FILTER-3"]')).toBeVisible();
+
+    // Summaries recalculated (Total: 600,000 / Paid: 300,000 / Unpaid: 300,000)
+    await expect(summaryStats).toContainText('600,000원');
+    await expect(summaryStats).toContainText('완납: 300,000원');
+    await expect(summaryStats).toContainText('미납: 300,000원');
+
+    // 15. Filter by payment type: 교재비 (book)
+    // P-FILTER-4 (50k unpaid)
+    await paymentTypeFilter.selectOption('book');
+    await page.waitForTimeout(300);
+
+    // Row count should be 1
+    await expect(paymentRows).toHaveCount(1);
+    await expect(page.locator('[data-testid="payment-row-P-FILTER-4"]')).toBeVisible();
+
+    // Summaries recalculated (Total: 50,000 / Paid: 0 / Unpaid: 50,000)
+    await expect(summaryStats).toContainText('50,000원');
+    await expect(summaryStats).toContainText('완납: 0원');
+    await expect(summaryStats).toContainText('미납: 50,000원');
+
+    // 16. Filter by payment type: 기타 (other)
+    // P-FILTER-5 (30k unpaid)
+    await paymentTypeFilter.selectOption('other');
+    await page.waitForTimeout(300);
+
+    // Row count should be 1
+    await expect(paymentRows).toHaveCount(1);
+    await expect(page.locator('[data-testid="payment-row-P-FILTER-5"]')).toBeVisible();
+
+    // Summaries recalculated (Total: 30,000 / Paid: 0 / Unpaid: 30,000)
+    await expect(summaryStats).toContainText('30,000원');
+    await expect(summaryStats).toContainText('완납: 0원');
+    await expect(summaryStats).toContainText('미납: 30,000원');
+
+    // 17. Combination filter: 퇴원생 (withdrawn) + 미납 (unpaid) + 원비 (education)
+    // P-FILTER-3 (300k unpaid education withdrawn)
+    await studentStatusSelect.selectOption('withdrawn');
+    await paymentStatusSelect.selectOption('unpaid');
+    await paymentTypeFilter.selectOption('education');
+    await page.waitForTimeout(300);
+
+    // Row count should be 1
+    await expect(paymentRows).toHaveCount(1);
+    await expect(page.locator('[data-testid="payment-row-P-FILTER-3"]')).toBeVisible();
+
+    // Summaries recalculated (Total: 300,000 / Paid: 0 / Unpaid: 300,000)
     await expect(summaryStats).toContainText('300,000원');
     await expect(summaryStats).toContainText('완납: 0원');
     await expect(summaryStats).toContainText('미납: 300,000원');
+
+    // Reset payment type filter back to all for subsequent tests
+    await paymentTypeFilter.selectOption('all');
+    await page.waitForTimeout(300);
   });
 
   test('should support dashboard withdrawn receivable handoff flow to billing view (Phase 17G-7C)', async ({ page }) => {
