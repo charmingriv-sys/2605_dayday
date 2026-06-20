@@ -797,4 +797,237 @@ test.describe('Textbook Warning Life Cycle Flow (Phase 13E-1)', () => {
 
     await expect(recommendCardCount).toContainText('1');
   });
+
+  test('should verify comprehensive book recommendation regression hardening policies (17G-6D)', async ({ page }) => {
+    // 1. Login as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // Navigate to Today Console
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+    await expect(page.locator('#page-title')).toContainText('오늘 원장 콘솔');
+
+    const recommendCardCount = page.locator('[data-filter-id="book_recommendation"] .badge');
+
+    // 2. Setup database: Clear and seed student S1 (attending), book B1 (recommendedDays = 100)
+    await page.evaluate(() => {
+      const RealDate = window.Date;
+      class MockDate extends RealDate {
+        constructor(...args) {
+          if (args.length === 0) {
+            super('2026-06-20T10:00:00.000Z');
+          } else {
+            super(...args);
+          }
+        }
+      }
+      MockDate.now = () => new RealDate('2026-06-20T10:00:00.000Z').getTime();
+      window.Date = MockDate;
+
+      const db = window.stateStore.db;
+      db.todayTasks = [];
+      db.payments = [];
+      db.studentBooks = [];
+      db.bookIssueRequests = [];
+      db.parentMessages = [];
+      db.attendance = [];
+
+      const s1 = db.students.find(s => s.id === 'S1');
+      if (s1) {
+        s1.status = 'attending';
+        s1.academyId = 'AC1';
+      }
+
+      const book1 = db.books.find(b => b.id === 'B1');
+      if (book1) {
+        book1.recommendedDays = 100;
+      }
+
+      // Assign B1 to S1 on 2026-06-01
+      db.studentBooks.push({
+        id: 'SB-HARD-1',
+        studentId: 'S1',
+        bookId: 'B1',
+        regDate: '2026-06-01',
+        orderNo: 1,
+        paymentId: 'P-HARD-1'
+      });
+
+      // Seed 89 attendance records (89% of 100 days)
+      // All before evaluation time 2026-06-20
+      for (let i = 1; i <= 89; i++) {
+        const day = String((i % 15) + 1).padStart(2, '0');
+        db.attendance.push({
+          id: `ATT-HARD-${i}`,
+          studentId: 'S1',
+          date: `2026-06-${day}`,
+          status: 'present',
+          time: '14:00'
+        });
+      }
+
+      if (!db.settings) db.settings = {};
+      db.settings.DAYDAY_DEBUG_EVAL_TIME = '2026-06-20T10:00:00.000Z';
+
+      window.stateStore.syncSystemRecommendations();
+      window.stateStore.saveDB();
+    });
+
+    await page.waitForTimeout(300);
+
+    // [Scenario 1] 89% 미만(89% 포함)에서는 [교재 확인] 미생성
+    await expect(recommendCardCount, 'Should not generate task at 89% attendance').toContainText('0');
+
+    // [Scenario 2] 90% 도달 시 [교재 확인] 생성
+    await page.evaluate(() => {
+      const db = window.stateStore.db;
+      // Add 1 more attendance to make it 90 (90%)
+      db.attendance.push({
+        id: 'ATT-HARD-90',
+        studentId: 'S1',
+        date: '2026-06-19',
+        status: 'present',
+        time: '14:00'
+      });
+      window.stateStore.syncSystemRecommendations();
+      window.stateStore.saveDB();
+    });
+
+    await page.waitForTimeout(300);
+    await expect(recommendCardCount, 'Should generate task at 90% attendance').toContainText('1');
+
+    // [Scenario 3] 휴원생(on_leave)은 90%여도 제외
+    await page.evaluate(() => {
+      const db = window.stateStore.db;
+      const s1 = db.students.find(s => s.id === 'S1');
+      if (s1) s1.status = 'on_leave';
+      window.stateStore.syncSystemRecommendations();
+      window.stateStore.saveDB();
+    });
+
+    await page.waitForTimeout(300);
+    await expect(recommendCardCount, 'Should NOT generate task for on_leave student').toContainText('0');
+
+    // [Scenario 4] 퇴원생(withdrawn)은 90%여도 제외
+    await page.evaluate(() => {
+      const db = window.stateStore.db;
+      const s1 = db.students.find(s => s.id === 'S1');
+      if (s1) s1.status = 'withdrawn';
+      window.stateStore.syncSystemRecommendations();
+      window.stateStore.saveDB();
+    });
+
+    await page.waitForTimeout(300);
+    await expect(recommendCardCount, 'Should NOT generate task for withdrawn student').toContainText('0');
+
+    // Restore status to attending for subsequent tests
+    await page.evaluate(() => {
+      const db = window.stateStore.db;
+      const s1 = db.students.find(s => s.id === 'S1');
+      if (s1) s1.status = 'attending';
+      window.stateStore.syncSystemRecommendations();
+      window.stateStore.saveDB();
+    });
+    await page.waitForTimeout(300);
+    await expect(recommendCardCount).toContainText('1');
+
+    // [Scenario 5] 미래 출결 제외
+    // Remove 2 attendance records to drop to 88% (88/100)
+    // Then add 5 future attendance records (after 2026-06-20)
+    await page.evaluate(() => {
+      const db = window.stateStore.db;
+      db.attendance = db.attendance.filter(a => a.id !== 'ATT-HARD-90' && a.id !== 'ATT-HARD-89');
+      
+      // Seed 5 future attendance records
+      db.attendance.push(
+        { id: 'ATT-HARD-FUTURE-1', studentId: 'S1', date: '2026-06-21', status: 'present', time: '14:00' },
+        { id: 'ATT-HARD-FUTURE-2', studentId: 'S1', date: '2026-06-22', status: 'present', time: '14:00' },
+        { id: 'ATT-HARD-FUTURE-3', studentId: 'S1', date: '2026-06-23', status: 'present', time: '14:00' },
+        { id: 'ATT-HARD-FUTURE-4', studentId: 'S1', date: '2026-06-24', status: 'present', time: '14:00' },
+        { id: 'ATT-HARD-FUTURE-5', studentId: 'S1', date: '2026-06-25', status: 'present', time: '14:00' }
+      );
+      window.stateStore.syncSystemRecommendations();
+      window.stateStore.saveDB();
+    });
+    await page.waitForTimeout(300);
+    await expect(recommendCardCount, 'Should NOT generate task because future attendance is ignored').toContainText('0');
+
+    // Restore to 90% (by moving 2 future attendances to the past)
+    await page.evaluate(() => {
+      const db = window.stateStore.db;
+      const f1 = db.attendance.find(a => a.id === 'ATT-HARD-FUTURE-1');
+      if (f1) f1.date = '2026-06-18';
+      const f2 = db.attendance.find(a => a.id === 'ATT-HARD-FUTURE-2');
+      if (f2) f2.date = '2026-06-19';
+      window.stateStore.syncSystemRecommendations();
+      window.stateStore.saveDB();
+    });
+    await page.waitForTimeout(300);
+    await expect(recommendCardCount).toContainText('1');
+
+    // [Scenario 7] dedupeKey 충돌 방지 & [Scenario 6] 신규 교재 배정 시 기존 task 자동 해소
+    await page.evaluate(() => {
+      const db = window.stateStore.db;
+      const book2 = db.books.find(b => b.id === 'B2');
+      if (book2) book2.recommendedDays = 10;
+
+      db.studentBooks.push({
+        id: 'SB-HARD-2',
+        studentId: 'S1',
+        bookId: 'B2',
+        regDate: '2026-06-10',
+        orderNo: 2,
+        paymentId: 'P-HARD-2'
+      });
+
+      // Seed 9 attendance records after 2026-06-10 to meet B2 90% requirement
+      for (let i = 11; i <= 19; i++) {
+        db.attendance.push({
+          id: `ATT-HARD-B2-${i}`,
+          studentId: 'S1',
+          date: `2026-06-${i}`,
+          status: 'present',
+          time: '14:00'
+        });
+      }
+
+      window.stateStore.syncSystemRecommendations();
+      window.stateStore.saveDB();
+    });
+
+    await page.waitForTimeout(300);
+
+    // Verify Scenario 6 & 7:
+    // Only B2 recommendation task should stay open.
+    // The old B1 task (dedupeKey: SYSTEM_RECOMMEND_BOOK_RECOMMENDATION_S1_B1_2026-06-01) should automatically resolve to done.
+    await expect(recommendCardCount, 'The B1 task should be automatically resolved and only the B2 task remains active').toContainText('1');
+    const b1TaskStatus = await page.evaluate(() => {
+      const b1DedupeKey = 'SYSTEM_RECOMMEND_BOOK_RECOMMENDATION_S1_B1_2026-06-01';
+      return window.stateStore.db.todayTasks.find(t => t.dedupeKey === b1DedupeKey)?.status;
+    });
+    expect(b1TaskStatus, 'The old B1 recommendation task status should automatically resolve to done').toBe('done');
+
+    // [Scenario 8] 완료/보류/제외 상태 보존
+    // Click "교재 확인" category filter
+    await page.locator('[data-filter-id="book_recommendation"]').click();
+    await page.waitForTimeout(200);
+
+    const taskCard = page.locator('#tasks-list-container .glass-card').first();
+    const snoozeBtn = taskCard.locator('button[data-action="snooze"]');
+    await snoozeBtn.click();
+    await page.waitForTimeout(200);
+
+    // Verify task is hidden from active queue
+    await expect(recommendCardCount).toContainText('0');
+
+    // Run sync recommendations again to verify the task is NOT recreated/re-opened
+    await page.evaluate(() => {
+      window.stateStore.syncSystemRecommendations();
+    });
+    await page.waitForTimeout(300);
+    await expect(recommendCardCount, 'The snoozed task must not be recreated/reopened on subsequent syncs').toContainText('0');
+  });
 });
+
