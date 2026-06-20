@@ -510,7 +510,7 @@ test.describe('Billing & Overdue Warnings E2E Flow', () => {
     await expect(paymentStatusSelect).toHaveValue('all');
 
     // 4. Verify info banner is displayed
-    const infoBanner = page.locator('.glass-card >> text=수납 및 결제 현황은 퇴원생을 포함한 전체 이력 기준입니다. 대시보드의 미납 화면과 다를 수 있습니다.');
+    const infoBanner = page.locator('.glass-card >> text=수납 및 결제 현황은 전체 이력 기준입니다. 필터 조건에 따라 대시보드 표시와 다를 수 있습니다.');
     await expect(infoBanner).toBeVisible();
 
     // 5. Verify default summaries calculation (Total: 600,000 / Paid: 100,000 / Unpaid: 500,000)
@@ -615,5 +615,111 @@ test.describe('Billing & Overdue Warnings E2E Flow', () => {
     await expect(summaryStats).toContainText('300,000원');
     await expect(summaryStats).toContainText('완납: 0원');
     await expect(summaryStats).toContainText('미납: 300,000원');
+  });
+
+  test('should support dashboard withdrawn receivable handoff flow to billing view (Phase 17G-7C)', async ({ page }) => {
+    // 1. Login as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('#page-title')).toContainText('대시보드');
+
+    // 2. Setup mock data inside State Store
+    await page.evaluate(() => {
+      const db = window.stateStore.db;
+      db.payments = [];
+      db.students = db.students || [];
+
+      // S1: attending
+      // S2: withdrawn (퇴원)
+      const s1 = db.students.find(s => s.id === 'S1');
+      if (s1) { s1.status = 'attending'; }
+      
+      const s2 = db.students.find(s => s.id === 'S2');
+      if (s2) { s2.status = 'withdrawn'; }
+
+      // Set current month payment for S2 as unpaid (withdrawn unpaid)
+      const currentMonth = new Date().toISOString().slice(0, 7);
+      db.payments.push(
+        {
+          id: 'P-HANDOFF-1',
+          studentId: 'S1',
+          amount: 150000,
+          month: currentMonth,
+          type: 'education',
+          status: 'unpaid',
+          invoiceDate: `${currentMonth}-10`
+        },
+        {
+          id: 'P-HANDOFF-2',
+          studentId: 'S2',
+          amount: 250000,
+          month: currentMonth,
+          type: 'education',
+          status: 'unpaid',
+          invoiceDate: `${currentMonth}-10`
+        }
+      );
+
+      window.stateStore.saveDB();
+      window.stateStore.notify('STUDENTS_CHANGED', db.students);
+      window.stateStore.notify('PAYMENTS_CHANGED', db.payments);
+    });
+
+    // 3. Verify main unpaid KPI includes both attending and withdrawn unpaid payments (150k + 250k = 400k)
+    const unpaidKpiCard = page.locator('.glass-card.metric-card', { hasText: '이번 달 미납 수강료' });
+    await expect(unpaidKpiCard.locator('.metric-value')).toContainText('400,000원');
+
+    const withdrawnText = page.locator('#dashboard-withdrawn-unpaid-text');
+    await expect(withdrawnText).toBeVisible();
+    await expect(withdrawnText).toContainText('퇴원생 미납 포함');
+
+    // 4. Click the text
+    await withdrawnText.click();
+    await page.waitForTimeout(300);
+
+    // 5. Verify transition to Billing View (dir-payments)
+    await expect(page.locator('#page-title')).toContainText('수납 및 결제 현황');
+
+    // Select the current month to load the mocked current month payments
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    await page.locator('#payment-month-select').selectOption(currentMonth);
+    await page.waitForTimeout(300);
+
+    // 6. Verify filters automatically set to: student status = withdrawn, payment status = unpaid
+    const studentStatusSelect = page.locator('#payment-student-status-select');
+    const paymentStatusSelect = page.locator('#payment-status-select');
+    await expect(studentStatusSelect).toHaveValue('withdrawn');
+    await expect(paymentStatusSelect).toHaveValue('unpaid');
+
+    // 7. Verify tables rows count = 1 (only S2 with P-HANDOFF-2)
+    const paymentRows = page.locator('#payments-table-body tr');
+    await expect(paymentRows).toHaveCount(1);
+    await expect(page.locator('[data-testid="payment-row-P-HANDOFF-2"]')).toBeVisible();
+
+    // 8. Verify status badges (should contain 퇴원)
+    await expect(page.locator('[data-testid="payment-row-P-HANDOFF-2"]')).toContainText('퇴원');
+
+    // 9. Verify summary recalculated (Total: 250,000 / Paid: 0 / Unpaid: 250,000)
+    const summaryStats = page.locator('#payment-summary-stats');
+    await expect(summaryStats).toContainText('250,000원');
+    await expect(summaryStats).toContainText('완납: 0원');
+    await expect(summaryStats).toContainText('미납: 250,000원');
+
+    // 10. Verify sessionStorage handoff key is consumed/removed
+    const handoffKeyVal = await page.evaluate(() => sessionStorage.getItem('dayday_billing_filter_handoff'));
+    expect(handoffKeyVal).toBeNull();
+
+    // 11. Navigate away and back to Payments View through regular menu
+    await page.locator('.menu-item[data-view="dir-dashboard"]').click();
+    await expect(page.locator('#page-title')).toContainText('대시보드');
+
+    await page.locator('.menu-item[data-view="dir-payments"]').click();
+    await expect(page.locator('#page-title')).toContainText('수납 및 결제 현황');
+
+    // 12. Verify filters reset to default (all / all)
+    await expect(studentStatusSelect).toHaveValue('all');
+    await expect(paymentStatusSelect).toHaveValue('all');
   });
 });

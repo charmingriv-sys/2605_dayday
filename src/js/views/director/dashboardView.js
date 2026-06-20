@@ -18,19 +18,10 @@ export function renderDashboard(container) {
         const currentMonthPayments = payments.filter(p => p.month === currentMonth);
         const paidTuition = currentMonthPayments.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.amount, 0);
 
-        // 2. Separate unpaid tuition for attending/on_leave vs withdrawn students
-        let unpaidTuition = 0;
-        let withdrawnUnpaidTuition = 0;
-        
-        currentMonthPayments.filter(p => p.status === 'unpaid').forEach(p => {
-            const student = students.find(s => s.id === p.studentId);
-            const status = student ? (student.status || 'attending') : 'attending';
-            if (status === 'withdrawn') {
-                withdrawnUnpaidTuition += p.amount;
-            } else {
-                unpaidTuition += p.amount;
-            }
-        });
+        // 2. Calculate total unpaid tuition including attending, on_leave, and withdrawn students
+        const unpaidTuition = currentMonthPayments
+            .filter(p => p.status === 'unpaid')
+            .reduce((sum, p) => sum + p.amount, 0);
 
         // Revenue chart calculations (April vs May)
         const aprilPayments = payments.filter(p => p.month === '2026-04');
@@ -115,14 +106,14 @@ export function renderDashboard(container) {
                         <span class="metric-sublabel" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px; display: block;">결제 이력 기준</span>
                     </div>
                 </div>
-                <div class="glass-card metric-card" title="기본 미납 수강료는 운영 대상 원생 기준입니다. 퇴원생 미수금은 별도로 표시합니다.">
+                <div class="glass-card metric-card" title="미납 수강료는 퇴원생 미납액을 포함한 전체 기준입니다. 보조 텍스트를 클릭하여 퇴원생 미납 내역을 별도로 조회할 수 있습니다.">
                     <div class="metric-icon red">
                         <i class="fa-solid fa-receipt"></i>
                     </div>
                     <div class="metric-info">
                         <span class="metric-label">이번 달 미납 수강료</span>
                         <span class="metric-value">${unpaidTuition.toLocaleString()}원</span>
-                        <span class="metric-sublabel" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px; display: block;">퇴원생 미수금 ${withdrawnUnpaidTuition.toLocaleString()}원 별도</span>
+                        <span class="metric-sublabel" id="dashboard-withdrawn-unpaid-text" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px; display: block; cursor: pointer; text-decoration: underline;" role="button">퇴원생 미납 포함</span>
                     </div>
                 </div>
             </div>
@@ -286,6 +277,30 @@ export function renderDashboard(container) {
                 }
             </style>
         `;
+
+        const withdrawnTextEl = container.querySelector('#dashboard-withdrawn-unpaid-text');
+        if (withdrawnTextEl) {
+            withdrawnTextEl.addEventListener('mouseenter', () => {
+                withdrawnTextEl.style.color = 'var(--secondary)';
+            });
+            withdrawnTextEl.addEventListener('mouseleave', () => {
+                withdrawnTextEl.style.color = 'var(--text-muted)';
+            });
+            withdrawnTextEl.addEventListener('click', () => {
+                const handoffPayload = {
+                    source: 'dashboard',
+                    studentStatus: 'withdrawn',
+                    paymentStatus: 'unpaid',
+                    reason: 'withdrawn_receivable'
+                };
+                sessionStorage.setItem('dayday_billing_filter_handoff', JSON.stringify(handoffPayload));
+                
+                const menuItem = document.querySelector('.menu-item[data-view="dir-payments"]');
+                if (menuItem) {
+                    menuItem.click();
+                }
+            });
+        }
     };
 
     render();

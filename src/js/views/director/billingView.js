@@ -398,6 +398,23 @@ export function renderPayments(container) {
     let selectedStudentStatus = 'all'; // 'all', 'attending', 'on_leave', 'withdrawn'
     let selectedPaymentStatus = 'all'; // 'all', 'paid', 'unpaid'
 
+    // Consume handoff payload if exists
+    try {
+        const handoffRaw = sessionStorage.getItem('dayday_billing_filter_handoff');
+        if (handoffRaw) {
+            const handoff = JSON.parse(handoffRaw);
+            if (handoff && handoff.studentStatus) {
+                selectedStudentStatus = handoff.studentStatus;
+            }
+            if (handoff && handoff.paymentStatus) {
+                selectedPaymentStatus = handoff.paymentStatus;
+            }
+            sessionStorage.removeItem('dayday_billing_filter_handoff');
+        }
+    } catch (e) {
+        console.error("Failed to parse billing filter handoff payload:", e);
+    }
+
     const render = () => {
         const payments = stateStore.getPayments();
         
@@ -448,7 +465,7 @@ export function renderPayments(container) {
                 <!-- Info Text Banner -->
                 <div style="margin-top: 12px; font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.05);">
                     <i class="fa-solid fa-circle-info" style="color: var(--primary);"></i>
-                    <span>수납 및 결제 현황은 퇴원생을 포함한 전체 이력 기준입니다. 대시보드의 미납 화면과 다를 수 있습니다.</span>
+                    <span>수납 및 결제 현황은 전체 이력 기준입니다. 필터 조건에 따라 대시보드 표시와 다를 수 있습니다.</span>
                 </div>
             </div>
 
