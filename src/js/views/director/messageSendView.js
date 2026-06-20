@@ -1,5 +1,6 @@
 // messageSendView.js - Message sending view skeleton (Phase 11A)
 import { stateStore } from '../../state.js';
+import { buildMessage, validateRenderedMessage } from '../../utils/messageTemplates.js';
 
 // --- HSL Design Tokens & Styles ----------------------------------------------
 const TONES = {
@@ -93,20 +94,60 @@ const TEMPLATES_MAP = {
     title: "안내드립니다",
     body: "#{이름} 원생 관련 안내드립니다."
   },
-  "absent": {
-    label: "결석 확인",
-    title: "출석 확인 요청",
-    body: "#{이름} 원생의 수업 출석 기록이 확인되지 않았습니다.\n확인 부탁드립니다."
+  "general_notice": {
+    label: "일반 공지",
+    title: "학원 안내드립니다",
+    body: "안녕하세요, #{이름} 원생 관련 안내드립니다. #{메모}\n- #{학원명}"
   },
-  "tuition_info": {
-    label: "수강료 수납 안내",
+  "tuition_due": {
+    label: "수강료 납부 안내",
     title: "수강료 납부 안내",
-    body: "#{이름} 원생의 수강료 납부 안내드립니다.\n확인 부탁드립니다."
+    body: "안녕하세요, #{이름} 학생 보호자님. #{학원명} #{청구월} #{수납구분} 수납일 안내드립니다. 청구 금액은 #{미납액}이며, 납부 기한은 #{납부기한}까지입니다. 감사합니다."
   },
   "tuition_unpaid": {
     label: "수강료 미수납 안내",
     title: "수강료 납부 확인 요청",
-    body: "#{이름} 원생의 수강료 납부가 아직 확인되지 않았습니다.\n확인 부탁드립니다."
+    body: "안녕하세요, #{이름} 학생 보호자님. #{학원명} #{청구월} #{수납구분}의 수납 상태는 #{납부상태} 상태입니다. 미납 금액은 #{미납액}이며, 납부 기한(#{납부기한})이 경과하였습니다. 빠른 확인 부탁드립니다."
+  },
+  "book_unpaid": {
+    label: "교재비 미수납 안내",
+    title: "교재비 납부 확인 요청",
+    body: "안녕하세요, #{이름} 학생 보호자님. #{학원명} #{교재명} 교재비가 아직 납부되지 않았습니다. 미납 금액은 #{교재비}이며, 납부 기한은 #{납부기한}까지입니다. 빠른 확인 부탁드립니다."
+  },
+  "attendance_absent": {
+    label: "결석 확인",
+    title: "출석 확인 요청",
+    body: "안녕하세요, #{이름} 학생 보호자님. #{학원명} #{수업일} #{수업시간} 수업에 대한 출결이 #{출결상태} 상태로 기록되었습니다. 확인 부탁드립니다."
+  },
+  "attendance_late": {
+    label: "지각 안내",
+    title: "지각 상태 안내",
+    body: "안녕하세요, #{이름} 학생 보호자님. #{학원명} #{수업일} #{수업시간} 수업에 #{이름} 학생이 #{출결상태} 상태입니다. 확인 부탁드립니다."
+  },
+  "attendance_checkout_missing": {
+    label: "하원 누락 확인",
+    title: "하원 누락 확인 요청",
+    body: "안녕하세요, #{이름} 학생 보호자님. #{학원명} #{수업일} #{수업시간} 수업의 하원 시간이 기록되지 않아 #{출결상태} 상태로 확인되었습니다. 확인 부탁드립니다."
+  },
+  "consultation_notice": {
+    label: "상담 안내",
+    title: "상담 안내",
+    body: "안녕하세요, #{이름} 학생 보호자님. #{학원명} 상담 예약 일정 안내드립니다. 일시: #{상담일시}. 메모: #{메모}"
+  },
+  "schedule_notice": {
+    label: "일정 안내",
+    title: "일정 안내",
+    body: "안녕하세요, #{이름} 학생 보호자님. #{학원명} #{일정명} 안내드립니다. 일시: #{일정일시}. 메모: #{메모}"
+  },
+  "absent": {
+    label: "[레거시] 결석 확인",
+    title: "출석 확인 요청",
+    body: "#{이름} 원생의 수업 출석 기록이 확인되지 않았습니다.\n확인 부탁드립니다."
+  },
+  "tuition_info": {
+    label: "[레거시] 수강료 수납 안내",
+    title: "수강료 납부 안내",
+    body: "#{이름} 원생의 수강료 납부 안내드립니다.\n확인 부탁드립니다."
   },
   "tuition_success": {
     label: "수강료 수납 완료",
@@ -114,14 +155,9 @@ const TEMPLATES_MAP = {
     body: "#{이름} 원생의 수강료 납부가 확인되었습니다.\n감사합니다."
   },
   "book_info": {
-    label: "교재비 수납 안내",
+    label: "[레거시] 교재비 수납 안내",
     title: "교재비 납부 안내",
     body: "#{이름} 원생의 교재비 납부 안내드립니다.\n확인 부탁드립니다."
-  },
-  "book_unpaid": {
-    label: "교재비 미수납 안내",
-    title: "교재비 납부 확인 요청",
-    body: "#{이름} 원생의 교재비 납부가 아직 확인되지 않았습니다.\n확인 부탁드립니다."
   },
   "book_success": {
     label: "교재비 수납 완료",
@@ -129,7 +165,7 @@ const TEMPLATES_MAP = {
     body: "#{이름} 원생의 교재비 납부가 확인되었습니다.\n감사합니다."
   },
   "consulting": {
-    label: "상담 안내",
+    label: "[레거시] 상담 안내",
     title: "상담 안내",
     body: "#{이름} 원생 관련 상담 안내드립니다.\n확인 부탁드립니다."
   }
@@ -455,10 +491,14 @@ const validateRecipients = (recipients) => {
     // Check if recipient has canReceiveMessage === false in parentContacts (if student-linked)
     let canReceive = true;
     let isNoContact = !phone;
+    let isWithdrawn = false;
 
     const studentId = r.no || r.studentId;
     if (studentId) {
       const student = stateStore.getStudent(studentId);
+      if (student && student.status === 'withdrawn') {
+        isWithdrawn = true;
+      }
       const { g1, g2 } = stateStore.getGuardianCandidates(studentId);
       if (r.role === "보호자1" && g1) {
         if (g1.canReceiveMessage === false) canReceive = false;
@@ -474,6 +514,20 @@ const validateRecipients = (recipients) => {
 
     if (r.canReceiveMessage === false) {
       canReceive = false;
+    }
+
+    // 0. 퇴원생 상태 차단
+    if (isWithdrawn) {
+      const item = {
+        ...r,
+        name,
+        phone,
+        isSendable: false,
+        reason: "퇴원생 상태"
+      };
+      excludedList.push(item);
+      validatedList.push(item);
+      return;
     }
 
     // 1. 연락처 없음
@@ -613,27 +667,46 @@ export function renderMessageSend(container) {
           viewState.handoffRelatedDomainType = payload.relatedDomainType || '';
           viewState.handoffRelatedDomainId = payload.relatedDomainId || '';
           
-          // Template Type Setting
-          const tKey = payload.suggestedTemplateType || 'general';
-          viewState.selectedTemplateKey = tKey;
-          
-          // Set body and title draft only if they are empty
-          if (!viewState.title.trim() && !viewState.body.trim()) {
-            if (tKey === 'absent') {
-              viewState.title = '출석 확인 요청';
-              const classTime = payload.meta && payload.meta.classTime;
-              if (classTime) {
-                viewState.body = `#{이름} 원생의 ${classTime} 수업 출석 기록이 확인되지 않았습니다.\n확인 부탁드립니다.`;
-              } else {
-                viewState.body = `#{이름} 원생의 수업 출석 기록이 확인되지 않았습니다.\n확인 부탁드립니다.`;
-              }
+          // 템플릿 바인딩 처리 (Phase 18A-3)
+          if (payload.templateId && payload.templatePayload) {
+            const tKey = payload.templateId;
+            viewState.selectedTemplateKey = tKey;
+            
+            const selectedTemplate = TEMPLATES_MAP[tKey];
+            viewState.title = selectedTemplate ? selectedTemplate.title : '안내드립니다';
+            
+            const res = buildMessage(tKey, payload.templatePayload);
+            if (res.ok) {
+              viewState.body = res.text;
+              viewState.validationError = null;
             } else {
-              const selectedTemplate = TEMPLATES_MAP[tKey];
-              if (selectedTemplate) {
-                viewState.title = selectedTemplate.title;
-                viewState.body = selectedTemplate.body;
+              viewState.body = '';
+              viewState.validationError = '필수 정보가 없어 메시지를 만들 수 없습니다. 내용을 확인해 주세요.';
+            }
+          } else {
+            // Template Type Setting (Legacy Fallback)
+            const tKey = payload.suggestedTemplateType || 'general';
+            viewState.selectedTemplateKey = tKey;
+            
+            // Set body and title draft only if they are empty
+            if (!viewState.title.trim() && !viewState.body.trim()) {
+              if (tKey === 'absent') {
+                viewState.title = '출석 확인 요청';
+                const classTime = payload.meta && payload.meta.classTime;
+                if (classTime) {
+                  viewState.body = `#{이름} 원생의 ${classTime} 수업 출석 기록이 확인되지 않았습니다.\n확인 부탁드립니다.`;
+                } else {
+                  viewState.body = `#{이름} 원생의 수업 출석 기록이 확인되지 않았습니다.\n확인 부탁드립니다.`;
+                }
+              } else {
+                const selectedTemplate = TEMPLATES_MAP[tKey];
+                if (selectedTemplate) {
+                  viewState.title = selectedTemplate.title;
+                  viewState.body = selectedTemplate.body;
+                }
               }
             }
+            viewState.validationError = null;
           }
         }
       } catch (e) {
@@ -1875,6 +1948,12 @@ export function renderMessageSend(container) {
       </div>
 
       <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+        ${viewState.validationError ? `
+          <div id="validation-error-banner" style="padding: 10px 12px; background: #fee2e2; border: 1px solid #fecaca; border-radius: 9px; color: #991b1b; font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <span>${viewState.validationError}</span>
+          </div>
+        ` : ''}
         <!-- Sender number -->
         <div>
           <label style="display: block; font-size: 11.5px; font-weight: 700; color: var(--text-muted); margin-bottom: 5px;">발신 번호</label>
@@ -3216,7 +3295,16 @@ export function renderMessageSend(container) {
                         <span style="font-family: monospace; font-size: 12px; color: var(--text-muted);">${formatPhoneDisplay(r.phone) || '번호 없음'}</span>
                       </div>
                       <div style="display: flex; align-items: center; gap: 8px;">
-                        <span class="status-badge" style="font-size: 11px; padding: 2px 8px; border-radius: 6px; font-weight: 800; background: ${statusBg}; color: ${statusColor};">${statusText}</span>
+                        ${(() => {
+                          const studentId = r.no || r.studentId;
+                          const sObj = studentId ? stateStore.getStudent(studentId) : null;
+                          if (sObj && sObj.status === 'on_leave' && r.isSendable) {
+                            statusText = "발송 예정 (휴원생)";
+                            statusBg = "#fef3c7";
+                            statusColor = "#b45309";
+                          }
+                          return `<span class="status-badge" style="font-size: 11px; padding: 2px 8px; border-radius: 6px; font-weight: 800; background: ${statusBg}; color: ${statusColor};">${statusText}</span>`;
+                        })()}
                         <button class="btn-preview-toggle-item" id="btn-preview-toggle-${idx}" style="
                           background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 8px;
                           font-size: 11px; cursor: pointer; color: var(--slate); font-weight: 700; display: inline-flex; align-items: center; gap: 2px;
@@ -3274,6 +3362,29 @@ export function renderMessageSend(container) {
     block.querySelector('#btnFocusCancel').addEventListener('click', closeOverlay);
     
     block.querySelector('#btnFocusSendConfirm').addEventListener('click', () => {
+      // 1. 각 수신인에 대해 본문을 치환해보고 미해결 매크로 토큰 (#{...})이 남아있는지 최종 발송 전 검증
+      let unresolvedFound = false;
+      for (const r of sendableList) {
+        const rendered = replaceMacros(viewState.body || "", r);
+        const unresolved = validateRenderedMessage(rendered);
+        if (unresolved && unresolved.length > 0) {
+          unresolvedFound = true;
+          break;
+        }
+      }
+
+      if (unresolvedFound) {
+        alert('필수 정보(매크로 변수)가 치환되지 않아 메시지를 보낼 수 없습니다.');
+        return;
+      }
+
+      // 2. 수신자 중 퇴원생이 포함되어 있는지 최종 발송 전 검증
+      const hasWithdrawn = excludedList.some(r => r.reason === '퇴원생 상태');
+      if (hasWithdrawn) {
+        alert('발송 불가능한 퇴원생 수신자가 포함되어 있습니다.');
+        return;
+      }
+
       processMessageSend(sendableList, excludedList);
     });
 

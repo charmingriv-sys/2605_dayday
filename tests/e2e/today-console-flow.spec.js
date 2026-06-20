@@ -2561,5 +2561,142 @@ test.describe('Director Today Console Flow Checks', () => {
 
     expect(s1TaskStatus, 'Withdrawn unpaid task status should automatically resolve to done when payment status changes to paid').toBe('done');
   });
+
+  test('should support template-based messaging from today console tasks (Phase 18A-3)', async ({ page }) => {
+    // 1. 데이터 셋업: 일반 미수납 task, 출결 결석 task, 퇴원생 미수납 task 생성
+    await page.evaluate(() => {
+      window.stateStore.db.todayTasks = [];
+      window.stateStore.db.payments = [
+        {
+          id: 'PE2EUNPAID',
+          studentId: 'S1',
+          type: 'education',
+          amount: 150000,
+          month: '2026-06',
+          status: 'unpaid',
+          invoiceDate: '2026-06-01'
+        }
+      ];
+      window.stateStore.db.students = window.stateStore.db.students.map(s => {
+        if (s.id === 'S1') {
+          s.status = 'attending'; // 최다은
+          s.dueDay = 10;
+        }
+        if (s.id === 'S3') {
+          s.status = 'attending'; // 이도윤
+          s.name = '이도윤';
+        }
+        if (s.id === 'S4') {
+          s.status = 'withdrawn'; // 김우진 (퇴원)
+          s.name = '김우진';
+        }
+        return s;
+      });
+
+      // 일반 미수납 task (S1)
+      window.stateStore.db.todayTasks.push({
+        id: 'TASK_UNPAID_E2E',
+        organizationId: '',
+        segment: 'academy_director_console',
+        domain: 'academy',
+        source: 'manual',
+        type: 'billing',
+        category: 'overdue',
+        priority: 'today',
+        status: 'open',
+        title: '[미수납 확인] 최다은 원생 미납 수강료',
+        description: '• 원생명: 최다은\n• 청구월: 2026-06\n• 미납액: 150,000원\n• 납부기한: 2026-06-10',
+        relatedStudentIds: ['S1'],
+        dedupeKey: 'SYSTEM_RECOMMEND_BILLING_UNPAID_PE2EUNPAID_2026-06'
+      });
+
+      // 출결 결석 task (S3)
+      window.stateStore.db.todayTasks.push({
+        id: 'TASK_ABSENT_E2E',
+        organizationId: '',
+        segment: 'academy_director_console',
+        domain: 'academy',
+        source: 'manual',
+        type: 'attendance',
+        category: 'absent',
+        priority: 'today',
+        status: 'open',
+        title: '[결석 확인] 이도윤 원생 출석 미확인',
+        description: '• 원생명: 이도윤\n• 수업 시간: 15:00\n• 수업일: 2026-06-20',
+        relatedStudentIds: ['S3'],
+        dedupeKey: 'SYSTEM_RECOMMEND_ATTENDANCE_ABSENT_S3'
+      });
+
+      // 퇴원생 미수납 task (S4)
+      window.stateStore.db.todayTasks.push({
+        id: 'TASK_WITHDRAWN_UNPAID_E2E',
+        organizationId: '',
+        segment: 'academy_director_console',
+        domain: 'academy',
+        source: 'manual',
+        type: 'withdrawn_unpaid',
+        category: 'overdue',
+        priority: 'today',
+        status: 'open',
+        title: '[퇴원생 미수납 확인] 김우진 원생 미납 수강료',
+        description: '퇴원생 김우진 원생의 미납 수강료가 남아 있습니다.',
+        relatedStudentIds: ['S4'],
+        dedupeKey: 'SYSTEM_RECOMMEND_WITHDRAWN_UNPAID_S4'
+      });
+
+      window.stateStore.saveDB();
+      window.stateStore.notify('TODAY_TASKS_CHANGED', window.stateStore.db.todayTasks);
+    });
+
+    // 뷰를 다른 곳으로 전환했다가 다시 돌아와서 리렌더링 강제 유도 (새로고침 시 mock 데이터 유실 방지)
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+    await page.waitForTimeout(300);
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+    await page.waitForTimeout(300);
+
+    // A. 일반 미수납 task 메시지 보내기 검증
+    const unpaidCard = page.locator('#tasks-list-container .glass-card', { hasText: '최다은 원생 미납 수강료' });
+    await expect(unpaidCard).toBeVisible();
+    
+    // "메시지 보내기" 버튼 클릭
+    const sendMsgBtn1 = unpaidCard.locator('.btn-message-send');
+    await expect(sendMsgBtn1).toBeVisible();
+    await sendMsgBtn1.click();
+
+    // 메시지 발송 뷰로 이동했는지 확인
+    await expect(page.locator('.menu-item[data-view="dir-message-send"]')).toHaveClass(/active/);
+    
+    // tuition_unpaid 템플릿으로 본문이 생성되었는지 확인
+    const composeBody = page.locator('#composeBodyInput');
+    await expect(composeBody).toHaveValue(/최다은 학생 보호자님\. 튜링음악학원 2026년 6월 원비의 수납 상태는 미납 상태입니다/);
+
+    // 다시 오늘 콘솔로 이동
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+    await page.waitForTimeout(200);
+
+    // B. 출결 결석 task 메시지 보내기 검증
+    const absentCard = page.locator('#tasks-list-container .glass-card', { hasText: '이도윤 원생 출석 미확인' });
+    await expect(absentCard).toBeVisible();
+    const sendMsgBtn2 = absentCard.locator('.btn-message-send');
+    await expect(sendMsgBtn2).toBeVisible();
+    await sendMsgBtn2.click();
+
+    // 메시지 발송 뷰로 이동했는지 확인
+    await expect(page.locator('.menu-item[data-view="dir-message-send"]')).toHaveClass(/active/);
+    
+    // attendance_absent 템플릿으로 본문이 생성되었는지 확인
+    await expect(composeBody).toHaveValue(/이도윤 학생 보호자님. 튜링음악학원 .* 15:00 수업에 대한 출결이 결석 상태로 기록되었습니다/);
+
+    // 다시 오늘 콘솔로 이동
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+    await page.waitForTimeout(200);
+
+    // C. 퇴원생 미수납 task 메시지 보내기 버튼 유무 검증
+    const withdrawnCard = page.locator('#tasks-list-container .glass-card', { hasText: '김우진 원생 미납 수강료' });
+    await expect(withdrawnCard).toBeVisible();
+    const sendMsgBtn3 = withdrawnCard.locator('.btn-message-send');
+    await expect(sendMsgBtn3).toBeHidden();
+    await expect(withdrawnCard).toContainText('퇴원생 미수납은 수동 확인 대상입니다.');
+  });
 });
 

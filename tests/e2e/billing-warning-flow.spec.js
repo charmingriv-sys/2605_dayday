@@ -818,4 +818,154 @@ test.describe('Billing & Overdue Warnings E2E Flow', () => {
     await expect(studentStatusSelect).toHaveValue('all');
     await expect(paymentStatusSelect).toHaveValue('all');
   });
+
+  test('should show preview based on templates in billing view send warning modal and block if missing required fields (Phase 18A-3)', async ({ page }) => {
+    // 1. Login as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Setup mock data in State Store
+    await page.evaluate(() => {
+      const db = window.stateStore.db;
+      db.payments = [];
+      db.students = db.students || [];
+
+      // S1: 최다은 (attending)
+      const s1 = db.students.find(s => s.id === 'S1');
+      if (s1) {
+        s1.status = 'attending';
+        s1.dueDay = 10;
+        s1.academyId = 'AC1';
+      }
+
+      // S3: 이도윤 (attending)
+      const s3 = db.students.find(s => s.id === 'S3');
+      if (s3) {
+        s3.status = 'attending';
+        s3.name = '이도윤';
+        s3.dueDay = 20;
+        s3.academyId = 'AC1';
+      }
+
+      // 수강료 미납 payment (이미 납기일이 지난 2026-06-10일 청구 -> tuition_unpaid)
+      db.payments.push({
+        id: 'P-PREVIEW-TUITION-UNPAID',
+        studentId: 'S1',
+        amount: 150000,
+        month: '2026-06',
+        type: 'education',
+        status: 'unpaid',
+        invoiceDate: '2026-06-10'
+      });
+
+      // 수강료 납부 예정 payment (납기일이 미래인 2026-06-20일 청구 -> tuition_due)
+      db.payments.push({
+        id: 'P-PREVIEW-TUITION-DUE',
+        studentId: 'S3',
+        amount: 200000,
+        month: '2026-06',
+        type: 'education',
+        status: 'unpaid',
+        invoiceDate: '2026-06-20'
+      });
+
+      // 교재비 미납 payment (book_unpaid)
+      db.payments.push({
+        id: 'P-PREVIEW-BOOK-UNPAID',
+        studentId: 'S1',
+        amount: 30000,
+        month: '2026-06',
+        type: 'book',
+        status: 'unpaid',
+        invoiceDate: '2026-06-10',
+        bookId: 'B1'
+      });
+
+      // 필수 변수 누락 payment (amount = 0)
+      db.payments.push({
+        id: 'P-PREVIEW-MISSING-FIELD',
+        studentId: 'S1',
+        amount: 0,
+        month: '2026-06',
+        type: 'education',
+        status: 'unpaid',
+        invoiceDate: '2026-06-10'
+      });
+
+      // B1 교재 정보 주입
+      db.books = db.books || [];
+      const hasB1 = db.books.some(b => b.id === 'B1');
+      if (!hasB1) {
+        db.books.push({
+          id: 'B1',
+          name: '바이엘 1',
+          price: 30000
+        });
+      }
+
+      // Settings
+      db.settings = db.settings || {};
+      db.settings.academy = '튜링음악학원';
+      db.settings.director = '주재경';
+      // Fix evaluation time to 2026-06-13
+      db.settings.DAYDAY_DEBUG_EVAL_TIME = '2026-06-13T12:00:00.000Z';
+
+      window.stateStore.saveDB();
+    });
+
+    // 수납 및 결제 현황 뷰로 이동
+    await page.locator('.menu-item[data-view="dir-payments"]').click();
+    await page.waitForTimeout(200);
+
+    // 월 선택을 2026-06으로
+    await page.locator('#payment-month-select').selectOption('2026-06');
+    await page.waitForTimeout(300);
+
+    // A. 수강료 미납 알림 모달 미리보기 검증 (P-PREVIEW-TUITION-UNPAID)
+    const tuitionUnpaidRow = page.locator('[data-testid="payment-row-P-PREVIEW-TUITION-UNPAID"]');
+    await expect(tuitionUnpaidRow).toBeVisible();
+    await tuitionUnpaidRow.locator('.btn-send-reminder').click();
+    await page.locator('#modal-receiver-parent').click();
+
+    // 모달 타이틀 확인
+    await expect(page.locator('#common-modal .modal-title')).toContainText('결제 요청 확인');
+    // 미리보기 내용 확인
+    await expect(page.locator('#common-modal')).toContainText('최다은 학생 보호자님. 튜링음악학원 2026년 6월 원비의 수납 상태는 미납 상태입니다.');
+    await page.locator('#common-modal [data-close-modal]').first().click(); // 닫기
+
+    // B. 수강료 납부 예정 알림 모달 미리보기 검증 (P-PREVIEW-TUITION-DUE)
+    const tuitionDueRow = page.locator('[data-testid="payment-row-P-PREVIEW-TUITION-DUE"]');
+    await expect(tuitionDueRow).toBeVisible();
+    await tuitionDueRow.locator('.btn-send-reminder').click();
+    await page.locator('#modal-receiver-parent').click();
+    await expect(page.locator('#common-modal')).toContainText('이도윤 학생 보호자님. 튜링음악학원 2026년 6월 원비 수납일 안내드립니다.');
+    await page.locator('#common-modal [data-close-modal]').first().click(); // 닫기
+
+    // C. 교재비 미납 알림 모달 미리보기 검증 (P-PREVIEW-BOOK-UNPAID)
+    const bookUnpaidRow = page.locator('[data-testid="payment-row-P-PREVIEW-BOOK-UNPAID"]');
+    await expect(bookUnpaidRow).toBeVisible();
+    await bookUnpaidRow.locator('.btn-send-reminder').click();
+    await page.locator('#modal-receiver-parent').click();
+    await expect(page.locator('#common-modal')).toContainText('바이엘 1 교재비가 아직 납부되지 않았습니다.');
+    await page.locator('#common-modal [data-close-modal]').first().click(); // 닫기
+
+    // D. 필수 변수 누락 시 발송 차단 검증 (P-PREVIEW-MISSING-FIELD)
+    const missingFieldRow = page.locator('[data-testid="payment-row-P-PREVIEW-MISSING-FIELD"]');
+    await expect(missingFieldRow).toBeVisible();
+    await missingFieldRow.locator('.btn-send-reminder').click();
+    await page.locator('#modal-receiver-parent').click();
+    
+    // 경고 문구 확인
+    await expect(page.locator('#common-modal')).toContainText('필수 정보가 없어 메시지를 만들 수 없습니다.');
+    
+    // 전송 버튼 disabled 확인
+    const confirmBtn = page.locator('#btn-confirm-send-payment');
+    await expect(confirmBtn).toBeDisabled();
+
+    // 닫기
+    await page.locator('#common-modal [data-close-modal]').first().click();
+  });
 });
+

@@ -1,6 +1,7 @@
 import { stateStore } from '../../state.js';
 import { openModal, closeModal } from '../../app.js';
 import { formatPhoneNumber, showKakaoTalkToast, openStudentDetailModalRef } from './shared.js';
+import { buildMessage } from '../../utils/messageTemplates.js';
 
 const printReceiptRegister = (selectedMonth) => {
     console.log("[Print Debug] Button clicked: btn-print-receipt-register");
@@ -633,6 +634,55 @@ export function renderPayments(container) {
         const academy = stateStore.getSettings();
         const academyId = academy.academyId || 'academy_1';
 
+        // 템플릿 정보 계산 (Phase 18A-3)
+        const dueDay = student.dueDay || 10;
+        const [py, pm] = paymentRecord.month.split('-').map(Number);
+        const lastDayOfMonth = new Date(py, pm, 0).getDate();
+        const safeDueDay = Math.min(dueDay, lastDayOfMonth);
+        const paymentDueAt = new Date(py, pm - 1, safeDueDay, 0, 0, 0, 0);
+
+        const now = new Date();
+        const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+
+        let templateId = 'tuition_due';
+        if (paymentRecord.type === 'book') {
+            templateId = 'book_unpaid';
+        } else {
+            if (paymentDueAt.getTime() < todayMidnight.getTime()) {
+                templateId = 'tuition_unpaid';
+            } else {
+                templateId = 'tuition_due';
+            }
+        }
+
+        const dbSettings = stateStore.db.settings || {};
+        const academyName = academy.academy || dbSettings.academy || '튜링음악학원';
+        const directorName = academy.director || dbSettings.director || '주재경';
+
+        const billingMonthLabel = `${py}년 ${pm}월`;
+        const billingDueDateLabel = `${py}-${String(pm).padStart(2, '0')}-${String(safeDueDay).padStart(2, '0')}`;
+
+        const bookObj = paymentRecord.type === 'book' ? (stateStore.db.books && stateStore.db.books.find(b => b.id === paymentRecord.bookId)) : null;
+        const bookName = bookObj ? bookObj.name : '교재';
+
+        const templatePayload = {
+            '이름': student.name,
+            '학원명': academyName,
+            '원장명': directorName,
+            '발송일': now.toISOString().slice(0, 10),
+            '미납액': paymentRecord.amount > 0 ? `${paymentRecord.amount.toLocaleString()}원` : '',
+            '납부기한': billingDueDateLabel,
+            '청구월': billingMonthLabel,
+            '수납구분': paymentRecord.type === 'book' ? '교재비' : '원비',
+            '납부상태': '미납',
+            '교재명': bookName,
+            '교재비': paymentRecord.amount > 0 ? `${paymentRecord.amount.toLocaleString()}원` : '',
+            '교재지급일': paymentRecord.createdAt ? paymentRecord.createdAt.slice(0, 10) : now.toISOString().slice(0, 10),
+            '교재상태': '미납'
+        };
+
+        const res = buildMessage(templateId, templatePayload);
+
         const modalHtml = `
             <div class="modal-header">
                 <h3 class="modal-title">결제 요청 확인</h3>
@@ -640,11 +690,24 @@ export function renderPayments(container) {
             </div>
             <div style="text-align: center; margin: 1.5rem 0; font-size: 1.05rem; line-height: 1.5;">
                 <p style="margin-bottom: 12px; font-weight: 500;">결제 요청 메시지를 보내시겠습니까?</p>
-                <div style="background: rgba(0,0,0,0.02); border: 1px solid var(--border-color); padding: 12px; border-radius: var(--radius-sm); font-size: 0.88rem; text-align: left; display: inline-block; width: 100%; box-sizing: border-box;">
+                <div style="background: rgba(0,0,0,0.02); border: 1px solid var(--border-color); padding: 12px; border-radius: var(--radius-sm); font-size: 0.88rem; text-align: left; display: inline-block; width: 100%; box-sizing: border-box; margin-bottom: 12px;">
                     <div>• <strong>수신 구분:</strong> ${receiverType === 'self' ? '본인' : '학부모'}</div>
                     <div>• <strong>연락처:</strong> ${formatPhoneNumber(receiverPhone)}</div>
                     <div>• <strong>청구 구분:</strong> ${paymentRecord.type === 'education' ? '교육비' : '교재비'}</div>
                     <div>• <strong>청구 금액:</strong> ${paymentRecord.amount.toLocaleString()}원</div>
+                </div>
+
+                <!-- 메시지 본문 미리보기 -->
+                <div style="text-align: left; background: rgba(0,0,0,0.01); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 12px; font-size: 0.82rem; margin-bottom: 12px;">
+                    <div style="font-weight: 700; color: var(--text-muted); font-size: 0.75rem; margin-bottom: 6px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">발송 메시지 미리보기</div>
+                    ${res.ok ? `
+                        <div style="white-space: pre-wrap; color: var(--text-main); font-family: inherit;">${res.text}</div>
+                    ` : `
+                        <div style="color: var(--danger); font-weight: 700;">
+                            <i class="fa-solid fa-triangle-exclamation" style="margin-right: 4px;"></i>
+                            필수 정보가 없어 메시지를 만들 수 없습니다. (${res.reason})
+                        </div>
+                    `}
                 </div>
             </div>
             <div style="display: flex; gap: 12px;">
@@ -654,7 +717,19 @@ export function renderPayments(container) {
         `;
 
         const onInitModal = (contentArea) => {
-            contentArea.querySelector('#btn-confirm-send-payment').addEventListener('click', () => {
+            const sendBtn = contentArea.querySelector('#btn-confirm-send-payment');
+            if (!res.ok) {
+                sendBtn.disabled = true;
+                sendBtn.style.opacity = '0.5';
+                sendBtn.style.cursor = 'not-allowed';
+            }
+
+            sendBtn.addEventListener('click', () => {
+                if (!res.ok) {
+                    alert('필수 정보가 없어 메시지를 발송할 수 없습니다.');
+                    return;
+                }
+
                 sendPaymentRequestNotification({
                     message_type: 'payment_request',
                     receiver_type: receiverType,

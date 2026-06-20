@@ -1989,7 +1989,7 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
 
     // Verify draft input fields
     await expect(page.locator('#composeTitleInput')).toHaveValue('출석 확인 요청');
-    await expect(page.locator('#composeBodyInput')).toHaveValue('#{이름} 원생의 14:00 ~ 15:00 수업 출석 기록이 확인되지 않았습니다.\n확인 부탁드립니다.');
+    await expect(page.locator('#composeBodyInput')).toHaveValue(/안녕하세요, 나핸드 학생 보호자님\. 튜링음악학원 .* 14:00 ~ 15:00 수업에 대한 출결이 결석 상태로 기록되었습니다\. 확인 부탁드립니다\./);
 
     // 5. Add to Recipients
     await page.locator('#btnAddToRecipients').click();
@@ -2035,7 +2035,7 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
 
     // Title and Body should be preserved (not reset) when direct menu navigation occurs
     await expect(page.locator('#composeTitleInput')).toHaveValue('출석 확인 요청');
-    await expect(page.locator('#composeBodyInput')).toHaveValue('#{이름} 원생의 14:00 ~ 15:00 수업 출석 기록이 확인되지 않았습니다.\n확인 부탁드립니다.');
+    await expect(page.locator('#composeBodyInput')).toHaveValue(/안녕하세요, 나핸드 학생 보호자님\. 튜링음악학원 .* 14:00 ~ 15:00 수업에 대한 출결이 결석 상태로 기록되었습니다\. 확인 부탁드립니다\./);
     await expect(page.locator('#totalRecipientsLabel')).toContainText('1건');
 
     // 10. Cleanup db
@@ -2563,6 +2563,195 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
       window.stateStore.db.todayTasks = window.stateStore.db.todayTasks.filter(t => t.id !== tid);
       window.stateStore.saveDB();
     }, { sid: testStudentId, tid: testTaskId });
+  });
+
+  test('should support template mapping, macro validation, and recipient validation safeguards (Phase 18A-3)', async ({ page }) => {
+    // DB 내의 테스트 대상 학생 상태를 안전하게 복원 및 초기화
+    await page.evaluate(() => {
+      const s3 = window.stateStore.getStudent('S3');
+      if (s3) {
+        s3.status = 'attending';
+        s3.name = '이도윤';
+      }
+      const s4 = window.stateStore.getStudent('S4');
+      if (s4) {
+        s4.status = 'attending';
+        s4.name = '김우진';
+      }
+      window.stateStore.saveDB();
+    });
+
+    // 1. handoffPayload 설정 (정상 케이스)
+    const testStudentId = 'S1'; // 최다은 (attending)
+    await page.evaluate(({ sid }) => {
+      const payload = {
+        source: 'today_console',
+        taskId: 'TASK_TEST_18A_3',
+        studentId: sid,
+        templateId: 'tuition_unpaid',
+        templatePayload: {
+          '이름': '최다은',
+          '학원명': '튜링음악학원',
+          '원장명': '주재경',
+          '발송일': '2026-06-20',
+          '미납액': '150,000원',
+          '납부기한': '2026-06-10',
+          '청구월': '2026년 6월',
+          '수납구분': '원비',
+          '납부상태': '미납'
+        }
+      };
+      sessionStorage.setItem('dayday_handoff_payload', JSON.stringify(payload));
+    }, { sid: testStudentId });
+
+    // 메시지 탭으로 진입하여 본문 확인
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+    const composeBody = page.locator('#composeBodyInput');
+    await expect(composeBody).toHaveValue(/최다은 학생 보호자님\. 튜링음악학원 2026년 6월 원비의 수납 상태는 미납 상태입니다/);
+
+    // 2. 필수 변수 누락 케이스 (미납액 누락)
+    await page.evaluate(({ sid }) => {
+      const payload = {
+        source: 'today_console',
+        taskId: 'TASK_TEST_18A_3_FAIL',
+        studentId: sid,
+        templateId: 'tuition_unpaid',
+        templatePayload: {
+          '이름': '최다은',
+          '학원명': '튜링음악학원',
+          '원장명': '주재경',
+          '발송일': '2026-06-20',
+          // '미납액': '150,000원' (누락)
+          '납부기한': '2026-06-10',
+          '청구월': '2026년 6월',
+          '수납구분': '원비',
+          '납부상태': '미납'
+        }
+      };
+      sessionStorage.setItem('dayday_handoff_payload', JSON.stringify(payload));
+    }, { sid: testStudentId });
+
+    // 페이지를 새로고침하고 다시 메시지 탭으로 진입
+    await page.reload();
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+    await expect(composeBody).toHaveValue('');
+    const errorBanner = page.locator('#validation-error-banner');
+    await expect(errorBanner).toBeVisible();
+    await expect(errorBanner).toContainText('필수 정보가 없어 메시지를 만들 수 없습니다. 내용을 확인해 주세요.');
+
+    // 3. 수동으로 #{미납액} 입력 후 발송 차단 검증
+    await page.evaluate(() => {
+      sessionStorage.removeItem('dayday_handoff_payload');
+      const s3 = window.stateStore.getStudent('S3');
+      if (s3) {
+        s3.status = 'attending';
+        s3.name = '이도윤';
+      }
+      window.stateStore.saveDB();
+    });
+    // 페이지를 새로고침하고 다시 메시지 탭으로 진입
+    await page.reload();
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+    await page.waitForTimeout(600); // 렌더링 안정화 대기
+    await composeBody.fill('안녕하세요, #{미납액}원 확인 바랍니다.');
+    
+    // 수신자 추가
+    const studentRow = page.locator('.student-row', { hasText: '최다은' });
+    await studentRow.waitFor({ state: 'visible' });
+    await studentRow.click();
+    await page.waitForTimeout(300); // 클릭 이벤트 반영 대기
+    
+    const addToRecipientsBtn = page.locator('#btnAddToRecipients');
+    await expect(addToRecipientsBtn).toBeEnabled();
+    await addToRecipientsBtn.click();
+    await page.waitForTimeout(300);
+
+    let dialogTriggered = false;
+    let dialogText = '';
+    page.once('dialog', async (dialog) => {
+      dialogTriggered = true;
+      dialogText = dialog.message();
+      await dialog.accept();
+    });
+
+    // 발송 검토 모달 열기
+    await page.locator('#btnReviewSend').click();
+    // 모달 내 최종 발송 버튼 클릭하여 차단 검증
+    await page.locator('#btnFocusSendConfirm').click();
+    expect(dialogTriggered).toBe(true);
+    expect(dialogText).toContain('필수 정보(매크로 변수)가 치환되지 않아 메시지를 보낼 수 없습니다.');
+
+    // 모달 닫기
+    await page.locator('#btnFocusCancel').click();
+
+    // 4. 퇴원생 수신자 차단 검증
+    // 이도윤(S3)을 먼저 수신자에 추가
+    const studentRowS3 = page.locator('.student-row', { hasText: '이도윤' });
+    await studentRowS3.waitFor({ state: 'visible' });
+    await studentRowS3.click();
+    await page.waitForTimeout(300);
+    await page.locator('#btnAddToRecipients').click();
+    await page.waitForTimeout(300);
+
+    // 수신인 추가 완료 후, 이도윤 상태를 withdrawn으로 세팅
+    await page.evaluate(() => {
+      const s = window.stateStore.getStudent('S3');
+      if (s) {
+        s.status = 'withdrawn';
+        window.stateStore.saveDB();
+      }
+    });
+
+    // 기존 수신인 지우기 및 본문 입력
+    await page.locator('#composeBodyInput').fill('정상적인 텍스트');
+    
+    dialogTriggered = false;
+    page.once('dialog', async (dialog) => {
+      dialogTriggered = true;
+      dialogText = dialog.message();
+      await dialog.accept();
+    });
+
+    // 발송 검토 모달 열기
+    await page.locator('#btnReviewSend').click();
+    // 모달 내 최종 발송 버튼 클릭하여 차단 검증
+    await page.locator('#btnFocusSendConfirm').click();
+    expect(dialogTriggered).toBe(true);
+    expect(dialogText).toContain('발송 불가능한 퇴원생 수신자가 포함되어 있습니다.');
+
+    // 모달 닫기
+    await page.locator('#btnFocusCancel').click();
+
+    // 5. 휴원생 수신자 경고 검증
+    // S3를 다시 복원하고, 휴원생 S4(김우진)을 휴원생 상태로 확인
+    await page.evaluate(() => {
+      const s3 = window.stateStore.getStudent('S3');
+      if (s3) {
+        s3.status = 'attending';
+        s3.name = '이도윤';
+      }
+      const s4 = window.stateStore.getStudent('S4');
+      if (s4) {
+        s4.status = 'on_leave';
+        s4.name = '김우진';
+      }
+      window.stateStore.saveDB();
+    });
+
+    // S4를 수신자에 추가 (E2E에서 김우진 로우 선택)
+    const studentRowS4 = page.locator('.student-row', { hasText: '김우진' });
+    await studentRowS4.waitFor({ state: 'visible' });
+    await studentRowS4.click();
+    await page.waitForTimeout(300);
+    await page.locator('#btnAddToRecipients').click();
+    await page.waitForTimeout(300);
+    
+    // 발송 검토 모달 열기
+    await page.locator('#btnReviewSend').click();
+    
+    // 발송 예정 (휴원생) 뱃지 확인
+    const statusBadge = page.locator('.status-badge', { hasText: '발송 예정 (휴원생)' });
+    await expect(statusBadge).toBeVisible();
   });
 });
 
