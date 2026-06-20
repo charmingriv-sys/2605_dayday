@@ -395,6 +395,8 @@ const printCashBook = (selectedMonth) => {
 export function renderPayments(container) {
     const todayStr = new Date().toISOString().slice(0, 7); // Default to current month
     let selectedMonth = '2026-05'; // Default mock month matching seed data
+    let selectedStudentStatus = 'all'; // 'all', 'attending', 'on_leave', 'withdrawn'
+    let selectedPaymentStatus = 'all'; // 'all', 'paid', 'unpaid'
 
     const render = () => {
         const payments = stateStore.getPayments();
@@ -411,9 +413,25 @@ export function renderPayments(container) {
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
                     <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
                         <label for="payment-month-select" style="font-weight: 600; font-size: 0.9rem; color: var(--text-muted);">청구 월별 조회:</label>
-                        <select id="payment-month-select" class="form-control" style="min-width: 150px; margin-bottom: 0;">
+                        <select id="payment-month-select" class="form-control" style="min-width: 120px; margin-bottom: 0;">
                             ${uniqueMonths.map(m => `<option value="${m}" ${selectedMonth === m ? 'selected' : ''}>${m.slice(0, 4)}년 ${m.slice(5, 7)}월</option>`).join('')}
                         </select>
+
+                        <label for="payment-student-status-select" style="font-weight: 600; font-size: 0.9rem; color: var(--text-muted); margin-left: 8px;">원생 상태:</label>
+                        <select id="payment-student-status-select" class="form-control" style="min-width: 110px; margin-bottom: 0;">
+                            <option value="all" ${selectedStudentStatus === 'all' ? 'selected' : ''}>전체</option>
+                            <option value="attending" ${selectedStudentStatus === 'attending' ? 'selected' : ''}>재원생</option>
+                            <option value="on_leave" ${selectedStudentStatus === 'on_leave' ? 'selected' : ''}>휴원생</option>
+                            <option value="withdrawn" ${selectedStudentStatus === 'withdrawn' ? 'selected' : ''}>퇴원생</option>
+                        </select>
+
+                        <label for="payment-status-select" style="font-weight: 600; font-size: 0.9rem; color: var(--text-muted); margin-left: 8px;">납부 상태:</label>
+                        <select id="payment-status-select" class="form-control" style="min-width: 110px; margin-bottom: 0;">
+                            <option value="all" ${selectedPaymentStatus === 'all' ? 'selected' : ''}>전체</option>
+                            <option value="paid" ${selectedPaymentStatus === 'paid' ? 'selected' : ''}>완납</option>
+                            <option value="unpaid" ${selectedPaymentStatus === 'unpaid' ? 'selected' : ''}>미납</option>
+                        </select>
+
                         <button class="btn btn-secondary" id="btn-print-receipt-register" style="height: 38px; border-color: rgba(0, 206, 201, 0.4); background: rgba(0, 206, 201, 0.15); color: var(--accent); font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px;">
                             <i class="fa-solid fa-print"></i> 영수증 원부 인쇄
                         </button>
@@ -425,6 +443,12 @@ export function renderPayments(container) {
                     <div style="display: flex; gap: 16px; font-size: 0.85rem; flex-wrap: wrap;" id="payment-summary-stats">
                         <!-- Stats filled dynamically -->
                     </div>
+                </div>
+
+                <!-- Info Text Banner -->
+                <div style="margin-top: 12px; font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.05);">
+                    <i class="fa-solid fa-circle-info" style="color: var(--primary);"></i>
+                    <span>수납 및 결제 현황은 퇴원생을 포함한 전체 이력 기준입니다. 대시보드의 미납 화면과 다를 수 있습니다.</span>
                 </div>
             </div>
 
@@ -456,6 +480,22 @@ export function renderPayments(container) {
             selectedMonth = e.target.value;
             renderTableBody();
         });
+
+        const studentStatusSelect = container.querySelector('#payment-student-status-select');
+        if (studentStatusSelect) {
+            studentStatusSelect.addEventListener('change', (e) => {
+                selectedStudentStatus = e.target.value;
+                renderTableBody();
+            });
+        }
+
+        const paymentStatusSelect = container.querySelector('#payment-status-select');
+        if (paymentStatusSelect) {
+            paymentStatusSelect.addEventListener('change', (e) => {
+                selectedPaymentStatus = e.target.value;
+                renderTableBody();
+            });
+        }
 
         const btnPrintReceiptRegister = container.querySelector('#btn-print-receipt-register');
         if (btnPrintReceiptRegister) {
@@ -728,8 +768,33 @@ export function renderPayments(container) {
         const payments = stateStore.getPayments();
         const students = stateStore.getStudents();
 
-        // Filter payments for chosen month and sort by date descending (newest first)
-        const monthPayments = payments.filter(p => p.month === selectedMonth);
+        // Filter payments for chosen month
+        let monthPayments = payments.filter(p => p.month === selectedMonth);
+
+        // Apply student status & payment status filters
+        monthPayments = monthPayments.filter(p => {
+            const student = students.find(s => s.id === p.studentId);
+            
+            // 1. Student Status Filter
+            if (selectedStudentStatus !== 'all') {
+                const status = student ? (student.status || 'attending') : 'withdrawn';
+                if (selectedStudentStatus !== status) {
+                    return false;
+                }
+            }
+
+            // 2. Payment Status Filter
+            if (selectedPaymentStatus !== 'all') {
+                if (selectedPaymentStatus === 'paid') {
+                    if (p.status !== 'paid') return false;
+                } else if (selectedPaymentStatus === 'unpaid') {
+                    if (p.status !== 'unpaid') return false;
+                }
+            }
+
+            return true;
+        });
+
         monthPayments.sort((a, b) => {
             const dateCompare = b.invoiceDate.localeCompare(a.invoiceDate);
             if (dateCompare !== 0) return dateCompare;
@@ -756,7 +821,7 @@ export function renderPayments(container) {
             tbody.innerHTML = `
                 <tr>
                     <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 3rem;">
-                        해당 수납 청구 기간에 등록된 내역이 없습니다.
+                        선택한 필터 조건에 해당하는 수납 내역이 없습니다.
                     </td>
                 </tr>
             `;
@@ -765,9 +830,21 @@ export function renderPayments(container) {
 
         tbody.innerHTML = monthPayments.map(p => {
             const student = students.find(s => s.id === p.studentId);
-            const studentName = student ? student.name : '<span style="color:var(--text-muted)">퇴원 원생</span>';
+            const studentName = student ? student.name : '퇴원 원생';
             const dueDay = student ? student.dueDay : '-';
             const parentPhone = student ? student.parentPhone : '';
+
+            const status = student ? (student.status || 'attending') : 'withdrawn';
+            let statusBadgeText = '';
+            if (status === 'on_leave') {
+                statusBadgeText = ` <span class="badge" style="font-size: 0.72rem; padding: 2px 6px; background: rgba(241, 196, 15, 0.15); color: #f1c40f; border: 1px solid rgba(241, 196, 15, 0.3); margin-left: 4px;">휴원</span>`;
+            } else if (status === 'withdrawn') {
+                statusBadgeText = ` <span class="badge" style="font-size: 0.72rem; padding: 2px 6px; background: rgba(231, 76, 60, 0.15); color: #e74c3c; border: 1px solid rgba(231, 76, 60, 0.3); margin-left: 4px;">퇴원</span>`;
+            }
+
+            const studentNameHtml = student
+                ? `<span class="student-name-link" data-id="${p.studentId}" style="font-size: 0.95rem; color: var(--secondary); cursor: pointer; text-decoration: underline; font-weight: 700;">${student.name}</span>${statusBadgeText}`
+                : `<span style="color:var(--text-muted)">퇴원 원생</span>${statusBadgeText}`;
 
             let typeBadge = '';
             if (p.type === 'book') {
@@ -889,7 +966,7 @@ export function renderPayments(container) {
             return `
                 <tr data-testid="payment-row-${p.id}">
                     <td style="font-weight: 600;">
-                        <span class="student-name-link" data-id="${p.studentId}" style="font-size: 0.95rem; color: var(--secondary); cursor: pointer; text-decoration: underline; font-weight: 700;">${studentName}</span>
+                        ${studentNameHtml}
                         ${student ? `<div style="font-size: 0.75rem; color: var(--text-muted); font-weight: normal; margin-top: 2px;">학부모: ${parentPhone}</div>` : ''}
                     </td>
                     <td>${typeBadge}</td>
