@@ -390,6 +390,11 @@ export const todayTaskMethods = {
         // Ensure database lists are initialized
         if (!this.db.todayTasks) this.db.todayTasks = [];
 
+        // Auto return on-leave students whose leave periods have ended
+        if (typeof this.autoAttendingReturnFromLeave === 'function') {
+            this.autoAttendingReturnFromLeave(dateStr);
+        }
+
         // 1. Billing & Overdue Warning Engine (Phase 13D)
         runTodayTaskRecommendationDomain(this, 'billing', () => {
             syncBillingRecommendations(this, {

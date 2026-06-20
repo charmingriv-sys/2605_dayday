@@ -408,4 +408,78 @@ test.describe('Student Status Management Flow', () => {
 
     expect(consoleErrors.length).toBe(0);
   });
+
+  test('should automatically return student status from on_leave to attending after end date passes, and skip withdrawn status', async ({ page }) => {
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Setup: Modify students directly in browser store
+    await page.evaluate(() => {
+      window.stateStore.db.scheduleSnapshots = [];
+
+      // S1: on_leave, leave periods ended (2026-06-01 ~ 2026-06-10), today 2026-06-15 -> should return to attending
+      const s1 = window.stateStore.db.students.find(s => s.id === 'S1');
+      if (s1) {
+        s1.status = 'on_leave';
+        s1.leavePeriods = [{ startDate: '2026-06-01', endDate: '2026-06-10' }];
+      }
+
+      // S2: on_leave, leave period active (2026-06-01 ~ 2026-06-30), today 2026-06-15 -> should remain on_leave
+      const s2 = window.stateStore.db.students.find(s => s.id === 'S2');
+      if (s2) {
+        s2.status = 'on_leave';
+        s2.leavePeriods = [{ startDate: '2026-06-01', endDate: '2026-06-30' }];
+      }
+
+      // S3: on_leave, multiple leave periods (A: 06-01~06-10, B: 06-20~06-30), today 06-15 -> should return to attending
+      const s3 = window.stateStore.db.students.find(s => s.id === 'S3');
+      if (s3) {
+        s3.status = 'on_leave';
+        s3.leavePeriods = [
+          { startDate: '2026-06-01', endDate: '2026-06-10' },
+          { startDate: '2026-06-20', endDate: '2026-06-30' }
+        ];
+      }
+
+      // S4: withdrawn, leave periods ended (2026-06-01 ~ 2026-06-10), today 06-15 -> should remain withdrawn
+      const s4 = window.stateStore.db.students.find(s => s.id === 'S4');
+      if (s4) {
+        s4.status = 'withdrawn';
+        s4.leavePeriods = [{ startDate: '2026-06-01', endDate: '2026-06-10' }];
+      }
+
+      window.stateStore.saveDB();
+    });
+
+    // 3. Trigger normalization by calling getStudents() inside page
+    await page.evaluate(() => {
+      // Mock DAYDAY_DEBUG_EVAL_TIME to 2026-06-15
+      window.stateStore.db.settings.DAYDAY_DEBUG_EVAL_TIME = '2026-06-15T10:00:00';
+      // Reset caching to trigger return logic
+      window.stateStore._lastAutoReturnDate = null;
+      window.stateStore.getStudents();
+    });
+
+    // 4. Assert updated student statuses
+    const statuses = await page.evaluate(() => {
+      const db = window.stateStore.db;
+      return {
+        s1Status: db.students.find(s => s.id === 'S1')?.status,
+        s2Status: db.students.find(s => s.id === 'S2')?.status,
+        s3Status: db.students.find(s => s.id === 'S3')?.status,
+        s4Status: db.students.find(s => s.id === 'S4')?.status,
+        s1LeavePeriods: db.students.find(s => s.id === 'S1')?.leavePeriods
+      };
+    });
+
+    expect(statuses.s1Status).toBe('attending');
+    expect(statuses.s2Status).toBe('on_leave');
+    expect(statuses.s3Status).toBe('attending');
+    expect(statuses.s4Status).toBe('withdrawn');
+    // Ensure leavePeriods are preserved
+    expect(statuses.s1LeavePeriods).toEqual([{ startDate: '2026-06-01', endDate: '2026-06-10' }]);
+  });
 });

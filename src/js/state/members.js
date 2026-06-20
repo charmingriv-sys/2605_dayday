@@ -1,6 +1,56 @@
 // members.js - Students, Parent Student Links Domain State Module
 
 export const membersMethods = {
+    autoAttendingReturnFromLeave(customDateStr = null) {
+        if (!this.db || !this.db.students) return;
+
+        let dateStr = customDateStr;
+        if (!dateStr) {
+            let parsedNow = new Date();
+            if (this.db.settings && this.db.settings.DAYDAY_DEBUG_EVAL_TIME) {
+                parsedNow = new Date(this.db.settings.DAYDAY_DEBUG_EVAL_TIME);
+            }
+            const y = parsedNow.getFullYear();
+            const m = parsedNow.getMonth();
+            const d = parsedNow.getDate();
+            dateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        }
+
+        if (this._lastAutoReturnDate === dateStr) {
+            return;
+        }
+        this._lastAutoReturnDate = dateStr;
+
+        let hasChanged = false;
+
+        this.db.students = this.db.students.map(student => {
+            if (student.status !== 'on_leave' || student.isDeleted) {
+                return student;
+            }
+
+            let periods = [];
+            if (student.leavePeriods && student.leavePeriods.length > 0) {
+                periods = [...student.leavePeriods];
+            } else if (student.leaveStartDate && student.leaveEndDate) {
+                periods = [{ startDate: student.leaveStartDate, endDate: student.leaveEndDate }];
+            }
+
+            const hasPastPeriod = periods.some(p => p.endDate && p.endDate < dateStr);
+            const isInAnyPeriod = periods.some(p => p.startDate && p.endDate && p.startDate <= dateStr && dateStr <= p.endDate);
+
+            if (hasPastPeriod && !isInAnyPeriod) {
+                hasChanged = true;
+                return { ...student, status: 'attending' };
+            }
+            return student;
+        });
+
+        if (hasChanged) {
+            this.saveDB();
+            this.notify('STUDENTS_CHANGED', this.db.students);
+        }
+    },
+
     // --- STUDENTS STATUS HELPERS ---
     normalizeStudentStatus(status) {
         const allowed = ['attending', 'on_leave', 'withdrawn'];
@@ -26,11 +76,13 @@ export const membersMethods = {
 
     // --- STUDENTS ---
     getStudents() {
+        this.autoAttendingReturnFromLeave();
         if (!this.db.students) this.db.students = [];
         return this.db.students.filter(s => !s.isDeleted);
     },
 
     getStudent(id) {
+        this.autoAttendingReturnFromLeave();
         return this.db.students.find(s => s.id === id);
     },
 

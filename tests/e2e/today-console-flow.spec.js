@@ -2201,5 +2201,84 @@ test.describe('Director Today Console Flow Checks', () => {
     const hasLateOrCheckout = tasks4.some(t => t.dedupeKey.includes('LATE') || t.dedupeKey.includes('CHECKOUT_MISSING'));
     expect(hasLateOrCheckout).toBe(true);
   });
+
+  test('should verify auto return from leave triggers normal absent recommendation after leave period ends', async ({ page }) => {
+    // 1. Setup: Clear tasks, create Wednesday class for S1, put S1 on leave with past leave period
+    await page.evaluate(() => {
+      window.stateStore.db.todayTasks = [];
+      window.stateStore.db.attendance = [];
+      window.stateStore.db.scheduleSnapshots = window.stateStore.db.scheduleSnapshots.filter(s => s.date !== '2026-06-03');
+
+      // Set eval override time
+      window.stateStore.db.settings.DAYDAY_DEBUG_EVAL_TIME = '2026-06-03T18:00:00';
+
+      // Ensure S1 has Wednesday class
+      const hasWedClass = window.stateStore.db.classes.some(c => c.studentId === 'S1' && c.dayOfWeek === '수');
+      if (!hasWedClass) {
+        window.stateStore.db.classes.push({
+          id: 'test-class-s1-wed',
+          studentId: 'S1',
+          dayOfWeek: '수',
+          time: '14:00'
+        });
+      }
+
+      // S1: status = 'on_leave', but leavePeriods = past (06-01 ~ 06-02), today is 06-03 -> should return to attending
+      const s1 = window.stateStore.db.students.find(s => s.id === 'S1');
+      if (s1) {
+        s1.status = 'on_leave';
+        s1.leavePeriods = [{ startDate: '2026-06-01', endDate: '2026-06-02' }];
+      }
+
+      // S2: status = 'on_leave', leavePeriods = active (06-01 ~ 06-10) -> should remain on_leave (and absent task suppressed)
+      const s2 = window.stateStore.db.students.find(s => s.id === 'S2');
+      if (s2) {
+        s2.status = 'on_leave';
+        s2.leavePeriods = [{ startDate: '2026-06-01', endDate: '2026-06-10' }];
+      }
+      
+      // Ensure S2 has Wednesday class
+      const hasS2WedClass = window.stateStore.db.classes.some(c => c.studentId === 'S2' && c.dayOfWeek === '수');
+      if (!hasS2WedClass) {
+        window.stateStore.db.classes.push({
+          id: 'test-class-s2-wed',
+          studentId: 'S2',
+          dayOfWeek: '수',
+          time: '14:00'
+        });
+      }
+
+      window.stateStore.saveDB();
+    });
+
+    // 3. Trigger syncSystemRecommendations -> should normalization run, S1 returns to attending, S2 remains on_leave
+    await page.evaluate(() => {
+      // Reset cache for return logic
+      window.stateStore._lastAutoReturnDate = null;
+      const mockNow = new Date('2026-06-03T18:00:00');
+      window.stateStore.syncSystemRecommendations(mockNow, false);
+    });
+
+    await page.waitForTimeout(300);
+
+    // 4. Check results
+    const results = await page.evaluate(() => {
+      const db = window.stateStore.db;
+      return {
+        s1Status: db.students.find(s => s.id === 'S1')?.status,
+        s2Status: db.students.find(s => s.id === 'S2')?.status,
+        s1Tasks: db.todayTasks.filter(t => t.category === 'absent' && t.relatedStudentIds.includes('S1')),
+        s2Tasks: db.todayTasks.filter(t => t.category === 'absent' && t.relatedStudentIds.includes('S2'))
+      };
+    });
+
+    // S1 returned to attending -> absent task should be generated
+    expect(results.s1Status).toBe('attending');
+    expect(results.s1Tasks.length).toBeGreaterThan(0);
+
+    // S2 remains on_leave -> absent task should NOT be generated (suppressed)
+    expect(results.s2Status).toBe('on_leave');
+    expect(results.s2Tasks.length).toBe(0);
+  });
 });
 
