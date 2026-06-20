@@ -305,7 +305,7 @@ test.describe('Student Status Management Flow', () => {
 
     const unpaidCard = page.locator('.metric-card', { hasText: '이번 달 미납 수강료' });
     await expect(unpaidCard).toBeVisible();
-    await expect(unpaidCard.locator('.metric-sublabel')).toContainText('퇴원생 미수금');
+    await expect(unpaidCard.locator('.metric-sublabel')).toContainText('퇴원생 미납 포함');
 
     expect(consoleErrors.length).toBe(0);
   });
