@@ -796,7 +796,10 @@ export function renderTodayConsole(container) {
                             <div class="head-student-card">
                                 <div class="avatar">${escapeHtml(student.name[0])}</div>
                                 <div class="profile-main">
-                                    <strong>${escapeHtml(student.name)}</strong>
+                                    <strong>
+                                        ${escapeHtml(student.name)}
+                                        ${student.status === 'withdrawn' ? `<span class="badge" style="padding: 2px 6px; font-size: 0.72rem; font-weight: 700; border-radius: 4px; background-color: #dc2626; color: #ffffff; margin-left: 6px; vertical-align: middle;">퇴원</span>` : ''}
+                                    </strong>
                                     <span>${profileMetaHtml}</span>
                                 </div>
                             </div>
@@ -889,7 +892,7 @@ export function renderTodayConsole(container) {
                         </div>
                     </div>
                     <div class="inspector-footer" style="padding: 1rem 1.5rem; border-top: 1px solid var(--border-color); display: flex; gap: 10px; background: #ffffff;">
-                        <button type="button" class="btn btn-secondary" data-action="drawer-send-message" data-id="${task.id}" style="flex: 1; justify-content: center; height: 38px; font-weight: 600; margin-bottom: 0;">메시지 보내기</button>
+                        ${task.type !== 'withdrawn_unpaid' ? `<button type="button" class="btn btn-secondary" data-action="drawer-send-message" data-id="${task.id}" style="flex: 1; justify-content: center; height: 38px; font-weight: 600; margin-bottom: 0;">메시지 보내기</button>` : ''}
                         <button type="button" class="btn btn-primary" data-action="drawer-detail" data-student-id="${student.id}" style="flex: 1; justify-content: center; height: 38px; font-weight: 600; margin-bottom: 0;">상세정보</button>
                     </div>
                 `;
@@ -1883,7 +1886,7 @@ export function renderTodayConsole(container) {
                                     const targetCategories = ['absent', 'billing', 'overdue', 'book_billing', 'consult', 'counseling'];
                                     const hasStudentId = (task.relatedStudentIds && task.relatedStudentIds.length > 0) || task.studentId;
                                     const isHandoffTarget = targetCategories.includes(task.category) || targetCategories.includes(task.type);
-                                    const showMessageSendBtn = isHandoffTarget && hasStudentId && !isRestorable;
+                                    const showMessageSendBtn = isHandoffTarget && hasStudentId && !isRestorable && task.type !== 'withdrawn_unpaid';
 
                                     let handoffBtnHtml = '';
                                     if (showMessageSendBtn) {
@@ -1948,15 +1951,26 @@ export function renderTodayConsole(container) {
                                     }
                                     const safeDescription = escapeHtml(previewDescription);
 
+                                    let displayTitleHtml = safeTitle;
+                                    if (task.type === 'withdrawn_unpaid') {
+                                        displayTitleHtml = safeTitle.replace('퇴원생', '<span class="withdrawn-title-token" style="color: #dc2626; font-weight: 800;">퇴원생</span>');
+                                    }
+
+                                    let descriptionWarningHtml = '';
+                                    if (task.type === 'withdrawn_unpaid') {
+                                        descriptionWarningHtml = `<div style="font-size: 0.78rem; color: #dc2626; font-weight: 600; margin-top: 4px;"><i class="fa-solid fa-circle-info" style="margin-right: 4px;"></i>퇴원생 미수납은 수동 확인 대상입니다.</div>`;
+                                    }
+
                                     return `
-                                        <div class="glass-card" style="${cardStyle}" ${!isRestorable ? `onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='rgba(255,255,255,0.01)'"` : ''}>
+                                        <div class="glass-card${task.type === 'withdrawn_unpaid' ? ' withdrawn-unpaid-task' : ''}" style="${cardStyle}" ${!isRestorable ? `onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='rgba(255,255,255,0.01)'"` : ''}>
                                             <div style="display: flex; align-items: center; gap: 16px; flex-grow: 1; cursor: pointer;" class="task-card-click-zone" data-id="${safeId}">
                                                 <div style="flex-shrink: 0;">
                                                     ${badgeHtml}
                                                 </div>
                                                 <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0;">
-                                                    <div style="${titleStyle}" class="card-title-text">${safeTitle}</div>
+                                                    <div style="${titleStyle}" class="card-title-text">${displayTitleHtml}</div>
                                                     ${previewDescription ? `<div style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.4; white-space: pre-wrap;">${safeDescription}</div>` : ''}
+                                                    ${descriptionWarningHtml}
                                                 </div>
                                             </div>
                                             <!-- Right side actions & metadata -->

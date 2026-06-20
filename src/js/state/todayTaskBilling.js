@@ -10,6 +10,37 @@ export function syncBillingRecommendations(ctx, options) {
         const students = ctx.getStudents();
         const payments = ctx.getPayments();
         const activeBillingKeys = [];
+        // 0. Normalize existing withdrawn_unpaid task titles and descriptions to latest guidelines
+        if (ctx.db && ctx.db.todayTasks) {
+            ctx.db.todayTasks = ctx.db.todayTasks.map(t => {
+                if (t.type === 'withdrawn_unpaid') {
+                    const studentId = (t.relatedStudentIds && t.relatedStudentIds.length > 0) ? t.relatedStudentIds[0] : null;
+                    const student = studentId ? students.find(s => s.id === studentId) : null;
+                    const studentName = student ? student.name : '';
+
+                    let updatedTitle = t.title || '';
+                    if (updatedTitle.startsWith('[퇴원생 미수] ') || updatedTitle.startsWith('[퇴원생 미수납] ')) {
+                        if (!updatedTitle.startsWith('[퇴원생 미수납 확인] ')) {
+                            updatedTitle = updatedTitle
+                                .replace(/^\[퇴원생 미수납\]/, '[퇴원생 미수납 확인]')
+                                .replace(/^\[퇴원생 미수\]/, '[퇴원생 미수납 확인]');
+                        }
+                    }
+
+                    let updatedDesc = t.description || '';
+                    if (studentName) {
+                        updatedDesc = `퇴원생 ${studentName} 원생의 미납 수강료가 남아 있습니다.`;
+                    }
+
+                    return {
+                        ...t,
+                        title: updatedTitle,
+                        description: updatedDesc
+                    };
+                }
+                return t;
+            });
+        }
 
         // 1. Generate/Mute Billing recommendations (Due / Unpaid)
         payments.forEach(payment => {
@@ -41,88 +72,130 @@ export function syncBillingRecommendations(ctx, options) {
                 isOverdue = true;
             }
 
-            if (isDueToday) {
-                const dedupeKey = `SYSTEM_RECOMMEND_BILLING_DUE_${payment.id}_${payment.month}`;
-                activeBillingKeys.push(dedupeKey);
+            if (student.status === 'withdrawn') {
+                if (isDueToday || isOverdue) {
+                    const dedupeKey = `SYSTEM_RECOMMEND_WITHDRAWN_UNPAID_${payment.id}_${payment.month}`;
+                    activeBillingKeys.push(dedupeKey);
 
-                // 수동 완료/삭제 여부 검사
-                const hasResolved = ctx.db.todayTasks.some(t =>
-                    t.source === 'system' &&
-                    (t.status === 'done' || t.status === 'dismissed') &&
-                    t.dedupeKey === dedupeKey
-                );
+                    // 수동 완료/삭제 여부 검사
+                    const hasResolved = ctx.db.todayTasks.some(t =>
+                        t.source === 'system' &&
+                        (t.status === 'done' || t.status === 'dismissed') &&
+                        t.dedupeKey === dedupeKey
+                    );
 
-                if (!hasResolved) {
-                    const isAlreadyOpen = ctx.db.todayTasks.some(t => t.dedupeKey === dedupeKey && t.status === 'open');
-                    if (!isAlreadyOpen) {
-                        const dueTime = new Date(py, pm - 1, safeDueDay, 9, 0, 0, 0);
-                        const endTime = new Date(py, pm - 1, safeDueDay, 10, 0, 0, 0);
-                        addValidatedSystemTodayTask(ctx, {
-                            organizationId: student.academyId || '',
-                            segment: 'academy_director_console',
-                            domain: 'academy',
-                            source: 'system',
-                            type: 'billing',
-                            category: 'billing',
-                            priority: 'today',
-                            status: 'open',
-                            dueAt: dueTime.toISOString(),
-                            startAt: dueTime.toISOString(),
-                            endAt: endTime.toISOString(),
-                            title: `[수납확인] ${student.name} 원생 ${py}년 ${pm}월 수강료`,
-                            description: `${student.name} 원생의 ${py}년 ${pm}월 수강료 ${payment.amount.toLocaleString()}원 정기 수납일입니다. 수납 안내 또는 결제 확인이 필요합니다.`,
-                            relatedStudentIds: [student.id],
-                            dedupeKey: dedupeKey,
-                            visibilityRoles: ['director'],
-                            actionType: 'NAVIGATE',
-                            actionPayload: { route: '/billing', studentId: student.id }
-                        }, { domain: 'billing', silent });
+                    if (!hasResolved) {
+                        const isAlreadyOpen = ctx.db.todayTasks.some(t => t.dedupeKey === dedupeKey && t.status === 'open');
+                        if (!isAlreadyOpen) {
+                            const dueTime = new Date(py, pm - 1, safeDueDay, 9, 0, 0, 0);
+                            const endTime = new Date(py, pm - 1, safeDueDay, 10, 0, 0, 0);
+                            addValidatedSystemTodayTask(ctx, {
+                                organizationId: student.academyId || '',
+                                segment: 'academy_director_console',
+                                domain: 'academy',
+                                source: 'system',
+                                type: 'withdrawn_unpaid',
+                                category: 'billing',
+                                priority: 'today',
+                                status: 'open',
+                                dueAt: dueTime.toISOString(),
+                                startAt: dueTime.toISOString(),
+                                endAt: endTime.toISOString(),
+                                title: `[퇴원생 미수납 확인] ${student.name} 원생 미수금 확인`,
+                                description: `퇴원생 ${student.name} 원생의 미납 수강료가 남아 있습니다.`,
+                                relatedStudentIds: [student.id],
+                                dedupeKey: dedupeKey,
+                                visibilityRoles: ['director'],
+                                actionType: 'NAVIGATE',
+                                actionPayload: { route: '/billing', studentId: student.id }
+                            }, { domain: 'billing', silent });
+                        }
                     }
                 }
-            } else if (isOverdue) {
-                const dedupeKey = `SYSTEM_RECOMMEND_BILLING_UNPAID_${payment.id}_${payment.month}`;
-                activeBillingKeys.push(dedupeKey);
+            } else {
+                if (isDueToday) {
+                    const dedupeKey = `SYSTEM_RECOMMEND_BILLING_DUE_${payment.id}_${payment.month}`;
+                    activeBillingKeys.push(dedupeKey);
 
-                // Trigger tuition_overdue parent message if not already created
-                const msgDedupeKey = `TUITION_OVERDUE_${payment.id}`;
-                const msgExists = ctx.db.parentMessages && ctx.db.parentMessages.some(m => m.dedupeKey === msgDedupeKey);
-                if (!msgExists && typeof ctx.triggerPaymentParentMessage === 'function') {
-                    ctx.triggerPaymentParentMessage(payment.id, 'tuition_overdue');
-                }
+                    // 수동 완료/삭제 여부 검사
+                    const hasResolved = ctx.db.todayTasks.some(t =>
+                        t.source === 'system' &&
+                        (t.status === 'done' || t.status === 'dismissed') &&
+                        t.dedupeKey === dedupeKey
+                    );
 
-                // 수동 완료/삭제 여부 검사
-                const hasResolved = ctx.db.todayTasks.some(t =>
-                    t.source === 'system' &&
-                    (t.status === 'done' || t.status === 'dismissed') &&
-                    t.dedupeKey === dedupeKey
-                );
+                    if (!hasResolved) {
+                        const isAlreadyOpen = ctx.db.todayTasks.some(t => t.dedupeKey === dedupeKey && t.status === 'open');
+                        if (!isAlreadyOpen) {
+                            const dueTime = new Date(py, pm - 1, safeDueDay, 9, 0, 0, 0);
+                            const endTime = new Date(py, pm - 1, safeDueDay, 10, 0, 0, 0);
+                            addValidatedSystemTodayTask(ctx, {
+                                organizationId: student.academyId || '',
+                                segment: 'academy_director_console',
+                                domain: 'academy',
+                                source: 'system',
+                                type: 'billing',
+                                category: 'billing',
+                                priority: 'today',
+                                status: 'open',
+                                dueAt: dueTime.toISOString(),
+                                startAt: dueTime.toISOString(),
+                                endAt: endTime.toISOString(),
+                                title: `[수납확인] ${student.name} 원생 ${py}년 ${pm}월 수강료`,
+                                description: `${student.name} 원생의 ${py}년 ${pm}월 수강료 ${payment.amount.toLocaleString()}원 정기 수납일입니다. 수납 안내 또는 결제 확인이 필요합니다.`,
+                                relatedStudentIds: [student.id],
+                                dedupeKey: dedupeKey,
+                                visibilityRoles: ['director'],
+                                actionType: 'NAVIGATE',
+                                actionPayload: { route: '/billing', studentId: student.id }
+                            }, { domain: 'billing', silent });
+                        }
+                    }
+                } else if (isOverdue) {
+                    const dedupeKey = `SYSTEM_RECOMMEND_BILLING_UNPAID_${payment.id}_${payment.month}`;
+                    activeBillingKeys.push(dedupeKey);
 
-                if (!hasResolved) {
-                    const isAlreadyOpen = ctx.db.todayTasks.some(t => t.dedupeKey === dedupeKey && t.status === 'open');
-                    if (!isAlreadyOpen) {
-                        const dueTime = new Date(py, pm - 1, safeDueDay, 9, 0, 0, 0);
-                        const endTime = new Date(py, pm - 1, safeDueDay, 10, 0, 0, 0);
-                        const formattedDueDate = `${py}-${String(pm).padStart(2, '0')}-${String(safeDueDay).padStart(2, '0')}`;
-                        addValidatedSystemTodayTask(ctx, {
-                            organizationId: student.academyId || '',
-                            segment: 'academy_director_console',
-                            domain: 'academy',
-                            source: 'system',
-                            type: 'billing',
-                            category: 'overdue',
-                            priority: 'today',
-                            status: 'open',
-                            dueAt: dueTime.toISOString(),
-                            startAt: dueTime.toISOString(),
-                            endAt: endTime.toISOString(),
-                            title: `[미수납 확인] ${student.name} 원생 ${py}년 ${pm}월 수강료`,
-                            description: `${student.name} 원생의 ${py}년 ${pm}월 수강료 ${payment.amount.toLocaleString()}원이 납부 예정일(${formattedDueDate})을 지났지만 아직 미수납 상태입니다. 수납 상태 확인 또는 학부모 안내가 필요합니다.`,
-                            relatedStudentIds: [student.id],
-                            dedupeKey: dedupeKey,
-                            visibilityRoles: ['director'],
-                            actionType: 'NAVIGATE',
-                            actionPayload: { route: '/billing', studentId: student.id }
-                        }, { domain: 'billing', silent });
+                    // Trigger tuition_overdue parent message if not already created
+                    const msgDedupeKey = `TUITION_OVERDUE_${payment.id}`;
+                    const msgExists = ctx.db.parentMessages && ctx.db.parentMessages.some(m => m.dedupeKey === msgDedupeKey);
+                    if (!msgExists && typeof ctx.triggerPaymentParentMessage === 'function') {
+                        ctx.triggerPaymentParentMessage(payment.id, 'tuition_overdue');
+                    }
+
+                    // 수동 완료/삭제 여부 검사
+                    const hasResolved = ctx.db.todayTasks.some(t =>
+                        t.source === 'system' &&
+                        (t.status === 'done' || t.status === 'dismissed') &&
+                        t.dedupeKey === dedupeKey
+                    );
+
+                    if (!hasResolved) {
+                        const isAlreadyOpen = ctx.db.todayTasks.some(t => t.dedupeKey === dedupeKey && t.status === 'open');
+                        if (!isAlreadyOpen) {
+                            const dueTime = new Date(py, pm - 1, safeDueDay, 9, 0, 0, 0);
+                            const endTime = new Date(py, pm - 1, safeDueDay, 10, 0, 0, 0);
+                            const formattedDueDate = `${py}-${String(pm).padStart(2, '0')}-${String(safeDueDay).padStart(2, '0')}`;
+                            addValidatedSystemTodayTask(ctx, {
+                                organizationId: student.academyId || '',
+                                segment: 'academy_director_console',
+                                domain: 'academy',
+                                source: 'system',
+                                type: 'billing',
+                                category: 'overdue',
+                                priority: 'today',
+                                status: 'open',
+                                dueAt: dueTime.toISOString(),
+                                startAt: dueTime.toISOString(),
+                                endAt: endTime.toISOString(),
+                                title: `[미수납 확인] ${student.name} 원생 ${py}년 ${pm}월 수강료`,
+                                description: `${student.name} 원생의 ${py}년 ${pm}월 수강료 ${payment.amount.toLocaleString()}원이 납부 예정일(${formattedDueDate})을 지났지만 아직 미수납 상태입니다. 수납 상태 확인 또는 학부모 안내가 필요합니다.`,
+                                relatedStudentIds: [student.id],
+                                dedupeKey: dedupeKey,
+                                visibilityRoles: ['director'],
+                                actionType: 'NAVIGATE',
+                                actionPayload: { route: '/billing', studentId: student.id }
+                            }, { domain: 'billing', silent });
+                        }
                     }
                 }
             }
@@ -141,12 +214,17 @@ export function syncBillingRecommendations(ctx, options) {
                 const idx = rest.lastIndexOf('_');
                 return idx !== -1 ? rest.substring(0, idx) : rest;
             }
+            if (key.startsWith('SYSTEM_RECOMMEND_WITHDRAWN_UNPAID_')) {
+                const rest = key.substring('SYSTEM_RECOMMEND_WITHDRAWN_UNPAID_'.length);
+                const idx = rest.lastIndexOf('_');
+                return idx !== -1 ? rest.substring(0, idx) : rest;
+            }
             return null;
         };
 
         // First, resolve (mark 'done') if payment status becomes 'paid'
         ctx.db.todayTasks = ctx.db.todayTasks.map(t => {
-            if (t.source === 'system' && t.status === 'open' && t.type === 'billing') {
+            if (t.source === 'system' && t.status === 'open' && (t.type === 'billing' || t.type === 'withdrawn_unpaid')) {
                 const paymentId = getPaymentIdFromDedupeKey(t.dedupeKey);
                 if (paymentId) {
                     const payment = payments.find(p => p.id === paymentId);
@@ -165,7 +243,7 @@ export function syncBillingRecommendations(ctx, options) {
 
         // Second, remove obsolete recommendations (e.g. state transition from billing to overdue)
         ctx.db.todayTasks = ctx.db.todayTasks.filter(t => {
-            if (t.source === 'system' && t.status === 'open' && t.type === 'billing') {
+            if (t.source === 'system' && t.status === 'open' && (t.type === 'billing' || t.type === 'withdrawn_unpaid')) {
                 // Category must be billing or overdue
                 if (t.category === 'billing' || t.category === 'overdue' || t.category === 'system_check') {
                     return activeBillingKeys.includes(t.dedupeKey);
@@ -180,6 +258,15 @@ export function syncBillingRecommendations(ctx, options) {
             if (task.source === 'system' && task.status === 'open') {
                 if (task.dedupeKey && task.dedupeKey.startsWith('SYSTEM_RECOMMEND_BILLING_UNPAID_')) {
                     const prefix = 'SYSTEM_RECOMMEND_BILLING_UNPAID_';
+                    const rest = task.dedupeKey.substring(prefix.length);
+                    const lastUnderscore = rest.lastIndexOf('_');
+                    const paymentId = lastUnderscore !== -1 ? rest.substring(0, lastUnderscore) : rest;
+                    const payment = payments.find(p => p.id === paymentId);
+                    if (payment && payment.status === 'paid') {
+                        ctx.updateTodayTask(task.id, { status: 'done', completedAt: parsedNow.toISOString() });
+                    }
+                } else if (task.dedupeKey && task.dedupeKey.startsWith('SYSTEM_RECOMMEND_WITHDRAWN_UNPAID_')) {
+                    const prefix = 'SYSTEM_RECOMMEND_WITHDRAWN_UNPAID_';
                     const rest = task.dedupeKey.substring(prefix.length);
                     const lastUnderscore = rest.lastIndexOf('_');
                     const paymentId = lastUnderscore !== -1 ? rest.substring(0, lastUnderscore) : rest;

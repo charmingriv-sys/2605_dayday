@@ -23,7 +23,9 @@ export const KPI_CONFIGS = [
 export function getTaskKpiCategory(task) {
     let cat = task.category || 'memo';
     if (task.source === 'system' || task.source === 'auto') {
-        if (task.type === 'billing') {
+        if (task.type === 'withdrawn_unpaid') {
+            cat = 'overdue';
+        } else if (task.type === 'billing') {
             if (task.category === 'billing') cat = 'billing';
             else cat = 'overdue';
         } else if (task.type === 'attendance') {

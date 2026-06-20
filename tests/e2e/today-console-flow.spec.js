@@ -2280,5 +2280,286 @@ test.describe('Director Today Console Flow Checks', () => {
     expect(results.s2Status).toBe('on_leave');
     expect(results.s2Tasks.length).toBe(0);
   });
+
+  test('should verify withdrawn student unpaid tasks are isolated with custom tags and message handoff is disabled', async ({ page }) => {
+    // 1. Setup: Clear tasks, prepare S1 as attending, S3 as attending (normal check), S4/S5 as withdrawn
+    await page.evaluate(() => {
+      window.stateStore.db.todayTasks = [];
+      window.stateStore.db.parentMessages = [];
+      window.stateStore.db.payments = window.stateStore.db.payments.filter(p => !['S1', 'S3', 'S4', 'S5'].includes(p.studentId));
+
+      // Set eval override time to 2026-06-15 (due date is 10th for S1/S3/S4, 15th for S4_dueToday, 20th for S5_future)
+      window.stateStore.db.settings.DAYDAY_DEBUG_EVAL_TIME = '2026-06-15T18:00:00';
+
+      // S1: attending
+      const s1 = window.stateStore.db.students.find(s => s.id === 'S1');
+      if (s1) {
+        s1.status = 'attending';
+        s1.dueDay = 10;
+      }
+
+      // S3: attending (normal reference)
+      const s3 = window.stateStore.db.students.find(s => s.id === 'S3');
+      if (s3) {
+        s3.status = 'attending';
+        s3.dueDay = 10;
+      }
+
+      // S4: withdrawn (dueToday)
+      const s4 = window.stateStore.db.students.find(s => s.id === 'S4');
+      if (s4) {
+        s4.status = 'withdrawn';
+        s4.dueDay = 15; // dueToday
+      }
+
+      // S5: withdrawn (future due date)
+      const s5 = window.stateStore.db.students.find(s => s.id === 'S5');
+      if (s5) {
+        s5.status = 'withdrawn';
+        s5.dueDay = 20; // future due
+      }
+
+      // Add overdue unpaid payments for S1, S3, S4, S5
+      window.stateStore.db.payments.push(
+        {
+          id: 'pay-test-s1-overdue',
+          studentId: 'S1',
+          type: 'education',
+          amount: 250000,
+          month: '2026-06',
+          status: 'unpaid',
+          invoiceDate: '2026-06-01'
+        },
+        {
+          id: 'pay-test-s3-overdue',
+          studentId: 'S3',
+          type: 'education',
+          amount: 280000,
+          month: '2026-06',
+          status: 'unpaid',
+          invoiceDate: '2026-06-01'
+        },
+        {
+          id: 'pay-test-s4-dueToday',
+          studentId: 'S4',
+          type: 'education',
+          amount: 300000,
+          month: '2026-06',
+          status: 'unpaid',
+          invoiceDate: '2026-06-01'
+        },
+        {
+          id: 'pay-test-s5-future',
+          studentId: 'S5',
+          type: 'education',
+          amount: 320000,
+          month: '2026-06',
+          status: 'unpaid',
+          invoiceDate: '2026-06-01'
+        }
+      );
+
+      window.stateStore.saveDB();
+    });
+
+    // 2. Sync recommendations as attending -> normal overdue task should be created for S1 and S3
+    await page.evaluate(() => {
+      window.stateStore.syncSystemRecommendations(new Date('2026-06-15T18:00:00'), false);
+    });
+
+    await page.waitForTimeout(300);
+
+    // Refresh view
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+    await page.waitForTimeout(200);
+
+    // Verify task creation in DB for S1 & S3
+    let tasks = await page.evaluate(() => {
+      return window.stateStore.db.todayTasks.map(t => ({
+        id: t.id,
+        type: t.type,
+        title: t.title,
+        dedupeKey: t.dedupeKey,
+        status: t.status
+      }));
+    });
+
+    const s1TaskBefore = tasks.find(t => t.dedupeKey.includes('pay-test-s1-overdue'));
+    const s3Task = tasks.find(t => t.dedupeKey.includes('pay-test-s3-overdue'));
+
+    expect(s1TaskBefore, 'Attending student S1 should have a normal overdue task').toBeDefined();
+    expect(s1TaskBefore.type, 'Task type for attending student S1 should be billing').toBe('billing');
+    expect(s1TaskBefore.title, 'Task title for attending student S1 should contain [미수납 확인]').toContain('[미수납 확인]');
+
+    expect(s3Task, 'Attending student S3 should have a normal overdue task').toBeDefined();
+    expect(s3Task.type, 'Task type for attending student S3 should be billing').toBe('billing');
+    expect(s3Task.title, 'Task title for attending student S3 should contain [미수납 확인]').toContain('[미수납 확인]');
+
+    // 3. Transition S1 to withdrawn and sync recommendations
+    await page.evaluate(() => {
+      const s1 = window.stateStore.db.students.find(s => s.id === 'S1');
+      if (s1) s1.status = 'withdrawn';
+      window.stateStore.saveDB();
+      window.stateStore.syncSystemRecommendations(new Date('2026-06-15T18:00:00'), false);
+    });
+
+    await page.waitForTimeout(300);
+
+    // Refresh view
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+    await page.waitForTimeout(200);
+
+    // Verify database tasks after transition
+    tasks = await page.evaluate(() => {
+      return window.stateStore.db.todayTasks.map(t => ({
+        id: t.id,
+        type: t.type,
+        title: t.title,
+        dedupeKey: t.dedupeKey,
+        status: t.status
+      }));
+    });
+
+    // S1's old task should be gone/cleaned up, and a new withdrawn_unpaid task should be created
+    const s1OldTask = tasks.find(t => t.dedupeKey.includes('pay-test-s1-overdue') && t.status === 'open' && t.type === 'billing');
+    const s1NewTask = tasks.find(t => t.dedupeKey.includes('pay-test-s1-overdue') && t.type === 'withdrawn_unpaid');
+    const s4Task = tasks.find(t => t.dedupeKey.includes('pay-test-s4-dueToday'));
+    const s5Task = tasks.find(t => t.dedupeKey.includes('pay-test-s5-future'));
+
+    expect(s1OldTask, 'Normal attending task for S1 should be cleaned up after transitioning to withdrawn').toBeUndefined();
+    expect(s1NewTask, 'Withdrawn unpaid task for S1 should be created after transitioning to withdrawn').toBeDefined();
+    expect(s1NewTask.type, 'Task type for S1 should be withdrawn_unpaid').toBe('withdrawn_unpaid');
+    expect(s1NewTask.title.startsWith('[퇴원생 미수납 확인]'), 'Task title for S1 should start with [퇴원생 미수납 확인]').toBe(true);
+    expect(s1NewTask.title.startsWith('[퇴원생 미수납] '), 'Task title for S1 should not start with [퇴원생 미수납] without confirmation suffix').toBe(false);
+
+    // S4 (due date is today: June 15) should also have a withdrawn_unpaid task
+    expect(s4Task, 'Withdrawn student S4 with dueToday payment should have a withdrawn unpaid task').toBeDefined();
+    expect(s4Task.type, 'Task type for S4 should be withdrawn_unpaid').toBe('withdrawn_unpaid');
+
+    // S5 (due date is in the future: June 20) should NOT have any task
+    expect(s5Task, 'Withdrawn student S5 with future payment should NOT have a task generated').toBeUndefined();
+
+    // 4. Verify KPI / Filter Category Mapping (should map to 'overdue' i.e. 미수납 확인)
+    const overdueCountText = await page.locator('.kpi-chip-card[data-filter-id="overdue"] .badge').textContent();
+    expect(overdueCountText.trim(), 'The overdue KPI count should include both the withdrawn unpaid task and the normal overdue task').toBe('3');
+
+    // Verify KPI chip click filter keeps task visible
+    // Click "미수납 확인" KPI filter chip
+    await page.locator('.kpi-chip-card[data-filter-id="overdue"]').click();
+    await page.waitForTimeout(200);
+
+    const isS1CardVisible = await page.locator(`.task-card-click-zone[data-id="${s1NewTask.id}"]`).isVisible();
+    expect(isS1CardVisible, 'withdrawn_unpaid task card should be visible under overdue filter').toBe(true);
+
+    // 5. Verify UI card buttons
+    // Normal attending student S3 card should have message send button
+    const s3Card = page.locator(`.task-card-click-zone[data-id="${s3Task.id}"]`).locator('xpath=./..');
+    const s3MsgBtn = s3Card.locator('.btn-message-send');
+    await expect(s3MsgBtn, 'Attending student unpaid card should display message send button').toBeVisible();
+
+    // Withdrawn student S1 card should NOT have message send button, but warning text
+    const s1Card = page.locator(`.task-card-click-zone[data-id="${s1NewTask.id}"]`).locator('xpath=./..');
+    await expect(s1Card, 'The card wrapper should have class withdrawn-unpaid-task').toHaveClass(/withdrawn-unpaid-task/);
+    const s1MsgBtn = s1Card.locator('.btn-message-send');
+    await expect(s1MsgBtn, 'Withdrawn student unpaid card should NOT display message send button').not.toBeVisible();
+    await expect(s1Card, 'Withdrawn student unpaid card should contain warning text').toContainText('퇴원생 미수납은 수동 확인 대상입니다.');
+    await expect(s1Card, 'Withdrawn student unpaid card should not contain old warning text').not.toContainText('퇴원생 미수금은 수동 확인 대상입니다.');
+
+    // Verify title formatting with .withdrawn-title-token
+    const s1CardTitleLocator = s1Card.locator('.card-title-text');
+    await expect(s1CardTitleLocator).toContainText('[퇴원생 미수납 확인]');
+    const token = s1CardTitleLocator.locator('.withdrawn-title-token');
+    await expect(token).toBeVisible();
+    await expect(token).toHaveText('퇴원생');
+    const tokenStyle = await token.getAttribute('style');
+    expect(tokenStyle).toContain('color: #dc2626');
+    expect(tokenStyle).toContain('font-weight: 800');
+
+    // 6. Open S1 task drawer and verify buttons and profile badge
+    await page.locator(`.task-card-click-zone[data-id="${s1NewTask.id}"]`).click();
+    await page.waitForTimeout(200);
+
+    // Profile header should show [퇴원] red badge next to name
+    const drawerProfileHeader = page.locator('.inspector-head .profile-main strong');
+    await expect(drawerProfileHeader, 'Drawer profile header should display 퇴원 badge').toContainText('퇴원');
+
+    // Drawer footer should NOT contain message button, detail button should be full-width
+    const drawerFooterMsgBtn = page.locator('.inspector-footer [data-action="drawer-send-message"]');
+    await expect(drawerFooterMsgBtn, 'Drawer footer should NOT display message send button for withdrawn student').not.toBeVisible();
+
+    // Close drawer
+    await page.locator('#btn-close-task-drawer').click();
+    await page.waitForTimeout(200);
+
+    // 6.5. Verify title normalization for existing legacy tasks (Phase 17G-6B-Repair4)
+    // Inject a task with title "[퇴원생 미수] S1 원생 미수금 확인" and status "snoozed" to DB directly
+    await page.evaluate(() => {
+      window.stateStore.db.todayTasks.push({
+        id: 'legacy-task-s1',
+        organizationId: '',
+        segment: 'academy_director_console',
+        domain: 'academy',
+        source: 'system',
+        type: 'withdrawn_unpaid',
+        category: 'billing',
+        priority: 'today',
+        status: 'snoozed',
+        snoozedUntil: new Date(Date.now() + 3600000).toISOString(),
+        dueAt: new Date().toISOString(),
+        title: '[퇴원생 미수] S1 원생 미수금 확인',
+        description: '퇴원생 미수금은 수동 확인 대상입니다.',
+        relatedStudentIds: ['S1'],
+        dedupeKey: 'SYSTEM_RECOMMEND_WITHDRAWN_UNPAID_legacy_S1'
+      });
+      window.stateStore.saveDB();
+      // Sync recommendations
+      window.stateStore.syncSystemRecommendations(new Date('2026-06-15T18:00:00'), false);
+    });
+
+    await page.waitForTimeout(300);
+
+    // Refresh view
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+    await page.waitForTimeout(200);
+
+    // Verify task title is updated in the DB
+    const migratedTask = await page.evaluate(() => {
+      return window.stateStore.db.todayTasks.find(t => t.id === 'legacy-task-s1');
+    });
+    expect(migratedTask, 'Migrated task should exist').toBeDefined();
+    expect(migratedTask.title, 'Title should be migrated to [퇴원생 미수납 확인]').toBe('[퇴원생 미수납 확인] S1 원생 미수금 확인');
+    expect(migratedTask.description, 'Description should be updated to latest guidelines').toBe('퇴원생 최다은 원생의 미납 수강료가 남아 있습니다.');
+    expect(migratedTask.status, 'Original status (snoozed) must be preserved').toBe('snoozed');
+    expect(migratedTask.dedupeKey, 'Original dedupeKey must be preserved').toBe('SYSTEM_RECOMMEND_WITHDRAWN_UNPAID_legacy_S1');
+
+    // Switch to snoozed (보류) tab to view this migrated task on UI
+    await page.locator('.tab-btn:has-text("보류")').click();
+    await page.waitForTimeout(200);
+
+    const legacyCard = page.locator(`.task-card-click-zone[data-id="legacy-task-s1"]`).locator('xpath=./..');
+    await expect(legacyCard, 'Migrated legacy card title should display new title').toContainText('[퇴원생 미수납 확인] S1 원생 미수금 확인');
+    await expect(legacyCard, 'Migrated legacy card should not display old prefix').not.toContainText('[퇴원생 미수]');
+    await expect(legacyCard, 'Migrated legacy card should not display message button').not.toContainText('메시지 보내기');
+
+    // Switch back to active tab (대기)
+    await page.locator('.tab-btn:has-text("대기")').click();
+    await page.waitForTimeout(200);
+
+    // 7. Resolve payment S1 to paid and verify auto-resolution (should become 'done')
+    await page.evaluate(() => {
+      const p = window.stateStore.db.payments.find(x => x.id === 'pay-test-s1-overdue');
+      if (p) p.status = 'paid';
+      window.stateStore.saveDB();
+      window.stateStore.syncSystemRecommendations(new Date('2026-06-15T18:00:00'), false);
+    });
+
+    await page.waitForTimeout(300);
+
+    const s1TaskStatus = await page.evaluate((taskId) => {
+      return window.stateStore.db.todayTasks.find(t => t.id === taskId)?.status;
+    }, s1NewTask.id);
+
+    expect(s1TaskStatus, 'Withdrawn unpaid task status should automatically resolve to done when payment status changes to paid').toBe('done');
+  });
 });
 
