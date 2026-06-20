@@ -152,67 +152,88 @@ test.describe('Student Status Management Flow', () => {
     await expect(detailModal).toContainText('휴원 이력');
     await expect(detailModal).toContainText('휴원 2026-06-02 ~ 2026-06-10 (9일)');
 
-    // 8. Register an ACTIVE leave period: 2026-06-01 to 2026-06-30 (30 days, contains today 2026-06-19)
+    // 8. Overlap collision block test: Try registering 2026-06-01 to 2026-06-05 (overlaps with 06-02 ~ 06-10)
     await changeStatusBtn.click();
     await statusSelect.selectOption('on_leave');
     await leaveStartDateInput.fill('2026-06-01');
-    await leaveEndDateInput.fill('2026-06-30');
+    await leaveEndDateInput.fill('2026-06-05');
+
+    let overlapAlertMsg = '';
+    const overlapDialogPromise = new Promise(resolve => {
+      page.once('dialog', async dialog => {
+        overlapAlertMsg = dialog.message();
+        await dialog.accept();
+        resolve();
+      });
+    });
+
+    await page.locator('#btn-status-submit').click();
+    await overlapDialogPromise;
+    expect(overlapAlertMsg).toContain('이미 등록된 휴원 기간과 겹칩니다.');
+
+    // 9. Edit leave period: click edit next to 2026-06-02 ~ 2026-06-10
+    const editPeriodBtn = page.locator('.edit-period-btn').first();
+    await expect(editPeriodBtn).toBeVisible();
+    await editPeriodBtn.click();
+
+    // Verify fields populated
+    await expect(leaveStartDateInput).toHaveValue('2026-06-02');
+    await expect(leaveEndDateInput).toHaveValue('2026-06-10');
+
+    // Change to 2026-06-03 to 2026-06-09 (7 days) and save
+    await leaveStartDateInput.fill('2026-06-03');
+    await leaveEndDateInput.fill('2026-06-09');
 
     await page.locator('#btn-status-submit').click();
     await page.waitForTimeout(400);
 
-    // Verify detail modal now shows "현재 휴원 기간" for the active range
-    await expect(detailModal).toContainText('현재 휴원 기간');
-    await expect(detailModal).toContainText('휴원 2026-06-01 ~ 2026-06-30 (30일)');
-    await expect(detailModal).toContainText('휴원 이력');
-    await expect(detailModal).toContainText('휴원 2026-06-01 ~ 2026-06-30 (30일)');
-    await expect(detailModal).toContainText('휴원 2026-06-02 ~ 2026-06-10 (9일)');
+    // Verify detail modal re-opened and updated history is displayed
+    await expect(detailModal).toContainText('휴원 2026-06-03 ~ 2026-06-09 (7일)');
 
-    // 9. Change status back to "attending" (재원)
-    await changeStatusBtn.click();
-    await statusSelect.selectOption('attending');
-    await page.locator('#btn-status-submit').click();
-    await page.waitForTimeout(400);
-
-    // Verify detail modal displays both leave periods in history and no active period
-    await expect(detailModal).not.toContainText('현재 휴원 기간');
-    await expect(detailModal).toContainText('휴원 이력');
-    await expect(detailModal).toContainText('휴원 2026-06-01 ~ 2026-06-30 (30일)');
-    await expect(detailModal).toContainText('휴원 2026-06-02 ~ 2026-06-10 (9일)');
-
-    // 10. Register a FUTURE period: 2026-07-15 to 2026-07-25 (11 days)
+    // 10. Register another non-overlapping leave period: 2026-07-15 to 2026-07-25 (11 days)
     await changeStatusBtn.click();
     await statusSelect.selectOption('on_leave');
     await leaveStartDateInput.fill('2026-07-15');
     await leaveEndDateInput.fill('2026-07-25');
 
-    let dialogMessageFuture = '';
-    page.once('dialog', async dialog => {
-      dialogMessageFuture = dialog.message();
-      await dialog.accept();
-    });
-
     await page.locator('#btn-status-submit').click();
     await page.waitForTimeout(400);
-    expect(dialogMessageFuture).toContain('휴원');
 
-    // Verify detail modal:
-    // Today is 2026-06-19. This matches the 2026-06-01 ~ 2026-06-30 period, so "현재 휴원 기간" is shown for that period.
-    // The future period is only listed in the history list.
-    await expect(detailModal).toContainText('현재 휴원 기간');
-    await expect(detailModal).toContainText('휴원 2026-06-01 ~ 2026-06-30 (30일)');
-    await expect(detailModal).toContainText('휴원 이력');
+    // Verify both are present in history
     await expect(detailModal).toContainText('휴원 2026-07-15 ~ 2026-07-25 (11일)');
-    await expect(detailModal).toContainText('휴원 2026-06-02 ~ 2026-06-10 (9일)');
-    await expect(detailModal).toContainText('휴원 2026-06-01 ~ 2026-06-30 (30일)');
+    await expect(detailModal).toContainText('휴원 2026-06-03 ~ 2026-06-09 (7일)');
 
-    // 11. Change status to "withdrawn" (퇴원)
+    // 10.1 Delete period: delete 2026-06-03 ~ 2026-06-09
+    await changeStatusBtn.click();
+    const deleteBtn = page.locator('.delete-period-btn').first();
+    await expect(deleteBtn).toBeVisible();
+
+    let deleteConfirmMsg = '';
+    page.once('dialog', async dialog => {
+      deleteConfirmMsg = dialog.message();
+      await dialog.accept();
+    });
+    await deleteBtn.click();
+    await page.waitForTimeout(300);
+    expect(deleteConfirmMsg).toContain('삭제하시겠습니까?');
+
+    // Cancel out of status modal to return to detail modal
+    await page.locator('#btn-status-cancel').click();
+    await page.waitForTimeout(400);
+
+    // Verify only the 07-15 ~ 07-25 period remains
+    await expect(detailModal).toContainText('휴원 2026-07-15 ~ 2026-07-25 (11일)');
+    await expect(detailModal).not.toContainText('휴원 2026-06-03 ~ 2026-06-09 (7일)');
+
+    // 11. Change status to "withdrawn" (퇴원) and verify that withdrawal date overlapping with leave period is ALLOWED
     await changeStatusBtn.click();
     await statusSelect.selectOption('withdrawn');
 
     const withdrawalDateInput = page.locator('#modal-student-withdrawal-date');
     await expect(withdrawalDateInput).toBeVisible();
-    await withdrawalDateInput.fill('2026-08-01');
+    
+    // Set withdrawal date overlapping with active leave: 2026-07-20
+    await withdrawalDateInput.fill('2026-07-20');
 
     let withdrawnDialogMsg = '';
     page.once('dialog', async dialog => {
@@ -224,13 +245,12 @@ test.describe('Student Status Management Flow', () => {
     await page.waitForTimeout(400);
     expect(withdrawnDialogMsg).toContain('퇴원은 삭제가 아니며 기존 이력은 보존됩니다.');
 
-    // Detail modal re-opened, verify withdrawal date AND all leave history list is fully preserved!
+    // Detail modal re-opened, verify withdrawal date AND remaining leave history is fully preserved!
     await expect(detailModal).toContainText('퇴원일');
-    await expect(detailModal).toContainText('2026-08-01');
+    await expect(detailModal).toContainText('2026-07-20');
     await expect(detailModal).toContainText('휴원 이력');
     await expect(detailModal).toContainText('휴원 2026-07-15 ~ 2026-07-25 (11일)');
-    await expect(detailModal).toContainText('휴원 2026-06-02 ~ 2026-06-10 (9일)');
-    await expect(detailModal).toContainText('휴원 2026-06-01 ~ 2026-06-30 (30일)');
+    await expect(detailModal).not.toContainText('휴원 2026-06-03 ~ 2026-06-09');
 
     // Close detail modal
     await page.locator('.modal-close').first().click();
@@ -266,11 +286,10 @@ test.describe('Student Status Management Flow', () => {
     await row.locator('.student-name-link').click();
     await expect(detailModal).toBeVisible();
     await expect(detailModal).toContainText('퇴원일');
-    await expect(detailModal).toContainText('2026-08-01');
+    await expect(detailModal).toContainText('2026-07-20');
     await expect(detailModal).toContainText('휴원 이력');
     await expect(detailModal).toContainText('휴원 2026-07-15 ~ 2026-07-25 (11일)');
-    await expect(detailModal).toContainText('휴원 2026-06-02 ~ 2026-06-10 (9일)');
-    await expect(detailModal).toContainText('휴원 2026-06-01 ~ 2026-06-30 (30일)');
+    await expect(detailModal).not.toContainText('휴원 2026-06-03 ~ 2026-06-09');
 
     // Close detail modal
     await page.locator('.modal-close').first().click();

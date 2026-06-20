@@ -166,8 +166,15 @@ export const membersMethods = {
             updatedData.status = this.normalizeStudentStatus(updatedData.status);
         }
 
+        if (updatedData.withdrawalDate !== undefined) {
+            updatedData.leaveDate = updatedData.withdrawalDate;
+        }
+
         // Cumulative leave history logic
-        if (updatedData.status === 'on_leave' && updatedData.leaveStartDate && updatedData.leaveEndDate) {
+        if (updatedData.leavePeriods !== undefined) {
+            updatedData.leavePeriods = [...updatedData.leavePeriods];
+            updatedData.leavePeriods.sort((a, b) => a.startDate.localeCompare(b.startDate));
+        } else if (updatedData.status === 'on_leave' && updatedData.leaveStartDate && updatedData.leaveEndDate) {
             const student = this.getStudent(id);
             if (student) {
                 const leavePeriods = student.leavePeriods ? [...student.leavePeriods] : [];
