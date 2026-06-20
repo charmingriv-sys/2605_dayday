@@ -2683,51 +2683,14 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
 
     // 모달 닫기
     await page.locator('#btnFocusCancel').click();
-
-    // 4. 퇴원생 수신자 차단 검증
-    // 이도윤(S3)을 먼저 수신자에 추가
-    const studentRowS3 = page.locator('.student-row', { hasText: '이도윤' });
-    await studentRowS3.waitFor({ state: 'visible' });
-    await studentRowS3.click();
-    await page.waitForTimeout(300);
-    await page.locator('#btnAddToRecipients').click();
     await page.waitForTimeout(300);
 
-    // 수신인 추가 완료 후, 이도윤 상태를 withdrawn으로 세팅
-    await page.evaluate(() => {
-      const s = window.stateStore.getStudent('S3');
-      if (s) {
-        s.status = 'withdrawn';
-        window.stateStore.saveDB();
-      }
-    });
-
-    // 기존 수신인 지우기 및 본문 입력
-    await page.locator('#composeBodyInput').fill('정상적인 텍스트');
-    
-    dialogTriggered = false;
-    page.once('dialog', async (dialog) => {
-      dialogTriggered = true;
-      dialogText = dialog.message();
-      await dialog.accept();
-    });
-
-    // 발송 검토 모달 열기
-    await page.locator('#btnReviewSend').click();
-    // 모달 내 최종 발송 버튼 클릭하여 차단 검증
-    await page.locator('#btnFocusSendConfirm').click();
-    expect(dialogTriggered).toBe(true);
-    expect(dialogText).toContain('발송 불가능한 퇴원생 수신자가 포함되어 있습니다.');
-
-    // 모달 닫기
-    await page.locator('#btnFocusCancel').click();
-
-    // 5. 휴원생 수신자 경고 검증
-    // S3를 다시 복원하고, 휴원생 S4(김우진)을 휴원생 상태로 확인
+    // 4. 퇴원생/휴원생 수신자 직접 추가 시 배지 표시 및 발송 비차단 검증
+    // 이도윤(S3)을 퇴원생으로 설정, 김우진(S4)을 휴원생으로 설정
     await page.evaluate(() => {
       const s3 = window.stateStore.getStudent('S3');
       if (s3) {
-        s3.status = 'attending';
+        s3.status = 'withdrawn';
         s3.name = '이도윤';
       }
       const s4 = window.stateStore.getStudent('S4');
@@ -2738,20 +2701,57 @@ test.describe('Message Send Flow (Phase 11A Skeleton Integration)', () => {
       window.stateStore.saveDB();
     });
 
-    // S4를 수신자에 추가 (E2E에서 김우진 로우 선택)
+    // 화면 새로고침 후 수신자 추가 진행
+    await page.reload();
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+    await page.waitForTimeout(600); // 렌더링 안정화 대기
+    
+    // 본문 작성 (매크로 에러 피하기 위해)
+    await page.locator('#composeBodyInput').fill('정상적인 텍스트');
+
+    // 이도윤(S3, 퇴원생) 추가
+    const studentRowS3 = page.locator('.student-row', { hasText: '이도윤' });
+    await studentRowS3.waitFor({ state: 'visible' });
+    await studentRowS3.click();
+    await page.waitForTimeout(300);
+    await page.locator('#btnAddToRecipients').click();
+    await page.waitForTimeout(300);
+
+    // 김우진(S4, 휴원생) 추가
     const studentRowS4 = page.locator('.student-row', { hasText: '김우진' });
     await studentRowS4.waitFor({ state: 'visible' });
     await studentRowS4.click();
     await page.waitForTimeout(300);
     await page.locator('#btnAddToRecipients').click();
     await page.waitForTimeout(300);
-    
+
+    // 수신자 카드 리스트 내 배지 확인
+    const withdrawnBadge = page.locator('.status-badge-withdrawn');
+    await expect(withdrawnBadge).toBeVisible();
+    await expect(withdrawnBadge).toContainText('[퇴원]');
+
+    const onLeaveBadge = page.locator('.status-badge-on-leave');
+    await expect(onLeaveBadge).toBeVisible();
+    await expect(onLeaveBadge).toContainText('[휴원]');
+
     // 발송 검토 모달 열기
     await page.locator('#btnReviewSend').click();
-    
-    // 발송 예정 (휴원생) 뱃지 확인
-    const statusBadge = page.locator('.status-badge', { hasText: '발송 예정 (휴원생)' });
-    await expect(statusBadge).toBeVisible();
+    await page.waitForTimeout(300);
+
+    // 모달 내 최종 발송 버튼 클릭하여 발송이 차단되지 않는지 검증 (실제 발송 mock alert가 떠야 함)
+    dialogTriggered = false;
+    dialogText = '';
+    page.once('dialog', async (dialog) => {
+      dialogTriggered = true;
+      dialogText = dialog.message();
+      await dialog.accept();
+    });
+
+    await page.locator('#btnFocusSendConfirm').click();
+    await page.waitForTimeout(500);
+
+    expect(dialogTriggered).toBe(true);
+    expect(dialogText).toContain('실제 발송은 아직 연동되지 않았고, 발송이력만 저장되었습니다.');
   });
 });
 

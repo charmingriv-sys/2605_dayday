@@ -995,12 +995,15 @@ const openStudentDetailModal = (studentId) => {
         </div>
         <div class="modal-footer" style="padding: 1.2rem; border-top: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 8px;">
             <button class="btn btn-primary" id="btn-edit-student-from-detail" style="width: 100%; justify-content: center; height: 38px; font-weight: 600;">정보 수정하기</button>
-            <button class="btn btn-warning" id="btn-change-status-from-detail" style="width: 100%; justify-content: center; height: 38px; font-weight: 600; background: #ff9f43; border-color: #ff9f43; color: #fff;">휴원/퇴원 처리</button>
-            <button class="btn btn-success" id="btn-preview-parent-view" style="width: 100%; justify-content: center; height: 38px; font-weight: 600; background: var(--accent); border-color: var(--accent); color: var(--bg-main);">
-                <i class="fa-solid fa-mobile-screen-button" style="margin-right: 6px;"></i>학부모 화면 미리보기
+            <button class="btn btn-info" id="btn-send-message-from-detail" style="width: 100%; justify-content: center; height: 38px; font-weight: 600; background: var(--primary); border-color: var(--primary); color: #fff;">
+                <i class="fa-solid fa-paper-plane" style="margin-right: 6px;"></i>메시지 보내기
             </button>
+            <button class="btn btn-warning" id="btn-change-status-from-detail" style="width: 100%; justify-content: center; height: 38px; font-weight: 600; background: #ff9f43; border-color: #ff9f43; color: #fff;">휴원/퇴원 처리</button>
             <button class="btn btn-info" id="btn-nts-certificate" style="width: 100%; justify-content: center; height: 38px; font-weight: 600; background: #00adb5; border-color: #00adb5; color: #fff;">
                 <i class="fa-solid fa-file-invoice" style="margin-right: 6px;"></i>교육비 납입증명서 출력
+            </button>
+            <button class="btn btn-success" id="btn-preview-parent-view" style="width: 100%; justify-content: center; height: 38px; font-weight: 600; background: var(--accent); border-color: var(--accent); color: var(--bg-main);">
+                <i class="fa-solid fa-mobile-screen-button" style="margin-right: 6px;"></i>학부모 화면 미리보기
             </button>
             <button class="btn btn-secondary" data-close-modal style="width: 100%; justify-content: center; height: 38px; font-weight: 600;">닫기</button>
         </div>
@@ -1012,6 +1015,33 @@ const openStudentDetailModal = (studentId) => {
         if (editBtn) {
             editBtn.addEventListener('click', () => {
                 openStudentModal(studentId);
+            });
+        }
+        const sendMessageBtn = contentArea.querySelector('#btn-send-message-from-detail');
+        if (sendMessageBtn) {
+            sendMessageBtn.addEventListener('click', () => {
+                const handoffPayload = {
+                    source: 'student_detail',
+                    mode: 'recipient_only',
+                    studentId: studentId,
+                    recipientType: 'parent',
+                    templateId: null,
+                    templatePayload: null,
+                    body: ''
+                };
+                sessionStorage.setItem('dayday_handoff_payload', JSON.stringify(handoffPayload));
+                
+                // 모달 닫기
+                const closeModalBtn = contentArea.querySelector('[data-close-modal]');
+                if (closeModalBtn) {
+                    closeModalBtn.click();
+                }
+                
+                // 메시지 화면으로 이동
+                const menuItem = document.querySelector('.menu-item[data-view="dir-message-send"]');
+                if (menuItem) {
+                    menuItem.click();
+                }
             });
         }
         const changeStatusBtn = contentArea.querySelector('#btn-change-status-from-detail');

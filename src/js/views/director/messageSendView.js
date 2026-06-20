@@ -477,7 +477,8 @@ const isRecipientOptedOut = (recipient) => {
   return !!(recipient.optOut || recipient.smsOptOut || recipient.messageOptOut || recipient.marketingOptOut);
 };
 
-const validateRecipients = (recipients) => {
+const validateRecipients = (recipients, options = {}) => {
+  const allowWithdrawn = options.allowWithdrawn === true;
   const sendableList = [];
   const excludedList = [];
   const validatedList = [];
@@ -512,12 +513,8 @@ const validateRecipients = (recipients) => {
       }
     }
 
-    if (r.canReceiveMessage === false) {
-      canReceive = false;
-    }
-
     // 0. 퇴원생 상태 차단
-    if (isWithdrawn) {
+    if (isWithdrawn && !allowWithdrawn) {
       const item = {
         ...r,
         name,
@@ -628,7 +625,7 @@ export function renderMessageSend(container) {
         const payload = JSON.parse(rawHandoff);
         sessionStorage.removeItem('dayday_handoff_payload');
         
-        if (payload && payload.source === 'today_console' && payload.studentId) {
+        if (payload && (payload.source === 'today_console' || payload.source === 'student_detail') && payload.studentId) {
           viewState.isHandoffMode = true;
           viewState.handoffStudentId = payload.studentId;
           viewState.handoffScrolledAndHighlighted = false;
@@ -644,6 +641,8 @@ export function renderMessageSend(container) {
             tTitle = '결석 확인';
           } else if (payload.suggestedTemplateType === 'tuition_unpaid') {
             tTitle = '수강료 미수납 확인';
+          } else if (payload.source === 'student_detail') {
+            tTitle = '원생 상세 메시지 연계';
           }
           viewState.handoffTaskTitle = tTitle;
 
@@ -668,7 +667,12 @@ export function renderMessageSend(container) {
           viewState.handoffRelatedDomainId = payload.relatedDomainId || '';
           
           // 템플릿 바인딩 처리 (Phase 18A-3)
-          if (payload.templateId && payload.templatePayload) {
+          if (payload.mode === 'recipient_only') {
+            viewState.selectedTemplateKey = null;
+            viewState.title = '';
+            viewState.body = '';
+            viewState.validationError = null;
+          } else if (payload.templateId && payload.templatePayload) {
             const tKey = payload.templateId;
             viewState.selectedTemplateKey = tKey;
             
@@ -1800,6 +1804,16 @@ export function renderMessageSend(container) {
                 return relation;
               };
 
+              const student = r.no ? stateStore.getStudent(r.no) : (r.studentId ? stateStore.getStudent(r.studentId) : null);
+              let statusBadgeHtml = '';
+              if (student) {
+                if (student.status === 'withdrawn') {
+                  statusBadgeHtml = `<span class="status-badge-withdrawn" style="padding: 2px 6px; font-size: 0.72rem; font-weight: 700; border-radius: 4px; background-color: #dc2626; color: #ffffff; margin-left: 6px; vertical-align: middle;">[퇴원]</span>`;
+                } else if (student.status === 'on_leave') {
+                  statusBadgeHtml = `<span class="status-badge-on-leave" style="padding: 2px 6px; font-size: 0.72rem; font-weight: 700; border-radius: 4px; background-color: #f59e0b; color: #ffffff; margin-left: 6px; vertical-align: middle;">[휴원]</span>`;
+                }
+              }
+
               const relStr = r.relation ? getKoreanRelation(r.relation) : '';
               const cardDisplayName = r.guardianName 
                 ? `${r.guardianName}${relStr ? ` (${relStr})` : ''}`
@@ -1816,6 +1830,7 @@ export function renderMessageSend(container) {
                     <span style="display: flex; align-items: center; gap: 4px; line-height: 1.2;">
                       <span style="font-size: 12px; font-weight: 700; color: var(--text-main);">${cardDisplayName}</span>
                       <span class="message-send-chip tone-${roleTone}" style="padding: 0px 5px; font-size: 9px; border-radius: 4px; font-weight: 800;">${r.role}</span>
+                      ${statusBadgeHtml}
                     </span>
                     <span style="display: block; font-size: 10px; color: var(--text-muted-light); margin-top: 1px;">${formatPhoneDisplay(r.phone)}</span>
                   </span>
@@ -3167,7 +3182,7 @@ export function renderMessageSend(container) {
     block.style.background = 'rgba(15, 23, 42, 0.42)';
     block.style.animation = 'fadeIn 0.15s ease-out';
 
-    const { sendableList, excludedList, validatedList } = validateRecipients(viewState.recipients);
+    const { sendableList, excludedList, validatedList } = validateRecipients(viewState.recipients, { allowWithdrawn: true });
     const kind = viewState.method === "PUSH" ? "PUSH" : viewState.method === "알림톡" ? "알림톡" : msgKind(viewState.title, viewState.body, !!viewState.image);
     const chipToneClass = kind === 'SMS' ? 'sky' : kind === 'LMS' ? 'violet' : kind === 'MMS' ? 'red' : kind === 'PUSH' ? 'green' : 'blue';
 
@@ -3378,12 +3393,7 @@ export function renderMessageSend(container) {
         return;
       }
 
-      // 2. 수신자 중 퇴원생이 포함되어 있는지 최종 발송 전 검증
-      const hasWithdrawn = excludedList.some(r => r.reason === '퇴원생 상태');
-      if (hasWithdrawn) {
-        alert('발송 불가능한 퇴원생 수신자가 포함되어 있습니다.');
-        return;
-      }
+
 
       processMessageSend(sendableList, excludedList);
     });
