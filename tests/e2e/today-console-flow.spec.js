@@ -2039,5 +2039,65 @@ test.describe('Director Today Console Flow Checks', () => {
     expect(valErr).toBeDefined();
     expect(valErr.errorMessage).toContain('Validation failed');
   });
+
+  test('should exclude leave periods from stats inside today console student details drawer', async ({ page }) => {
+    // 1. Seed unpaid overdue payment for S1 to trigger a task card, and add leavePeriods to S1
+    await page.evaluate(() => {
+      window.stateStore.db.todayTasks = [];
+      const s1 = window.stateStore.db.students.find(s => s.id === 'S1');
+      if (s1) {
+        s1.leavePeriods = [{ startDate: '2026-05-10', endDate: '2026-05-25' }];
+      }
+      window.stateStore.db.payments = [{
+        id: 'test-payment-id-leave-e2e',
+        studentId: 'S1',
+        month: '2026-05',
+        amount: 120000,
+        type: 'education',
+        status: 'unpaid',
+        invoiceDate: '2026-05-10',
+        createdAt: '2026-05-01'
+      }];
+      window.stateStore.saveDB();
+      window.stateStore.syncSystemRecommendations(new Date(), false);
+    });
+
+    // 2. No reload required because syncSystemRecommendations updates the live stateStore and notifies the UI immediately
+    await page.waitForTimeout(300);
+
+    // 3. Click the task card click zone to open S1\'s details drawer
+    const taskCard = page.locator('#tasks-list-container .glass-card:has-text("최다은")');
+    await expect(taskCard).toBeVisible();
+    await taskCard.locator('.task-card-click-zone').click();
+
+    // 4. Verify today task drawer opens and shows student details
+    const drawer = page.locator('#today-task-drawer');
+    await expect(drawer).toHaveClass(/open/);
+    await expect(drawer.locator('.today-task-drawer-title')).toContainText('원생 상세 정보');
+
+    // 5. Verify the stats boxes inside the drawer:
+    // With leavePeriods, S1\'s total (예정 수업) should be 6 (instead of 9), present should be 3, late 1, absent 1.
+    // Box 1: 예정 수업 (total): 6
+    // Box 2: 출석 (present): 3
+    // Box 3: 지각 (late): 1
+    // Box 4: 결석 (absent): 1
+    // Box 5: 출석률 (attendanceRate): 80% (totalRecorded = 3+1+1 = 5. Rate = 4/5 = 80%)
+    const statBoxes = drawer.locator('.ac-stat-box');
+    await expect(statBoxes.nth(0).locator('strong')).toContainText('6');
+    await expect(statBoxes.nth(1).locator('strong')).toContainText('3');
+    await expect(statBoxes.nth(2).locator('strong')).toContainText('1');
+    await expect(statBoxes.nth(3).locator('strong')).toContainText('1');
+    await expect(statBoxes.nth(4).locator('strong')).toContainText('80%');
+
+    // 6. Verify that "휴원" badge is rendered in history list inside today task drawer
+    // May 11, May 13, May 18 are leave days without attendance -> should show "휴원"
+    await expect(drawer.locator('.log-item:has-text("2026-05-11")')).toContainText('휴원');
+    await expect(drawer.locator('.log-item:has-text("2026-05-13")')).toContainText('휴원');
+    await expect(drawer.locator('.log-item:has-text("2026-05-18")')).toContainText('휴원');
+
+    // May 20 and May 25 are leave days but have attendance -> should show \'출석\'
+    await expect(drawer.locator('.log-item:has-text("2026-05-20")')).toContainText('출석');
+    await expect(drawer.locator('.log-item:has-text("2026-05-25")')).toContainText('출석');
+  });
 });
 

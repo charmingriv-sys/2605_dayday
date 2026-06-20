@@ -572,6 +572,94 @@ export function renderTodayConsole(container) {
                     `;
                 }
 
+                // 3b. Leave/Withdrawal History Information
+                let leavePeriods = [];
+                if (student.leavePeriods && student.leavePeriods.length > 0) {
+                    leavePeriods = [...student.leavePeriods];
+                } else if (student.leaveStartDate && student.leaveEndDate) {
+                    leavePeriods = [{ startDate: student.leaveStartDate, endDate: student.leaveEndDate }];
+                }
+
+                leavePeriods.sort((a, b) => b.startDate.localeCompare(a.startDate));
+
+                const today = new Date().toISOString().slice(0, 10);
+                let activePeriod = null;
+                if (student.status === 'on_leave') {
+                    activePeriod = leavePeriods.find(p => p.startDate <= today && today <= p.endDate);
+                }
+
+                const calculateLeaveDays = (start, end) => {
+                    if (!start || !end) return 0;
+                    const s = new Date(start);
+                    const e = new Date(end);
+                    if (isNaN(s.getTime()) || isNaN(e.getTime())) return 0;
+                    const diff = e.getTime() - s.getTime();
+                    if (diff < 0) return 0;
+                    return Math.round(diff / (1000 * 60 * 60 * 24)) + 1;
+                };
+
+                let leaveHistoryHtml = '';
+                const hasWithdrawal = student.withdrawalDate || student.leaveDate;
+
+                if (leavePeriods.length === 0 && !hasWithdrawal) {
+                    leaveHistoryHtml = `<div style="text-align: center; padding: 15px; color: var(--text-muted); font-size: 0.85rem;">이력 없음</div>`;
+                } else {
+                    const statusText = student.status === 'withdrawn' ? '퇴원' : (student.status === 'on_leave' ? '휴원' : '재원');
+                    
+                    let activePeriodHtml = '';
+                    if (student.status === 'on_leave' && activePeriod) {
+                        const days = calculateLeaveDays(activePeriod.startDate, activePeriod.endDate);
+                        activePeriodHtml = `
+                            <div style="display:flex; justify-content:space-between; margin-top:4px; font-size:13px; color:var(--text-muted);">
+                                <span>현재 휴원 기간</span>
+                                <strong style="color: var(--text-main);">${activePeriod.startDate} ~ ${activePeriod.endDate} (${days}일)</strong>
+                            </div>
+                        `;
+                    }
+
+                    let withdrawalHtml = '';
+                    if (hasWithdrawal) {
+                        withdrawalHtml = `
+                            <div style="display:flex; justify-content:space-between; margin-top:4px; font-size:13px; color:var(--text-muted);">
+                                <span>퇴원일</span>
+                                <strong style="color: var(--text-main);">${student.withdrawalDate || student.leaveDate}</strong>
+                            </div>
+                        `;
+                    }
+
+                    let periodsListHtml = '';
+                    if (leavePeriods.length > 0) {
+                        const items = leavePeriods.map(p => {
+                            const days = calculateLeaveDays(p.startDate, p.endDate);
+                            return `
+                                <div style="display:flex; justify-content:space-between; margin-top:4px; font-size:13px; color:var(--text-muted);">
+                                    <span>휴원 ${p.startDate} ~ ${p.endDate}</span>
+                                    <span>(${days}일)</span>
+                                </div>
+                            `;
+                        }).join('');
+                        
+                        periodsListHtml = `
+                            <div style="margin-top: 8px; border-top: 1px dashed var(--border-color); padding-top: 6px;">
+                                <div style="font-size:13px; font-weight:700; color:var(--text-muted); margin-bottom:4px;">휴원 이력:</div>
+                                ${items}
+                            </div>
+                        `;
+                    }
+
+                    leaveHistoryHtml = `
+                        <div style="padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: rgba(0,0,0,0.01); line-height: 1.5;">
+                            <div style="display:flex; justify-content:space-between; font-weight:700; font-size:14px; border-bottom: 1px solid rgba(0,0,0,0.03); padding-bottom: 6px;">
+                                <span>현재 상태</span>
+                                <span>${statusText}</span>
+                            </div>
+                            ${activePeriodHtml}
+                            ${withdrawalHtml}
+                            ${periodsListHtml}
+                        </div>
+                    `;
+                }
+
                 // 4. Mini Calendar
                 const rangeDates = get30DaysRange(todayStr);
                 const calMiniHtml = rangeDates.map(date => {
@@ -605,6 +693,7 @@ export function renderTodayConsole(container) {
                         if (h.status === '출석') statusBadge = `<span class="badge good" style="font-size:0.75rem;">출석</span>`;
                         else if (h.status === '지각') statusBadge = `<span class="badge warn" style="font-size:0.75rem;">지각</span>`;
                         else if (h.status === '결석') statusBadge = `<span class="badge danger" style="font-size:0.75rem;">결석</span>`;
+                        else if (h.status === '휴원') statusBadge = `<span class="badge" style="font-size:0.75rem; background: #64748b; color: #ffffff;">휴원</span>`;
 
                         const checkTimeText = h.checkTime ? `${h.checkTime}${h.leavingTime ? ' ~ ' + h.leavingTime : ''}` : '-';
 
@@ -750,6 +839,13 @@ export function renderTodayConsole(container) {
                                     <h3>수납 정보</h3>
                                 </div>
                                 ${tuitionBoxHtml}
+                            </section>
+
+                            <section class="drawer-section">
+                                <div class="section-title">
+                                    <h3>휴원/퇴원 이력</h3>
+                                </div>
+                                ${leaveHistoryHtml}
                             </section>
 
                             <section class="drawer-section">

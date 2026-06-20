@@ -1623,4 +1623,58 @@ test.describe('Director Attendance Control Console Flow', () => {
     await expect(auditList).toContainText('결석');
     await expect(auditList).toContainText('수동변경');
   });
+
+  test('should exclude leave periods from attendance stats and display 휴원 badge in inspector', async ({ page }) => {
+    // 1. Go to attendance control view
+    const controlMenu = page.locator('.menu-item[data-view="dir-attendance-control"]');
+    await controlMenu.click();
+    await page.waitForTimeout(300);
+
+    // 2. Inject leavePeriods to S1 in memory (May 10 to June 15)
+    await page.evaluate(() => {
+      const s1 = window.stateStore.db.students.find(s => s.id === 'S1');
+      if (s1) {
+        s1.leavePeriods = [{ startDate: '2026-05-10', endDate: '2026-06-15' }];
+      }
+      window.stateStore.saveDB();
+    });
+
+    // 3. Switch to the Student-wise view tab to trigger calculation and rendering
+    const studentTab = page.locator('.ac-tab[data-tab="student"]');
+    await studentTab.click();
+    await page.waitForTimeout(300);
+
+    // 4. Set range preset to Month (June 1 to June 30)
+    await page.locator('#ac-period-btn').click();
+    await page.locator('.ac-preset-btn[data-range="month"]').click();
+    await page.waitForTimeout(300);
+
+    // 5. Find S1 (최다은) row in student-wise table
+    const s1Row = page.locator('table.custom-table tbody tr[data-student-id="S1"]');
+    await expect(s1Row).toBeVisible();
+
+    // 5. Assert S1 total class count is '5회' and rate is '20%' (1 late / 5 total)
+    const cells = s1Row.locator('td');
+    await expect(cells.nth(4)).toContainText('5회'); // total
+    await expect(cells.nth(8)).toContainText('20%'); // rate
+
+    // 6. Click the student row to open the inspector drawer
+    await s1Row.first().click();
+    const inspector = page.locator('#ac-inspector-panel');
+    await expect(inspector).toHaveClass(/open/);
+
+    // 7. Verify that "휴원" badge is rendered in the history list for the leave period dates within the last 30 days (May 5 to June 3)
+    // June 3, May 11, May 13, May 18 are in the leave period and have no attendance records -> should be '휴원'.
+    await expect(page.locator('#ac-inspector-history-list .log-item:has-text("2026-06-03")')).toContainText('휴원');
+    await expect(page.locator('#ac-inspector-history-list .log-item:has-text("2026-05-11")')).toContainText('휴원');
+    await expect(page.locator('#ac-inspector-history-list .log-item:has-text("2026-05-13")')).toContainText('휴원');
+    await expect(page.locator('#ac-inspector-history-list .log-item:has-text("2026-05-18")')).toContainText('휴원');
+
+    // May 20 and May 25 have actual attendance so they should contain '출석' badge instead of '휴원'
+    await expect(page.locator('#ac-inspector-history-list .log-item:has-text("2026-05-20")')).toContainText('출석');
+    await expect(page.locator('#ac-inspector-history-list .log-item:has-text("2026-05-25")')).toContainText('출석');
+
+    // June 1 has actual attendance (late) -> should show '지각' instead of '휴원'
+    await expect(page.locator('#ac-inspector-history-list .log-item:has-text("2026-06-01")')).toContainText('지각');
+  });
 });

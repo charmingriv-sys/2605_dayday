@@ -3,6 +3,17 @@
  * Extracted student drawer data processing helper for Today Console (Phase 18G-2A)
  */
 
+function isDateInLeavePeriod(student, dateStr) {
+    if (!student) return false;
+    let periods = [];
+    if (student.leavePeriods && student.leavePeriods.length > 0) {
+        periods = [...student.leavePeriods];
+    } else if (student.leaveStartDate && student.leaveEndDate) {
+        periods = [{ startDate: student.leaveStartDate, endDate: student.leaveEndDate }];
+    }
+    return periods.some(p => p.startDate <= dateStr && dateStr <= p.endDate);
+}
+
 export function get30DaysRange(dateStr) {
     const [y, m, d] = dateStr.split('-').map(Number);
     const end = new Date(y, m - 1, d);
@@ -110,11 +121,23 @@ export function buildStudentDrawerData({ student, stateStore, todayStr }) {
                     }
                 }
 
-                statsMap[sId].total++;
-                if (status === '출석') statsMap[sId].present++;
-                else if (status === '지각') statsMap[sId].late++;
-                else if (status === '결석') statsMap[sId].absent++;
-                else statsMap[sId].scheduled++;
+                const studentObj = statsMap[sId].student;
+                const inLeave = isDateInLeavePeriod(studentObj, date);
+                if (inLeave) {
+                    if (status === '출석' || status === '지각') {
+                        statsMap[sId].total++;
+                        if (status === '출석') statsMap[sId].present++;
+                        else if (status === '지각') statsMap[sId].late++;
+                    } else {
+                        status = '휴원';
+                    }
+                } else {
+                    statsMap[sId].total++;
+                    if (status === '출석') statsMap[sId].present++;
+                    else if (status === '지각') statsMap[sId].late++;
+                    else if (status === '결석') statsMap[sId].absent++;
+                    else statsMap[sId].scheduled++;
+                }
 
                 statsMap[sId].history.push({ date, time: entry.time, status, checkTime, leavingTime, note: att ? (att.note || '') : '' });
             });
