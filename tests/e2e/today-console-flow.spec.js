@@ -2099,5 +2099,107 @@ test.describe('Director Today Console Flow Checks', () => {
     await expect(drawer.locator('.log-item:has-text("2026-05-20")')).toContainText('출석');
     await expect(drawer.locator('.log-item:has-text("2026-05-25")')).toContainText('출석');
   });
+
+  test('should suppress absent warning task for students in leave period without checkin, but clean up obsolete tasks and evaluate normally with checkins', async ({ page }) => {
+    // 1. Seed: Clear tasks and make S1 on leave on 2026-06-03
+    await page.evaluate(() => {
+      window.stateStore.db.todayTasks = [];
+      window.stateStore.db.attendance = [];
+      window.stateStore.db.scheduleSnapshots = window.stateStore.db.scheduleSnapshots.filter(s => s.date !== '2026-06-03');
+      
+      // Override debug evaluation override time to match 2026-06-03T18:00:00
+      window.stateStore.db.settings.DAYDAY_DEBUG_EVAL_TIME = '2026-06-03T18:00:00';
+
+      // Ensure S1 has a class on Wednesday
+      const hasWedClass = window.stateStore.db.classes.some(c => c.studentId === 'S1' && c.dayOfWeek === '수');
+      if (!hasWedClass) {
+        window.stateStore.db.classes.push({
+          id: 'test-class-s1-wed',
+          studentId: 'S1',
+          dayOfWeek: '수',
+          time: '14:00'
+        });
+      }
+
+      const s1 = window.stateStore.db.students.find(s => s.id === 'S1');
+      if (s1) {
+        s1.leavePeriods = [{ startDate: '2026-06-01', endDate: '2026-06-10' }];
+      }
+      window.stateStore.saveDB();
+
+      const mockNow = new Date('2026-06-03T18:00:00');
+      window.stateStore.syncSystemRecommendations(mockNow, false);
+    });
+
+    await page.waitForTimeout(300);
+
+    // S1 has leavePeriods and no checkin -> should NOT have absent recommendation
+    const tasks1 = await page.evaluate(() => {
+      return window.stateStore.db.todayTasks.filter(t => t.source === 'system' && t.category === 'absent' && t.relatedStudentIds.includes('S1'));
+    });
+    expect(tasks1.length).toBe(0);
+
+    // 2. Remove leavePeriods from S1 -> should NOW generate absent recommendation
+    await page.evaluate(() => {
+      const s1 = window.stateStore.db.students.find(s => s.id === 'S1');
+      if (s1) {
+        s1.leavePeriods = [];
+      }
+      window.stateStore.saveDB();
+
+      const mockNow = new Date('2026-06-03T18:00:00');
+      window.stateStore.syncSystemRecommendations(mockNow, false);
+    });
+
+    await page.waitForTimeout(300);
+
+    const tasks2 = await page.evaluate(() => {
+      return window.stateStore.db.todayTasks.filter(t => t.source === 'system' && t.category === 'absent' && t.relatedStudentIds.includes('S1'));
+    });
+    expect(tasks2.length).toBeGreaterThan(0);
+
+    // 3. Put S1 back on leave -> the existing absent recommendation should be cleaned up (obsolete warning cleanup check)
+    await page.evaluate(() => {
+      const s1 = window.stateStore.db.students.find(s => s.id === 'S1');
+      if (s1) {
+        s1.leavePeriods = [{ startDate: '2026-06-01', endDate: '2026-06-10' }];
+      }
+      window.stateStore.saveDB();
+
+      const mockNow = new Date('2026-06-03T18:00:00');
+      window.stateStore.syncSystemRecommendations(mockNow, false);
+    });
+
+    await page.waitForTimeout(300);
+
+    const tasks3 = await page.evaluate(() => {
+      return window.stateStore.db.todayTasks.filter(t => t.source === 'system' && t.category === 'absent' && t.relatedStudentIds.includes('S1'));
+    });
+    expect(tasks3.length).toBe(0); // Successfully cleaned up!
+
+    // 4. Inject attendance present record for S1 while on leave -> should generate LATE/CHECKOUT_MISSING warning
+    await page.evaluate(() => {
+      window.stateStore.db.attendance.push({
+        id: 'test-att-present-leave-policy',
+        studentId: 'S1',
+        date: '2026-06-03',
+        time: '14:15',
+        status: 'present'
+      });
+      window.stateStore.saveDB();
+
+      const mockNow = new Date('2026-06-03T18:00:00');
+      window.stateStore.syncSystemRecommendations(mockNow, false);
+    });
+
+    await page.waitForTimeout(300);
+
+    const tasks4 = await page.evaluate(() => {
+      return window.stateStore.db.todayTasks.filter(t => t.source === 'system' && t.relatedStudentIds.includes('S1'));
+    });
+    expect(tasks4.length).toBeGreaterThan(0);
+    const hasLateOrCheckout = tasks4.some(t => t.dedupeKey.includes('LATE') || t.dedupeKey.includes('CHECKOUT_MISSING'));
+    expect(hasLateOrCheckout).toBe(true);
+  });
 });
 

@@ -3,6 +3,17 @@
  * Extracted student attendance recommendation sync module for Phase 18B
  */
 
+function isDateInLeavePeriod(student, dateStr) {
+    if (!student) return false;
+    let periods = [];
+    if (student.leavePeriods && student.leavePeriods.length > 0) {
+        periods = [...student.leavePeriods];
+    } else if (student.leaveStartDate && student.leaveEndDate) {
+        periods = [{ startDate: student.leaveStartDate, endDate: student.leaveEndDate }];
+    }
+    return periods.some(p => p.startDate <= dateStr && dateStr <= p.endDate);
+}
+
 export function syncStudentAttendanceRecommendations(ctx, options) {
     const { parsedNow, y, m, d, dateStr, silent, addValidatedSystemTodayTask } = options;
 
@@ -20,11 +31,18 @@ export function syncStudentAttendanceRecommendations(ctx, options) {
         const activeSessionKeys = [];
 
         todaySchedule.forEach(entry => {
+            const student = typeof ctx.getStudent === 'function' ? ctx.getStudent(entry.studentId) : null;
+            const att = attendanceList.find(a => a.studentId === entry.studentId && a.date === dateStr && (a.classTime === entry.time || !a.classTime));
+            const isPresentOrLate = att && (att.status === 'present' || att.status === 'late');
+
+            if (isDateInLeavePeriod(student, dateStr) && !isPresentOrLate) {
+                return;
+            }
+
             const sessionKey = `${entry.studentId}_${dateStr}_${entry.time}`;
             activeSessionKeys.push(sessionKey);
 
             // 2.2 Calculate schedule timings
-            const student = typeof ctx.getStudent === 'function' ? ctx.getStudent(entry.studentId) : null;
             const studentName = student ? student.name : '원생';
             const [sh, smin] = entry.time.split(':').map(Number);
             const scheduledStartAt = new Date(y, m, d, sh, smin, 0, 0);
@@ -32,7 +50,6 @@ export function syncStudentAttendanceRecommendations(ctx, options) {
             const scheduledEndAt = new Date(scheduledStartAt.getTime() + duration * 60 * 1000);
 
             // 2.3 Retrieve attendance details
-            const att = attendanceList.find(a => a.studentId === entry.studentId && a.date === dateStr && (a.classTime === entry.time || !a.classTime));
             const hasAttendance = att && att.status !== 'none';
 
             // 2.4 State transition warning evaluation
