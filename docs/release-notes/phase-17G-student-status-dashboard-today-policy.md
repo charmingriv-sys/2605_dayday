@@ -1016,11 +1016,68 @@
 ### 18-11. 후속 Phase 제안
 1. **Phase 18B-14**: db.enrollments 저장 구현 (어댑터 및 저장소 메서드 백엔드 작성)
 2. **Phase 18B-15**: 수강과목 추가 모달 저장 연결 (UI 폼 서브밋 저장 연동 및 밸리데이션)
-3. **Phase 18B-16**: class.enrollmentId 기반 시간표 분리 (요일 설정 삭제/추가 격리 튜닝)
-4. **Phase 18B-17**: payment.enrollmentId 기반 수납 분리 (청구서 생성 및 수납 대장 조회 격리)
-5. **Phase 18B-18**: sessionPass 저장 및 잔여 횟수 UI (횟수권 정보 렌더링 및 소진 이력 조회)
-6. **Phase 18B-19**: 출석/지각 확정 시 횟수 차감 엔진 (출결 도메인과의 횟수권 실시간 차감 연동)
-7. **Phase 18B-20**: 수강권 충전 확인 task (잔여 기준 미만 시 오늘 콘솔 알림 태스크 생성)
 
+## 19. class.enrollmentId 시간표/수업 데이터 분리 정책 (Phase 18B-17)
+
+### 19-1. 정책 도입 배경
+* **시간표 조회 및 데이터 조인 의존성**:
+  - 기존의 수업/시간표(`classes`) 레코드는 `{ id, studentId, dayOfWeek, time }` 중심의 평탄화된 단순한 구조이다.
+  - 담당 강사(`teacherId`), 수강 과목(`instrument`), 수업 길이나 요일 등 핵심 정보들은 `class` 레코드에 없고, 원생 `student` flat 필드에서 간접 조인하여 사용해 왔다.
+* **일괄 덮어쓰기 문제점과 위험 요인**:
+  - 원생 정보 수정(`updateStudent`) 과정에서, 요일 및 시간을 수정할 때 `studentId` 기준으로 기존 시간표를 모두 일괄 삭제(`studentId 기준 전체 삭제`)한 후 다시 새롭게 재생성하는 흐름이 발견되었다.
+  - 복수 수강과목을 정식 도입할 경우, 피아노 과목의 시간표를 수정했을 뿐인데 동일 원생의 바이올린 등 다른 과목의 시간표 정보까지 함께 날아가 버리는 심각한 데이터 유실 위험이 잠재되어 있다.
+  - 따라서 시간표와 수업 데이터를 과목별 계약 단위(`enrollmentId`)로 물리적 분리하여 관리해야 하는 강력한 설계 방침을 수립한다.
+
+### 19-2. class.enrollmentId 도입 원칙
+* **외래 키 필드 추가**:
+  - 신규 생성 및 수정되는 모든 시간표(`class`) 레코드에는 `class.enrollmentId`를 필수적으로 매핑하여 저장한다.
+  - 역방향 호환성을 보장하기 위해 `studentId` 필드도 유지하되, 시간표에 대한 생성/수정/삭제 및 조회 등 모든 CRUD 연산은 `enrollmentId`를 최우선 기준으로 채택한다.
+* **Compatibility Layer 설계**:
+  - 기존에 등록된 `enrollmentId`가 누락된 레코드들은 `legacy class`로 분류하여 관리한다.
+  - 레거시 데이터는 즉시 물리적 마이그레이션(migration)을 강제하지 않고, 하위 호환성을 갖춘 Compatibility Layer를 통해 점진적 전환을 꾀한다.
+
+### 19-3. 시간표 삭제/덮어쓰기 금지 정책
+* **studentId 기준 삭제 금지**:
+  - 복수 수강과목 체제가 가동된 이후에는, `studentId`만을 매칭하여 해당 학생의 시간표를 전부 날려버리는 전체 삭제/덮어쓰기 동작을 전면 금지한다.
+* **과목별 시간표 격리 수정**:
+  - 특정 수강과목의 시간표를 변경하거나 삭제할 시, 오직 매칭된 `enrollmentId`를 지닌 `class` 데이터들만 필터링하여 선별적으로 업데이트하거나 삭제하여 다른 수강 과목의 일정 정보가 손상되지 않도록 보호한다.
+  - `updateStudent` 실행 흐름에서 일괄적으로 수업 목록 전체를 날리고 재생성하지 않도록, 인적 사항 변경과 수강과목 시간표 변경 로직을 완전히 격리하여 다룬다.
+
+### 19-4. Legacy class fallback 정책
+* **기존 데이터의 해석 규칙**:
+  - `enrollmentId`가 비어 있는 기존 `legacy class`에 대해, 화면 렌더링 및 일정 확인 시 `getPrimaryEnrollment(studentId)`를 fallback 카드로 호출하여 필요한 강사/과목/수업 길이 등의 정보를 동적으로 보완 조인한다.
+  - 이를 통해 과거 데이터가 깨져서 화면이 크래시되거나 시간표에 구멍이 생기는 현상을 차단하고 안정성을 극대화한다.
+  - `legacy class`에 대한 정식 `enrollmentId` 부여 및 승격(Promotion)은 추후 독립된 전용 마이그레이션 단계로 격리하여 점진적으로 처리한다.
+
+### 19-5. 조회 Helper 도입 정책
+안정적이고 독립된 조인 연산을 위해 향후 아래 5가지 Helper 메서드를 도입한다:
+* **`getClassEnrollment(classItem)`**: 시간표 레코드가 가진 `enrollmentId`를 반환하며, 유실된 경우 `getPrimaryEnrollment` fallback을 동적 연동하여 해당 수강과목 객체를 보완 반환한다.
+* **`getClassesByEnrollmentId(enrollmentId)`**: 특정 수강과목(`enrollmentId`) 계약으로 생성된 시간표 레코드 목록만 정확하게 필터링하여 반환한다.
+* **`getClassesByStudentId(studentId, options)`**: 원생의 전체 시간표 목록을 조회한다. 옵션에 따라 legacy class만 얻거나 정식 class만 선별 조회가 가능하도록 유연성을 부여한다.
+* **`replaceClassesForEnrollment(enrollmentId, classes)`**: 특정 수강과목 단위의 시간표를 일괄 교체(수정)한다. 다른 수강과목의 시간표는 안전하게 보존된다.
+* **`createClassForEnrollment(enrollmentId, classPayload)`**: 특정 수강과목에 대한 기본 요일/시간 시간표를 신규 추가 생성한다.
+
+### 19-6. 출결관제 / 오늘 콘솔 영향 정책
+* **출결관제 영역**:
+  - `출결관제` 화면 및 인스펙터 패널에서는 `class.enrollmentId`가 매핑된 경우, 해당 과목과 매칭된 정확한 강사 정보 및 악기명/과목 정보를 표시한다. legacy class의 경우는 기존 방식의 fallback 룰을 따른다.
+* **오늘 콘솔 영역**:
+  - `오늘 콘솔` 및 결석 경고 생성 태스크(`todayTaskAttendance.js`) 역시 `class.enrollmentId` 기준으로 연산을 분리하여 과목별로 결석 여부를 판단한다.
+  - 1명의 원생이 복수의 과목 수업에 결석한 상태가 감지되면, `과목별 task`가 개별적으로 독립 생성되어 오늘 콘솔 활성 큐 및 요약에 독립 카드로 노출되어야 한다.
+
+### 19-7. 구현 제외 범위
+본 Phase 18B-17은 시간표/수업 구조 격리에 대한 정책 및 설계 수립 마일스톤이므로 다음 사항은 구현 대상에서 제외한다:
+* `class.enrollmentId` 및 `session` 관련 데이터의 실제 물리적 적재
+* 기존 legacy class 시간표 데이터 마이그레이션 실행
+* `updateStudent` 내의 기존 시간표 일괄 덮어쓰기 저장 코드 수정
+* 출결관제 렌더링 화면 마크업 변경
+* 오늘 콘솔 결석 알림 task 생성 비즈니스 엔진 코드 수정
+* E2E 자동화 테스트 스크립트 수정 및 기능 테스트 작성
+
+### 19-8. 후속 Phase 제안
+1. **Phase 18B-18**: Schedule Helper Compatibility Layer 구현 (helper 5종 구현)
+2. **Phase 18B-19**: `updateStudent` 시간표 일괄 삭제 방지 및 `enrollmentId` 기반 저장 분리
+3. **Phase 18B-20**: 수강과목 추가 모달 일정 저장 연동
+4. **Phase 18B-21**: 출결관제/오늘 콘솔 `enrollment-aware` regression 및 E2E 테스트 보강
+5. **Phase 18B-22**: `legacy class` 데이터 마이그레이션/프로모션 정책 및 구현 검토
 
 
