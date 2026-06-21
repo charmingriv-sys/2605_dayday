@@ -798,14 +798,35 @@ const openStudentDetailModal = (studentId) => {
             statusColor = 'var(--text-muted)';
         }
         const teacherName = stateStore.formatEnrollmentTeacherName(e);
-        const billingTypeText = e.billingType === 'monthly' ? '월정액' : e.billingType;
+        const courseType = e.courseType || e.billingType || 'monthly';
+        
+        let billingTypeText = '월정액';
+        let detailFieldsHtml = '';
+        
+        if (courseType === 'monthly') {
+            billingTypeText = '월정액';
+            detailFieldsHtml = `
+                <div><span style="color: var(--text-muted);">월 수강료:</span> <strong>${e.fee ? e.fee.toLocaleString() : 0}원</strong></div>
+                <div><span style="color: var(--text-muted);">청구일:</span> <strong>매월 ${e.dueDay || 10}일</strong></div>
+            `;
+        } else if (courseType === 'session_pass' || courseType === 'session') {
+            billingTypeText = '횟수제';
+            const ticketName = e.ticketName || '횟수제 수강권';
+            const total = e.totalSessions !== undefined ? e.totalSessions : 10;
+            const remaining = e.remainingSessions !== undefined ? e.remainingSessions : 10;
+            detailFieldsHtml = `
+                <div style="grid-column: span 2;"><span style="color: var(--text-muted);">수강권:</span> <strong>${ticketName} (${total}회)</strong></div>
+                <div style="grid-column: span 2;"><span style="color: var(--text-muted);">잔여 횟수:</span> <strong>${remaining}회 / ${total}회</strong></div>
+            `;
+        }
+        
         const badgeHtml = e.source === 'legacy' ? `<span style="background: #eef2f3; color: #7f8c8d; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 600; margin-left: 6px;">기존 등록</span>` : '';
 
         return `
             <div style="background: #fff; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span style="font-weight: 700; color: var(--text-main); font-size: 0.9rem;">
-                        ${e.subject || e.instrument || '미지정 과목'} ${badgeHtml}
+                        ${e.subject || e.instrument || e.subjectName || '미지정 과목'} ${badgeHtml}
                     </span>
                     <span style="background: ${statusColor}15; color: ${statusColor}; font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; font-weight: 700;">
                         ${statusText}
@@ -814,9 +835,8 @@ const openStudentDetailModal = (studentId) => {
                 <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; font-size: 0.85rem; color: var(--text-main);">
                     <div><span style="color: var(--text-muted);">담당 강사:</span> <strong>${teacherName}</strong></div>
                     <div><span style="color: var(--text-muted);">수업 방식:</span> <strong>${billingTypeText}</strong></div>
-                    <div><span style="color: var(--text-muted);">월 수강료:</span> <strong>${e.fee ? e.fee.toLocaleString() : 0}원</strong></div>
-                    <div><span style="color: var(--text-muted);">청구일:</span> <strong>매월 ${e.dueDay || 10}일</strong></div>
-                    <div style="grid-column: span 2;"><span style="color: var(--text-muted);">기본 수업 시간:</span> <strong>${e.defaultClassDuration || 50}분</strong></div>
+                    ${detailFieldsHtml}
+                    <div style="grid-column: span 2;"><span style="color: var(--text-muted);">기본 수업 시간:</span> <strong>${e.defaultClassDuration || e.defaultDurationMinutes || 50}분</strong></div>
                 </div>
             </div>
         `;
@@ -1350,7 +1370,7 @@ const openAddEnrollmentModal = (studentId) => {
 
             <div class="modal-footer" style="padding: 1rem 2rem; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 8px; background: rgba(0, 0, 0, 0.01);">
                 <button type="button" class="btn btn-secondary" id="btn-cancel-enrollment-modal">취소</button>
-                <button type="submit" class="btn btn-primary" id="btn-submit-enrollment-modal">저장 준비 중</button>
+                <button type="submit" class="btn btn-primary" id="btn-submit-enrollment-modal">저장</button>
             </div>
         </form>
     `;
@@ -1453,7 +1473,69 @@ const openAddEnrollmentModal = (studentId) => {
                     }
                 }
 
-                alert('수강과목 저장 기능은 준비 중입니다.');
+                const level = contentArea.querySelector('#enrollment-level').value;
+                const status = contentArea.querySelector('#enrollment-status').value;
+                const startDate = contentArea.querySelector('#enrollment-start-date').value;
+                const defaultWeekday = contentArea.querySelector('#enrollment-day-of-week').value;
+                const defaultStartTime = contentArea.querySelector('#enrollment-time').value;
+                const defaultDurationMinutes = parseInt(contentArea.querySelector('#enrollment-duration').value, 10);
+                const memo = contentArea.querySelector('#enrollment-notes').value;
+
+                let payload = {
+                    subjectName: subject,
+                    instrument: subject,
+                    className: level,
+                    level: level,
+                    teacherId: teacher,
+                    status: status,
+                    startDate: startDate,
+                    defaultWeekday: defaultWeekday,
+                    defaultStartTime: defaultStartTime,
+                    defaultDurationMinutes: defaultDurationMinutes,
+                    memo: memo
+                };
+
+                if (billingType === 'monthly') {
+                    const fee = parseInt(contentArea.querySelector('#enrollment-fee').value, 10);
+                    const dueDay = parseInt(contentArea.querySelector('#enrollment-due-day').value, 10);
+                    const firstBillingMonth = contentArea.querySelector('#enrollment-start-billing-month').value;
+                    const autoBilling = contentArea.querySelector('input[name="enrollment-auto-billing"]:checked').value === 'true';
+                    const pauseBillingOnLeave = contentArea.querySelector('#enrollment-suspend-on-leave').checked;
+
+                    payload.courseType = 'monthly';
+                    payload.fee = fee;
+                    payload.dueDay = dueDay;
+                    payload.firstBillingMonth = firstBillingMonth;
+                    payload.autoBilling = autoBilling;
+                    payload.pauseBillingOnLeave = pauseBillingOnLeave;
+                } else {
+                    const ticketName = contentArea.querySelector('#enrollment-ticket-name').value;
+                    const totalSessions = parseInt(contentArea.querySelector('#enrollment-total-count').value, 10);
+                    const remainingSessions = parseInt(contentArea.querySelector('#enrollment-remaining-count').value, 10);
+                    const fee = parseInt(contentArea.querySelector('#enrollment-ticket-fee').value, 10);
+                    const purchaseDate = contentArea.querySelector('#enrollment-purchase-date').value;
+                    const expiresAt = contentArea.querySelector('#enrollment-expire-date').value || null;
+                    const lowBalanceThreshold = parseInt(contentArea.querySelector('#enrollment-alert-count').value, 10);
+
+                    payload.courseType = 'session_pass';
+                    payload.fee = fee;
+                    payload.ticketName = ticketName;
+                    payload.totalSessions = totalSessions;
+                    payload.remainingSessions = remainingSessions;
+                    payload.purchaseAmount = fee;
+                    payload.purchaseDate = purchaseDate;
+                    payload.expiresAt = expiresAt;
+                    payload.lowBalanceThreshold = lowBalanceThreshold;
+                }
+
+                const result = stateStore.createEnrollment(studentId, payload);
+                if (result && result.ok) {
+                    alert('수강과목이 추가되었습니다.');
+                    closeModal();
+                    openStudentDetailModal(studentId);
+                } else {
+                    alert('수강과목 저장에 실패하였습니다.');
+                }
             });
         }
     };

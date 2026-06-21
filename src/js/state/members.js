@@ -454,6 +454,11 @@ export const membersMethods = {
             autoBilling: payload.autoBilling !== undefined ? payload.autoBilling : true,
             pauseBillingOnLeave: payload.pauseBillingOnLeave !== undefined ? payload.pauseBillingOnLeave : true,
             memo: payload.memo || '',
+            ...payload,
+            id: newId,
+            studentId: studentId,
+            source: 'manual',
+            courseType: courseType,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
         };

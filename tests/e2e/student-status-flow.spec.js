@@ -622,7 +622,7 @@ test.describe('Student Status Management Flow', () => {
     await detailModal.locator('#btn-submit-enrollment-modal').click();
     expect(alertMsg).toBe('잔여 횟수는 총 횟수를 초과할 수 없습니다.');
 
-    // 9. Correct the inputs and click submit
+    // 9. Correct the inputs and click submit (actual save for session_pass)
     await detailModal.locator('#enrollment-remaining-count').fill('10');
 
     let saveAlertMsg = '';
@@ -631,20 +631,46 @@ test.describe('Student Status Management Flow', () => {
       await dialog.accept();
     });
     await detailModal.locator('#btn-submit-enrollment-modal').click();
-    expect(saveAlertMsg).toBe('수강과목 저장 기능은 준비 중입니다.');
+    await page.waitForTimeout(400);
+    expect(saveAlertMsg).toBe('수강과목이 추가되었습니다.');
 
-    // 10. Cancel modal and verify details modal is restored and course count remains unchanged
-    await detailModal.locator('#btn-cancel-enrollment-modal').click();
-    await page.waitForTimeout(200);
-
-    // Verify details modal is restored
+    // Verify details modal is restored and updated with new course card
+    await expect(detailModal).toBeVisible();
     await expect(detailModal).toContainText('수강중인 과목');
-    await expect(detailModal).toContainText('기존 등록 정보는 수강과목 카드로 표시됩니다.');
+    await expect(detailModal).toContainText('횟수제 수강권');
+    await expect(detailModal).toContainText('피아노');
+    
+    // Since formal enrollment is created, legacy fallback is not shown.
+    await expect(detailModal).not.toContainText('수업 방식: 월정액'); // legacy fallback card disappeared!
 
-    // Existing student detail modal buttons are still here
-    await expect(page.locator('#btn-edit-student-from-detail')).toBeVisible();
-    await expect(page.locator('#btn-send-message-from-detail')).toBeVisible();
-    await expect(page.locator('#btn-change-status-from-detail')).toBeVisible();
+    // Verify db.enrollments and db.sessionPasses state inside browser context
+    const stateCheck = await page.evaluate(() => {
+      const store = window.stateStore;
+      const studentId = store.db.students.filter(s => !s.isDeleted)[0]?.id;
+      if (!studentId) return { error: 'Student not found' };
+
+      const enrollments = store.getStudentEnrollments(studentId);
+      const sessionPasses = store.db.sessionPasses || [];
+      const student = store.getStudent(studentId);
+
+      return {
+        enrollments,
+        sessionPassesCount: sessionPasses.length,
+        studentFlatFields: {
+          instrument: student.instrument,
+          fee: student.fee
+        }
+      };
+    });
+
+    expect(stateCheck.error).toBeUndefined();
+    expect(stateCheck.enrollments.length).toBe(1);
+    expect(stateCheck.enrollments[0].courseType).toBe('session_pass');
+    expect(stateCheck.enrollments[0].ticketName).toBe('횟수제 수강권');
+    expect(stateCheck.enrollments[0].totalSessions).toBe(10);
+    expect(stateCheck.enrollments[0].remainingSessions).toBe(10);
+    expect(stateCheck.studentFlatFields.instrument).toBe('피아노');
+    expect(stateCheck.sessionPassesCount).toBe(0);
 
     // Close modal
     await page.locator('[data-close-modal]').first().click();
@@ -842,5 +868,86 @@ test.describe('Student Status Management Flow', () => {
 
     // ID generation scanning check
     expect(testResults.newIdGenerated).toBe('ENR_151');
+  });
+
+  test('should verify monthly course add and save integration', async ({ page }) => {
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Navigate to Student Tab
+    await page.locator('.menu-item[data-view="dir-students"]').click();
+    await expect(page.locator('#page-title')).toContainText('원생 명부 관리');
+
+    // 3. Click first student name link to open details modal
+    const firstStudentLink = page.locator('.student-name-link').first();
+    await expect(firstStudentLink).toBeVisible();
+    await firstStudentLink.click();
+    await expect(page.locator('#common-modal')).toBeVisible();
+
+    const detailModal = page.locator('#common-modal');
+    
+    // 4. Click 수강과목 추가
+    const addEnrollmentBtn = detailModal.locator('#btn-add-enrollment');
+    await expect(addEnrollmentBtn).toBeVisible();
+    await addEnrollmentBtn.click();
+    await page.waitForTimeout(200);
+
+    // 5. Verify and fill in monthly course details
+    await expect(detailModal).toContainText('수강과목 추가 등록');
+    await detailModal.locator('#enrollment-subject').selectOption('피아노');
+    await detailModal.locator('#enrollment-teacher').selectOption('T8');
+    await detailModal.locator('#enrollment-fee').fill('180000');
+    await detailModal.locator('#enrollment-due-day').fill('25');
+
+    // 6. Submit form and verify alert
+    let saveAlertMsg = '';
+    page.once('dialog', async dialog => {
+      saveAlertMsg = dialog.message();
+      await dialog.accept();
+    });
+    await detailModal.locator('#btn-submit-enrollment-modal').click();
+    await page.waitForTimeout(400);
+    expect(saveAlertMsg).toBe('수강과목이 추가되었습니다.');
+
+    // 7. Verify modal restored and displays new card
+    await expect(detailModal).toBeVisible();
+    await expect(detailModal).toContainText('수강중인 과목');
+    await expect(detailModal).toContainText('월정액');
+    await expect(detailModal).toContainText('피아노');
+
+    // 8. Verify state store inside browser context
+    const stateCheck = await page.evaluate(() => {
+      const store = window.stateStore;
+      const studentId = store.db.students[0]?.id;
+      if (!studentId) return { error: 'No student found' };
+
+      const enrollments = store.getStudentEnrollments(studentId);
+      const student = store.getStudent(studentId);
+
+      return {
+        enrollments,
+        studentFlatFields: {
+          instrument: student.instrument,
+          fee: student.fee,
+          dueDay: student.dueDay
+        }
+      };
+    });
+
+    expect(stateCheck.error).toBeUndefined();
+    expect(stateCheck.enrollments.length).toBe(1);
+    expect(stateCheck.enrollments[0].courseType).toBe('monthly');
+    expect(stateCheck.enrollments[0].fee).toBe(180000);
+    expect(stateCheck.enrollments[0].dueDay).toBe(25);
+    expect(stateCheck.studentFlatFields.instrument).toBe('피아노');
+    expect(stateCheck.studentFlatFields.fee).toBe(180000);
+    expect(stateCheck.studentFlatFields.dueDay).toBe(25);
+
+    // Close modal
+    await page.locator('[data-close-modal]').first().click();
+    await expect(page.locator('#common-modal')).not.toHaveClass(/show/);
   });
 });
