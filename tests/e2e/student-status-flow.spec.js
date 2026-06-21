@@ -482,4 +482,75 @@ test.describe('Student Status Management Flow', () => {
     // Ensure leavePeriods are preserved
     expect(statuses.s1LeavePeriods).toEqual([{ startDate: '2026-06-01', endDate: '2026-06-10' }]);
   });
+
+  test('should verify enrollment adapter compatibility functions', async ({ page }) => {
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Perform validations on stateStore adapter functions inside browser context
+    const adapterResults = await page.evaluate(() => {
+      const store = window.stateStore;
+      
+      const student = store.getStudent('S1');
+      if (!student) return { error: 'S1 not found' };
+
+      // Set/Override properties for safe validation
+      student.instrument = '피아노';
+      student.teacherId = 'T8';
+      student.fee = 150000;
+      student.dueDay = 10;
+      student.defaultClassDuration = 50;
+
+      const legacy = store.getLegacyEnrollmentFromStudent(student);
+      const enrollments = store.getStudentEnrollments('S1');
+      const primary = store.getPrimaryEnrollment('S1');
+      const byId = store.getEnrollmentById('legacy-S1');
+      
+      const teacherNameFormatted = store.formatEnrollmentTeacherName(legacy);
+      const isActive = store.isEnrollmentActive(legacy);
+
+      return {
+        legacy,
+        enrollments,
+        primary,
+        byId,
+        teacherNameFormatted,
+        isActive
+      };
+    });
+
+    expect(adapterResults.error).toBeUndefined();
+    
+    // Validate legacy adapter mapping
+    const legacy = adapterResults.legacy;
+    expect(legacy.id).toBe('legacy-S1');
+    expect(legacy.studentId).toBe('S1');
+    expect(legacy.subject).toBe('피아노');
+    expect(legacy.instrument).toBe('피아노');
+    expect(legacy.teacherId).toBe('T8');
+    expect(legacy.fee).toBe(150000);
+    expect(legacy.dueDay).toBe(10);
+    expect(legacy.defaultClassDuration).toBe(50);
+    expect(legacy.source).toBe('legacy');
+    expect(legacy.isLegacy).toBe(true);
+
+    // Validate list retrieval
+    expect(adapterResults.enrollments.length).toBe(1);
+    expect(adapterResults.enrollments[0].id).toBe('legacy-S1');
+
+    // Validate primary
+    expect(adapterResults.primary.id).toBe('legacy-S1');
+
+    // Validate getEnrollmentById
+    expect(adapterResults.byId.id).toBe('legacy-S1');
+
+    // Validate formatEnrollmentTeacherName ('정은비' -> '정은비T')
+    expect(adapterResults.teacherNameFormatted).toBe('정은비T');
+
+    // Validate isEnrollmentActive
+    expect(adapterResults.isActive).toBe(true);
+  });
 });

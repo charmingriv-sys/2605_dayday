@@ -344,5 +344,84 @@ export const membersMethods = {
     getParentLinksForStudent(studentId) {
         if (!this.db.parentStudentLinks) this.db.parentStudentLinks = [];
         return this.db.parentStudentLinks.filter(link => link.studentId === studentId);
+    },
+
+    // --- ENROLLMENT ADAPTER METHODS (Phase 18B-7) ---
+    getLegacyEnrollmentFromStudent(student) {
+        if (!student) return null;
+        return {
+            id: `legacy-${student.id}`,
+            studentId: student.id,
+            subject: student.instrument || '',
+            instrument: student.instrument || '',
+            teacherId: student.teacherId || '',
+            billingType: 'monthly',
+            fee: Number(student.fee || 0),
+            dueDay: student.dueDay || null,
+            defaultClassDuration: student.defaultClassDuration || 50,
+            status: student.status || 'attending',
+            source: 'legacy',
+            isLegacy: true
+        };
+    },
+
+    getStudentEnrollments(studentId) {
+        const student = this.getStudent(studentId);
+        if (!student) return [];
+        
+        if (this.db && Array.isArray(this.db.enrollments)) {
+            const enrollments = this.db.enrollments.filter(e => e.studentId === studentId);
+            if (enrollments.length > 0) {
+                return enrollments;
+            }
+        }
+        
+        const legacy = this.getLegacyEnrollmentFromStudent(student);
+        return legacy ? [legacy] : [];
+    },
+
+    getPrimaryEnrollment(studentId) {
+        const enrollments = this.getStudentEnrollments(studentId);
+        if (enrollments.length === 0) return null;
+        
+        const active = enrollments.find(e => e.status === 'attending');
+        if (active) return active;
+        
+        return enrollments[0];
+    },
+
+    getEnrollmentById(enrollmentId) {
+        if (!enrollmentId) return null;
+        
+        if (enrollmentId.startsWith('legacy-')) {
+            const studentId = enrollmentId.substring(7);
+            const student = this.getStudent(studentId);
+            return this.getLegacyEnrollmentFromStudent(student);
+        }
+        
+        if (this.db && Array.isArray(this.db.enrollments)) {
+            return this.db.enrollments.find(e => e.id === enrollmentId) || null;
+        }
+        
+        return null;
+    },
+
+    formatEnrollmentTeacherName(enrollment) {
+        if (!enrollment || !enrollment.teacherId) return '-';
+        
+        const teachers = typeof this.getTeachers === 'function' ? this.getTeachers() : (this.db && this.db.teachers || []);
+        const teacher = teachers.find(t => t.id === enrollment.teacherId);
+        if (!teacher) return '-';
+        
+        const name = teacher.name || '';
+        if (name.endsWith('T')) return name;
+        return `${name}T`;
+    },
+
+    isEnrollmentActive(enrollment) {
+        if (!enrollment) return false;
+        const status = enrollment.status;
+        if (status === undefined || status === 'attending') return true;
+        return false;
     }
 };
