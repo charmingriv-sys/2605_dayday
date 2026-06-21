@@ -650,4 +650,197 @@ test.describe('Student Status Management Flow', () => {
     await page.locator('[data-close-modal]').first().click();
     await expect(page.locator('#common-modal')).not.toHaveClass(/show/);
   });
+
+  test('should verify db.enrollments Storage APIs', async ({ page }) => {
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Execute validations on stateStore APIs inside browser context
+    const testResults = await page.evaluate(() => {
+      const store = window.stateStore;
+
+      // 0. Ensure clean enrollment collection
+      store.ensureEnrollmentsCollection();
+      
+      // Filter out S1 enrollments to start clean
+      store.db.enrollments = store.db.enrollments.filter(e => e.studentId !== 'S1');
+      store.saveDB();
+
+      const results = {};
+
+      // 1. createEnrollment
+      const createRes1 = store.createEnrollment('S1', {
+        subjectName: '바이올린',
+        courseType: 'monthly',
+        fee: 200000,
+        dueDay: 15,
+        defaultDurationMinutes: 60,
+        startDate: '2026-06-01'
+      });
+      results.createRes1 = createRes1;
+      
+      const createdId = createRes1.data.id;
+
+      // 2. getStudentEnrollments (should return formal list, not legacy fallback)
+      const listAfterCreate = store.getStudentEnrollments('S1');
+      results.listAfterCreateLength = listAfterCreate.length;
+      results.listAfterCreateSource = listAfterCreate[0]?.source;
+      results.listAfterCreateId = listAfterCreate[0]?.id;
+
+      // 3. getPrimaryEnrollment
+      const primaryAfterCreate = store.getPrimaryEnrollment('S1');
+      results.primaryAfterCreateId = primaryAfterCreate?.id;
+      results.primaryAfterCreateSubject = primaryAfterCreate?.subjectName;
+
+      // 4. Student Flat Field Mirroring
+      const studentS1 = store.getStudent('S1');
+      results.mirroredFlatFields = {
+        instrument: studentS1.instrument,
+        fee: studentS1.fee,
+        dueDay: studentS1.dueDay,
+        defaultClassDuration: studentS1.defaultClassDuration,
+        className: studentS1.className,
+        classGroup: studentS1.classGroup
+      };
+
+      // 5. Legacy Update / Delete restriction
+      const legacyUpdateRes = store.updateEnrollment('legacy-S1', { fee: 999999 });
+      results.legacyUpdateRes = legacyUpdateRes;
+      results.studentFeeAfterLegacyUpdate = store.getStudent('S1').fee;
+
+      const legacyDeleteRes = store.deleteEnrollment('legacy-S1');
+      results.legacyDeleteRes = legacyDeleteRes;
+
+      // 6. updateEnrollment
+      const updateRes = store.updateEnrollment(createdId, { fee: 250000 });
+      results.updateRes = updateRes;
+      results.mirroredFeeAfterUpdate = store.getStudent('S1').fee;
+
+      // 7. deleteEnrollment (soft delete)
+      const deleteRes = store.deleteEnrollment(createdId);
+      results.deleteRes = deleteRes;
+      
+      const dbRecord = store.db.enrollments.find(e => e.id === createdId);
+      results.softDeletedStatus = dbRecord?.status;
+      results.hasDeletedAt = !!dbRecord?.deletedAt;
+
+      // 8. getStudentEnrollments when all are archived (should return empty list, NOT fallback to legacy)
+      const listAfterDelete = store.getStudentEnrollments('S1');
+      results.listAfterDeleteLength = listAfterDelete.length;
+      
+      // 9. Flat fields should be preserved even when primary enrollment is gone
+      const studentS1AfterDelete = store.getStudent('S1');
+      results.mirroredFeeAfterDelete = studentS1AfterDelete.fee;
+
+      // 10. getPrimaryEnrollment priority test
+      store.db.enrollments = store.db.enrollments.filter(e => e.studentId !== 'S1');
+      
+      const resSess = store.createEnrollment('S1', {
+        subjectName: '첼로',
+        courseType: 'session_pass',
+        status: 'attending',
+        startDate: '2026-06-10',
+        fee: 300000
+      });
+      const idSess = resSess.data.id;
+      
+      const resMonth = store.createEnrollment('S1', {
+        subjectName: '피아노',
+        courseType: 'monthly',
+        status: 'attending',
+        startDate: '2026-06-05',
+        fee: 180000
+      });
+      const idMonth = resMonth.data.id;
+
+      const resEnded = store.createEnrollment('S1', {
+        subjectName: '플루트',
+        courseType: 'monthly',
+        status: 'ended',
+        startDate: '2026-06-20',
+        fee: 150000
+      });
+      const idEnded = resEnded.data.id;
+
+      const primaryPriority1 = store.getPrimaryEnrollment('S1');
+      results.primaryPriority1Id = primaryPriority1?.id;
+      results.primaryPriority1Subject = primaryPriority1?.subjectName;
+
+      store.deleteEnrollment(idMonth);
+
+      const primaryPriority2 = store.getPrimaryEnrollment('S1');
+      results.primaryPriority2Id = primaryPriority2?.id;
+      results.primaryPriority2Subject = primaryPriority2?.subjectName;
+
+      // 11. ID Generation Scanning (scan ENR_숫자 pattern)
+      store.db.enrollments.push({
+        id: 'ENR_150',
+        studentId: 'S2',
+        source: 'manual',
+        status: 'attending',
+        courseType: 'monthly',
+        createdAt: new Date().toISOString()
+      });
+      store.saveDB();
+
+      const newIdRes = store.createEnrollment('S1', {
+        subjectName: '기타',
+        courseType: 'monthly'
+      });
+      results.newIdGenerated = newIdRes.data.id;
+
+      return results;
+    });
+
+    // Asserts
+    expect(testResults.createRes1.ok).toBe(true);
+    expect(testResults.createRes1.data.id).toMatch(/^ENR_\d+$/);
+
+    expect(testResults.listAfterCreateLength).toBe(1);
+    expect(testResults.listAfterCreateSource).toBe('manual');
+    expect(testResults.listAfterCreateId).toBe(testResults.createRes1.data.id);
+
+    expect(testResults.primaryAfterCreateId).toBe(testResults.createRes1.data.id);
+    expect(testResults.primaryAfterCreateSubject).toBe('바이올린');
+
+    // Flat field mirroring check
+    expect(testResults.mirroredFlatFields.instrument).toBe('바이올린');
+    expect(testResults.mirroredFlatFields.fee).toBe(200000);
+    expect(testResults.mirroredFlatFields.dueDay).toBe(15);
+    expect(testResults.mirroredFlatFields.defaultClassDuration).toBe(60);
+
+    // Legacy update/delete check
+    expect(testResults.legacyUpdateRes.ok).toBe(false);
+    expect(testResults.legacyUpdateRes.reason).toBe('legacy_readonly');
+    expect(testResults.studentFeeAfterLegacyUpdate).toBe(200000);
+
+    expect(testResults.legacyDeleteRes.ok).toBe(false);
+    expect(testResults.legacyDeleteRes.reason).toBe('legacy_readonly');
+
+    // updateEnrollment check
+    expect(testResults.updateRes.ok).toBe(true);
+    expect(testResults.updateRes.data.fee).toBe(250000);
+    expect(testResults.mirroredFeeAfterUpdate).toBe(250000);
+
+    // deleteEnrollment check
+    expect(testResults.deleteRes.ok).toBe(true);
+    expect(testResults.softDeletedStatus).toBe('archived');
+    expect(testResults.hasDeletedAt).toBe(true);
+
+    // Empty list on all archived, no legacy fallback
+    expect(testResults.listAfterDeleteLength).toBe(0);
+
+    // Flat fields preserved
+    expect(testResults.mirroredFeeAfterDelete).toBe(250000);
+
+    // Primary priority checks
+    expect(testResults.primaryPriority1Subject).toBe('피아노');
+    expect(testResults.primaryPriority2Subject).toBe('플루트');
+
+    // ID generation scanning check
+    expect(testResults.newIdGenerated).toBe('ENR_151');
+  });
 });

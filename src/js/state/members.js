@@ -365,17 +365,21 @@ export const membersMethods = {
         };
     },
 
-    getStudentEnrollments(studentId) {
+    getStudentEnrollments(studentId, options = {}) {
         const student = this.getStudent(studentId);
         if (!student) return [];
-        
-        if (this.db && Array.isArray(this.db.enrollments)) {
-            const enrollments = this.db.enrollments.filter(e => e.studentId === studentId);
-            if (enrollments.length > 0) {
-                return enrollments;
+
+        this.ensureEnrollmentsCollection();
+
+        const allEnrollments = this.db.enrollments.filter(e => e.studentId === studentId);
+
+        if (allEnrollments.length > 0) {
+            if (options.includeArchived) {
+                return allEnrollments;
             }
+            return allEnrollments.filter(e => e.status !== 'archived' && !e.deletedAt);
         }
-        
+
         const legacy = this.getLegacyEnrollmentFromStudent(student);
         return legacy ? [legacy] : [];
     },
@@ -383,11 +387,162 @@ export const membersMethods = {
     getPrimaryEnrollment(studentId) {
         const enrollments = this.getStudentEnrollments(studentId);
         if (enrollments.length === 0) return null;
-        
-        const active = enrollments.find(e => e.status === 'attending');
-        if (active) return active;
-        
-        return enrollments[0];
+
+        const sorted = [...enrollments].sort((a, b) => {
+            const aIsAttendingMonthly = a.status === 'attending' && a.courseType === 'monthly';
+            const bIsAttendingMonthly = b.status === 'attending' && b.courseType === 'monthly';
+
+            if (aIsAttendingMonthly && !bIsAttendingMonthly) return -1;
+            if (!aIsAttendingMonthly && bIsAttendingMonthly) return 1;
+
+            const aStartDate = a.startDate || '';
+            const bStartDate = b.startDate || '';
+            if (aStartDate !== bStartDate) {
+                return bStartDate.localeCompare(aStartDate);
+            }
+
+            const aCreatedAt = a.createdAt || '';
+            const bCreatedAt = b.createdAt || '';
+            return bCreatedAt.localeCompare(aCreatedAt);
+        });
+
+        return sorted[0];
+    },
+
+    ensureEnrollmentsCollection() {
+        if (!this.db) return;
+        if (!this.db.enrollments) {
+            this.db.enrollments = [];
+        }
+    },
+
+    createEnrollment(studentId, payload) {
+        this.ensureEnrollmentsCollection();
+
+        let maxNum = 0;
+        this.db.enrollments.forEach(e => {
+            if (typeof e.id === 'string' && e.id.startsWith('ENR_')) {
+                const num = parseInt(e.id.substring(4), 10);
+                if (!isNaN(num) && num > maxNum) {
+                    maxNum = num;
+                }
+            }
+        });
+        const newId = `ENR_${maxNum + 1}`;
+
+        const courseType = payload.courseType === 'session_pass' ? 'session_pass' : 'monthly';
+
+        const newEnrollment = {
+            id: newId,
+            studentId: studentId,
+            source: 'manual',
+            status: payload.status || 'attending',
+            courseType: courseType,
+            subjectName: payload.subjectName || payload.subject || '',
+            instrument: payload.instrument || payload.subject || '',
+            className: payload.className || '',
+            level: payload.level || '',
+            teacherId: payload.teacherId || '',
+            startDate: payload.startDate || new Date().toISOString().slice(0, 10),
+            endDate: payload.endDate || null,
+            defaultWeekday: payload.defaultWeekday || '',
+            defaultStartTime: payload.defaultStartTime || '',
+            defaultDurationMinutes: parseInt(payload.defaultDurationMinutes || payload.defaultClassDuration, 10) || 50,
+            fee: Number(payload.fee || 0),
+            dueDay: payload.dueDay !== undefined ? Number(payload.dueDay) : 1,
+            firstBillingMonth: payload.firstBillingMonth || '',
+            autoBilling: payload.autoBilling !== undefined ? payload.autoBilling : true,
+            pauseBillingOnLeave: payload.pauseBillingOnLeave !== undefined ? payload.pauseBillingOnLeave : true,
+            memo: payload.memo || '',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+
+        this.db.enrollments.push(newEnrollment);
+
+        this.syncStudentFlatFieldsFromPrimaryEnrollment(studentId);
+
+        this.saveDB();
+        this.notify('STUDENTS_CHANGED', this.db.students);
+
+        return { ok: true, data: newEnrollment };
+    },
+
+    updateEnrollment(enrollmentId, patch) {
+        this.ensureEnrollmentsCollection();
+
+        if (typeof enrollmentId === 'string' && enrollmentId.startsWith('legacy-')) {
+            return { ok: false, reason: 'legacy_readonly' };
+        }
+
+        const enrollment = this.db.enrollments.find(e => e.id === enrollmentId);
+        if (!enrollment) {
+            return { ok: false, reason: 'not_found' };
+        }
+        if (enrollment.source === 'legacy') {
+            return { ok: false, reason: 'legacy_readonly' };
+        }
+
+        Object.keys(patch).forEach(key => {
+            if (key !== 'id' && key !== 'studentId' && key !== 'source') {
+                enrollment[key] = patch[key];
+            }
+        });
+        enrollment.updatedAt = new Date().toISOString();
+
+        this.syncStudentFlatFieldsFromPrimaryEnrollment(enrollment.studentId);
+
+        this.saveDB();
+        this.notify('STUDENTS_CHANGED', this.db.students);
+
+        return { ok: true, data: enrollment };
+    },
+
+    deleteEnrollment(enrollmentId) {
+        this.ensureEnrollmentsCollection();
+
+        if (typeof enrollmentId === 'string' && enrollmentId.startsWith('legacy-')) {
+            return { ok: false, reason: 'legacy_readonly' };
+        }
+
+        const enrollment = this.db.enrollments.find(e => e.id === enrollmentId);
+        if (!enrollment) {
+            return { ok: false, reason: 'not_found' };
+        }
+        if (enrollment.source === 'legacy') {
+            return { ok: false, reason: 'legacy_readonly' };
+        }
+
+        enrollment.status = 'archived';
+        enrollment.deletedAt = new Date().toISOString();
+        enrollment.updatedAt = new Date().toISOString();
+
+        this.syncStudentFlatFieldsFromPrimaryEnrollment(enrollment.studentId);
+
+        this.saveDB();
+        this.notify('STUDENTS_CHANGED', this.db.students);
+
+        return { ok: true };
+    },
+
+    syncStudentFlatFieldsFromPrimaryEnrollment(studentId) {
+        if (!this.db || !this.db.students) return;
+
+        const student = this.db.students.find(s => s.id === studentId);
+        if (!student) return;
+
+        const primary = this.getPrimaryEnrollment(studentId);
+        if (!primary) {
+            return;
+        }
+
+        student.instrument = primary.instrument || primary.subjectName || '';
+        student.className = primary.className || '';
+        student.classGroup = primary.className || '';
+        student.teacherId = primary.teacherId || '';
+        student.fee = Number(primary.fee || 0);
+        student.dueDay = primary.dueDay !== undefined ? Number(primary.dueDay) : null;
+        student.defaultClassDuration = primary.defaultDurationMinutes || primary.defaultClassDuration || 50;
     },
 
     getEnrollmentById(enrollmentId) {
