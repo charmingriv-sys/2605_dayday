@@ -632,7 +632,7 @@ test.describe('Student Status Management Flow', () => {
     });
     await detailModal.locator('#btn-submit-enrollment-modal').click();
     await page.waitForTimeout(400);
-    expect(saveAlertMsg).toBe('수강과목이 추가되었습니다.');
+    expect(saveAlertMsg).toBe('수강과목과 수강권이 추가되었습니다.');
 
     // Verify details modal is restored and updated with new course card
     await expect(detailModal).toBeVisible();
@@ -670,7 +670,7 @@ test.describe('Student Status Management Flow', () => {
     expect(stateCheck.enrollments[0].totalSessions).toBe(10);
     expect(stateCheck.enrollments[0].remainingSessions).toBe(10);
     expect(stateCheck.studentFlatFields.instrument).toBe('피아노');
-    expect(stateCheck.sessionPassesCount).toBe(0);
+    expect(stateCheck.sessionPassesCount).toBe(1);
 
     // Close modal
     await page.locator('[data-close-modal]').first().click();
@@ -1518,7 +1518,7 @@ test.describe('Student Status Management Flow', () => {
     await detailModal.locator('#btn-submit-enrollment-modal').click();
     await page.waitForTimeout(400);
 
-    expect(alertMsgSession).toBe('수강과목과 기본 수업 시간이 추가되었습니다.');
+    expect(alertMsgSession).toBe('수강과목, 수강권과 기본 수업 시간이 추가되었습니다.');
 
     const state4 = await page.evaluate((exclId) => {
       const store = window.stateStore;
@@ -1533,11 +1533,11 @@ test.describe('Student Status Management Flow', () => {
     await expect(drumCard).toBeVisible();
     await expect(drumCard).toContainText('기본 수업 시간: 금 16:00 (50분)');
 
-    // Verify sessionPasses is not modified
+    // Verify sessionPasses is saved
     const sessionPassCheck = await page.evaluate(() => {
       return window.stateStore.db.sessionPasses || [];
     });
-    expect(sessionPassCheck.length).toBe(0);
+    expect(sessionPassCheck.length).toBe(1);
 
     // Close modal
     await detailModal.locator('[data-close-modal]').first().click();
@@ -1828,5 +1828,210 @@ test.describe('Student Status Management Flow', () => {
     if (result.error) {
       throw new Error(result.error);
     }
+  });
+
+  test('should verify Course Add Modal SessionPass Save Integration', async ({ page }) => {
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Navigate to Student Management Tab and select student S1 (최다은)
+    await page.locator('.menu-item[data-view="dir-students"]').click();
+    await expect(page.locator('#page-title')).toContainText('원생 명부 관리');
+
+    const s1Link = page.locator('.student-name-link', { hasText: '최다은' });
+    await expect(s1Link).toBeVisible();
+    await s1Link.click();
+    
+    const detailModal = page.locator('#common-modal');
+    await expect(detailModal).toBeVisible();
+
+    // Clean S1's enrollments and classes for clean testing
+    await page.evaluate(() => {
+      const store = window.stateStore;
+      store.db.enrollments = store.db.enrollments.filter(e => e.studentId !== 'S1');
+      store.db.classes = store.db.classes.filter(c => c.studentId !== 'S1');
+      if (store.db.sessionPasses) {
+        store.db.sessionPasses = store.db.sessionPasses.filter(sp => sp.studentId !== 'S1');
+      }
+      store.saveDB();
+    });
+
+    const addEnrollmentBtn = detailModal.locator('#btn-add-enrollment');
+
+    // ----------------------------------------------------
+    // Scenario A: 횟수제 수강과목 + 수강권(sessionPass) + 기본 수업 class 생성 성공 시나리오
+    // ----------------------------------------------------
+    await addEnrollmentBtn.click();
+    await expect(detailModal).toContainText('수강과목 추가 등록');
+
+    // 횟수제 라디오 클릭 및 폼 입력
+    await detailModal.locator('input[name="enrollment-billing-type"][value="session"]').click();
+    await detailModal.locator('#enrollment-subject').selectOption({ index: 1 });
+    await detailModal.locator('#enrollment-ticket-name').fill('E2E 피아노 10회권');
+    await detailModal.locator('#enrollment-total-count').fill('10');
+    await detailModal.locator('#enrollment-remaining-count').fill('8');
+    await detailModal.locator('#enrollment-ticket-fee').fill('150000');
+    await detailModal.locator('#enrollment-purchase-date').fill('2026-06-20');
+    await detailModal.locator('#enrollment-expire-date').fill('2026-09-20');
+    await detailModal.locator('#enrollment-alert-count').fill('2');
+
+    // 기본 수업 시간 및 강사 입력
+    await detailModal.locator('#enrollment-day-of-week').selectOption('화');
+    await detailModal.locator('#enrollment-time').fill('15:30');
+    await detailModal.locator('#enrollment-duration').selectOption('60');
+    await detailModal.locator('#enrollment-teacher').selectOption({ index: 1 });
+
+    // Submit 및 Alert 단언
+    page.once('dialog', async dialog => {
+      expect(dialog.message()).toBe('수강과목, 수강권과 기본 수업 시간이 추가되었습니다.');
+      await dialog.accept();
+    });
+    await detailModal.locator('#btn-submit-enrollment-modal').click();
+    await page.waitForTimeout(400);
+
+    // 데이터 정상 생성 확인
+    let testResult = await page.evaluate(() => {
+      const store = window.stateStore;
+      const S1Enrollments = store.getStudentEnrollments('S1');
+      const passEnrollment = S1Enrollments.find(e => e.courseType === 'session_pass');
+      if (!passEnrollment) return { error: 'session_pass enrollment not created' };
+
+      const passes = store.getSessionPassesByEnrollmentId(passEnrollment.id);
+      if (passes.length !== 1) return { error: 'sessionPass not created' };
+
+      const pass = passes[0];
+      if (pass.passName !== 'E2E 피아노 10회권' || pass.totalSessions !== 10 || pass.remainingSessions !== 8) {
+        return { error: 'sessionPass fields mismatch', pass };
+      }
+
+      const classes = store.getClassesByEnrollmentId(passEnrollment.id);
+      if (classes.length !== 1) return { error: 'class not created' };
+      const c = classes[0];
+      if (c.dayOfWeek !== '화' || c.time !== '15:30' || c.durationMinutes !== 60) {
+        return { error: 'class fields mismatch', c };
+      }
+
+      return { ok: true, enrollmentId: passEnrollment.id };
+    });
+    expect(testResult.error).toBeUndefined();
+    expect(testResult.ok).toBe(true);
+    const passEnrId1 = testResult.enrollmentId;
+
+    // ----------------------------------------------------
+    // Scenario B: 기본 수업 정보 없이 횟수제 저장 시나리오
+    // ----------------------------------------------------
+    await addEnrollmentBtn.click();
+    await detailModal.locator('input[name="enrollment-billing-type"][value="session"]').click();
+    await detailModal.locator('#enrollment-subject').selectOption({ index: 2 });
+    await detailModal.locator('#enrollment-teacher').selectOption({ index: 1 });
+    await detailModal.locator('#enrollment-ticket-name').fill('E2E 바이올린 5회권');
+    await detailModal.locator('#enrollment-total-count').fill('5');
+    await detailModal.locator('#enrollment-remaining-count').fill('5');
+    await detailModal.locator('#enrollment-ticket-fee').fill('80000');
+    await detailModal.locator('#enrollment-purchase-date').fill('2026-06-21');
+    await detailModal.locator('#enrollment-alert-count').fill('1');
+
+    // 시간 입력 비워둠 (duration, time 등)
+    await detailModal.locator('#enrollment-time').fill('');
+
+    // Submit 및 Alert 단언
+    page.once('dialog', async dialog => {
+      expect(dialog.message()).toBe('수강과목과 수강권이 추가되었습니다.');
+      await dialog.accept();
+    });
+    await detailModal.locator('#btn-submit-enrollment-modal').click();
+    await page.waitForTimeout(400);
+
+    testResult = await page.evaluate((passEnrId1) => {
+      const store = window.stateStore;
+      const S1Enrollments = store.getStudentEnrollments('S1');
+      const passEnrollment = S1Enrollments.find(e => e.id !== passEnrId1 && e.courseType === 'session_pass');
+      if (!passEnrollment) return { error: 'second session_pass enrollment not created' };
+
+      const passes = store.getSessionPassesByEnrollmentId(passEnrollment.id);
+      if (passes.length !== 1) return { error: 'second sessionPass not created' };
+
+      const classes = store.getClassesByEnrollmentId(passEnrollment.id);
+      if (classes.length !== 0) return { error: 'class should not be created', classes };
+
+      return { ok: true, enrollmentId: passEnrollment.id };
+    }, passEnrId1);
+    expect(testResult.error).toBeUndefined();
+    expect(testResult.ok).toBe(true);
+    const passEnrId2 = testResult.enrollmentId;
+
+    // ----------------------------------------------------
+    // Scenario C: createSessionPass 실패 시 (Monkey Patching) enrollment 잔존 및 sessionPass 미생성 시나리오
+    // ----------------------------------------------------
+    // 1. Monkey patch createSessionPass to fail
+    await page.evaluate(() => {
+      const store = window.stateStore;
+      store.originalCreateSessionPass = store.createSessionPass;
+      store.createSessionPass = function() {
+        return { ok: false, reason: 'test_failure' };
+      };
+    });
+
+    await addEnrollmentBtn.click();
+    await detailModal.locator('input[name="enrollment-billing-type"][value="session"]').click();
+    await detailModal.locator('#enrollment-subject').selectOption({ index: 1 });
+    await detailModal.locator('#enrollment-teacher').selectOption({ index: 1 });
+    await detailModal.locator('#enrollment-ticket-name').fill('실패 테스트 수강권');
+    await detailModal.locator('#enrollment-total-count').fill('10');
+    await detailModal.locator('#enrollment-remaining-count').fill('10');
+    await detailModal.locator('#enrollment-ticket-fee').fill('120000');
+    await detailModal.locator('#enrollment-purchase-date').fill('2026-06-22');
+    await detailModal.locator('#enrollment-alert-count').fill('2');
+
+    // Submit 및 Alert 단언
+    page.once('dialog', async dialog => {
+      expect(dialog.message()).toBe('수강과목은 추가되었지만 수강권 저장에 실패했습니다.');
+      await dialog.accept();
+    });
+    await detailModal.locator('#btn-submit-enrollment-modal').click();
+    await page.waitForTimeout(400);
+
+    // 2. Restore monkey patch
+    await page.evaluate(() => {
+      const store = window.stateStore;
+      if (store.originalCreateSessionPass) {
+        store.createSessionPass = store.originalCreateSessionPass;
+        delete store.originalCreateSessionPass;
+      }
+    });
+
+    testResult = await page.evaluate((ids) => {
+      const store = window.stateStore;
+      const S1Enrollments = store.getStudentEnrollments('S1');
+      const failedEnrollment = S1Enrollments.find(e => !ids.includes(e.id) && e.courseType === 'session_pass');
+      if (!failedEnrollment) return { error: 'enrollment should still be saved even if sessionPass failed' };
+
+      const passes = store.getSessionPassesByEnrollmentId(failedEnrollment.id);
+      if (passes.length !== 0) return { error: 'sessionPass should not be created on fail', passes };
+
+      return { ok: true };
+    }, [passEnrId1, passEnrId2]);
+    expect(testResult.error).toBeUndefined();
+    expect(testResult.ok).toBe(true);
+
+    // 3. 중복 생성 방지 확인
+    testResult = await page.evaluate(() => {
+      const store = window.stateStore;
+      const allPasses = store.db.sessionPasses || [];
+      const S1Passes = allPasses.filter(sp => sp.studentId === 'S1');
+      // S1Passes should be exactly 2 (A와 B 수강권만 생성됨, C는 실패했으므로)
+      if (S1Passes.length !== 2) {
+        return { error: 'duplicates or missing passes found', S1Passes };
+      }
+      return { ok: true };
+    });
+    expect(testResult.ok).toBe(true);
+
+    // Close details modal
+    await detailModal.locator('[data-close-modal]').first().click();
+    await expect(detailModal).not.toHaveClass(/show/);
   });
 });

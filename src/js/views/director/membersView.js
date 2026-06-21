@@ -1584,22 +1584,58 @@ const openAddEnrollmentModal = (studentId) => {
                     const durationMinutes = durationVal ? parseInt(durationVal, 10) : NaN;
                     const teacherId = contentArea.querySelector('#enrollment-teacher').value;
 
-                    if (dayOfWeek && time && !isNaN(durationMinutes)) {
-                        const classPayload = {
-                            dayOfWeek,
-                            time,
-                            durationMinutes,
-                            teacherId: teacherId || ''
+                    const hasClassSchedule = !!(dayOfWeek && time && !isNaN(durationMinutes));
+
+                    if (enrollment.courseType === 'session_pass') {
+                        const passPayload = {
+                            passName: payload.ticketName || payload.subjectName || '수강권',
+                            totalSessions: payload.totalSessions,
+                            remainingSessions: payload.remainingSessions,
+                            purchaseAmount: payload.fee,
+                            purchaseDate: payload.purchaseDate,
+                            expiresAt: payload.expiresAt,
+                            lowBalanceThreshold: payload.lowBalanceThreshold,
+                            deductionPolicy: 'attendance'
                         };
 
-                        const classResult = stateStore.createClassForEnrollment(enrollment.id, classPayload);
-                        if (classResult && classResult.ok) {
-                            alert('수강과목과 기본 수업 시간이 추가되었습니다.');
+                        const passResult = stateStore.createSessionPass(enrollment.id, passPayload);
+                        if (passResult && passResult.ok) {
+                            if (hasClassSchedule) {
+                                const classPayload = {
+                                    dayOfWeek,
+                                    time,
+                                    durationMinutes,
+                                    teacherId: teacherId || ''
+                                };
+                                const classResult = stateStore.createClassForEnrollment(enrollment.id, classPayload);
+                                if (classResult && classResult.ok) {
+                                    alert('수강과목, 수강권과 기본 수업 시간이 추가되었습니다.');
+                                } else {
+                                    alert('수강과목은 추가되었지만 기본 수업 시간 저장에 실패했습니다.');
+                                }
+                            } else {
+                                alert('수강과목과 수강권이 추가되었습니다.');
+                            }
                         } else {
-                            alert('수강과목은 추가되었지만 기본 수업 시간 저장에 실패했습니다.');
+                            alert('수강과목은 추가되었지만 수강권 저장에 실패했습니다.');
                         }
                     } else {
-                        alert('수강과목이 추가되었습니다.');
+                        if (hasClassSchedule) {
+                            const classPayload = {
+                                dayOfWeek,
+                                time,
+                                durationMinutes,
+                                teacherId: teacherId || ''
+                            };
+                            const classResult = stateStore.createClassForEnrollment(enrollment.id, classPayload);
+                            if (classResult && classResult.ok) {
+                                alert('수강과목과 기본 수업 시간이 추가되었습니다.');
+                            } else {
+                                alert('수강과목은 추가되었지만 기본 수업 시간 저장에 실패했습니다.');
+                            }
+                        } else {
+                            alert('수강과목이 추가되었습니다.');
+                        }
                     }
 
                     closeModal();
