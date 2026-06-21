@@ -890,4 +890,137 @@
 4. **Phase 18B-15**: enrollmentId 기반 시간표 분리 (db.classes 내 외래 키 바인딩 및 삭제 충돌 개선)
 5. **Phase 18B-16**: 횟수제 sessionPass 차감 정책 및 UI 구현 (출결 연동 횟수 차감 및 오늘 콘솔 알림 구현)
 
+---
+
+## 18. db.enrollments 저장 구조 및 Legacy Promotion 정책 (Phase 18B-13)
+
+### 18-1. db.enrollments 컬렉션 도입 목적
+* **인물과 운영의 도메인 분리**:
+  - 원생 개인의 기본 인적 정보(이름, 연락처, 학교 등)가 담긴 `student` 레코드와, 실제 수업이 운영되는 계약 관계 단위인 `enrollment` 레코드를 분리하여 도메인 간 독립성을 확보한다.
+  - 이를 통해 1인 다과목 수강, 과목별 복수 강사 배정, 과목별 상이한 수강료/청구일 청구 및 횟수제 수강권 차감 등의 다차원 비즈니스 요건을 원활하게 지원한다.
+  - 기존 레거시 시스템 호환을 보장하고 화면 크래시를 예방하기 위해, 기존의 flat student 필드는 DB에서 즉시 제거하지 않고 과도기적 하위 호환 필드로 영구 적재 유지한다.
+
+### 18-2. enrollment 기본 스키마 초안
+신설되는 `db.enrollments` 컬렉션의 단일 레코드 저장 구조 모델 사양이다.
+```js
+{
+  id: 'ENR_...',                  // 고유 ID (예: ENR_S1_001)
+  studentId: 'S...',              // 대상 학생 외래 키
+  source: 'manual',               // 데이터 소스 유형 ('legacy' / 'manual')
+  status: 'attending',            // 과목별 수강 상태 ('attending' / 'on_leave' / 'ended')
+  courseType: 'monthly',          // 수업 방식 ('monthly' / 'session')
+  subjectName: '',                // 공식 과목명 (예: 바이올린)
+  instrument: '',                 // 수강 악기명 (subjectName 동의어로 미러링 지원)
+  className: '',                  // 반/그룹/레벨 명칭
+  level: '',                      // 상세 단계
+  teacherId: '',                  // 담당 강사 ID
+  startDate: '',                  // 수강 시작일 (YYYY-MM-DD)
+  endDate: null,                  // 수강 종료일 (YYYY-MM-DD 또는 null)
+  defaultWeekday: '',             // 기본 수업 요일 (월~일)
+  defaultStartTime: '',           // 기본 수업 시작 시각 (HH:MM)
+  defaultDurationMinutes: 50,     // 기본 수업 시간 (분 단위)
+  fee: 0,                         // 월 수강료 또는 수강권 구매액
+  dueDay: 1,                      // 정기 청구일 (1~31)
+  firstBillingMonth: '',          // 첫 청구 시작월 (YYYY-MM)
+  autoBilling: true,              // 청구서 자동 생성 트리거 여부
+  pauseBillingOnLeave: true,      // 휴강/휴원 시 청구 보류 여부
+  memo: '',                       // 수업 특이사항 메모
+  createdAt: '',                  // 생성 시각 ISO String
+  updatedAt: ''                   // 수정 시각 ISO String
+}
+```
+
+### 18-3. 월정액 enrollment 정책
+* **데이터 모델링**:
+  - 월 단위 정기 수강 계약인 경우 `courseType: 'monthly'` 값으로 지정 저장한다.
+  - enrollment 내에 월 수강료, 청구 희망일, 첫 청구년월, 자동 생성 플래그 및 휴강 보류 옵션 정보를 완전하게 바인딩하여 보관한다.
+  - 신규 청구서(`payment`) 발부 배치 및 수동 생성 시, 해당 청구서가 어떤 수업 계약으로 인해 발행되었는지 명확히 하기 위해 `payment.enrollmentId` 외래 키로 매핑 연결한다.
+  - 과도기 동안 기존의 수납 대장 뷰 및 정기 미납 task 생성이 정상 동작하도록, 대표로 선정된 단일 월정액 enrollment 데이터는 `student` flat 필드로 안전하게 미러링 적재 처리한다.
+
+### 18-4. 횟수제 enrollment / sessionPass 정책
+* **구조적 역할 격리**:
+  - 횟수제 방식 채택 시, 수업 및 강사 계약 정보를 담는 `enrollment` 스키마와 횟수권 상품의 소진 이력을 기록하는 `sessionPass` 스키마를 상호 분리하여 모델링한다.
+* **sessionPass 초안 스키마**:
+```js
+{
+  id: 'PASS_...',                 // 고유 ID (예: PASS_ENR_123)
+  enrollmentId: 'ENR_...',        // 연관 수강과목 ID
+  studentId: 'S...',              // 대상 학생 ID
+  passName: '',                   // 수강권 상품 명칭 (예: 피아노 10회 이용권)
+  totalSessions: 0,               // 총 충전 횟수 (1 이상 정수)
+  remainingSessions: 0,           // 잔여 횟수 (총 횟수 이하의 정수, 음수 불가)
+  purchaseAmount: 0,              // 수강권 구매 금액
+  purchaseDate: '',               // 구매일 (YYYY-MM-DD)
+  expiresAt: '',                  // 만료일 (YYYY-MM-DD 또는 무제한의 경우 null/빈값)
+  lowBalanceThreshold: 2,         // 잔여 경고 기준 횟수
+  deductionPolicy: 'attendance_confirmed', // 차감 실행 정책
+  status: 'active',               // 수강권 활성 지위 ('active' / 'expired' / 'depleted')
+  createdAt: '',                  // 생성 시각
+  updatedAt: ''                   // 수정 시각
+}
+```
+* **소진 차감 기준 고정**:
+  - MVP 개발 범위 내의 차감 연산 트리거는 등/하원 로직과의 무결성을 보장하기 위해 오직 **"출석/지각 확정 시"**(`deductionPolicy: 'attendance_confirmed'`) 자동 차감되는 기준 하나로만 명시적 고정하여 운영한다.
+
+### 18-5. Legacy virtual enrollment와 정식 enrollment 구분
+* **데이터 소스 유형화**:
+  - 기존 flat 필드를 참조하여 실시간으로 가상 합성되는 레거시 `legacy-${student.id}` 과목 데이터는 `source: 'legacy'` 메타를 붙여 구분한다.
+  - 화면 UI 모달을 통해 새롭게 입력 및 영구 저장된 정식 수업 정보는 `source: 'manual'` 메타를 할당한다.
+  - `legacy` 과목은 DB 컬렉션 상에 물리적 실체가 없는 가상의 동적 캐시 카드에 불과하며, 정식 `manual` 과목은 `db.enrollments` 테이블 내의 로우(row) 실체이다.
+  - UI 렌더링 시에는 두 소스의 카드를 동일한 공통 컴포넌트로 그리되, 내부 수정/삭제 제어 시 `source` 유형에 따라 처리 핸들러를 분기한다.
+
+### 18-6. Legacy Promotion 정책
+* **수동/안전 승격 원칙**:
+  - 신규로 수강과목을 추가하여 저장할 때, 기존 원생의 legacy 가상 과목 데이터를 무리하게 즉시 정식 데이터로 자동 변환하지 않는다.
+  - **이유**: 기존 수납 이력(`payment`), 출결 레코드, 강사 배정 및 오늘 태스크 등 과거 모든 운영 히스토리가 기존 student flat ID에 묶여 있기 때문에, 사전에 안전한 외래 키 마이그레이션 없이 자동으로 변환할 시 참조 무결성이 붕괴될 위험이 매우 크다.
+  - 따라서 legacy $\rightarrow$ 정식 `db.enrollments` 변환 작업은 독립된 전용 **Migration/Promotion Phase**에서 수동 배치 또는 Promotion 액션 UI 트리거 형식으로 완만하게 실행한다.
+  - Promotion 변환 완료 시점에도 기존 flat 필드 데이터를 즉각 삭제하지 않고 미러링/호환 상태로 계속 잔존시키며, 예기치 못한 운영 사고를 방지하기 위해 일정 기간 내의 레거시 롤백(Rollback) 기능을 반드시 지원한다.
+
+### 18-7. 대표 수강과목 및 flat 필드 Mirroring 정책
+* **하위 호환 캐시 정책**:
+  - 과도기 동안 하위 호환 뷰(기존 수납/출결 등)를 정상 보존하기 위해, 다음 순서로 원생의 1순위 대표 과목을 계산 판정한다.
+    1. `status === 'attending'` (수강중)인 `monthly` (월정액) 과목 최우선
+    2. `startDate` 가 오늘과 가장 가까운 최근 과목
+    3. `createdAt` 최신 생성 시간순
+  - 판정된 대표 과목의 속성들을 학생의 기존 flat 필드 정보에 실시간 복사 미러링(Mirroring)해 준다.
+  - **미러링 대상 필드**:
+    - `student.instrument` $\leftarrow$ `enrollment.instrument`
+    - `student.teacherId` $\leftarrow$ `enrollment.teacherId`
+    - `student.fee` $\leftarrow$ `enrollment.fee`
+    - `student.dueDay` $\leftarrow$ `enrollment.dueDay`
+    - `student.defaultClassDuration` $\leftarrow$ `enrollment.defaultDurationMinutes`
+  - 이 메커니즘 하에서 학생 레코드의 flat 필드들은 canoncial source(원천 데이터)가 아닌 **compatibility cache** (하위 호환 목적의 일시적 캐시)의 지위를 갖는다.
+
+### 18-8. class.enrollmentId 전환 정책
+* **외래 키 전환 및 스케줄 분리**:
+  - 기존에는 수업 일정표(`db.classes`)가 오직 `studentId`로만 묶여 일괄 관리되었으나, 1인 다과목 도입 이후에는 해당 요일의 스케줄이 어느 과목 계약에 의한 것인지 구분하기 위해 `class.enrollmentId` 속성을 필수 도입한다.
+  - 신규 수업 스케줄 적재 시 `enrollmentId`를 결합 저장하여 향후 과목 개별 편집 시 해당 과목의 수업 일자만 조준 수정한다. (기존의 `studentId` 기준의 스케줄 전체 삭제 및 덮어쓰기 로직은 완전 파기한다.)
+  - 기존 데이터와의 호환을 위해 `enrollmentId` 정보가 누락된 과거 수업의 경우는 `getPrimaryEnrollment(studentId)` 대표 과목 반환 헬퍼를 fallback으로 연계 연산하여 정상 작동을 보장한다.
+
+### 18-9. payment.enrollmentId 전환 정책
+* **매출 구분 및 채권 매핑**:
+  - 원비 청구서 발행, 교재 대금 청구 및 횟수권 신규 구매 시, 청구 대장의 명확한 매출 구분 및 계약 연동을 위해 `payment.enrollmentId` 필드를 도입한다.
+  - 월정액 정기 청구 자동화 시 발행되는 payment에는 매칭된 `enrollmentId`를, 수강권 구매 이력에는 연관 `sessionPassId` 및 `enrollmentId`를 세부 매핑하여 기록한다.
+  - 기존 결제 데이터 중 `payment.enrollmentId` 필드가 유실된 레코드들은 `studentId`를 fallback으로 엮어 화면상에 "기존 결제" 태그로 식별 노출한다.
+
+### 18-10. 구현 제외 범위
+본 Phase 18B-13은 순수 비즈니스 설계 및 데이터 모델링 문서 동기화 마일스톤이므로 다음 사항은 구현 대상에서 제외한다.
+* `db.enrollments` 저장소 구조의 실제 JS 코딩 및 데이터베이스 적재 로직
+* `db.sessionPasses` 횟수권 정보의 파일 저장 및 상태 변경 백엔드 모듈
+* 레거시 원생의 가상 과목 정규화 Promotion 전환 스크립트 작성 및 실행
+* `class.enrollmentId` 스케줄 시간표 모듈의 실제 물리적 적용
+* `payment.enrollmentId` 수납 청구서 발행 흐름의 물리적 적용
+* 출석 처리 시 횟수 차감 및 잔여 알림 경고(`[수강권 충전 확인]`) 비즈니스 로직
+* 화면 마크업 변경 및 E2E 테스트 자동화 시나리오 스크립트 수정
+
+### 18-11. 후속 Phase 제안
+1. **Phase 18B-14**: db.enrollments 저장 구현 (어댑터 및 저장소 메서드 백엔드 작성)
+2. **Phase 18B-15**: 수강과목 추가 모달 저장 연결 (UI 폼 서브밋 저장 연동 및 밸리데이션)
+3. **Phase 18B-16**: class.enrollmentId 기반 시간표 분리 (요일 설정 삭제/추가 격리 튜닝)
+4. **Phase 18B-17**: payment.enrollmentId 기반 수납 분리 (청구서 생성 및 수납 대장 조회 격리)
+5. **Phase 18B-18**: sessionPass 저장 및 잔여 횟수 UI (횟수권 정보 렌더링 및 소진 이력 조회)
+6. **Phase 18B-19**: 출석/지각 확정 시 횟수 차감 엔진 (출결 도메인과의 횟수권 실시간 차감 연동)
+7. **Phase 18B-20**: 수강권 충전 확인 task (잔여 기준 미만 시 오늘 콘솔 알림 태스크 생성)
+
+
 
