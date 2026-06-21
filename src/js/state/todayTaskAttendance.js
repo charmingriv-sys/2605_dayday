@@ -39,14 +39,15 @@ export function syncStudentAttendanceRecommendations(ctx, options) {
                 return;
             }
 
-            const sessionKey = `${entry.studentId}_${dateStr}_${entry.time}`;
+            const enrollment = typeof ctx.getEnrollmentById === 'function' && entry.enrollmentId ? ctx.getEnrollmentById(entry.enrollmentId) : null;
+            const sessionKey = entry.enrollmentId ? `${entry.studentId}_${dateStr}_${entry.time}_${entry.enrollmentId}` : `${entry.studentId}_${dateStr}_${entry.time}`;
             activeSessionKeys.push(sessionKey);
 
             // 2.2 Calculate schedule timings
             const studentName = student ? student.name : '원생';
             const [sh, smin] = entry.time.split(':').map(Number);
             const scheduledStartAt = new Date(y, m, d, sh, smin, 0, 0);
-            const duration = entry.classDuration || (student ? student.defaultClassDuration : 50) || 50;
+            const duration = entry.classDuration || (enrollment ? enrollment.defaultDurationMinutes : null) || (student ? student.defaultClassDuration : null) || 50;
             const scheduledEndAt = new Date(scheduledStartAt.getTime() + duration * 60 * 1000);
 
             // 2.3 Retrieve attendance details
@@ -136,35 +137,38 @@ export function syncStudentAttendanceRecommendations(ctx, options) {
                     let warningTypeLabel = '';
                     let reason = '';
 
+                    const startHM = entry.time;
+                    const pad = (n) => String(n).padStart(2, '0');
+                    const endHM = entry.endTime || `${pad(scheduledEndAt.getHours())}:${pad(scheduledEndAt.getMinutes())}`;
+                    const tId = entry.teacherId || (enrollment ? enrollment.teacherId : null);
+                    const teacher = tId ? (typeof ctx.getTeacher === 'function' ? ctx.getTeacher(tId) : null) : null;
+                    const teacherName = teacher ? teacher.name : '미지정';
+                    const instrument = enrollment ? (enrollment.subjectName || enrollment.subject || enrollment.instrument) : (student ? (student.instrument || '미지정') : '미지정');
+
+                    const teacherSuffix = (teacherName && teacherName !== '미지정') ? ` ${teacherName}` : '';
+
                     if (currentWarningState === 'ABSENT') {
                         category = 'absent';
-                        title = `[결석 확인] ${studentName} 원생 결석 확인`;
+                        title = `[결석 확인] ${studentName} 원생 결석 확인 (${instrument} ${startHM}${teacherSuffix})`;
                         warningTypeLabel = '결석 확인';
                         reason = '수업이 끝났지만 출석 기록이 없습니다.';
                         dueAt = scheduledEndAt.toISOString();
                     } else if (currentWarningState === 'LATE') {
-                        title = `[특이출결] ${studentName} 원생 지각`;
+                        title = `[특이출결] ${studentName} 원생 지각 (${instrument} ${startHM}${teacherSuffix})`;
                         warningTypeLabel = '지각';
                         reason = '수업 시작 후 출석했습니다.';
                         dueAt = new Date(scheduledStartAt.getTime() + lateThresholdMinutes * 60 * 1000).toISOString();
                     } else if (currentWarningState === 'CHECKOUT_MISSING') {
-                        title = `[특이출결] ${studentName} 원생 하원 누락`;
+                        title = `[특이출결] ${studentName} 원생 하원 누락 (${instrument} ${startHM}${teacherSuffix})`;
                         warningTypeLabel = '하원 누락';
                         reason = '수업 시간이 종료되었지만 하원 기록이 없습니다.';
                         dueAt = checkoutLimit ? checkoutLimit.toISOString() : scheduledEndAt.toISOString();
                     } else if (currentWarningState === 'LATE_CHECKOUT_MISSING') {
-                        title = `[특이출결] ${studentName} 원생 지각 및 하원 누락`;
+                        title = `[특이출결] ${studentName} 원생 지각 및 하원 누락 (${instrument} ${startHM}${teacherSuffix})`;
                         warningTypeLabel = '지각 + 하원 누락';
                         reason = '지각 출석 후 수업 시간이 종료되었지만 하원 기록이 없습니다.';
                         dueAt = checkoutLimit ? checkoutLimit.toISOString() : scheduledEndAt.toISOString();
                     }
-
-                    const startHM = entry.time;
-                    const pad = (n) => String(n).padStart(2, '0');
-                    const endHM = entry.endTime || `${pad(scheduledEndAt.getHours())}:${pad(scheduledEndAt.getMinutes())}`;
-                    const teacher = entry.teacherId ? (typeof ctx.getTeacher === 'function' ? ctx.getTeacher(entry.teacherId) : null) : null;
-                    const teacherName = teacher ? teacher.name : '미지정';
-                    const instrument = student ? (student.instrument || '미지정') : '미지정';
 
                     description = `• 원생명: ${studentName}\n• 수업 시간: ${startHM} ~ ${endHM}\n• 담당 강사: ${teacherName}\n• 과목/악기: ${instrument}\n• 워닝 유형: ${warningTypeLabel}\n• 간단 사유: ${reason}`;
 

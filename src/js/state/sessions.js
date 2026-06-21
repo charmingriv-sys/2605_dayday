@@ -177,7 +177,8 @@ export const sessionsMethods = {
             
             entries = snapshot.entries.map(entry => {
                 const student = this.db.students.find(s => s.id === entry.studentId);
-                const classDuration = entry.classDuration || (student ? student.defaultClassDuration : 50) || 50;
+                const enrollment = entry.enrollmentId ? (this.db.enrollments && this.db.enrollments.find(e => e.id === entry.enrollmentId)) : null;
+                const classDuration = entry.classDuration || (enrollment ? enrollment.defaultDurationMinutes : null) || (student ? student.defaultClassDuration : null) || 50;
                 return {
                     id: entry.id,
                     studentId: entry.studentId,
@@ -187,7 +188,8 @@ export const sessionsMethods = {
                     classDuration: classDuration,
                     teacherId: entry.teacherId,
                     source: entry.source || 'default',
-                    date: date
+                    date: date,
+                    enrollmentId: entry.enrollmentId || null
                 };
             });
         } else {
@@ -197,9 +199,10 @@ export const sessionsMethods = {
 
             entries = baseClasses.map(c => {
                 const student = this.db.students.find(s => s.id === c.studentId);
+                const enrollment = c.enrollmentId ? (this.db.enrollments && this.db.enrollments.find(e => e.id === c.enrollmentId)) : null;
                 const defaultTeacherId = student ? student.teacherId : null;
                 const ovr = overrides.find(o => o.studentId === c.studentId);
-                const duration = student ? (student.defaultClassDuration || 50) : 50;
+                const duration = c.durationMinutes || (enrollment ? enrollment.defaultDurationMinutes : null) || (student ? student.defaultClassDuration : null) || 50;
 
                 if (ovr) {
                     return {
@@ -211,7 +214,8 @@ export const sessionsMethods = {
                         classDuration: duration,
                         teacherId: ovr.toTeacherId,
                         source: 'override',
-                        date: date
+                        date: date,
+                        enrollmentId: c.enrollmentId || null
                     };
                 }
 
@@ -222,9 +226,10 @@ export const sessionsMethods = {
                     time: c.time,
                     endTime: calculateEndTime(c.time, duration),
                     classDuration: duration,
-                    teacherId: defaultTeacherId,
+                    teacherId: c.teacherId || defaultTeacherId,
                     source: 'default',
-                    date: date
+                    date: date,
+                    enrollmentId: c.enrollmentId || null
                 };
             });
         }
@@ -256,9 +261,10 @@ export const sessionsMethods = {
 
         const entries = baseClasses.map((c, idx) => {
             const student = this.db.students.find(s => s.id === c.studentId);
+            const enrollment = c.enrollmentId ? (this.db.enrollments && this.db.enrollments.find(e => e.id === c.enrollmentId)) : null;
             const defaultTeacherId = student ? student.teacherId : null;
             const ovr = overrides.find(o => o.studentId === c.studentId);
-            const duration = student ? (student.defaultClassDuration || 50) : slotMinutes;
+            const duration = c.durationMinutes || (enrollment ? enrollment.defaultDurationMinutes : null) || (student ? student.defaultClassDuration : null) || slotMinutes;
 
             if (ovr) {
                 return {
@@ -269,19 +275,21 @@ export const sessionsMethods = {
                     endTime: calculateEndTime(ovr.toStartTime, duration),
                     classDuration: duration,
                     subjectId: student ? student.instrument : '',
-                    source: 'override'
+                    source: 'override',
+                    enrollmentId: c.enrollmentId || null
                 };
             }
 
             return {
                 id: `ENTRY_${date}_${c.studentId}_${idx}`,
                 studentId: c.studentId,
-                teacherId: defaultTeacherId,
+                teacherId: c.teacherId || defaultTeacherId,
                 startTime: c.time,
                 endTime: calculateEndTime(c.time, duration),
                 classDuration: duration,
                 subjectId: student ? student.instrument : '',
-                source: 'default'
+                source: 'default',
+                enrollmentId: c.enrollmentId || null
             };
         });
 

@@ -1543,4 +1543,88 @@ test.describe('Student Status Management Flow', () => {
     await detailModal.locator('[data-close-modal]').first().click();
     await expect(detailModal).not.toHaveClass(/show/);
   });
+
+  test('should verify multi-enrollment drawer layout compatibility', async ({ page }) => {
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Navigate to Student Management Tab
+    await page.locator('.menu-item[data-view="dir-students"]').click();
+    await expect(page.locator('#page-title')).toContainText('원생 명부 관리');
+
+    // 3. Enter details modal for student S1 (최다은)
+    const s1Link = page.locator('.student-name-link', { hasText: '최다은' });
+    await expect(s1Link).toBeVisible();
+    await s1Link.click();
+    await page.waitForTimeout(200);
+
+    const detailModal = page.locator('#common-modal');
+    await expect(detailModal).toBeVisible();
+
+    // 2. Setup 2 manual enrollments and classes for S1
+    await page.evaluate(() => {
+      const store = window.stateStore;
+      store.db.enrollments = store.db.enrollments.filter(e => e.studentId !== 'S1');
+      store.db.classes = store.db.classes.filter(c => c.studentId !== 'S1');
+
+      // Course 1
+      const e1 = store.createEnrollment('S1', {
+        courseType: 'monthly',
+        billingType: 'monthly',
+        subject: '피아노',
+        subjectName: '피아노',
+        teacherId: 'T1',
+        fee: 150000,
+        dueDay: 10,
+        defaultClassDuration: 60
+      });
+      store.createClassForEnrollment(e1.data.id, {
+        dayOfWeek: '화',
+        time: '14:30',
+        durationMinutes: 60,
+        teacherId: 'T1'
+      });
+
+      // Course 2
+      const e2 = store.createEnrollment('S1', {
+        courseType: 'monthly',
+        billingType: 'monthly',
+        subject: '바이올린',
+        subjectName: '바이올린',
+        teacherId: 'T2',
+        fee: 180000,
+        dueDay: 15,
+        defaultClassDuration: 45
+      });
+      store.createClassForEnrollment(e2.data.id, {
+        dayOfWeek: '목',
+        time: '16:00',
+        durationMinutes: 45,
+        teacherId: 'T2'
+      });
+      store.saveDB();
+    });
+
+    // 3. Close and reopen modal to refresh UI
+    await detailModal.locator('[data-close-modal]').first().click();
+    await expect(detailModal).not.toHaveClass(/show/);
+    await s1Link.click();
+    await page.waitForTimeout(300);
+
+    // 4. Verify both courses are rendered in "수강중인 과목" section of details modal
+    await expect(detailModal).toContainText('수강중인 과목');
+    await expect(detailModal).toContainText('피아노');
+    await expect(detailModal).toContainText('바이올린');
+
+    // 5. Verify basic schedule text display does not have undefined/NaN
+    await expect(detailModal).toContainText('기본 수업 시간: 화 14:30 (60분)');
+    await expect(detailModal).toContainText('기본 수업 시간: 목 16:00 (45분)');
+
+    // 6. Close details modal
+    await detailModal.locator('[data-close-modal]').first().click();
+    await expect(detailModal).not.toHaveClass(/show/);
+  });
 });

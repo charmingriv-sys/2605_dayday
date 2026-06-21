@@ -2753,5 +2753,103 @@ test.describe('Director Today Console Flow Checks', () => {
     await page.locator('#btn-close-task-drawer').click();
     await expect(drawer).not.toHaveClass(/open/);
   });
+
+  test('should generate separate attendance warning tasks for multi-course classes', async ({ page }) => {
+    // Setup enrollments and classes for student S1 (최다은) and S2 (이도윤)
+    await page.evaluate(() => {
+      const store = window.stateStore;
+
+      // Setup S2 as 이도윤, instrument: 드럼, teacherId: T3
+      const s2 = store.db.students.find(s => s.id === 'S2');
+      if (s2) {
+        s2.name = '이도윤';
+        s2.instrument = '드럼';
+        s2.teacherId = 'T3';
+      }
+
+      // Clear S1 classes
+      store.db.classes = store.db.classes.filter(c => c.studentId !== 'S1');
+
+      // Create enrollment 1: Piano, teacher: T8 (정은비)
+      const e1 = store.createEnrollment('S1', {
+        courseType: 'monthly',
+        billingType: 'monthly',
+        subject: '피아노',
+        subjectName: '피아노',
+        teacherId: 'T8',
+        fee: 150000,
+        dueDay: 10,
+        defaultClassDuration: 50
+      });
+      // Class 1: 수요일 07:00 (ends at 07:50 < 09:00)
+      store.createClassForEnrollment(e1.data.id, {
+        dayOfWeek: '수',
+        time: '07:00',
+        durationMinutes: 50,
+        teacherId: 'T8'
+      });
+
+      // Create enrollment 2: 바이올린, teacher: T2 (성어진)
+      const e2 = store.createEnrollment('S1', {
+        courseType: 'monthly',
+        billingType: 'monthly',
+        subject: '바이올린',
+        subjectName: '바이올린',
+        teacherId: 'T2',
+        fee: 180000,
+        dueDay: 15,
+        defaultClassDuration: 50
+      });
+      // Class 2: 수요일 08:00 (ends at 08:50 < 09:00)
+      store.createClassForEnrollment(e2.data.id, {
+        dayOfWeek: '수',
+        time: '08:00',
+        durationMinutes: 50,
+        teacherId: 'T2'
+      });
+
+      // Modify S2 (이도윤) class to 수요일 07:30 (ends at 08:20 < 09:00) to verify legacy class task
+      const s2Class = store.db.classes.find(c => c.studentId === 'S2');
+      if (s2Class) {
+        s2Class.time = '07:30';
+        s2Class.dayOfWeek = '수';
+      }
+
+      // Clear snapshots for 2026-06-03 to regenerate from classes
+      store.db.scheduleSnapshots = store.db.scheduleSnapshots.filter(s => s.date !== '2026-06-03');
+      store.saveDB();
+    });
+
+    // 1. Navigate away and back to Today Console to trigger recommendation sync
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+    await page.waitForTimeout(200);
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+    await page.waitForTimeout(400);
+
+    // 2. Verify all three warning tasks are generated and visible
+    const pianoCard = page.locator('#tasks-list-container .glass-card', { hasText: '피아노 07:00' });
+    await expect(pianoCard).toBeVisible();
+
+    const violinCard = page.locator('#tasks-list-container .glass-card', { hasText: '바이올린 08:00' });
+    await expect(violinCard).toBeVisible();
+
+    const s2Card = page.locator('#tasks-list-container .glass-card', { hasText: '드럼 07:30' });
+    await expect(s2Card).toBeVisible();
+
+    // 3. Verify no undefined/NaN is visible in the descriptions
+    const pianoDesc = await pianoCard.innerText();
+    expect(pianoDesc).not.toContain('undefined');
+    expect(pianoDesc).not.toContain('NaN');
+    expect(pianoDesc).toContain('정은비');
+
+    const violinDesc = await violinCard.innerText();
+    expect(violinDesc).not.toContain('undefined');
+    expect(violinDesc).not.toContain('NaN');
+    expect(violinDesc).toContain('성어진');
+
+    const s2Desc = await s2Card.innerText();
+    expect(s2Desc).not.toContain('undefined');
+    expect(s2Desc).not.toContain('NaN');
+  });
 });
 

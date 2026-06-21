@@ -645,7 +645,10 @@ export function renderDirectorAttendanceControl(container) {
                 })
                 .map(entry => {
                     const s = students.find(stud => stud.id === entry.studentId);
-                    const t = teachers.find(teach => teach.id === entry.teacherId) || (s ? teachers.find(teach => teach.id === s.teacherId) : null);
+                    const enrollment = typeof stateStore.getClassEnrollment === 'function' ? stateStore.getClassEnrollment(entry) : null;
+                    
+                    const tId = entry.teacherId || (enrollment ? enrollment.teacherId : null) || (s ? s.teacherId : null);
+                    const t = teachers.find(teach => teach.id === tId) || null;
                     const att = s ? attendance.find(a => a.studentId === s.id && a.date === date && (a.classTime === entry.time || !a.classTime)) : null;
                     
                     let status = '예정';
@@ -678,19 +681,23 @@ export function renderDirectorAttendanceControl(container) {
                         }
                     }
                     
+                    const duration = entry.classDuration || (enrollment ? enrollment.defaultDurationMinutes : null) || (s ? s.defaultClassDuration : null) || 50;
+                    const endTime = entry.endTime || calculateEndTime(entry.time, duration);
+                    const instrumentText = enrollment ? (enrollment.subjectName || enrollment.subject || enrollment.instrument) : (s ? s.instrument : '');
+                    
                     return {
                         classId: entry.id,
                         date: date,
                         dayOfWeek: dayKo,
                         time: entry.time,
-                        endTime: entry.endTime || (s ? calculateEndTime(entry.time, s.defaultClassDuration || 50) : ''),
+                        endTime: endTime,
                         student: s,
                         teacher: t,
                         status: status,
                         checkTime: checkTime,
                         leavingTime: leavingTime,
                         note: note,
-                        instrument: s ? s.instrument : ''
+                        instrument: instrumentText || '미지정'
                     };
                 })
                 .filter(row => row.student);
@@ -2355,7 +2362,7 @@ export function renderDirectorAttendanceControl(container) {
                                                             <b class="student-name-text" style="font-weight:800; color:var(--text-main);">${row.student.name}</b>
                                                         </div>
                                                     </td>
-                                                    <td>${row.student.instrument || '-'}</td>
+                                                    <td>${row.instrument || '-'}</td>
                                                     <td>${row.teacher ? (row.teacher.employmentStatus === 'resigned' ? `${row.teacher.name} (퇴사)` : row.teacher.name) : '미배정'}</td>
                                                     <td>${statusBadge}</td>
                                                     <td style="font-weight: 600; font-size: 0.8rem;">${timeText}</td>

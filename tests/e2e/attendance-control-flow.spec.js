@@ -1701,4 +1701,96 @@ test.describe('Director Attendance Control Console Flow', () => {
     await expect(inspector).toContainText('기본');
     await expect(inspector).toContainText('납부일');
   });
+
+  test('should verify enrollment-aware class display in attendance control', async ({ page }) => {
+    // Setup 2 manual enrollments and classes for student S1 (최다은)
+    await page.evaluate(() => {
+      const store = window.stateStore;
+      
+      // Clear S1 classes first
+      store.db.classes = store.db.classes.filter(c => c.studentId !== 'S1');
+
+      // Create enrollment 1: Piano, teacher: T8 (정은비), monthly
+      const e1Res = store.createEnrollment('S1', {
+        courseType: 'monthly',
+        billingType: 'monthly',
+        subject: '피아노',
+        subjectName: '피아노',
+        teacherId: 'T8',
+        fee: 150000,
+        dueDay: 10,
+        defaultClassDuration: 60
+      });
+      // Create class 1: 화요일 14:30
+      store.createClassForEnrollment(e1Res.data.id, {
+        dayOfWeek: '화',
+        time: '14:30',
+        durationMinutes: 60,
+        teacherId: 'T8'
+      });
+
+      // Create enrollment 2: 바이올린, teacher: T2 (성어진), monthly
+      const e2Res = store.createEnrollment('S1', {
+        courseType: 'monthly',
+        billingType: 'monthly',
+        subject: '바이올린',
+        subjectName: '바이올린',
+        teacherId: 'T2',
+        fee: 180000,
+        dueDay: 15,
+        defaultClassDuration: 45
+      });
+      // Create class 2: 화요일 16:00
+      store.createClassForEnrollment(e2Res.data.id, {
+        dayOfWeek: '화',
+        time: '16:00',
+        durationMinutes: 45,
+        teacherId: 'T2'
+      });
+
+      // Clear any snapshots for a specific Tuesday date to force dynamic snapshot generation from active classes
+      store.db.scheduleSnapshots = store.db.scheduleSnapshots.filter(s => s.date !== '2026-06-02');
+      store.saveDB();
+    });
+
+    // 1. Go to attendance control view
+    const controlMenu = page.locator('.menu-item[data-view="dir-attendance-control"]');
+    await controlMenu.click();
+    await page.waitForTimeout(300);
+
+    // 2. Select 2026-06-02 in calendar picker
+    await page.locator('#ac-period-btn').click();
+    await page.locator('#ac-start-date').fill('2026-06-02');
+    await page.locator('#ac-end-date').fill('2026-06-02');
+    await page.locator('#ac-custom-range-apply-btn').click();
+    await page.waitForTimeout(300);
+
+    // 3. Verify both classes for S1 are visible in the daily table
+    const tableRows = page.locator('table.custom-table tbody tr[data-student-id="S1"]');
+    await expect(tableRows).toHaveCount(2);
+
+    // Row 1: 화요일 14:30 (Piano)
+    const row1 = tableRows.nth(0);
+    await expect(row1).toContainText('화');
+    await expect(row1).toContainText('14:30 - 15:30'); // 14:30 + 60 mins = 15:30
+    await expect(row1).toContainText('최다은');
+    await expect(row1).toContainText('피아노');
+    await expect(row1).toContainText('정은비');
+
+    // Row 2: 화요일 16:00 (Violin)
+    const row2 = tableRows.nth(1);
+    await expect(row2).toContainText('화');
+    await expect(row2).toContainText('16:00 - 16:45'); // 16:00 + 45 mins = 16:45
+    await expect(row2).toContainText('최다은');
+    await expect(row2).toContainText('바이올린');
+    await expect(row2).toContainText('성어진');
+
+    // 4. Verify no undefined/NaN is visible in the table row HTML
+    const row1Html = await row1.innerHTML();
+    const row2Html = await row2.innerHTML();
+    expect(row1Html).not.toContain('undefined');
+    expect(row1Html).not.toContain('NaN');
+    expect(row2Html).not.toContain('undefined');
+    expect(row2Html).not.toContain('NaN');
+  });
 });
