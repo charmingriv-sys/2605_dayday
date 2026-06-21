@@ -820,6 +820,26 @@ test.describe('Billing & Overdue Warnings E2E Flow', () => {
   });
 
   test('should show preview based on templates in billing view send warning modal and block if missing required fields (Phase 18A-3)', async ({ page }) => {
+    // Mock browser Date to 2026-06-13T12:00:00.000Z to align future billing checks
+    await page.addInitScript(() => {
+      const MockDate = class extends Date {
+        constructor(...args) {
+          if (args.length === 0) {
+            super('2026-06-13T12:00:00.000Z');
+          } else {
+            super(...args);
+          }
+        }
+      };
+      MockDate.now = () => new Date('2026-06-13T12:00:00.000Z').getTime();
+      window.Date = MockDate;
+    });
+
+    // Reload page to apply mocked Date
+    await page.goto('/');
+    await page.waitForLoadState('domcontentloaded');
+    await page.locator('.role-grid').waitFor({ state: 'attached', timeout: 5000 });
+
     // 1. Login as Director
     const directorBtn = page.locator('.role-btn.director');
     await expect(directorBtn).toBeVisible({ timeout: 5000 });
