@@ -581,20 +581,67 @@ test.describe('Student Status Management Flow', () => {
     await expect(detailModal).toContainText('월정액');
     await expect(detailModal).toContainText('기본 수업 시간');
 
-    // 6. Verify "수강과목 추가" button is visible but doesn't perform actual save
+    // 6. Verify "수강과목 추가" button is visible
     const addEnrollmentBtn = detailModal.locator('#btn-add-enrollment');
     await expect(addEnrollmentBtn).toBeVisible();
     
-    // Alert logic check when clicking the button
+    // 7. Click to open the Course Add Modal
+    await addEnrollmentBtn.click();
+    await page.waitForTimeout(200);
+
+    // Verify modal title
+    await expect(detailModal).toContainText('수강과목 추가 등록');
+
+    // Verify default billing type is monthly and sections display properly
+    const monthlyRadio = detailModal.locator('input[name="enrollment-billing-type"][value="monthly"]');
+    await expect(monthlyRadio).toBeChecked();
+    await expect(detailModal.locator('#section-monthly-fields')).toBeVisible();
+    await expect(detailModal.locator('#section-session-fields')).toBeHidden();
+
+    // Change billing type to session
+    await detailModal.locator('input[name="enrollment-billing-type"][value="session"]').check();
+    await expect(detailModal.locator('#section-monthly-fields')).toBeHidden();
+    await expect(detailModal.locator('#section-session-fields')).toBeVisible();
+
+    // Verify session pass info text
+    await expect(detailModal.locator('#section-session-fields')).toContainText('차감 기준: 출석/지각 확정 시');
+
+    // Select subject and teacher
+    await detailModal.locator('#enrollment-subject').selectOption('피아노');
+    await detailModal.locator('#enrollment-teacher').selectOption('T8');
+
+    // 8. Test Session Pass Validation: Remaining count > Total count
+    await detailModal.locator('#enrollment-total-count').fill('10');
+    await detailModal.locator('#enrollment-remaining-count').fill('15');
+
     let alertMsg = '';
     page.once('dialog', async dialog => {
       alertMsg = dialog.message();
       await dialog.accept();
     });
-    await addEnrollmentBtn.click();
-    expect(alertMsg).toBe('수강과목 추가 기능은 준비 중입니다.');
+    await detailModal.locator('#btn-submit-enrollment-modal').click();
+    expect(alertMsg).toBe('잔여 횟수는 총 횟수를 초과할 수 없습니다.');
 
-    // 7. Verify existing student detail modal buttons are not broken
+    // 9. Correct the inputs and click submit
+    await detailModal.locator('#enrollment-remaining-count').fill('10');
+
+    let saveAlertMsg = '';
+    page.once('dialog', async dialog => {
+      saveAlertMsg = dialog.message();
+      await dialog.accept();
+    });
+    await detailModal.locator('#btn-submit-enrollment-modal').click();
+    expect(saveAlertMsg).toBe('수강과목 저장 기능은 준비 중입니다.');
+
+    // 10. Cancel modal and verify details modal is restored and course count remains unchanged
+    await detailModal.locator('#btn-cancel-enrollment-modal').click();
+    await page.waitForTimeout(200);
+
+    // Verify details modal is restored
+    await expect(detailModal).toContainText('수강중인 과목');
+    await expect(detailModal).toContainText('기존 등록 정보는 수강과목 카드로 표시됩니다.');
+
+    // Existing student detail modal buttons are still here
     await expect(page.locator('#btn-edit-student-from-detail')).toBeVisible();
     await expect(page.locator('#btn-send-message-from-detail')).toBeVisible();
     await expect(page.locator('#btn-change-status-from-detail')).toBeVisible();

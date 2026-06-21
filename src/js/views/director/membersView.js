@@ -1063,7 +1063,7 @@ const openStudentDetailModal = (studentId) => {
         const addEnrollmentBtn = contentArea.querySelector('#btn-add-enrollment');
         if (addEnrollmentBtn) {
             addEnrollmentBtn.addEventListener('click', () => {
-                alert('수강과목 추가 기능은 준비 중입니다.');
+                openAddEnrollmentModal(studentId);
             });
         }
         const editBtn = contentArea.querySelector('#btn-edit-student-from-detail');
@@ -1120,6 +1120,345 @@ const openStudentDetailModal = (studentId) => {
     };
     
     openModal(html, onInitDetailModal);
+};
+
+const openAddEnrollmentModal = (studentId) => {
+    const student = stateStore.getStudent(studentId);
+    if (!student) return;
+
+    const teachers = stateStore.getTeachers() || [];
+    const subjects = stateStore.getSubjects() || [];
+
+    const teacherOptions = teachers
+        .filter(t => t.employmentStatus !== 'resigned')
+        .map(t => {
+            const name = t.name || '';
+            const tNameFormatted = name.endsWith('T') ? name : `${name}T`;
+            return `<option value="${t.id}">${tNameFormatted} (${t.instrument})</option>`;
+        }).join('');
+
+    const subjectOptions = subjects
+        .filter(sub => sub.isActive)
+        .map(sub => `<option value="${sub.name}">${sub.name}</option>`)
+        .join('');
+
+    const durationOptions = Array.from({ length: 18 }, (_, i) => (i + 1) * 5)
+        .map(d => `<option value="${d}" ${d === 50 ? 'selected' : ''}>${d}분</option>`)
+        .join('');
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const currentMonth = new Date().toISOString().slice(0, 7);
+
+    const html = `
+        <form id="form-add-enrollment" class="modal-form">
+            <div class="modal-header" style="padding: 1.2rem 2rem; border-bottom: 1px solid var(--border-color);">
+                <h3 class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+                    <i class="fa-solid fa-graduation-cap" style="color: var(--primary);"></i>
+                    <strong>수강과목 추가 등록</strong>
+                </h3>
+                <button type="button" class="btn-close-modal" id="btn-close-enrollment-modal" style="background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--text-muted);"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="modal-body" style="padding: 1.5rem 2rem; max-height: 70vh; overflow-y: auto; display: flex; flex-direction: column; gap: 1.2rem;">
+                
+                <!-- 수강 방식 선택 -->
+                <div class="form-group">
+                    <label style="font-weight: 700; margin-bottom: 8px; display: block; color: var(--text-main);">수업 방식 선택 <span style="color: var(--danger);">*</span></label>
+                    <div style="display: flex; gap: 12px;">
+                        <label style="flex: 1; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; display: flex; align-items: center; gap: 8px; cursor: pointer; background: #fff;">
+                            <input type="radio" name="enrollment-billing-type" value="monthly" checked style="accent-color: var(--primary);">
+                            <div>
+                                <strong style="display: block; font-size: 0.9rem; color: var(--text-main);">정기 월정액</strong>
+                                <span style="font-size: 0.75rem; color: var(--text-muted);">매월 정기 청구일에 청구서 발행</span>
+                            </div>
+                        </label>
+                        <label style="flex: 1; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; display: flex; align-items: center; gap: 8px; cursor: pointer; background: #fff;">
+                            <input type="radio" name="enrollment-billing-type" value="session" style="accent-color: var(--primary);">
+                            <div>
+                                <strong style="display: block; font-size: 0.9rem; color: var(--text-main);">횟수제 수강권</strong>
+                                <span style="font-size: 0.75rem; color: var(--text-muted);">부여된 횟수 소진 시 재구매 필요</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <hr style="border: 0; border-top: 1px dashed var(--border-color); margin: 0;">
+
+                <!-- 공통 입력 필드 -->
+                <div style="font-weight: 700; font-size: 0.9rem; color: var(--primary); border-left: 3px solid var(--primary); padding-left: 8px; margin-bottom: -4px;">기본 수업 정보 (공통)</div>
+                
+                <div class="form-row" style="display: flex; gap: 12px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="enrollment-subject">수강 과목/악기 <span style="color: var(--danger);">*</span></label>
+                        <select id="enrollment-subject" class="form-control" required style="width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
+                            <option value="" disabled selected>과목을 선택하세요</option>
+                            ${subjectOptions}
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="enrollment-level">반/레벨</label>
+                        <input type="text" id="enrollment-level" class="form-control" placeholder="예: 초급반, 바이엘2" style="width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
+                    </div>
+                </div>
+
+                <div class="form-row" style="display: flex; gap: 12px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="enrollment-teacher">담당 강사 <span style="color: var(--danger);">*</span></label>
+                        <select id="enrollment-teacher" class="form-control" required style="width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
+                            <option value="" disabled selected>강사를 선택하세요</option>
+                            ${teacherOptions}
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="enrollment-status">수강 상태 <span style="color: var(--danger);">*</span></label>
+                        <select id="enrollment-status" class="form-control" required style="width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
+                            <option value="attending" selected>수강중</option>
+                            <option value="on_leave">휴강</option>
+                            <option value="ended">종료</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row" style="display: flex; gap: 12px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="enrollment-start-date">수강 시작일 <span style="color: var(--danger);">*</span></label>
+                        <input type="date" id="enrollment-start-date" class="form-control" value="${todayStr}" required style="width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="enrollment-day-of-week">기본 수업 요일</label>
+                        <select id="enrollment-day-of-week" class="form-control" style="width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
+                            <option value="월" selected>월요일</option>
+                            <option value="화">화요일</option>
+                            <option value="수">수요일</option>
+                            <option value="목">목요일</option>
+                            <option value="금">금요일</option>
+                            <option value="토">토요일</option>
+                            <option value="일">일요일</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row" style="display: flex; gap: 12px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="enrollment-time">기본 수업 시간</label>
+                        <input type="time" id="enrollment-time" class="form-control" value="15:00" style="width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="enrollment-duration">기본 수업 길이 <span style="color: var(--danger);">*</span></label>
+                        <select id="enrollment-duration" class="form-control" required style="width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
+                            ${durationOptions}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="enrollment-notes">수강 과목 메모</label>
+                    <textarea id="enrollment-notes" class="form-control" rows="2" placeholder="요일별 조기 등원 등 특이사항 기재" style="width: 100%; border-radius: 6px; border: 1px solid var(--border-color); padding: 8px 10px;"></textarea>
+                </div>
+
+                <!-- 월정액 전용 필드 -->
+                <div id="section-monthly-fields" style="display: flex; flex-direction: column; gap: 1.2rem;">
+                    <hr style="border: 0; border-top: 1px dashed var(--border-color); margin: 0;">
+                    <div style="font-weight: 700; font-size: 0.9rem; color: var(--primary); border-left: 3px solid var(--primary); padding-left: 8px; margin-bottom: -4px;">월정액 청구 정보</div>
+                    
+                    <div class="form-row" style="display: flex; gap: 12px;">
+                        <div class="form-group" style="flex: 1;">
+                            <label for="enrollment-fee">월 수강료 (원) <span style="color: var(--danger);">*</span></label>
+                            <input type="number" id="enrollment-fee" class="form-control" value="150000" min="0" step="5000" style="width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label for="enrollment-due-day">정기 청구 희망일 <span style="color: var(--danger);">*</span></label>
+                            <input type="number" id="enrollment-due-day" class="form-control" value="10" min="1" max="31" style="width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
+                        </div>
+                    </div>
+
+                    <div class="form-row" style="display: flex; gap: 12px;">
+                        <div class="form-group" style="flex: 1;">
+                            <label for="enrollment-start-billing-month">첫 청구 시작월 <span style="color: var(--danger);">*</span></label>
+                            <input type="month" id="enrollment-start-billing-month" class="form-control" value="${currentMonth}" required style="width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label>자동 청구 여부</label>
+                            <div style="display: flex; gap: 10px; margin-top: 8px;">
+                                <label style="display: flex; align-items: center; gap: 4px; font-size: 0.85rem;"><input type="radio" name="enrollment-auto-billing" value="true" checked> 자동생성</label>
+                                <label style="display: flex; align-items: center; gap: 4px; font-size: 0.85rem;"><input type="radio" name="enrollment-auto-billing" value="false"> 수동생성</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; cursor: pointer;">
+                            <input type="checkbox" id="enrollment-suspend-on-leave" style="width: 16px; height: 16px;">
+                            <span>휴강/휴원 시 청구 보류 (해당 기간 수강료 자동 면제 처리)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 횟수제 전용 필드 -->
+                <div id="section-session-fields" style="display: none; flex-direction: column; gap: 1.2rem;">
+                    <hr style="border: 0; border-top: 1px dashed var(--border-color); margin: 0;">
+                    <div style="font-weight: 700; font-size: 0.9rem; color: var(--primary); border-left: 3px solid var(--primary); padding-left: 8px; margin-bottom: -4px;">횟수제 수강권 정보</div>
+                    
+                    <div class="form-row" style="display: flex; gap: 12px;">
+                        <div class="form-group" style="flex: 1;">
+                            <label for="enrollment-ticket-name">수강권 명칭 <span style="color: var(--danger);">*</span></label>
+                            <input type="text" id="enrollment-ticket-name" class="form-control" value="횟수제 수강권" style="width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label for="enrollment-total-count">총 횟수 (회) <span style="color: var(--danger);">*</span></label>
+                            <input type="number" id="enrollment-total-count" class="form-control" value="10" min="1" style="width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
+                        </div>
+                    </div>
+
+                    <div class="form-row" style="display: flex; gap: 12px;">
+                        <div class="form-group" style="flex: 1;">
+                            <label for="enrollment-remaining-count">잔여 횟수 초기값 <span style="color: var(--danger);">*</span></label>
+                            <input type="number" id="enrollment-remaining-count" class="form-control" value="10" min="0" style="width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label for="enrollment-ticket-fee">구매 금액 (원) <span style="color: var(--danger);">*</span></label>
+                            <input type="number" id="enrollment-ticket-fee" class="form-control" value="150000" min="0" style="width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
+                        </div>
+                    </div>
+
+                    <div class="form-row" style="display: flex; gap: 12px;">
+                        <div class="form-group" style="flex: 1;">
+                            <label for="enrollment-purchase-date">수강권 구매일 <span style="color: var(--danger);">*</span></label>
+                            <input type="date" id="enrollment-purchase-date" class="form-control" value="${todayStr}" required style="width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label for="enrollment-expire-date">수강권 만료일</label>
+                            <input type="date" id="enrollment-expire-date" class="form-control" style="width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
+                        </div>
+                    </div>
+
+                    <div class="form-row" style="display: flex; gap: 12px;">
+                        <div class="form-group" style="flex: 1;">
+                            <label for="enrollment-alert-count">잔여 횟수 알림 기준 <span style="color: var(--danger);">*</span></label>
+                            <input type="number" id="enrollment-alert-count" class="form-control" value="2" min="0" style="width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
+                        </div>
+                        <div class="form-group" style="flex: 1; display: flex; flex-direction: column; justify-content: flex-end; padding-bottom: 8px;">
+                            <div style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600;">
+                                <i class="fa-solid fa-circle-info" style="margin-right: 4px; color: var(--primary);"></i>
+                                차감 기준: 출석/지각 확정 시
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="modal-footer" style="padding: 1rem 2rem; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 8px; background: rgba(0, 0, 0, 0.01);">
+                <button type="button" class="btn btn-secondary" id="btn-cancel-enrollment-modal">취소</button>
+                <button type="submit" class="btn btn-primary" id="btn-submit-enrollment-modal">저장 준비 중</button>
+            </div>
+        </form>
+    `;
+
+    const onInitAddEnrollmentModal = (contentArea) => {
+        contentArea.classList.add('layout-fixed');
+
+        const billingRadioButtons = contentArea.querySelectorAll('input[name="enrollment-billing-type"]');
+        const sectionMonthly = contentArea.querySelector('#section-monthly-fields');
+        const sectionSession = contentArea.querySelector('#section-session-fields');
+
+        billingRadioButtons.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                if (e.target.value === 'monthly') {
+                    sectionMonthly.style.display = 'flex';
+                    sectionSession.style.display = 'none';
+                } else {
+                    sectionMonthly.style.display = 'none';
+                    sectionSession.style.display = 'flex';
+                }
+            });
+        });
+
+        const closeBtn = contentArea.querySelector('#btn-close-enrollment-modal');
+        const cancelBtn = contentArea.querySelector('#btn-cancel-enrollment-modal');
+        const handleClose = () => {
+            closeModal();
+            openStudentDetailModal(studentId);
+        };
+        if (closeBtn) closeBtn.addEventListener('click', handleClose);
+        if (cancelBtn) cancelBtn.addEventListener('click', handleClose);
+
+        const form = contentArea.querySelector('#form-add-enrollment');
+        if (form) {
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                
+                const billingType = contentArea.querySelector('input[name="enrollment-billing-type"]:checked').value;
+                const subject = contentArea.querySelector('#enrollment-subject').value;
+                const teacher = contentArea.querySelector('#enrollment-teacher').value;
+
+                if (!subject) {
+                    alert('과목을 선택해 주세요.');
+                    return;
+                }
+                if (!teacher) {
+                    alert('담당 강사를 선택해 주세요.');
+                    return;
+                }
+
+                if (billingType === 'monthly') {
+                    const fee = parseInt(contentArea.querySelector('#enrollment-fee').value);
+                    const dueDay = parseInt(contentArea.querySelector('#enrollment-due-day').value);
+
+                    if (isNaN(fee) || fee < 0) {
+                        alert('월 수강료는 0원 이상이어야 합니다.');
+                        return;
+                    }
+                    if (isNaN(dueDay) || dueDay < 1 || dueDay > 31) {
+                        alert('정기 청구일은 1일부터 31일 사이여야 합니다.');
+                        return;
+                    }
+
+                } else {
+                    const ticketName = contentArea.querySelector('#enrollment-ticket-name').value;
+                    const totalCount = parseInt(contentArea.querySelector('#enrollment-total-count').value);
+                    const remainingCount = parseInt(contentArea.querySelector('#enrollment-remaining-count').value);
+                    const fee = parseInt(contentArea.querySelector('#enrollment-ticket-fee').value);
+                    const purchaseDate = contentArea.querySelector('#enrollment-purchase-date').value;
+                    const expireDate = contentArea.querySelector('#enrollment-expire-date').value;
+                    const alertCount = parseInt(contentArea.querySelector('#enrollment-alert-count').value);
+
+                    if (!ticketName) {
+                        alert('수강권 명칭을 입력해 주세요.');
+                        return;
+                    }
+                    if (isNaN(totalCount) || totalCount < 1) {
+                        alert('총 횟수는 1 이상이어야 합니다.');
+                        return;
+                    }
+                    if (isNaN(remainingCount) || remainingCount < 0) {
+                        alert('잔여 횟수는 0 이상이어야 합니다.');
+                        return;
+                    }
+                    if (remainingCount > totalCount) {
+                        alert('잔여 횟수는 총 횟수를 초과할 수 없습니다.');
+                        return;
+                    }
+                    if (isNaN(fee) || fee < 0) {
+                        alert('구매 금액은 0 이상이어야 합니다.');
+                        return;
+                    }
+                    if (expireDate && purchaseDate && expireDate < purchaseDate) {
+                        alert('만료일은 구매일보다 빠를 수 없습니다.');
+                        return;
+                    }
+                    if (isNaN(alertCount) || alertCount > totalCount) {
+                        alert('잔여 알림 기준은 총 횟수를 초과할 수 없습니다.');
+                        return;
+                    }
+                }
+
+                alert('수강과목 저장 기능은 준비 중입니다.');
+            });
+        }
+    };
+
+    openModal(html, onInitAddEnrollmentModal);
 };
 
 const openStudentStatusModal = (studentId) => {
