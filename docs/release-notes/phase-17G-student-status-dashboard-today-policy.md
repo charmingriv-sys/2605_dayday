@@ -637,3 +637,107 @@
   - 대시보드 KPI 카드 전체 메인 매출 지표 산식 재설계
   - 기존 Playwright E2E 테스트 코드 및 테스트 어설션의 전면 수정
   - 실제 통신사 SMS/알림톡 API 등 외부 전송 서비스 연동 모듈 탑재
+
+---
+
+## 15. Enrollment Adapter 및 하위 호환 정책 (Phase 18B-6)
+
+### 15-1. Adapter 선도입 원칙
+* **스케줄 및 아키텍처 연착륙**:
+  - 복수 수강과목 및 횟수제 기능을 도입할 때, 데이터베이스 스키마와 상태 저장 모듈을 한 번에 전면 개편하여 데이터 모델 구조를 흔들지 않는다.
+  - 단기 MVP 단계에서는 기존의 `student` 레코드 내 flat 필드들을 그대로 유지한 채로, 이를 메모리 상에서 가상의 `enrollment` 객체로 변환하여 렌더링하는 **Enrollment Adapter** 방식을 선도입한다.
+  - 이를 통해 기존에 구축된 안정적인 데이터 구조와 Playwright E2E 테스트 시나리오를 깨뜨리지 않으면서, 복수 수강용 신규 UI/UX 카드의 사용성과 무결성을 완벽히 조기 검증한다.
+  - 실제 물리적인 `db.enrollments` 컬렉션의 도입 및 영구 저장 적재 로직은 후속 Phase로 격리하여 분리 개발한다.
+
+### 15-2. Legacy flat 필드의 가상 수강과목 변환 정책
+* **가상 수강과목 변환 스펙**:
+  - `student.enrollments` 배열이나 별도 `db.enrollments` 데이터가 존재하지 않는 원생의 경우, 아래 헬퍼 함수를 통해 실시간으로 가상 수강과목 객체를 생성하여 연동한다.
+    ```js
+    getLegacyEnrollmentFromStudent(student) => {
+      id: `legacy-${student.id}`,
+      studentId: student.id,
+      subject: student.instrument,
+      teacherId: student.teacherId,
+      billingType: 'monthly',
+      fee: student.fee,
+      dueDay: student.dueDay,
+      defaultClassDuration: student.defaultClassDuration,
+      status: student.status,
+      source: 'legacy'
+    }
+    ```
+  - 가상 수강과목 객체의 ID 접두어는 반드시 `legacy-` 로 시작하여 일반 등록 과목과 구분한다.
+  - 생성된 객체의 속성에 `source: 'legacy'` 태그 필드를 포함하여, 향후 정규화 배치 마이그레이션 실행 시 레거시 레코드 판별용 메타데이터로 활용한다.
+  - 원생 정보 모달 및 드로어 등의 화면 렌더링 단에서는 기존 원생도 단일 수강과목 카드 형태로 동일하게 렌더링하여, 사용자가 레거시인지 신규 데이터인지 인지할 수 없도록 자연스러운 화면 경험을 제공한다.
+* **기존 flat 필드 보존 의무**:
+  - 기존 화면, 수납 대장, 출결 뷰, 시간표, 오늘 콘솔이 기존 원생의 `instrument`, `teacherId`, `fee`, `dueDay`, `defaultClassDuration` 필드에 강하게 의존하고 있다.
+  - 따라서 데이터베이스 스키마에서 해당 flat 필드들을 즉시 물리 삭제하거나 강제 마이그레이션하지 않는다.
+  - 후속 Compatibility Layer(호환 계층)가 가동된 이후에도 일정 기간 동안 read-fallback 목적으로 기존 필드를 보존한다.
+  - 향후 신규 `db.enrollments` 컬렉션이 완벽하게 가동되더라도, 기존 테스트 호환성을 위해 첫 번째/대표 과목의 수강 정보 일부는 flat 필드로 자동 미러링(mirror) 또는 fallback 되도록 구조를 유지한다.
+* **student 상태와 enrollment 상태의 분리**:
+  - **`student.status`**: 원생 한 사람의 학원 재적 지위를 정의하는 사람 단위 상태 정보이다 (`attending` / `on_leave` / `withdrawn`).
+  - **`enrollment.status`**: 원생이 수강 중인 각 과목별 운영 단위 상태 정보이다 (`attending` / `on_leave` / `terminated` / `recharge_needed` 등).
+  - 예시: 원생 상태는 재원(`attending`)이지만, 피아노 과목은 수강중(`attending`), 바이올린은 휴강(`on_leave`), 보컬 10회권은 수강 횟수 소진에 따른 충전필요(`recharge_needed`) 상태로 독립 표기 및 관리한다.
+  - 휴원 기간(`leavePeriods`), 퇴원일(`withdrawalDate`) 등의 인적 이력 필드는 `student` 레코드에 그대로 유지하며, 과목 개별의 휴강/종료 이력은 후속 과목 이력 관리 정책에서 분리하여 다룬다.
+
+### 15-3. 단기/중기/장기 데이터 전환 전략
+* **단기 (Phase 18B-6 & Phase 18B-7)**:
+  - 실제 DB 물리 스키마 수정 없음.
+  - `getStudentEnrollments` 및 `getLegacyEnrollmentFromStudent` 등의 어댑터/헬퍼 함수를 구현하여 메모리 상에서 legacy enrollment를 생성.
+  - 원생 상세 및 콘솔 드로어 UI가 이 가상 수강과목 정보를 수신하여 카드로 렌더링할 수 있도록 뷰 컴포넌트를 선제 리팩토링.
+* **중기**:
+  - 독립된 `db.enrollments` 컬렉션을 신설하고 신규 과목 및 복수 수업 추가는 이 컬렉션에 적재.
+  - 기존 단일 과목 원생의 flat 필드는 어댑터 fallback 소스로 계속 보존.
+  - 대표 조회 함수인 `getStudentEnrollments(studentId)`가 레거시 가상 과목과 신규 enrollment 레코드를 결합(Union)하여 통합 리스트로 반환하도록 확장.
+* **장기**:
+  - 수납 결제(`payment.enrollmentId`), 시간표/수업(`class.enrollmentId`), 출결 기록, 교재비, 오늘 콘솔 task 등의 하위 모듈이 외래 키로 `enrollmentId`를 점진적으로 매핑 및 참조하도록 전면 리팩토링.
+  - 데이터의 충분한 안정화 및 마이그레이션이 완료된 이후 최종적으로 student 내 flat 필드 삭제를 검토함. 
+  - 개발자의 임의적인 강제 물리 삭제는 금지하며, 독립된 마이그레이션 전용 Phase의 승인 하에서만 제거 프로세스를 실행함.
+
+### 15-4. Adapter / Getter 함수 정책
+
+| 함수명 | 책임 및 역할 | 입력 파라미터 | 반환값 요지 | Legacy 대응 정책 |
+| :--- | :--- | :--- | :--- | :--- |
+| **`getStudentEnrollments`** | 특정 원생의 전체 수강과목 목록 통합 조회 | `studentId` (string) | `enrollment` 객체 배열 | 등록된 enrollment가 없을 시 `legacy-` 가상 과목 반환 |
+| **`getPrimaryEnrollment`** | 레거시 화면 호환용 대표/1순위 수강과목 조회 | `studentId` (string) | 단일 `enrollment` 객체 또는 null | legacy 가상 과목을 최우선 대표 과목으로 반환 |
+| **`getEnrollmentById`** | 고유 ID 기준 수강과목 단일 조회 | `enrollmentId` (string) | 단일 `enrollment` 객체 | ID가 `legacy-`로 시작할 시 즉석에서 가상 과목 빌드 |
+| **`getLegacyEnrollmentFromStudent`** | 레거시 student 필드를 읽어 가상 과목 생성 | `student` (object) | 단일 `enrollment` 가상 객체 | legacy 가상 객체 생성의 실질적 핵심 로직 담당 |
+| **`formatEnrollmentTeacherName`** | 수강과목 담당 강사명의 렌더링 포맷 표준화 | `enrollment` (object) | `이름 + T` 포맷의 문자열 | 강사 ID가 legacy 객체에 들어 있어도 동일 렌더링 지원 |
+| **`isEnrollmentActive`** | 해당 수강과목의 활성화(수강중) 여부 판별 | `enrollment` (object) | boolean (`true` / `false`) | `enrollment.status === 'attending'` 조건 체크 |
+| **`getEnrollmentBillingInfo`** | 과목별 수강료 금액 및 청구 방식 메타데이터 조회 | `enrollment` (object) | 수강료, 납부일, 청구 유형 객체 | legacy의 fee 및 dueDay 값을 호환 매핑하여 반환 |
+| **`getEnrollmentScheduleSummary`** | 해당 과목의 시간표 요일/시간대 문자열 빌드 | `enrollment` (object) | 요약 문자열 (요일/시간) | legacy 원생의 지정된 수업 요일 매핑 지원 |
+| **`getEnrollmentAttendanceSummary`** | 최근 4주 출결 기록 통계 요약 조회 | `enrollment` (object) | 출결률, 지각/결석 횟수 요약 객체 | legacy 원생의 수업 매칭 출결 데이터 바인딩 지원 |
+
+### 15-5. 모듈별 참조 전환 원칙
+* **`membersView.js`**: 
+  - 가장 먼저 수강과목 어댑터를 채택하여 원생 상세의 수강 정보 영역을 개별 카드로 렌더링하는 주역 모듈.
+  - 기존에 `student.instrument` 등을 직접 뿌려주던 개별 HTML 코드를 점진적으로 삭제 및 전환.
+* **`todayConsoleStudentDrawerData.js`**:
+  - 원생 정보 드로어 상단의 단일 악기/반 및 강사명 노출을 제거하고, 어댑터로부터 취득한 복수 수강과목 요약 텍스트 리스트로 전환.
+* **`attendanceControlView.js`**:
+  - 초기 단계에서는 기존 원생 기준의 출결 집계 및 요약을 그대로 유지하여 리스크 최소화.
+  - 중장기 단계에서 과목 칩(뱃지)을 클릭했을 때 특정 `enrollmentId`에 매핑된 수업 일수만 인스펙터 및 목록에 필터링 노출되도록 고도화.
+* **`billingView.js` / `todayTaskBilling.js`**:
+  - 초기 단계에서는 기존의 청구서 및 미납 태스크 생성을 `studentId` 기준으로 계속 유지.
+  - 중장기 단계에서 `payment.enrollmentId` 필드를 도입하여 과목별 개별 미납 안내 태스크 및 청구서 발부 연동.
+* **`sessions.js` / `sessionsView.js`**:
+  - 초기 단계에서는 캘린더 수업 생성 및 등원 스케줄링 시 기존 `student.teacherId` 및 `instrument` 조회를 fallback으로 유지하여 동작 보장.
+  - 중장기 단계에서 세션 스케줄 매핑을 `class.enrollmentId` 기준으로 전면 전환하여 강사 배정 처리.
+* **`todayTaskTextbook.js`**:
+  - 교재 청구 및 지급 관리는 원생 인물 기준을 유지하되, 장기적으로 해당 교재를 사용하는 수강 과목의 학습 진도 및 출석률에 따라 지급 태스크를 추천하도록 연계 전환.
+* **`dashboardView.js`**:
+  - 대시보드의 재원생 수 KPI 등은 원생 개인 지위인 `student.status`를 기준으로 계속 집계 유지.
+  - 학원 전체의 총 수강과목 건수(수강율) KPI 등은 후속 고도화 범위에서 별도 신규 지표 카드로 제공 여부 검토.
+* **`messageSendView.js`**:
+  - 수신인 최종 리스트의 배지 렌더링 시에는 인적 정보 상태인 `student.status` 배지(`[퇴원]`, `[휴원]`)를 계속 렌더링.
+  - 과목명 치환 토큰 등이 들어가는 메시지 템플릿의 변수 파싱은 횟수 소진 알림 등의 후속 템플릿 확장 Phase에서 수강과목별로 격리 파싱되도록 구조 설계.
+
+### 15-6. 구현 제외 및 후속 범위
+* **금번 Phase 18B-6 설계 범위 제외 대상**:
+  - 실제 상태 저장소 내에 `getStudentEnrollments` 등 어댑터 소스 코드 작성
+  - 데이터베이스 스키마 내에 `db.enrollments` 테이블/컬렉션 물리 생성
+  - student 레코드 내 flat 필드들의 물리적 삭제 수행
+  - 수강과목 추가, 수정, 시간표 지정 등의 UI 마크업 뷰 기능 구현
+  - `payment.enrollmentId` 및 `class.enrollmentId` 필드의 실제 수납/세션 모듈 반영
+  - 출석 완료 확정 시의 `sessionPass` 수강권 차감 연산 모듈 구현
+  - 기존 Playwright E2E 테스트 스크립트 수정
