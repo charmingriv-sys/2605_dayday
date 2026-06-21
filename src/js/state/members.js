@@ -650,5 +650,221 @@ export const membersMethods = {
         const status = enrollment.status;
         if (status === undefined || status === 'attending') return true;
         return false;
+    },
+
+    // --- SESSION PASSES Storage API (Phase 18B-25) ---
+    ensureSessionPassesCollection() {
+        if (!this.db) return;
+        if (!this.db.sessionPasses) {
+            this.db.sessionPasses = [];
+        }
+    },
+
+    validateSessionPassPayload(payload) {
+        const total = Number(payload.totalSessions);
+        const remaining = Number(payload.remainingSessions);
+        const amount = Number(payload.purchaseAmount);
+        const threshold = Number(payload.lowBalanceThreshold);
+        
+        if (isNaN(total) || total < 1) return { ok: false, reason: 'invalid_total_sessions' };
+        if (isNaN(remaining) || remaining < 0) return { ok: false, reason: 'invalid_remaining_sessions' };
+        if (remaining > total) return { ok: false, reason: 'remaining_greater_than_total' };
+        if (isNaN(amount) || amount < 0) return { ok: false, reason: 'invalid_purchase_amount' };
+        if (isNaN(threshold) || threshold < 0) return { ok: false, reason: 'invalid_threshold' };
+        if (threshold > total) return { ok: false, reason: 'threshold_greater_than_total' };
+        
+        if (payload.expiresAt && payload.purchaseDate) {
+            if (payload.expiresAt < payload.purchaseDate) {
+                return { ok: false, reason: 'expires_before_purchase' };
+            }
+        }
+        return { ok: true };
+    },
+
+    createSessionPass(enrollmentId, payload) {
+        this.ensureSessionPassesCollection();
+
+        const enrollment = this.getEnrollmentById(enrollmentId);
+        if (!enrollment || enrollment.source === 'legacy' || enrollment.isLegacy || (typeof enrollmentId === 'string' && enrollmentId.startsWith('legacy-'))) {
+            return { ok: false, reason: 'invalid_enrollment' };
+        }
+
+        if (enrollment.courseType !== 'session_pass') {
+            return { ok: false, reason: 'not_session_pass_enrollment' };
+        }
+
+        const val = this.validateSessionPassPayload(payload);
+        if (!val.ok) return val;
+
+        let maxNum = 0;
+        this.db.sessionPasses.forEach(sp => {
+            if (typeof sp.id === 'string' && sp.id.startsWith('SP_')) {
+                const num = parseInt(sp.id.substring(3), 10);
+                if (!isNaN(num) && num > maxNum) {
+                    maxNum = num;
+                }
+            }
+        });
+        const newId = `SP_${maxNum + 1}`;
+
+        const newPass = {
+            id: newId,
+            enrollmentId: enrollmentId,
+            studentId: enrollment.studentId,
+            passName: payload.passName || payload.ticketName || '수강권',
+            totalSessions: Number(payload.totalSessions),
+            remainingSessions: Number(payload.remainingSessions),
+            purchaseAmount: Number(payload.purchaseAmount),
+            purchaseDate: payload.purchaseDate || new Date().toISOString().slice(0, 10),
+            expiresAt: payload.expiresAt || null,
+            lowBalanceThreshold: Number(payload.lowBalanceThreshold !== undefined ? payload.lowBalanceThreshold : 2),
+            deductionPolicy: 'attendance',
+            status: 'active',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+
+        // status recalculation during creation if expired or used_up
+        const todayStr = new Date().toISOString().slice(0, 10);
+        if (newPass.remainingSessions <= 0) {
+            newPass.status = 'used_up';
+        } else if (newPass.expiresAt && newPass.expiresAt < todayStr) {
+            newPass.status = 'expired';
+        }
+
+        this.db.sessionPasses.push(newPass);
+        this.saveDB();
+        this.notify('SESSION_PASSES_CHANGED', this.db.sessionPasses);
+
+        return { ok: true, data: newPass };
+    },
+
+    getSessionPassesByEnrollmentId(enrollmentId, options = {}) {
+        this.ensureSessionPassesCollection();
+
+        let list = this.db.sessionPasses.filter(sp => sp.enrollmentId === enrollmentId);
+
+        // archived filtering
+        if (!options.includeArchived) {
+            list = list.filter(sp => sp.status !== 'archived' && !sp.deletedAt);
+        }
+
+        // inactive filtering
+        if (!options.includeInactive) {
+            list = list.filter(sp => sp.status === 'active');
+        }
+
+        // sorting: expiresAt ascending (null at end) -> purchaseDate ascending -> createdAt ascending
+        list.sort((a, b) => {
+            const aExp = a.expiresAt || '';
+            const bExp = b.expiresAt || '';
+            if (aExp && bExp) {
+                const comp = aExp.localeCompare(bExp);
+                if (comp !== 0) return comp;
+            } else if (aExp) {
+                return -1;
+            } else if (bExp) {
+                return 1;
+            }
+
+            const aPur = a.purchaseDate || '';
+            const bPur = b.purchaseDate || '';
+            const compPur = aPur.localeCompare(bPur);
+            if (compPur !== 0) return compPur;
+
+            const aCre = a.createdAt || '';
+            const bCre = b.createdAt || '';
+            return aCre.localeCompare(bCre);
+        });
+
+        return list;
+    },
+
+    getActiveSessionPassForEnrollment(enrollmentId) {
+        const activePasses = this.getSessionPassesByEnrollmentId(enrollmentId, { includeInactive: false })
+            .filter(sp => sp.remainingSessions > 0);
+        return activePasses.length > 0 ? activePasses[0] : null;
+    },
+
+    updateSessionPass(passId, patch) {
+        this.ensureSessionPassesCollection();
+
+        const pass = this.db.sessionPasses.find(sp => sp.id === passId);
+        if (!pass) {
+            return { ok: false, reason: 'not_found' };
+        }
+
+        // Apply patch
+        Object.keys(patch).forEach(key => {
+            if (key !== 'id' && key !== 'enrollmentId' && key !== 'studentId') {
+                pass[key] = patch[key];
+            }
+        });
+
+        // Recalculate status with priority: archived -> used_up -> expired -> active
+        if (pass.status !== 'archived') {
+            const todayStr = new Date().toISOString().slice(0, 10);
+            if (Number(pass.remainingSessions) <= 0) {
+                pass.status = 'used_up';
+            } else if (pass.expiresAt && pass.expiresAt < todayStr) {
+                pass.status = 'expired';
+            } else {
+                pass.status = 'active';
+            }
+        }
+
+        pass.updatedAt = new Date().toISOString();
+        this.saveDB();
+        this.notify('SESSION_PASSES_CHANGED', this.db.sessionPasses);
+
+        return { ok: true, data: pass };
+    },
+
+    archiveSessionPass(passId) {
+        this.ensureSessionPassesCollection();
+
+        const pass = this.db.sessionPasses.find(sp => sp.id === passId);
+        if (!pass) {
+            return { ok: false, reason: 'not_found' };
+        }
+
+        pass.status = 'archived';
+        pass.deletedAt = new Date().toISOString();
+        pass.updatedAt = new Date().toISOString();
+
+        this.saveDB();
+        this.notify('SESSION_PASSES_CHANGED', this.db.sessionPasses);
+
+        return { ok: true };
+    },
+
+    migrateSessionPassFromEnrollment(enrollmentId) {
+        const enrollment = this.getEnrollmentById(enrollmentId);
+        if (!enrollment || enrollment.source === 'legacy' || enrollment.isLegacy || (typeof enrollmentId === 'string' && enrollmentId.startsWith('legacy-'))) {
+            return { ok: false, reason: 'invalid_enrollment' };
+        }
+
+        if (enrollment.courseType !== 'session_pass') {
+            return { ok: false, reason: 'not_session_pass_enrollment' };
+        }
+
+        // Check if there is an existing sessionPass
+        const existing = this.getSessionPassesByEnrollmentId(enrollmentId, { includeInactive: true, includeArchived: true });
+        if (existing.length > 0) {
+            return { ok: true, data: existing[0] };
+        }
+
+        const payload = {
+            passName: enrollment.ticketName || enrollment.subjectName || '수강권',
+            totalSessions: enrollment.totalSessions !== undefined ? enrollment.totalSessions : 1,
+            remainingSessions: enrollment.remainingSessions !== undefined ? enrollment.remainingSessions : 1,
+            purchaseAmount: enrollment.purchaseAmount !== undefined ? enrollment.purchaseAmount : 0,
+            purchaseDate: enrollment.purchaseDate || new Date().toISOString().slice(0, 10),
+            expiresAt: enrollment.expiresAt || null,
+            lowBalanceThreshold: enrollment.lowBalanceThreshold !== undefined ? enrollment.lowBalanceThreshold : 2
+        };
+
+        const res = this.createSessionPass(enrollmentId, payload);
+        return res;
     }
 };

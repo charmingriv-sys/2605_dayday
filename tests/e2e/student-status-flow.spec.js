@@ -1627,4 +1627,206 @@ test.describe('Student Status Management Flow', () => {
     await detailModal.locator('[data-close-modal]').first().click();
     await expect(detailModal).not.toHaveClass(/show/);
   });
+
+  test('should verify db.sessionPasses Storage API & Migration Helper', async ({ page }) => {
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Execute Storage API verification within the browser context
+    const result = await page.evaluate(() => {
+      const store = window.stateStore;
+      if (!store) return { error: 'stateStore not found' };
+
+      // Initialize Collection
+      store.ensureSessionPassesCollection();
+      if (!Array.isArray(store.db.sessionPasses)) return { error: 'sessionPasses collection not initialized' };
+
+      // Clean test student
+      const studentId = 'S_E2E_SP_TEST';
+      if (!store.db) store.db = {};
+      if (store.db.students) {
+        store.db.students = store.db.students.filter(s => s.id !== studentId);
+      } else {
+        store.db.students = [];
+      }
+      if (store.db.enrollments) {
+        store.db.enrollments = store.db.enrollments.filter(e => e.studentId !== studentId);
+      } else {
+        store.db.enrollments = [];
+      }
+      if (store.db.sessionPasses) {
+        store.db.sessionPasses = store.db.sessionPasses.filter(sp => sp.studentId !== studentId);
+      } else {
+        store.db.sessionPasses = [];
+      }
+
+      store.db.students.push({
+        id: studentId,
+        name: 'SP_E2E_Test',
+        status: 'attending',
+        fee: 150000,
+        dueDay: 10
+      });
+
+      // 1. session_pass enrollment 생성
+      const enrRes = store.createEnrollment(studentId, {
+        courseType: 'session_pass',
+        subjectName: '피아노',
+        ticketName: 'E2E 10회권',
+        totalSessions: 10,
+        remainingSessions: 10,
+        purchaseAmount: 150000,
+        purchaseDate: '2026-06-20',
+        expiresAt: '2026-09-20',
+        lowBalanceThreshold: 2
+      });
+
+      if (!enrRes.ok) return { error: 'createEnrollment failed', enrRes };
+      const enrId = enrRes.data.id;
+
+      // 2. createSessionPass validation 실패 케이스들 검증
+      // totalSessions >= 1 실패
+      const valFail1 = store.createSessionPass(enrId, { totalSessions: 0, remainingSessions: 0, purchaseAmount: 100, purchaseDate: '2026-06-20' });
+      if (valFail1.ok) return { error: 'totalSessions >= 1 validation bypass' };
+
+      // remainingSessions <= totalSessions 실패
+      const valFail2 = store.createSessionPass(enrId, { totalSessions: 10, remainingSessions: 11, purchaseAmount: 100, purchaseDate: '2026-06-20' });
+      if (valFail2.ok) return { error: 'remainingSessions <= totalSessions validation bypass' };
+
+      // expiresAt < purchaseDate 실패
+      const valFail3 = store.createSessionPass(enrId, { totalSessions: 10, remainingSessions: 10, purchaseAmount: 100, purchaseDate: '2026-06-20', expiresAt: '2026-06-19' });
+      if (valFail3.ok) return { error: 'expiresAt < purchaseDate validation bypass' };
+
+      // purchaseAmount < 0 실패
+      const valFail4 = store.createSessionPass(enrId, { totalSessions: 10, remainingSessions: 10, purchaseAmount: -1, purchaseDate: '2026-06-20' });
+      if (valFail4.ok) return { error: 'purchaseAmount < 0 validation bypass' };
+
+      // lowBalanceThreshold > totalSessions 실패
+      const valFail5 = store.createSessionPass(enrId, { totalSessions: 10, remainingSessions: 10, purchaseAmount: 100, purchaseDate: '2026-06-20', lowBalanceThreshold: 11 });
+      if (valFail5.ok) return { error: 'lowBalanceThreshold > totalSessions validation bypass' };
+
+      // 3. 잘못된 enrollmentId / legacy enrollment / monthly enrollment에 대해 실패 결과 반환 확인
+      // 존재하지 않는 enrollment
+      const errRes1 = store.createSessionPass('ENR_NONE', { totalSessions: 10, remainingSessions: 10, purchaseAmount: 100, purchaseDate: '2026-06-20' });
+      if (errRes1.ok || errRes1.reason !== 'invalid_enrollment') return { error: 'invalid enrollmentId validation bypass' };
+
+      // Monthly enrollment
+      const monthlyRes = store.createEnrollment(studentId, { courseType: 'monthly', subjectName: '바이올린' });
+      const monthlyId = monthlyRes.data.id;
+      const errRes2 = store.createSessionPass(monthlyId, { totalSessions: 10, remainingSessions: 10, purchaseAmount: 100, purchaseDate: '2026-06-20' });
+      if (errRes2.ok || errRes2.reason !== 'not_session_pass_enrollment') return { error: 'monthly enrollment validation bypass' };
+
+      // 4. createSessionPass 성공 케이스 검증 및 active pass 생성 확인
+      const spRes1 = store.createSessionPass(enrId, {
+        passName: '수강권 A',
+        totalSessions: 10,
+        remainingSessions: 10,
+        purchaseAmount: 150000,
+        purchaseDate: '2026-06-20',
+        expiresAt: '2026-09-20',
+        lowBalanceThreshold: 2
+      });
+      if (!spRes1.ok) return { error: 'createSessionPass failed', spRes1 };
+      const spId1 = spRes1.data.id;
+
+      // 만료일이 더 빠른 수강권 B 생성 (FIFO 정렬 및 getSessionPassesByEnrollmentId 정렬 검증용)
+      const spRes2 = store.createSessionPass(enrId, {
+        passName: '수강권 B',
+        totalSessions: 10,
+        remainingSessions: 5,
+        purchaseAmount: 150000,
+        purchaseDate: '2026-06-19',
+        expiresAt: '2026-08-19', // 만료일이 더 빠름
+        lowBalanceThreshold: 2
+      });
+      const spId2 = spRes2.data.id;
+
+      // 5. getSessionPassesByEnrollmentId 정렬 확인 (archived/deleted 제외 확인 포함)
+      const sorted = store.getSessionPassesByEnrollmentId(enrId);
+      if (sorted.length !== 2) return { error: 'getSessionPassesByEnrollmentId length error' };
+      // 만료일이 더 빠른 spId2가 앞으로 와야 함
+      if (sorted[0].id !== spId2) return { error: 'sorting order mismatch', sorted };
+
+      // 6. getActiveSessionPassForEnrollment가 FIFO 기준으로 차감 대상 pass를 반환하는지 확인
+      const activePass = store.getActiveSessionPassForEnrollment(enrId);
+      if (!activePass || activePass.id !== spId2) return { error: 'getActiveSessionPassForEnrollment FIFO error', activePass };
+
+      // 7. updateSessionPass로 remainingSessions를 0으로 만들면 status가 used_up이 되는지 확인
+      const updateRes = store.updateSessionPass(spId2, { remainingSessions: 0 });
+      if (!updateRes.ok || updateRes.data.status !== 'used_up') return { error: 'used_up state transition failed', updateRes };
+
+      // spId2가 소진되었으므로 getActiveSessionPassForEnrollment가 spId1을 반환해야 함
+      const activePassAfterUsedUp = store.getActiveSessionPassForEnrollment(enrId);
+      if (!activePassAfterUsedUp || activePassAfterUsedUp.id !== spId1) return { error: 'FIFO after used_up failed', activePassAfterUsedUp };
+
+      // 8. archiveSessionPass가 hard delete하지 않고 archived/deletedAt 처리하는지 확인
+      const archiveRes = store.archiveSessionPass(spId1);
+      if (!archiveRes.ok) return { error: 'archiveSessionPass failed' };
+      const archivedPass = store.db.sessionPasses.find(sp => sp.id === spId1);
+      if (!archivedPass || archivedPass.status !== 'archived' || !archivedPass.deletedAt) return { error: 'archive flag failed' };
+
+      // getSessionPassesByEnrollmentId 기본 조회에서 archived 제외 확인
+      const activeOnly = store.getSessionPassesByEnrollmentId(enrId);
+      if (activeOnly.length !== 0) return { error: 'getSessionPassesByEnrollmentId should not return archived/used_up by default', activeOnly };
+
+      // includeInactive: true 옵션으로 조회 시 used_up된 spId2 포함 확인
+      const inactiveIncluded = store.getSessionPassesByEnrollmentId(enrId, { includeInactive: true });
+      if (inactiveIncluded.length !== 1 || inactiveIncluded[0].id !== spId2) {
+        return { error: 'getSessionPassesByEnrollmentId with includeInactive failed', inactiveIncluded };
+      }
+
+      // includeInactive: true, includeArchived: true 옵션으로 조회 시 둘 다 포함 확인
+      const allIncluded = store.getSessionPassesByEnrollmentId(enrId, { includeInactive: true, includeArchived: true });
+      if (allIncluded.length !== 2) {
+        return { error: 'getSessionPassesByEnrollmentId with includeArchived failed', allIncluded };
+      }
+
+      // archived 상태인 pass는 updateSessionPass 호출해도 되살아나지 않는지 보정 지시 검증
+      const updateArchivedRes = store.updateSessionPass(spId1, { remainingSessions: 5 });
+      if (!updateArchivedRes.ok || updateArchivedRes.data.status !== 'archived') {
+        return { error: 'archived status was incorrectly overwritten during updateSessionPass', updateArchivedRes };
+      }
+
+      // 9. migrateSessionPassFromEnrollment가 enrollment 임시 필드에서 pass를 생성하는지 확인
+      const migrateEnrRes = store.createEnrollment(studentId, {
+        courseType: 'session_pass',
+        subjectName: '첼로',
+        ticketName: '첼로 10회권',
+        totalSessions: 10,
+        remainingSessions: 8,
+        purchaseAmount: 160000,
+        purchaseDate: '2026-06-18',
+        expiresAt: '2026-09-18',
+        lowBalanceThreshold: 1
+      });
+      const migrateEnrId = migrateEnrRes.data.id;
+
+      const migRes1 = store.migrateSessionPassFromEnrollment(migrateEnrId);
+      if (!migRes1.ok || migRes1.data.passName !== '첼로 10회권' || migRes1.data.remainingSessions !== 8) {
+        return { error: 'migrateSessionPassFromEnrollment failed', migRes1 };
+      }
+
+      // 10. 동일 enrollment에 대해 migration helper를 두 번 호출해도 중복 pass가 생성되지 않는지 확인
+      const migRes2 = store.migrateSessionPassFromEnrollment(migrateEnrId);
+      if (!migRes2.ok || migRes2.data.id !== migRes1.data.id) {
+        return { error: 'duplicate migration generated new pass', migRes2 };
+      }
+
+      // 11. migration 후에도 enrollment 원본 임시 필드가 삭제되지 않는지 확인
+      const currentEnr = store.getEnrollmentById(migrateEnrId);
+      if (currentEnr.ticketName !== '첼로 10회권' || currentEnr.remainingSessions !== 8) {
+        return { error: 'original enrollment fields deleted after migration', currentEnr };
+      }
+
+      return { ok: true };
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.error) {
+      throw new Error(result.error);
+    }
+  });
 });
