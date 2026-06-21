@@ -785,6 +785,54 @@ const openStudentDetailModal = (studentId) => {
     const monthsElapsed = (currentDate.getFullYear() - enrollDateVal.getFullYear()) * 12 + (currentDate.getMonth() - enrollDateVal.getMonth());
     const elapsedText = monthsElapsed <= 0 ? '1개월 미만' : `${monthsElapsed}개월`;
 
+    // 18B-8: 수강중인 과목 섹션 HTML 빌드
+    const enrollments = stateStore.getStudentEnrollments(studentId) || [];
+    const enrollmentsHtml = enrollments.map(e => {
+        let statusText = '수강중';
+        let statusColor = 'var(--success)';
+        if (e.status === 'on_leave') {
+            statusText = '휴강';
+            statusColor = 'var(--warning)';
+        } else if (e.status === 'withdrawn' || e.status === 'ended' || e.status === 'inactive') {
+            statusText = '종료';
+            statusColor = 'var(--text-muted)';
+        }
+        const teacherName = stateStore.formatEnrollmentTeacherName(e);
+        const billingTypeText = e.billingType === 'monthly' ? '월정액' : e.billingType;
+        const badgeHtml = e.source === 'legacy' ? `<span style="background: #eef2f3; color: #7f8c8d; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 600; margin-left: 6px;">기존 등록</span>` : '';
+
+        return `
+            <div style="background: #fff; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 700; color: var(--text-main); font-size: 0.9rem;">
+                        ${e.subject || e.instrument || '미지정 과목'} ${badgeHtml}
+                    </span>
+                    <span style="background: ${statusColor}15; color: ${statusColor}; font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; font-weight: 700;">
+                        ${statusText}
+                    </span>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; font-size: 0.85rem; color: var(--text-main);">
+                    <div><span style="color: var(--text-muted);">담당 강사:</span> <strong>${teacherName}</strong></div>
+                    <div><span style="color: var(--text-muted);">수업 방식:</span> <strong>${billingTypeText}</strong></div>
+                    <div><span style="color: var(--text-muted);">월 수강료:</span> <strong>${e.fee ? e.fee.toLocaleString() : 0}원</strong></div>
+                    <div><span style="color: var(--text-muted);">청구일:</span> <strong>매월 ${e.dueDay || 10}일</strong></div>
+                    <div style="grid-column: span 2;"><span style="color: var(--text-muted);">기본 수업 시간:</span> <strong>${e.defaultClassDuration || 50}분</strong></div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    const enrollmentSectionHtml = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin: 0 0 10px 0;">
+            <div style="font-weight: 700; font-size: 0.95rem; color: var(--primary); border-left: 3px solid var(--primary); padding-left: 8px;">수강중인 과목</div>
+            <button class="btn btn-outline btn-sm" id="btn-add-enrollment" style="font-size: 0.8rem; padding: 4px 8px; height: auto; margin-top: 3px;">수강과목 추가</button>
+        </div>
+        <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: -6px; margin-bottom: 10px; padding-left: 11px;">기존 등록 정보는 수강과목 카드로 표시됩니다.</div>
+        <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 1.5rem;">
+            ${enrollmentsHtml || '<div style="font-size: 0.85rem; color: var(--text-muted); text-align: center; padding: 15px; border: 1px dashed var(--border-color); border-radius: 8px;">수강중인 과목 정보가 없습니다.</div>'}
+        </div>
+    `;
+
     const isIncomplete = isIncompleteStudent(student);
     const teacherMissing = !student.teacherId;
 
@@ -933,6 +981,7 @@ const openStudentDetailModal = (studentId) => {
                     <strong style="color: var(--success);">${elapsedText}</strong>
                 </div>
             </div>
+            ${enrollmentSectionHtml}
 
             <div style="font-weight: 700; font-size: 0.95rem; color: var(--primary); margin: 0 0 10px 0; border-left: 3px solid var(--primary); padding-left: 8px;">2. 음악학습경험 및 희망악기</div>
             <div style="display: flex; flex-direction: column; gap: 10px; font-size: 0.9rem; margin-bottom: 1.5rem; background: rgba(0,0,0,0.01); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color);">
@@ -1011,6 +1060,12 @@ const openStudentDetailModal = (studentId) => {
     
     const onInitDetailModal = (contentArea) => {
         contentArea.classList.add('layout-fixed');
+        const addEnrollmentBtn = contentArea.querySelector('#btn-add-enrollment');
+        if (addEnrollmentBtn) {
+            addEnrollmentBtn.addEventListener('click', () => {
+                alert('수강과목 추가 기능은 준비 중입니다.');
+            });
+        }
         const editBtn = contentArea.querySelector('#btn-edit-student-from-detail');
         if (editBtn) {
             editBtn.addEventListener('click', () => {

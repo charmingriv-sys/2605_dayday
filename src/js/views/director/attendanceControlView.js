@@ -2439,6 +2439,39 @@ export function renderDirectorAttendanceControl(container) {
                 <div class="inspector-body">
                     <section class="drawer-section">
                         <div class="section-title">
+                            <h3>수강중인 과목</h3>
+                        </div>
+                        <div id="ac-inspector-enrollments-box" style="display: flex; flex-direction: column; gap: 6px;">
+                            <!-- Filled dynamically -->
+                        </div>
+                    </section>
+
+                    <section class="drawer-section">
+                        <div class="section-title">
+                            <h3>수납 정보</h3>
+                        </div>
+                        <div class="tuition-notice" id="ac-inspector-tuition-box">
+                            <div class="tuition-notice-head">
+                                <span id="ac-inspector-tuition-state">결제예정</span>
+                                <span id="ac-inspector-tuition-due">D-3</span>
+                            </div>
+                            <div class="tuition-notice-body" id="ac-inspector-tuition-text">
+                                6월 수강료 · 6/10 예정
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="drawer-section">
+                        <div class="section-title">
+                            <h3>휴원/퇴원 이력</h3>
+                        </div>
+                        <div id="ac-inspector-leave-history-box" style="padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: rgba(0,0,0,0.01); line-height: 1.5; font-size: 14px;">
+                            이력 없음
+                        </div>
+                    </section>
+
+                    <section class="drawer-section">
+                        <div class="section-title">
                             <h3 id="ac-inspector-history-section-title">출결 정보</h3>
                             <span id="ac-inspector-warning-count">정상</span>
                         </div>
@@ -2469,30 +2502,6 @@ export function renderDirectorAttendanceControl(container) {
                                 <b>정상 범위</b>
                                 <span>이상 없음</span>
                             </div>
-                        </div>
-                    </section>
-
-                    <section class="drawer-section">
-                        <div class="section-title">
-                            <h3>수납 정보</h3>
-                        </div>
-                        <div class="tuition-notice" id="ac-inspector-tuition-box">
-                            <div class="tuition-notice-head">
-                                <span id="ac-inspector-tuition-state">결제예정</span>
-                                <span id="ac-inspector-tuition-due">D-3</span>
-                            </div>
-                            <div class="tuition-notice-body" id="ac-inspector-tuition-text">
-                                6월 수강료 · 6/10 예정
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="drawer-section">
-                        <div class="section-title">
-                            <h3>휴원/퇴원 이력</h3>
-                        </div>
-                        <div id="ac-inspector-leave-history-box" style="padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: rgba(0,0,0,0.01); line-height: 1.5; font-size: 14px;">
-                            이력 없음
                         </div>
                     </section>
 
@@ -3190,6 +3199,32 @@ export function renderDirectorAttendanceControl(container) {
                         <span>이상 없음</span>
                     </div>
                 `;
+            }
+        }
+
+        // 18B-8: Enrollments information (using stateStore adapter and unified formats)
+        const enrollmentsBox = container.querySelector('#ac-inspector-enrollments-box');
+        if (enrollmentsBox) {
+            const enrollments = stateStore.getStudentEnrollments(studentId) || [];
+            if (enrollments.length > 0) {
+                enrollmentsBox.innerHTML = enrollments.map(e => {
+                    const tName = stateStore.formatEnrollmentTeacherName(e);
+                    const billingTypeText = e.billingType === 'monthly' ? '월정액' : e.billingType;
+                    const badgeHtml = e.source === 'legacy' ? `<span style="background: #eef2f3; color: #7f8c8d; font-size: 0.7rem; padding: 1px 4px; border-radius: 4px; font-weight: 600; margin-left: 4px; display: inline-block;">기존 등록</span>` : '';
+                    return `
+                        <div style="padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px; background: rgba(0,0,0,0.01); font-size: 13px; line-height: 1.4;">
+                            <div style="font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+                                <span>${e.subject || e.instrument || '미지정 과목'} · ${tName} · ${billingTypeText} · 월 ${e.fee ? e.fee.toLocaleString() : 0}원</span>
+                                ${badgeHtml}
+                            </div>
+                            <div style="color: var(--text-muted); font-size: 12px; margin-top: 2px;">
+                                기본 ${e.defaultClassDuration || 50}분 · 납부일 ${e.dueDay || 10}일
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                enrollmentsBox.innerHTML = `<div style="font-size: 13px; color: var(--text-muted); padding: 6px 8px;">수강중인 과목 없음</div>`;
             }
         }
 

@@ -553,4 +553,54 @@ test.describe('Student Status Management Flow', () => {
     // Validate isEnrollmentActive
     expect(adapterResults.isActive).toBe(true);
   });
+
+  test('should display 수강중인 과목 section and cards in student detail modal', async ({ page }) => {
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Navigate to Student Management Tab
+    await page.locator('.menu-item[data-view="dir-students"]').click();
+    await expect(page.locator('#page-title')).toContainText('원생 명부 관리');
+
+    // 3. Click first student name link to open detail modal
+    const firstStudentLink = page.locator('.student-name-link').first();
+    await expect(firstStudentLink).toBeVisible();
+    await firstStudentLink.click();
+    await expect(page.locator('#common-modal')).toBeVisible();
+
+    const detailModal = page.locator('#common-modal');
+    
+    // 4. Verify “수강중인 과목” section and description text
+    await expect(detailModal).toContainText('수강중인 과목');
+    await expect(detailModal).toContainText('기존 등록 정보는 수강과목 카드로 표시됩니다.');
+
+    // 5. Verify legacy flat data displays as virtual enrollment card
+    await expect(detailModal).toContainText('월정액');
+    await expect(detailModal).toContainText('기본 수업 시간');
+
+    // 6. Verify "수강과목 추가" button is visible but doesn't perform actual save
+    const addEnrollmentBtn = detailModal.locator('#btn-add-enrollment');
+    await expect(addEnrollmentBtn).toBeVisible();
+    
+    // Alert logic check when clicking the button
+    let alertMsg = '';
+    page.once('dialog', async dialog => {
+      alertMsg = dialog.message();
+      await dialog.accept();
+    });
+    await addEnrollmentBtn.click();
+    expect(alertMsg).toBe('수강과목 추가 기능은 준비 중입니다.');
+
+    // 7. Verify existing student detail modal buttons are not broken
+    await expect(page.locator('#btn-edit-student-from-detail')).toBeVisible();
+    await expect(page.locator('#btn-send-message-from-detail')).toBeVisible();
+    await expect(page.locator('#btn-change-status-from-detail')).toBeVisible();
+
+    // Close modal
+    await page.locator('[data-close-modal]').first().click();
+    await expect(page.locator('#common-modal')).not.toHaveClass(/show/);
+  });
 });

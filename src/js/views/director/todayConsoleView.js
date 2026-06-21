@@ -470,7 +470,35 @@ export function renderTodayConsole(container) {
                     throw new Error(data.errorMessage || '원생 데이터를 빌드할 수 없습니다.');
                 }
 
-                const { studentStats, teacherName, activeWarnings, studentPayments, unpaidPayments, recentAuditLogs, auditLogs, realMessages, historySectionTitle } = data;
+                const { studentStats, teacherName, activeWarnings, studentPayments, unpaidPayments, recentAuditLogs, auditLogs, realMessages, historySectionTitle, enrollments } = data;
+
+                // 18B-8: 수강과목 요약 정보 (stateStore adapter 및 포맷 통일 적용)
+                const enrollmentsList = enrollments || [];
+                const enrollmentsSummaryHtml = enrollmentsList.map(e => {
+                    const tName = stateStore.formatEnrollmentTeacherName(e);
+                    const billingTypeText = e.billingType === 'monthly' ? '월정액' : e.billingType;
+                    const badgeHtml = e.source === 'legacy' ? `<span style="background: #eef2f3; color: #7f8c8d; font-size: 0.7rem; padding: 1px 4px; border-radius: 4px; font-weight: 600; margin-left: 4px; display: inline-block;">기존 등록</span>` : '';
+                    return `
+                        <div style="padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px; background: rgba(0,0,0,0.01); margin-top: 6px; font-size: 13px; line-height: 1.4;">
+                            <div style="font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+                                <span>${e.subject || e.instrument || '미지정 과목'} · ${tName} · ${billingTypeText} · 월 ${e.fee ? e.fee.toLocaleString() : 0}원</span>
+                                ${badgeHtml}
+                            </div>
+                            <div style="color: var(--text-muted); font-size: 12px; margin-top: 2px;">
+                                기본 ${e.defaultClassDuration || 50}분 · 납부일 ${e.dueDay || 10}일
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                const enrollmentsSectionHtml = `
+                    <section class="drawer-section">
+                        <div class="section-title">
+                            <h3>수강중인 과목</h3>
+                        </div>
+                        ${enrollmentsSummaryHtml || '<div style="font-size: 13px; color: var(--text-muted); padding: 6px 8px;">수강중인 과목 없음</div>'}
+                    </section>
+                `;
 
                 // 1. Profile information
                 const memberNoText = student.studentMemberNo || student.memberNo || student.id;
@@ -492,9 +520,6 @@ export function renderTodayConsole(container) {
                 const profileMetaHtml = `
                     <div style="font-size:13px; color:var(--text-muted); margin-top:4px;">
                         회원번호: #${memberNoText}
-                    </div>
-                    <div style="font-size:13px; color:var(--text-muted); margin-top:2px;">
-                        악기/반: ${student.instrument || '미지정'} · 강사: ${teacherName}
                     </div>
                     ${adultAgeInfo ? `<div style="font-size:13px; color:var(--text-muted); margin-top:2px;">구분: ${adultAgeInfo}</div>` : ''}
                     ${contactsHtml ? `
@@ -805,6 +830,22 @@ export function renderTodayConsole(container) {
                             </div>
                         </div>
                         <div class="inspector-body">
+                            ${enrollmentsSectionHtml}
+
+                            <section class="drawer-section">
+                                <div class="section-title">
+                                    <h3>수납 정보</h3>
+                                </div>
+                                ${tuitionBoxHtml}
+                            </section>
+
+                            <section class="drawer-section">
+                                <div class="section-title">
+                                    <h3>휴원/퇴원 이력</h3>
+                                </div>
+                                ${leaveHistoryHtml}
+                            </section>
+
                             <section class="drawer-section">
                                 <div class="section-title">
                                     <h3>${historySectionTitle}</h3>
@@ -835,20 +876,6 @@ export function renderTodayConsole(container) {
                                 <div class="warning-stack">
                                     ${warningStackHtml}
                                 </div>
-                            </section>
-
-                            <section class="drawer-section">
-                                <div class="section-title">
-                                    <h3>수납 정보</h3>
-                                </div>
-                                ${tuitionBoxHtml}
-                            </section>
-
-                            <section class="drawer-section">
-                                <div class="section-title">
-                                    <h3>휴원/퇴원 이력</h3>
-                                </div>
-                                ${leaveHistoryHtml}
                             </section>
 
                             <section class="drawer-section">

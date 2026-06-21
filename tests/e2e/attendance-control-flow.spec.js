@@ -1677,4 +1677,28 @@ test.describe('Director Attendance Control Console Flow', () => {
     // June 1 has actual attendance (late) -> should show '지각' instead of '휴원'
     await expect(page.locator('#ac-inspector-history-list .log-item:has-text("2026-06-01")')).toContainText('지각');
   });
+
+  test('should display 수강중인 과목 summary in attendance control inspector panel', async ({ page }) => {
+    // 1. Go to attendance control view
+    const controlMenu = page.locator('.menu-item[data-view="dir-attendance-control"]');
+    await controlMenu.click();
+    await page.waitForTimeout(300);
+
+    // 2. Click S1 (최다은) row in table to open the inspector drawer
+    const s1Row = page.locator('table.custom-table tbody tr[data-student-id="S1"]');
+    await expect(s1Row).toBeVisible();
+    await s1Row.first().click();
+
+    // 3. Verify inspector panel is open
+    const inspector = page.locator('#ac-inspector-panel');
+    await expect(inspector).toHaveClass(/open/);
+
+    // 4. Verify "수강중인 과목" section in the inspector drawer
+    await expect(inspector).toContainText('수강중인 과목');
+
+    // 5. Verify mini card info (instrument, teacherName, monthly, fee, defaultClassDuration, dueDay)
+    await expect(inspector).toContainText('월정액');
+    await expect(inspector).toContainText('기본');
+    await expect(inspector).toContainText('납부일');
+  });
 });

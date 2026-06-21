@@ -214,6 +214,9 @@ export function buildStudentDrawerData({ student, stateStore, todayStr }) {
         };
         const historySectionTitle = `최근 4주 출결 요약 (${formatLocalDate(startRange)} ~ ${todayStr})`;
 
+        // 18B-8: getStudentEnrollments adapter 사용
+        const enrollments = stateStore.getStudentEnrollments ? stateStore.getStudentEnrollments(studentId) : [];
+
         return {
             studentStats,
             teacherName,
@@ -224,6 +227,7 @@ export function buildStudentDrawerData({ student, stateStore, todayStr }) {
             auditLogs,
             realMessages,
             historySectionTitle,
+            enrollments,
             error: null
         };
     } catch (err) {

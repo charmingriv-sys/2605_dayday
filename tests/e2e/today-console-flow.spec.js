@@ -2698,5 +2698,60 @@ test.describe('Director Today Console Flow Checks', () => {
     await expect(sendMsgBtn3).toBeHidden();
     await expect(withdrawnCard).toContainText('퇴원생 미수납은 수동 확인 대상입니다.');
   });
+
+  test('should display 수강중인 과목 summary in student details drawer', async ({ page }) => {
+    // 1. Setup mock task to open drawer
+    await page.evaluate(() => {
+      window.stateStore.db.todayTasks.push({
+        id: 'TASK_ENROLLMENT_DRAWER_E2E',
+        organizationId: '',
+        segment: 'academy_director_console',
+        domain: 'academy',
+        source: 'manual',
+        type: 'billing',
+        category: 'system_check',
+        priority: 'today',
+        status: 'open',
+        title: '[미수납 확인] E2E 원생 미납 수강료',
+        description: '• 원생명: 최다은\n• 청구월: 2026-06\n• 미납액: 150,000원\n• 납부기한: 2026-06-10',
+        relatedStudentIds: ['S1'],
+        dedupeKey: 'SYSTEM_RECOMMEND_BILLING_UNPAID_DRAWER_E2E'
+      });
+      window.stateStore.saveDB();
+      window.stateStore.notify('TODAY_TASKS_CHANGED', window.stateStore.db.todayTasks);
+    });
+
+    // Rerender console
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+    await page.waitForTimeout(200);
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+    await page.waitForTimeout(200);
+
+    // 2. Click the task card to open the drawer
+    const taskCard = page.locator('#tasks-list-container .glass-card', { hasText: 'E2E 원생 미납 수강료' });
+    await expect(taskCard).toBeVisible();
+    await taskCard.click();
+
+    // 3. Verify the details drawer is open and contains "수강중인 과목" section
+    const drawer = page.locator('.today-task-drawer');
+    await expect(drawer).toBeVisible();
+    await expect(drawer).toContainText('수강중인 과목');
+
+    // Verify top profile section does NOT contain instrument or teacher details anymore
+    const profileMain = drawer.locator('.profile-main');
+    await expect(profileMain).not.toContainText('악기/반');
+    await expect(profileMain).not.toContainText('강사:');
+
+    // 4. Verify mini card info (instrument, teacherName, monthly, fee, defaultClassDuration, dueDay)
+    await expect(drawer).toContainText('피아노');
+    await expect(drawer).toContainText('정은비T');
+    await expect(drawer).toContainText('월정액');
+    await expect(drawer).toContainText('기본');
+    await expect(drawer).toContainText('납부일');
+
+    // Close the drawer
+    await page.locator('#btn-close-task-drawer').click();
+    await expect(drawer).not.toHaveClass(/open/);
+  });
 });
 
