@@ -1331,4 +1331,216 @@ test.describe('Student Status Management Flow', () => {
     expect(protectedClass.dayOfWeek).toBe('목');
     expect(protectedClass.time).toBe('18:00');
   });
+
+  test('should verify Course Add Modal Schedule Save Integration', async ({ page }) => {
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Navigate to Student Management
+    await page.locator('.menu-item[data-view="dir-students"]').click();
+    await expect(page.locator('#page-title')).toContainText('원생 명부 관리');
+
+    // 3. Open S1 details modal (use first student link)
+    const s1Link = page.locator('.student-name-link').first();
+    await expect(s1Link).toBeVisible();
+    await s1Link.click();
+    
+    const detailModal = page.locator('#common-modal');
+    await expect(detailModal).toBeVisible();
+
+    // S1의 기존 수강과목을 깨끗이 정리해두기 위해 evaluate로 초기화
+    await page.evaluate(() => {
+      window.stateStore.ensureEnrollmentsCollection();
+      window.stateStore.db.enrollments = window.stateStore.db.enrollments.filter(e => e.studentId !== 'S1');
+      window.stateStore.db.classes = window.stateStore.db.classes.filter(c => c.studentId !== 'S1');
+      window.stateStore.saveDB();
+    });
+
+    let firstEnrollmentId = '';
+
+    // 4. Test Case 1: Monthly Enrollment + Schedule Save (성공 분기)
+    const addBtn = detailModal.locator('#btn-add-enrollment');
+    await expect(addBtn).toBeVisible();
+    await addBtn.click();
+    await page.waitForTimeout(200);
+
+    // Fill in monthly course fields
+    await detailModal.locator('#enrollment-subject').selectOption({ index: 1 });
+    await detailModal.locator('#enrollment-teacher').selectOption({ index: 1 });
+    await detailModal.locator('#enrollment-day-of-week').selectOption('화');
+    await detailModal.locator('#enrollment-time').fill('14:30');
+    await detailModal.locator('#enrollment-duration').selectOption('60'); // 60분
+    await detailModal.locator('#enrollment-fee').fill('180000');
+    await detailModal.locator('#enrollment-due-day').fill('25');
+
+    // Monitor alert popups
+    let alertMsg = '';
+    page.once('dialog', async dialog => {
+      alertMsg = dialog.message();
+      await dialog.accept();
+    });
+
+    // Submit
+    await detailModal.locator('#btn-submit-enrollment-modal').click();
+    await page.waitForTimeout(400);
+
+    expect(alertMsg).toBe('수강과목과 기본 수업 시간이 추가되었습니다.');
+
+    // DB Verification
+    const state1 = await page.evaluate(() => {
+      const store = window.stateStore;
+      const enrollments = store.getStudentEnrollments('S1');
+      const e = enrollments[0];
+      const classes = store.getClassesByEnrollmentId(e?.id) || [];
+      return {
+        subjectName: e?.subjectName || e?.subject || e?.instrument || '',
+        enrollmentId: e?.id,
+        classes
+      };
+    });
+
+    firstEnrollmentId = state1.enrollmentId;
+    expect(state1.subjectName).not.toBe('');
+    expect(state1.classes.length).toBe(1);
+    expect(state1.classes[0].dayOfWeek).toBe('화');
+    expect(state1.classes[0].time).toBe('14:30');
+    expect(state1.classes[0].durationMinutes).toBe(60);
+    expect(state1.classes[0].studentId).toBe('S1');
+
+    // UI Verification: Verify card contains subject and schedule text
+    const pianoCard = detailModal.locator('div', { hasText: state1.subjectName }).first();
+    await expect(pianoCard).toBeVisible();
+    await expect(pianoCard).toContainText('기본 수업 시간: 화 14:30 (60분)');
+
+    // 5. Test Case 2: Schedule Omitted (건너뛰기 분기)
+    await addBtn.click();
+    await page.waitForTimeout(200);
+
+    // Fill in monthly course fields
+    await detailModal.locator('#enrollment-subject').selectOption({ index: 2 });
+    await detailModal.locator('#enrollment-teacher').selectOption({ index: 1 });
+    // Day of week / time is left empty ('선택 안 함' / '')
+    await detailModal.locator('#enrollment-day-of-week').selectOption('');
+    await detailModal.locator('#enrollment-time').fill('');
+    await detailModal.locator('#enrollment-fee').fill('220000');
+
+    let alertMsgOmitted = '';
+    page.once('dialog', async dialog => {
+      alertMsgOmitted = dialog.message();
+      await dialog.accept();
+    });
+
+    await detailModal.locator('#btn-submit-enrollment-modal').click();
+    await page.waitForTimeout(400);
+
+    expect(alertMsgOmitted).toBe('수강과목이 추가되었습니다.');
+
+    // DB Verification
+    const state2 = await page.evaluate((exclId) => {
+      const store = window.stateStore;
+      const enrollments = store.getStudentEnrollments('S1');
+      const e = enrollments.find(x => x.id !== exclId);
+      return {
+        subjectName: e?.subjectName || e?.subject || e?.instrument || ''
+      };
+    }, firstEnrollmentId);
+
+    // UI Verification: Verify no NaN / undefined / 선택 안 함 text on violin card
+    const violinCard = detailModal.locator('div', { hasText: state2.subjectName }).first();
+    await expect(violinCard).toBeVisible();
+    const cardText = await violinCard.innerText();
+    expect(cardText).not.toContain('undefined');
+    expect(cardText).not.toContain('NaN');
+    expect(cardText).not.toContain('선택 안 함');
+    // Empty schedule should fall back to just rendering the duration
+    expect(cardText).toContain('기본 수업 시간: 50분');
+
+    // 6. Test Case 3: Class Creation Failure (부분 실패 분기)
+    // Monkey patch createClassForEnrollment temporarily
+    await page.evaluate(() => {
+      window.stateStore._origCreateClass = window.stateStore.createClassForEnrollment;
+      window.stateStore.createClassForEnrollment = () => ({ ok: false, reason: 'forced_failure' });
+    });
+
+    await addBtn.click();
+    await page.waitForTimeout(200);
+
+    await detailModal.locator('#enrollment-subject').selectOption({ index: 1 });
+    await detailModal.locator('#enrollment-teacher').selectOption({ index: 1 });
+    await detailModal.locator('#enrollment-day-of-week').selectOption('목');
+    await detailModal.locator('#enrollment-time').fill('10:00');
+    await detailModal.locator('#enrollment-fee').fill('250000');
+
+    let alertMsgFailure = '';
+    page.once('dialog', async dialog => {
+      alertMsgFailure = dialog.message();
+      await dialog.accept();
+    });
+
+    await detailModal.locator('#btn-submit-enrollment-modal').click();
+    await page.waitForTimeout(400);
+
+    expect(alertMsgFailure).toBe('수강과목은 추가되었지만 기본 수업 시간 저장에 실패했습니다.');
+
+    // Restore monkey patch
+    await page.evaluate(() => {
+      window.stateStore.createClassForEnrollment = window.stateStore._origCreateClass;
+      delete window.stateStore._origCreateClass;
+    });
+
+    // 7. Test Case 4: Session Pass Enrollment + Schedule Save (횟수제 성공 분기)
+    await addBtn.click();
+    await page.waitForTimeout(200);
+
+    // Select session billing type
+    await detailModal.locator('input[name="enrollment-billing-type"][value="session"]').check();
+
+    // Fill in fields
+    await detailModal.locator('#enrollment-subject').selectOption({ index: 2 });
+    await detailModal.locator('#enrollment-teacher').selectOption({ index: 1 });
+    await detailModal.locator('#enrollment-day-of-week').selectOption('금');
+    await detailModal.locator('#enrollment-time').fill('16:00');
+    await detailModal.locator('#enrollment-duration').selectOption('50');
+    await detailModal.locator('#enrollment-ticket-name').fill('10회 수강권');
+    await detailModal.locator('#enrollment-total-count').fill('10');
+    await detailModal.locator('#enrollment-remaining-count').fill('10');
+    await detailModal.locator('#enrollment-ticket-fee').fill('200000');
+
+    let alertMsgSession = '';
+    page.once('dialog', async dialog => {
+      alertMsgSession = dialog.message();
+      await dialog.accept();
+    });
+
+    await detailModal.locator('#btn-submit-enrollment-modal').click();
+    await page.waitForTimeout(400);
+
+    expect(alertMsgSession).toBe('수강과목과 기본 수업 시간이 추가되었습니다.');
+
+    const state4 = await page.evaluate((exclId) => {
+      const store = window.stateStore;
+      const enrollments = store.getStudentEnrollments('S1');
+      const e = enrollments.find(x => x.id !== exclId && x.courseType === 'session_pass');
+      return {
+        subjectName: e?.subjectName || e?.subject || e?.instrument || ''
+      };
+    }, firstEnrollmentId);
+
+    const drumCard = detailModal.locator('div', { hasText: state4.subjectName }).first();
+    await expect(drumCard).toBeVisible();
+    await expect(drumCard).toContainText('기본 수업 시간: 금 16:00 (50분)');
+
+    // Verify sessionPasses is not modified
+    const sessionPassCheck = await page.evaluate(() => {
+      return window.stateStore.db.sessionPasses || [];
+    });
+    expect(sessionPassCheck.length).toBe(0);
+
+    // Close modal
+    await detailModal.locator('[data-close-modal]').first().click();
+    await expect(detailModal).not.toHaveClass(/show/);
+  });
 });

@@ -822,6 +822,51 @@ const openStudentDetailModal = (studentId) => {
         
         const badgeHtml = e.source === 'legacy' ? `<span style="background: #eef2f3; color: #7f8c8d; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 600; margin-left: 6px;">기존 등록</span>` : '';
 
+        // Find classes matching this enrollment
+        let matchedClasses = [];
+        if (e.id && e.source !== 'legacy') {
+            matchedClasses = stateStore.getClassesByEnrollmentId(e.id) || [];
+        } else {
+            const studentClasses = stateStore.getClassesByStudentId(studentId) || [];
+            matchedClasses = studentClasses.filter(c => !c.enrollmentId || c.enrollmentId === e.id);
+        }
+
+        let scheduleInfoHtml = '';
+        if (matchedClasses.length > 0) {
+            const timeParts = matchedClasses.map(c => {
+                const day = c.dayOfWeek || '';
+                const time = c.time || '';
+                const duration = c.durationMinutes || e.defaultClassDuration || e.defaultDurationMinutes || 50;
+                if (day && time) {
+                    return `${day} ${time} (${duration}분)`;
+                } else if (day) {
+                    return `${day} (${duration}분)`;
+                } else if (time) {
+                    return `${time} (${duration}분)`;
+                }
+                return `${duration}분`;
+            }).filter(Boolean);
+
+            if (timeParts.length > 0) {
+                scheduleInfoHtml = `
+                    <div style="grid-column: span 2;">
+                        <span style="color: var(--text-muted);">기본 수업 시간:</span> 
+                        <strong>${timeParts.join(', ')}</strong>
+                    </div>
+                `;
+            }
+        }
+
+        if (!scheduleInfoHtml) {
+            const duration = e.defaultClassDuration || e.defaultDurationMinutes || 50;
+            scheduleInfoHtml = `
+                <div style="grid-column: span 2;">
+                    <span style="color: var(--text-muted);">기본 수업 시간:</span> 
+                    <strong>${duration}분</strong>
+                </div>
+            `;
+        }
+
         return `
             <div style="background: #fff; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -836,7 +881,7 @@ const openStudentDetailModal = (studentId) => {
                     <div><span style="color: var(--text-muted);">담당 강사:</span> <strong>${teacherName}</strong></div>
                     <div><span style="color: var(--text-muted);">수업 방식:</span> <strong>${billingTypeText}</strong></div>
                     ${detailFieldsHtml}
-                    <div style="grid-column: span 2;"><span style="color: var(--text-muted);">기본 수업 시간:</span> <strong>${e.defaultClassDuration || e.defaultDurationMinutes || 50}분</strong></div>
+                    ${scheduleInfoHtml}
                 </div>
             </div>
         `;
@@ -1247,7 +1292,8 @@ const openAddEnrollmentModal = (studentId) => {
                     <div class="form-group" style="flex: 1;">
                         <label for="enrollment-day-of-week">기본 수업 요일</label>
                         <select id="enrollment-day-of-week" class="form-control" style="width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
-                            <option value="월" selected>월요일</option>
+                            <option value="" selected>선택 안 함</option>
+                            <option value="월">월요일</option>
                             <option value="화">화요일</option>
                             <option value="수">수요일</option>
                             <option value="목">목요일</option>
@@ -1261,7 +1307,7 @@ const openAddEnrollmentModal = (studentId) => {
                 <div class="form-row" style="display: flex; gap: 12px;">
                     <div class="form-group" style="flex: 1;">
                         <label for="enrollment-time">기본 수업 시간</label>
-                        <input type="time" id="enrollment-time" class="form-control" value="15:00" style="width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
+                        <input type="time" id="enrollment-time" class="form-control" style="width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
                     </div>
                     <div class="form-group" style="flex: 1;">
                         <label for="enrollment-duration">기본 수업 길이 <span style="color: var(--danger);">*</span></label>
@@ -1530,7 +1576,32 @@ const openAddEnrollmentModal = (studentId) => {
 
                 const result = stateStore.createEnrollment(studentId, payload);
                 if (result && result.ok) {
-                    alert('수강과목이 추가되었습니다.');
+                    const enrollment = result.data;
+
+                    const dayOfWeek = contentArea.querySelector('#enrollment-day-of-week').value;
+                    const time = contentArea.querySelector('#enrollment-time').value;
+                    const durationVal = contentArea.querySelector('#enrollment-duration').value;
+                    const durationMinutes = durationVal ? parseInt(durationVal, 10) : NaN;
+                    const teacherId = contentArea.querySelector('#enrollment-teacher').value;
+
+                    if (dayOfWeek && time && !isNaN(durationMinutes)) {
+                        const classPayload = {
+                            dayOfWeek,
+                            time,
+                            durationMinutes,
+                            teacherId: teacherId || ''
+                        };
+
+                        const classResult = stateStore.createClassForEnrollment(enrollment.id, classPayload);
+                        if (classResult && classResult.ok) {
+                            alert('수강과목과 기본 수업 시간이 추가되었습니다.');
+                        } else {
+                            alert('수강과목은 추가되었지만 기본 수업 시간 저장에 실패했습니다.');
+                        }
+                    } else {
+                        alert('수강과목이 추가되었습니다.');
+                    }
+
                     closeModal();
                     openStudentDetailModal(studentId);
                 } else {
