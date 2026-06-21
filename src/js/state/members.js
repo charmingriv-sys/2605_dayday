@@ -283,14 +283,81 @@ export const membersMethods = {
             this.notify('PAYMENTS_CHANGED', this.db.payments);
         }
 
-        if (classSchedules !== null) {
-            // Delete old class schedules for student
-            this.db.classes = this.db.classes.filter(c => c.studentId !== id);
-            // Insert new ones
-            classSchedules.forEach(schedule => {
-                const classId = 'C' + (this.db.classes.length ? Math.max(...this.db.classes.map(c => parseInt(c.id.slice(1)) || 0)) + 1 : 1);
-                this.db.classes.push({ id: classId, studentId: id, dayOfWeek: schedule.dayOfWeek, time: schedule.time });
-            });
+        if (Array.isArray(classSchedules)) {
+            // Determine enrollmentId
+            let enrollmentId = data.enrollmentId || updatedData.enrollmentId;
+            let primaryEnrollment = null;
+            if (!enrollmentId && typeof this.getPrimaryEnrollment === 'function') {
+                primaryEnrollment = this.getPrimaryEnrollment(id);
+                if (primaryEnrollment) {
+                    enrollmentId = primaryEnrollment.id;
+                }
+            } else if (enrollmentId && typeof this.getEnrollmentById === 'function') {
+                primaryEnrollment = this.getEnrollmentById(enrollmentId);
+            }
+
+            const isManualEnrollment = primaryEnrollment && (primaryEnrollment.source === 'manual' || !primaryEnrollment.isLegacy);
+            const isLegacyId = typeof enrollmentId === 'string' && enrollmentId.startsWith('legacy-');
+
+            if (enrollmentId && isManualEnrollment && !isLegacyId) {
+                if (typeof this.replaceClassesForEnrollment === 'function') {
+                    const payload = classSchedules.map(sch => ({
+                        dayOfWeek: sch.dayOfWeek,
+                        time: sch.time,
+                        durationMinutes: sch.durationMinutes !== undefined ? sch.durationMinutes : undefined,
+                        teacherId: sch.teacherId !== undefined ? sch.teacherId : undefined
+                    }));
+                    this.replaceClassesForEnrollment(enrollmentId, payload);
+                }
+            } else {
+                // legacy fallback path
+                // Remove ONLY legacy classes (c.studentId === id && !c.enrollmentId)
+                this.db.classes = this.db.classes.filter(c => {
+                    if (c.studentId === id && !c.enrollmentId) {
+                        return false; // delete legacy class
+                    }
+                    return true; // retain all other classes
+                });
+
+                // Insert new legacy classes
+                classSchedules.forEach(schedule => {
+                    let maxNum = 0;
+                    let hasValidNum = false;
+                    if (this.db && Array.isArray(this.db.classes)) {
+                        this.db.classes.forEach(c => {
+                            if (typeof c.id === 'string' && c.id.startsWith('C')) {
+                                const num = parseInt(c.id.substring(1), 10);
+                                if (!isNaN(num)) {
+                                    hasValidNum = true;
+                                    if (num > maxNum) {
+                                        maxNum = num;
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    const newId = hasValidNum ? `C${maxNum + 1}` : `C_${Date.now()}`;
+                    
+                    const newLegacyClass = {
+                        id: newId,
+                        studentId: id,
+                        dayOfWeek: schedule.dayOfWeek,
+                        time: schedule.time
+                    };
+
+                    if (schedule.durationMinutes !== undefined) {
+                        newLegacyClass.durationMinutes = Number(schedule.durationMinutes);
+                    }
+                    if (schedule.teacherId !== undefined) {
+                        newLegacyClass.teacherId = schedule.teacherId;
+                    }
+
+                    this.db.classes.push(newLegacyClass);
+                });
+
+                this.saveDB();
+                this.notify('CLASSES_CHANGED', this.db.classes);
+            }
         }
 
         if (data.parentPhone !== undefined || data.parentName !== undefined) {

@@ -1145,4 +1145,190 @@ test.describe('Student Status Management Flow', () => {
     expect(testResults.legacyReplaceRes.ok).toBe(false);
     expect(testResults.legacyReplaceRes.reason).toBe('invalid_enrollment');
   });
+
+  test('should verify updateStudent schedule overwrite guard', async ({ page }) => {
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Perform validations on updateStudent schedule guard inside browser context
+    const testResults = await page.evaluate(() => {
+      const store = window.stateStore;
+
+      // Ensure fresh state for testing
+      store.ensureEnrollmentsCollection();
+      
+      // Filter out test student enrollments/classes to start clean
+      store.db.enrollments = store.db.enrollments.filter(e => e.studentId !== 'S1');
+      store.db.classes = store.db.classes.filter(c => c.studentId !== 'S1');
+      
+      // S1 student flat field mock settings
+      const student = store.getStudent('S1');
+      if (student) {
+        student.instrument = '드럼';
+        student.teacherId = 'T8';
+        student.defaultClassDuration = 45;
+      }
+      
+      store.saveDB();
+
+      const results = {};
+
+      // 1. Create 2 manual enrollments for S1
+      const resVn = store.createEnrollment('S1', {
+        subjectName: '바이올린',
+        courseType: 'monthly',
+        fee: 220000,
+        dueDay: 10,
+        defaultDurationMinutes: 60,
+        teacherId: 'T8',
+        startDate: '2026-06-01'
+      });
+      const vnEnrollmentId = resVn.data.id;
+      results.vnEnrollmentId = vnEnrollmentId;
+
+      const resDr = store.createEnrollment('S1', {
+        subjectName: '드럼',
+        courseType: 'monthly',
+        fee: 200000,
+        dueDay: 20,
+        defaultDurationMinutes: 50,
+        teacherId: 'T9',
+        startDate: '2026-06-01'
+      });
+      const drEnrollmentId = resDr.data.id;
+      results.drEnrollmentId = drEnrollmentId;
+
+      // 2. Create class for each enrollment
+      // Violin: 화요일 14:00
+      store.createClassForEnrollment(vnEnrollmentId, { dayOfWeek: '화', time: '14:00' });
+      // Drum: 목요일 16:00
+      store.createClassForEnrollment(drEnrollmentId, { dayOfWeek: '목', time: '16:00' });
+
+      // Determine which enrollment is primary
+      const primary = store.getPrimaryEnrollment('S1');
+      results.primaryId = primary?.id;
+
+      // 3. Update without explicit enrollmentId
+      // S1 has a manual primary enrollment, so it will update primary enrollment classes
+      store.updateStudent('S1', {}, [
+        { dayOfWeek: '월', time: '13:00' }
+      ]);
+
+      // 4. Verify classes
+      // - The other manual enrollment (non-primary) classes MUST remain untouched
+      // - The primary manual enrollment classes should be replaced with 월 13:00
+      const activeClassesAfterUpdate1 = store.db.classes.filter(c => c.studentId === 'S1' && c.status !== 'archived');
+      results.classesAfterUpdate1 = activeClassesAfterUpdate1.map(c => ({
+        id: c.id,
+        enrollmentId: c.enrollmentId || null,
+        dayOfWeek: c.dayOfWeek,
+        time: c.time
+      }));
+
+      // 5. Update student with explicit non-primary enrollmentId (e.g. Drum) to replace its classes
+      const targetEnrollmentId = primary.id === vnEnrollmentId ? drEnrollmentId : vnEnrollmentId;
+      store.updateStudent('S1', { enrollmentId: targetEnrollmentId }, [
+        { dayOfWeek: '금', time: '15:00' }
+      ]);
+
+      const activeClassesAfterUpdate2 = store.db.classes.filter(c => c.studentId === 'S1' && c.status !== 'archived');
+      results.classesAfterUpdate2 = activeClassesAfterUpdate2.map(c => ({
+        id: c.id,
+        enrollmentId: c.enrollmentId || null,
+        dayOfWeek: c.dayOfWeek,
+        time: c.time
+      }));
+
+      // 6. Verify legacy fallback path: S99 is a pure legacy student
+      store.db.students.push({
+        id: 'S99',
+        name: 'LegacyStudent',
+        status: 'attending',
+        fee: 150000
+      });
+      // Legacy class (no enrollmentId)
+      store.db.classes.push({
+        id: 'C99',
+        studentId: 'S99',
+        dayOfWeek: '화',
+        time: '15:00'
+      });
+      // Formal/Manual class manually injected to verify it is protected during legacy fallback
+      store.db.classes.push({
+        id: 'C100',
+        studentId: 'S99',
+        enrollmentId: 'some-manual-id',
+        dayOfWeek: '목',
+        time: '18:00'
+      });
+      store.saveDB();
+
+      // Update legacy S99 class to: 수요일 16:00
+      store.updateStudent('S99', {}, [
+        { dayOfWeek: '수', time: '16:00' }
+      ]);
+
+      const activeClassesS99 = store.db.classes.filter(c => c.studentId === 'S99' && c.status !== 'archived');
+      results.classesS99 = activeClassesS99.map(c => ({
+        id: c.id,
+        enrollmentId: c.enrollmentId || null,
+        dayOfWeek: c.dayOfWeek,
+        time: c.time
+      }));
+
+      return results;
+    });
+
+    // Asserts
+    expect(testResults.vnEnrollmentId).toMatch(/^ENR_\d+$/);
+    expect(testResults.drEnrollmentId).toMatch(/^ENR_\d+$/);
+    expect(testResults.primaryId).toBeDefined();
+
+    // After legacy/primary update:
+    // Should have 2 active classes:
+    // - One for primary enrollment (replaced with 월 13:00)
+    // - One for non-primary enrollment (still 목 16:00 or 화 14:00)
+    expect(testResults.classesAfterUpdate1.length).toBe(2);
+    
+    const primaryClass1 = testResults.classesAfterUpdate1.find(c => c.enrollmentId === testResults.primaryId);
+    expect(primaryClass1).toBeDefined();
+    expect(primaryClass1.dayOfWeek).toBe('월');
+    expect(primaryClass1.time).toBe('13:00');
+
+    const nonPrimaryId = testResults.primaryId === testResults.vnEnrollmentId ? testResults.drEnrollmentId : testResults.vnEnrollmentId;
+    const nonPrimaryClass1 = testResults.classesAfterUpdate1.find(c => c.enrollmentId === nonPrimaryId);
+    expect(nonPrimaryClass1).toBeDefined();
+    expect(nonPrimaryClass1.dayOfWeek).toBe(testResults.primaryId === testResults.vnEnrollmentId ? '목' : '화');
+    expect(nonPrimaryClass1.time).toBe(testResults.primaryId === testResults.vnEnrollmentId ? '16:00' : '14:00');
+
+    // After updating non-primary explicitly (금 15:00):
+    // Should still have 2 active classes:
+    // - Primary class (월 13:00)
+    // - Non-primary class (updated to 금 15:00)
+    expect(testResults.classesAfterUpdate2.length).toBe(2);
+    const primaryClass2 = testResults.classesAfterUpdate2.find(c => c.enrollmentId === testResults.primaryId);
+    expect(primaryClass2.dayOfWeek).toBe('월');
+    expect(primaryClass2.time).toBe('13:00');
+
+    const nonPrimaryClass2 = testResults.classesAfterUpdate2.find(c => c.enrollmentId === nonPrimaryId);
+    expect(nonPrimaryClass2.dayOfWeek).toBe('금');
+    expect(nonPrimaryClass2.time).toBe('15:00');
+
+    // Legacy fallback path verification:
+    // - S99 legacy class (화 15:00) should be replaced with 수 16:00
+    // - S99 formal class with enrollmentId (some-manual-id) MUST remain untouched (protected)
+    expect(testResults.classesS99.length).toBe(2);
+    const replacedLegacyClass = testResults.classesS99.find(c => !c.enrollmentId);
+    expect(replacedLegacyClass).toBeDefined();
+    expect(replacedLegacyClass.dayOfWeek).toBe('수');
+    expect(replacedLegacyClass.time).toBe('16:00');
+
+    const protectedClass = testResults.classesS99.find(c => c.enrollmentId === 'some-manual-id');
+    expect(protectedClass).toBeDefined();
+    expect(protectedClass.dayOfWeek).toBe('목');
+    expect(protectedClass.time).toBe('18:00');
+  });
 });
