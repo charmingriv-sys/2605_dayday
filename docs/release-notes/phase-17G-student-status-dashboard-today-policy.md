@@ -1078,6 +1078,119 @@
 2. **Phase 18B-19**: `updateStudent` 시간표 일괄 삭제 방지 및 `enrollmentId` 기반 저장 분리
 3. **Phase 18B-20**: 수강과목 추가 모달 일정 저장 연동
 4. **Phase 18B-21**: 출결관제/오늘 콘솔 `enrollment-aware` regression 및 E2E 테스트 보강
-5. **Phase 18B-22**: `legacy class` 데이터 마이그레이션/프로모션 정책 및 구현 검토
+5. Phase 18B-22: `legacy class` 데이터 마이그레이션/프로모션 정책 및 구현 검토
 
+---
 
+## 20. 수강과목 저장 및 시간표 연동 구현 정책 (Phase 18B-22)
+
+### 20-1. db.enrollments Storage API 구현 반영
+신설된 `db.enrollments` 컬렉션 관리를 위한 스토리지 메서드를 다음과 같이 구현하여 원생 인적 정보와 수강과목 운영 정보를 격리하였습니다.
+* **구현된 스토리지 API**:
+  - `ensureEnrollmentsCollection()`: 컬렉션 초기화 및 가상 레거시 어댑터 생성
+  - `createEnrollment(studentId, payload)`: 신규 수강과목 저장 및 대표 과목 갱신
+  - `updateEnrollment(enrollmentId, patch)`: 수강과목 정보 수정 및 미러링 반영
+  - `deleteEnrollment(enrollmentId)`: 수강과목 soft delete 처리
+  - `syncStudentFlatFieldsFromPrimaryEnrollment(studentId)`: 대표 과목의 정보를 기존 flat 필드로 미러링 동기화
+  - `getStudentEnrollments(studentId, options)`: 특정 원생의 수강과목 목록 조회
+  - `getPrimaryEnrollment(studentId)`: 기존 레거시 호환을 위한 대표 수강과목 추출
+* **핵심 정책**:
+  - 신규 정식 수강과목 추가 시 `source: 'manual'`로 데이터베이스에 저장합니다.
+  - 기존 레거시 평탄 데이터(Legacy flat)를 지닌 원생에 대해 임의로 자동 Promotion(승격)을 가하지 않고 과도기적 병존 상태를 유지합니다.
+  - 원생에게 정식 `manual` enrollment 이력이 단 하나라도 생성된 경우, 기존의 `legacy fallback` 가상 카드는 자동으로 숨겨지며 재노출되지 않습니다.
+  - `deleteEnrollment` API 호출 시 실제 데이터를 디스크에서 영구 삭제하지 않고 `archived: true` 및 `deletedAt` 타임스탬프를 부여하는 soft delete 방식을 채택합니다.
+  - 하위 호환성 유지를 위해 대표 수강과목으로 선정된 데이터의 주요 정보(악기명, 강사 ID, 수강료 등)를 학생 레코드의 flat 필드(compatibility cache)로 실시간 복사 적재합니다.
+
+### 20-2. 수강과목 추가 모달 저장 연동 반영
+수강과목 추가 등록 전용 모달 창과 데이터베이스 쓰기 흐름을 연동하여 다중 수강 과목 처리를 고도화하였습니다.
+* **구현 정책**:
+  - 수강과목 추가 모달의 저장(Submit) 이벤트 발생 시 스토리지의 `createEnrollment` 함수와 연계하여 새 enrollment 데이터를 물리적으로 적재합니다.
+  - 수업 방식에 따라 월정액 수강과목(`courseType: 'monthly'`)과 횟수제 수강과목(`courseType: 'session_pass'`) 저장을 동시 지원합니다.
+  - 다만 횟수제의 세부 관리 컬렉션인 `db.sessionPasses` 실제 저장은 현 시점 미구현 상태로 유지하고 정책적으로만 수용합니다.
+  - 모달 저장 처리가 성공하면 원생 상세 정보 모달 내의 "수강중인 과목" 목록 카드가 실시간으로 즉시 갱신되어 반영됩니다.
+  - 원생에게 정식 `manual` enrollment가 성공적으로 생성 및 적재된 직후에는 화면상의 `legacy fallback` 카드가 화면에서 자동 은닉됩니다.
+
+### 20-3. 기본 수업 시간 class 저장 연동 반영
+수강과목 모달 등록 과정에서 기본 수업 요일/시간 정보가 기입되었을 시 시간표 컬렉션에 연동하는 신규 스케줄 적재 정책입니다.
+* **구현 정책**:
+  - 수강과목 모달의 요일, 시간, 수업길이가 유효하게 입력된 경우 `createClassForEnrollment`를 실행하여 `db.classes` 컬렉션에 시간표 레코드를 자동 생성합니다.
+  - 이때 생성되는 시간표 레코드는 `studentId`뿐 아니라 어느 과목에 소속된 시간표인지를 판정하기 위해 `class.enrollmentId`를 반드시 함께 매핑하여 저장합니다.
+  - 요일이나 시간 필드 중 하나라도 선택되지 않거나 비어 있는 경우(시간표 생략 시), 클래스 자동 생성을 안전하게 생략하고 enrollment 단독 저장만 수행합니다.
+  - 요일/시간을 입력했으나 class 저장 API에서 오류가 발생한 경우(부분 실패 시), 이미 생성 완료된 enrollment 레코드는 롤백(rollback)하지 않고 온전히 보존하여 부분 성공 처리를 적용합니다.
+* **화면 알림(Alert) 문구 정책**:
+  - **수강과목 및 시간표 저장 모두 성공 시**: `“수강과목과 기본 수업 시간이 추가되었습니다.”`
+  - **수강과목 저장 성공 및 시간표 저장 실패 시**: `“수강과목은 추가되었지만 기본 수업 시간 저장에 실패했습니다.”`
+  - **시간표 생략 후 수강과목 단독 저장 성공 시**: `“수강과목이 추가되었습니다.”`
+
+### 20-4. Schedule Helper Compatibility Layer 구현 반영
+스케줄 및 시간표 도메인이 1인 다과목 체계 하에서 안전하게 작동하도록 돕는 호환 헬퍼 레이어입니다.
+* **구현된 헬퍼 API**:
+  - `getClassEnrollment(classItem)`: 스케줄 레코드의 `class.enrollmentId`를 기준으로 enrollment를 추적 및 보완 반환
+  - `getClassesByEnrollmentId(enrollmentId, options)`: 특정 수강과목 단위의 시간표 조회
+  - `getClassesByStudentId(studentId, options)`: 원생 기준 전체 시간표 조회 및 legacy/manual 선별 지원
+  - `createClassForEnrollment(enrollmentId, classPayload)`: 특정 수강과목에 대한 기본 스케줄 생성
+  - `replaceClassesForEnrollment(enrollmentId, classesPayload)`: 수강과목 단위 시간표 일괄 안전 교체
+* **핵심 정책**:
+  - `class.enrollmentId`가 존재하는 class 일정에 대해서는 해당 enrollment 계약 정보를 근거로 강사명/과목명을 해석합니다.
+  - `class.enrollmentId`가 누락된 legacy class 일정에 대해서는 `getPrimaryEnrollment(studentId)`를 통한 `legacy fallback`을 연계하여 보완 렌더링합니다.
+  - `replaceClassesForEnrollment` 호출 시 오직 해당 `enrollmentId`에 귀속된 class 레코드만 soft delete(archived) 처리하고 새 데이터로 재생성하며, `studentId` 기준의 전체 시간표 무단 삭제 및 덮어쓰기 행위는 엄격하게 금지합니다.
+
+### 20-5. updateStudent Schedule Overwrite Guard 구현 반영
+원생 기본 정보 수정 창(`updateStudent`)의 스케줄 무단 덮어쓰기로 인한 데이터 유실을 방지하는 안전 가드 정책입니다.
+* **구현 정책**:
+  - `updateStudent` 실행 시 `classSchedules` 인풋이 배열 구조인 `Array.isArray(classSchedules)`인 경우에만 기존 스케줄 교체 로직을 트리거합니다.
+  - 만약 `classSchedules`가 전달되지 않았거나 `undefined/null`인 경우, 기존의 등록되어 있던 모든 시간표 레코드를 파괴하거나 교체하지 않고 그대로 존속시킵니다.
+  - 수강생에게 명시적인 `class.enrollmentId`를 지닌 스케줄이 존재하거나, `manual` primary enrollment가 존재하는 경우 해당 enrollmentId와 정확히 매칭된 class만 선택 교체합니다.
+  - legacy fallback 경로에서는 `c.studentId === id && !c.enrollmentId` 조건에 정확히 매칭되는 legacy class 영역으로만 스케줄 교체를 격리 제한합니다.
+  - 정식 `enrollmentId`가 부여된 스케줄 레코드는 어떠한 경우에도 `updateStudent` legacy fallback 스크립트 경로에 의해 삭제되거나 덮어써지지 않도록 강력하게 차단합니다.
+
+### 20-6. 출결관제 / 오늘 콘솔 enrollment-aware 처리 반영
+다중 과목 수강생의 출결 관리 및 결석/지각 확인 경고 task 생성 시의 세부 렌더링 및 식별자 고유화 정책입니다.
+* **출결관제 보정**:
+  - 일자별 출결관제 테이블 및 리포트 조회 시 `getClassEnrollment`를 적용하여 과목명(enrollment 기준 최우선), 담당강사, 수업길이를 조인 매핑합니다.
+  - 수업 지속시간(duration) 계산 시 `c.durationMinutes` (또는 `entry.classDuration`) -> `enrollment.defaultDurationMinutes` -> `student.defaultClassDuration` -> `50` 순서의 fallback을 정교히 준용합니다.
+  - 일자별 출결 테이블 렌더링 시 `row.student.instrument` 대신 과목별 유니크 텍스트인 `row.instrument`를 출력하여 다중 과목명이 올바르게 나오도록 교정했습니다.
+* **오늘 콘솔 워닝 task 보정**:
+  - 결석/지각/하원누락 워닝 task 생성 시, `enrollmentId`가 있는 과목에 대해서는 `sessionKey` 및 `dedupeKey`에 `enrollmentId`를 결합하여 다중 수강 과목의 알림 카드가 dedupe에 의해 누락되는 현상을 제거했습니다.
+  - `enrollmentId`가 없는 legacy class는 기존 형태의 dedupeKey (`${studentId}_${dateStr}_${time}`)를 보존하여 하위 호환성을 제공합니다.
+  - 생성되는 task의 타이틀에는 과목명과 수업시간 정보를 반드시 우선 노출하도록 보정하였으며, 담당 강사명은 존재하고 `'미지정'`이 아닐 때만 괄호 내부에 덧붙여 불필요하게 길어지지 않게 처리하였습니다.
+  - 가이드 문구 빌드 시 데이터 누락으로 인한 `undefined/NaN`이 노출되지 않도록 가드 코드를 철저히 적용했습니다.
+
+### 20-7. 구현 제외 및 후속 범위
+본 18B 스펙 아키텍처 과도기 단계에서 명시적으로 제외한 미구현 세부 요건 범주는 다음과 같습니다.
+- `db.sessionPasses` 컬렉션의 실제 파일 쓰기 적재 및 데이터베이스 갱신
+- 출결 확정 시 횟수제 잔여 횟수를 실시간 차감하는 연산 로직 개발
+- 잔여 횟수 소진(2회 이하)에 따른 오늘 콘솔 상의 `수강권 충전 task` 자동 알림 기능
+- `payment.enrollmentId`를 기반으로 정기 수강료 청구서를 과목별로 분리 발부하고 수납 대장에 분해 적재하는 정재무 회계 연동 기능
+- legacy class들의 정식 `enrollmentId`를 강제 맵핑하는 일괄 스크립트(class migration) 작동
+- legacy flat student 데이터를 정식 enrollment 테이블로 완전히 normalization시키는 마이그레이션(legacy Promotion) 수행
+- 복수 과목 카드 디자인에 적합한 대시보드 및 통계 뷰 리디자인
+- 실제 모바일 SMS/알림톡 전송 외부 API 게이트웨이 서비스 물리 연동
+- 운영 배포 전 단계의 full regression 검증 자동화 파이프라인
+
+### 20-8. 검증 기록
+본 복수 수강과목 및 스케줄 격리 개발 과정(Phase 18B) 동안 수행된 로컬 E2E 테스트 통과 및 검증 히스토리입니다.
+* **Phase 18B-14**:
+  - `student-status-flow.spec.js` - **6 passed**
+  - `today-console-flow.spec.js` - **28 passed**
+  - `attendance-control-flow.spec.js` - **15 passed**
+* **Phase 18B-15**:
+  - `student-status-flow.spec.js` - **7 passed**
+  - `today-console-flow.spec.js` - **28 passed**
+  - `attendance-control-flow.spec.js` - **15 passed**
+* **Phase 18B-18**:
+  - `student-status-flow.spec.js` - **8 passed**
+  - `today-console-flow.spec.js` - **28 passed**
+  - `attendance-control-flow.spec.js` - **15 passed**
+* **Phase 18B-19**:
+  - `student-status-flow.spec.js` - **9 passed**
+  - `today-console-flow.spec.js` - **28 passed**
+  - `attendance-control-flow.spec.js` - **15 passed**
+* **Phase 18B-20**:
+  - `student-status-flow.spec.js` - **10 passed**
+  - `today-console-flow.spec.js` - **28 passed**
+  - `attendance-control-flow.spec.js` - **15 passed**
+* **Phase 18B-21**:
+  - `attendance-control-flow.spec.js` - **16 passed** (Enrollment-aware class display 검증 통과)
+  - `today-console-flow.spec.js` - **29 passed** (다중 과목 결석 알림 격리 검증 통과)
+  - `student-status-flow.spec.js` - **11 passed** (다중 과목 수강 정보 드로어 검증 통과)
