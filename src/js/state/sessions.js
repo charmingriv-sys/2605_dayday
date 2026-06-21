@@ -29,6 +29,135 @@ export const sessionsMethods = {
         return this.db.classes.filter(c => c.studentId === studentId);
     },
 
+    getClassEnrollment(classItem) {
+        if (!classItem) return null;
+        if (classItem.enrollmentId) {
+            return typeof this.getEnrollmentById === 'function' ? this.getEnrollmentById(classItem.enrollmentId) : null;
+        }
+        return typeof this.getPrimaryEnrollment === 'function' ? this.getPrimaryEnrollment(classItem.studentId) : null;
+    },
+
+    getClassesByEnrollmentId(enrollmentId, options = {}) {
+        if (!this.db || !this.db.classes) return [];
+        let list = this.db.classes.filter(c => c.enrollmentId === enrollmentId);
+        
+        if (!options.includeArchived) {
+            list = list.filter(c => c.status !== 'archived' && !c.deletedAt);
+        }
+        
+        const daysOrder = { '월': 1, '화': 2, '수': 3, '목': 4, '금': 5, '토': 6, '일': 7 };
+        return list.sort((a, b) => {
+            const aDay = daysOrder[a.dayOfWeek] || 99;
+            const bDay = daysOrder[b.dayOfWeek] || 99;
+            if (aDay !== bDay) return aDay - bDay;
+            return (a.time || '').localeCompare(b.time || '');
+        });
+    },
+
+    getClassesByStudentId(studentId, options = {}) {
+        if (!this.db || !this.db.classes) return [];
+        let list = this.db.classes.filter(c => c.studentId === studentId);
+        
+        if (!options.includeArchived) {
+            list = list.filter(c => c.status !== 'archived' && !c.deletedAt);
+        }
+        
+        const daysOrder = { '월': 1, '화': 2, '수': 3, '목': 4, '금': 5, '토': 6, '일': 7 };
+        return list.sort((a, b) => {
+            const aDay = daysOrder[a.dayOfWeek] || 99;
+            const bDay = daysOrder[b.dayOfWeek] || 99;
+            if (aDay !== bDay) return aDay - bDay;
+            return (a.time || '').localeCompare(b.time || '');
+        });
+    },
+
+    createClassForEnrollment(enrollmentId, classPayload) {
+        if (typeof this.getEnrollmentById !== 'function') {
+            return { ok: false, reason: 'internal_error' };
+        }
+        
+        const enrollment = this.getEnrollmentById(enrollmentId);
+        if (!enrollment || enrollment.source === 'legacy' || enrollment.isLegacy || (typeof enrollmentId === 'string' && enrollmentId.startsWith('legacy-'))) {
+            return { ok: false, reason: 'invalid_enrollment' };
+        }
+        
+        let maxNum = 0;
+        let hasValidNum = false;
+        if (this.db && Array.isArray(this.db.classes)) {
+            this.db.classes.forEach(c => {
+                if (typeof c.id === 'string' && c.id.startsWith('C')) {
+                    const num = parseInt(c.id.substring(1), 10);
+                    if (!isNaN(num)) {
+                        hasValidNum = true;
+                        if (num > maxNum) {
+                            maxNum = num;
+                        }
+                    }
+                }
+            });
+        }
+        const newId = hasValidNum ? `C${maxNum + 1}` : `C_${Date.now()}`;
+        
+        const teacherId = classPayload.teacherId || enrollment.teacherId || '';
+        const durationMinutes = classPayload.durationMinutes !== undefined ? classPayload.durationMinutes : (enrollment.defaultDurationMinutes || enrollment.defaultClassDuration || 50);
+        
+        const newClass = {
+            id: newId,
+            studentId: enrollment.studentId,
+            enrollmentId: enrollmentId,
+            dayOfWeek: classPayload.dayOfWeek || '월',
+            time: classPayload.time || '14:00',
+            durationMinutes: Number(durationMinutes),
+            teacherId: teacherId,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+        
+        this.db.classes.push(newClass);
+        this.saveDB();
+        this.notify('CLASSES_CHANGED', this.db.classes);
+        
+        return { ok: true, data: newClass };
+    },
+
+    replaceClassesForEnrollment(enrollmentId, classesPayload) {
+        if (typeof this.getEnrollmentById !== 'function') {
+            return { ok: false, reason: 'internal_error' };
+        }
+        
+        const enrollment = this.getEnrollmentById(enrollmentId);
+        if (!enrollment || enrollment.source === 'legacy' || enrollment.isLegacy || (typeof enrollmentId === 'string' && enrollmentId.startsWith('legacy-'))) {
+            return { ok: false, reason: 'invalid_enrollment' };
+        }
+        
+        let archivedCount = 0;
+        if (this.db && Array.isArray(this.db.classes)) {
+            this.db.classes.forEach(c => {
+                if (c.enrollmentId === enrollmentId && c.status !== 'archived') {
+                    c.status = 'archived';
+                    c.deletedAt = new Date().toISOString();
+                    c.updatedAt = new Date().toISOString();
+                    archivedCount++;
+                }
+            });
+        }
+        
+        const createdClasses = [];
+        if (Array.isArray(classesPayload)) {
+            classesPayload.forEach(payload => {
+                const res = this.createClassForEnrollment(enrollmentId, payload);
+                if (res && res.ok) {
+                    createdClasses.push(res.data);
+                }
+            });
+        }
+        
+        this.saveDB();
+        this.notify('CLASSES_CHANGED', this.db.classes);
+        
+        return { ok: true, created: createdClasses, archivedCount: archivedCount };
+    },
+
     // --- SCHEDULE SNAPSHOTS & OVERRIDES ---
     
     getTeacherStudentScheduleForDate(date, options = {}) {

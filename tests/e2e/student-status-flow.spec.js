@@ -950,4 +950,199 @@ test.describe('Student Status Management Flow', () => {
     await page.locator('[data-close-modal]').first().click();
     await expect(page.locator('#common-modal')).not.toHaveClass(/show/);
   });
+
+  test('should verify db.classes schedule helper APIs', async ({ page }) => {
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Perform validations on stateStore helper functions inside browser context
+    const testResults = await page.evaluate(() => {
+      const store = window.stateStore;
+
+      // Ensure fresh state for testing
+      store.ensureEnrollmentsCollection();
+      
+      // Filter out test student enrollments/classes to start clean
+      store.db.enrollments = store.db.enrollments.filter(e => e.studentId !== 'S1');
+      store.db.classes = store.db.classes.filter(c => c.studentId !== 'S1');
+      
+      // S1 student flat field mock settings
+      const student = store.getStudent('S1');
+      if (student) {
+        student.instrument = '드럼';
+        student.teacherId = 'T8';
+        student.defaultClassDuration = 45;
+      }
+      
+      store.saveDB();
+
+      const results = {};
+
+      // Test 1: getClassEnrollment on legacy
+      // legacy class (no enrollmentId)
+      const legacyClass = { id: 'C999', studentId: 'S1', dayOfWeek: '화', time: '15:00' };
+      const legacyEnrollment = store.getClassEnrollment(legacyClass);
+      results.legacyEnrollment = {
+        id: legacyEnrollment?.id,
+        subject: legacyEnrollment?.subject,
+        source: legacyEnrollment?.source,
+        isLegacy: legacyEnrollment?.isLegacy
+      };
+
+      // Test 2: createClassForEnrollment with legacy enrollment - should block
+      const legacyCreateRes = store.createClassForEnrollment('legacy-S1', { dayOfWeek: '목', time: '17:00' });
+      results.legacyCreateRes = legacyCreateRes;
+
+      // Test 3: createClassForEnrollment with invalid/non-existent enrollment - should block
+      const invalidCreateRes = store.createClassForEnrollment('non-existent-id', { dayOfWeek: '목', time: '17:00' });
+      results.invalidCreateRes = invalidCreateRes;
+
+      // Test 4: createClassForEnrollment with a valid formal enrollment
+      const formalEnrollmentRes = store.createEnrollment('S1', {
+        subjectName: '바이올린',
+        courseType: 'monthly',
+        fee: 220000,
+        dueDay: 10,
+        defaultDurationMinutes: 60,
+        teacherId: 'T8',
+        startDate: '2026-06-01'
+      });
+      const formalEnrollmentId = formalEnrollmentRes.data.id;
+      results.formalEnrollmentId = formalEnrollmentId;
+
+      // Now create class for this formal enrollment
+      const classRes1 = store.createClassForEnrollment(formalEnrollmentId, {
+        dayOfWeek: '화',
+        time: '14:00',
+        durationMinutes: 60,
+        teacherId: 'T8'
+      });
+      results.class1 = classRes1.ok ? {
+        id: classRes1.data.id,
+        studentId: classRes1.data.studentId,
+        enrollmentId: classRes1.data.enrollmentId,
+        dayOfWeek: classRes1.data.dayOfWeek,
+        time: classRes1.data.time,
+        durationMinutes: classRes1.data.durationMinutes,
+        teacherId: classRes1.data.teacherId
+      } : null;
+
+      // Test 5: getClassEnrollment on formal class
+      const formalClassEnrollment = store.getClassEnrollment(classRes1.data);
+      results.formalClassEnrollment = {
+        id: formalClassEnrollment?.id,
+        subjectName: formalClassEnrollment?.subjectName,
+        source: formalClassEnrollment?.source
+      };
+
+      // Test 6: Fallbacks in createClassForEnrollment (e.g. use enrollment's teacherId and durationMinutes when omitted)
+      const classRes2 = store.createClassForEnrollment(formalEnrollmentId, {
+        dayOfWeek: '목',
+        time: '16:00'
+      });
+      results.class2 = classRes2.ok ? {
+        id: classRes2.data.id,
+        durationMinutes: classRes2.data.durationMinutes,
+        teacherId: classRes2.data.teacherId
+      } : null;
+
+      // Test 7: Sorting and listing
+      store.createClassForEnrollment(formalEnrollmentId, { dayOfWeek: '화', time: '10:00' });
+      store.createClassForEnrollment(formalEnrollmentId, { dayOfWeek: '월', time: '13:00' });
+
+      const sortedClassesByEnrollment = store.getClassesByEnrollmentId(formalEnrollmentId);
+      results.sortedClassesByEnrollment = sortedClassesByEnrollment.map(c => `${c.dayOfWeek} ${c.time}`);
+
+      const sortedClassesByStudent = store.getClassesByStudentId('S1');
+      results.sortedClassesByStudent = sortedClassesByStudent.map(c => `${c.dayOfWeek} ${c.time}`);
+
+      // Test 8: replaceClassesForEnrollment
+      const replaceRes = store.replaceClassesForEnrollment(formalEnrollmentId, [
+        { dayOfWeek: '수', time: '11:00', durationMinutes: 50 },
+        { dayOfWeek: '금', time: '15:00' }
+      ]);
+      results.replaceRes = {
+        ok: replaceRes.ok,
+        archivedCount: replaceRes.archivedCount,
+        createdCount: replaceRes.created?.length
+      };
+
+      // Check current non-archived classes for formalEnrollmentId
+      const activeClassesAfterReplace = store.getClassesByEnrollmentId(formalEnrollmentId);
+      results.activeClassesAfterReplace = activeClassesAfterReplace.map(c => `${c.dayOfWeek} ${c.time}`);
+
+      // Check all classes including archived (options.includeArchived = true)
+      const allClassesAfterReplace = store.getClassesByEnrollmentId(formalEnrollmentId, { includeArchived: true });
+      results.allClassesAfterReplaceLength = allClassesAfterReplace.length;
+      results.archivedClassesCount = allClassesAfterReplace.filter(c => c.status === 'archived').length;
+
+      // Test 9: replaceClassesForEnrollment on legacy - should block
+      const legacyReplaceRes = store.replaceClassesForEnrollment('legacy-S1', [
+        { dayOfWeek: '토', time: '10:00' }
+      ]);
+      results.legacyReplaceRes = legacyReplaceRes;
+
+      return results;
+    });
+
+    // Asserts
+    expect(testResults.legacyEnrollment.id).toBe('legacy-S1');
+    expect(testResults.legacyEnrollment.source).toBe('legacy');
+    expect(testResults.legacyEnrollment.isLegacy).toBe(true);
+
+    expect(testResults.legacyCreateRes.ok).toBe(false);
+    expect(testResults.legacyCreateRes.reason).toBe('invalid_enrollment');
+
+    expect(testResults.invalidCreateRes.ok).toBe(false);
+    expect(testResults.invalidCreateRes.reason).toBe('invalid_enrollment');
+
+    expect(testResults.class1).not.toBeNull();
+    expect(testResults.class1.id).toMatch(/^C\d+$/);
+    expect(testResults.class1.studentId).toBe('S1');
+    expect(testResults.class1.enrollmentId).toBe(testResults.formalEnrollmentId);
+    expect(testResults.class1.dayOfWeek).toBe('화');
+    expect(testResults.class1.time).toBe('14:00');
+    expect(testResults.class1.durationMinutes).toBe(60);
+    expect(testResults.class1.teacherId).toBe('T8');
+
+    expect(testResults.formalClassEnrollment.id).toBe(testResults.formalEnrollmentId);
+    expect(testResults.formalClassEnrollment.source).toBe('manual');
+    expect(testResults.formalClassEnrollment.subjectName).toBe('바이올린');
+
+    // Fallbacks check
+    expect(testResults.class2.durationMinutes).toBe(60); // from enrollment
+    expect(testResults.class2.teacherId).toBe('T8'); // from enrollment
+
+    // Sorting check (월 13:00, 화 10:00, 화 14:00, 목 16:00)
+    expect(testResults.sortedClassesByEnrollment).toEqual([
+      '월 13:00',
+      '화 10:00',
+      '화 14:00',
+      '목 16:00'
+    ]);
+    expect(testResults.sortedClassesByStudent).toEqual([
+      '월 13:00',
+      '화 10:00',
+      '화 14:00',
+      '목 16:00'
+    ]);
+
+    // Replace check
+    expect(testResults.replaceRes.ok).toBe(true);
+    expect(testResults.replaceRes.archivedCount).toBe(4);
+    expect(testResults.replaceRes.createdCount).toBe(2);
+
+    expect(testResults.activeClassesAfterReplace).toEqual([
+      '수 11:00',
+      '금 15:00'
+    ]);
+    expect(testResults.allClassesAfterReplaceLength).toBe(6); // 4 archived + 2 active
+    expect(testResults.archivedClassesCount).toBe(4);
+
+    expect(testResults.legacyReplaceRes.ok).toBe(false);
+    expect(testResults.legacyReplaceRes.reason).toBe('invalid_enrollment');
+  });
 });
