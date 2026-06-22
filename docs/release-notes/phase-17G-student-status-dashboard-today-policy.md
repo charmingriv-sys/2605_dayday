@@ -1194,3 +1194,108 @@
   - `attendance-control-flow.spec.js` - **16 passed** (Enrollment-aware class display 검증 통과)
   - `today-console-flow.spec.js` - **29 passed** (다중 과목 결석 알림 격리 검증 통과)
   - `student-status-flow.spec.js` - **11 passed** (다중 과목 수강 정보 드로어 검증 통과)
+
+---
+
+## 21. 횟수제 수강권 저장 및 잔여 횟수 UI 반영 정책 (Phase 18B-28)
+
+### 21-1. db.sessionPasses Storage API 구현 반영
+횟수제 수강권의 실체와 세부 정보를 관리하는 `db.sessionPasses` 컬렉션 및 이에 대응하는 Storage API가 구현되었습니다.
+* **구현된 API**:
+  - `ensureSessionPassesCollection()`: `stateStore.db.sessionPasses` 컬렉션 존재 여부를 확인하고 없으면 빈 배열로 안전하게 초기화합니다.
+  - `createSessionPass(enrollmentId, payload)`: 특정 enrollmentId에 매핑되는 새로운 수강권 레코드를 추가합니다.
+  - `getSessionPassesByEnrollmentId(enrollmentId, options)`: 특정 수강과목에 매핑된 수강권 목록을 조회합니다.
+  - `getActiveSessionPassForEnrollment(enrollmentId)`: 현재 사용 가능한 활성화 상태의 수강권을 조회합니다.
+  - `updateSessionPass(passId, patch)`: 특정 수강권의 정보(잔여 횟수, 상태 등)를 수정합니다.
+  - `archiveSessionPass(passId)`: 수강권을 삭제 처리하지 않고 archived 처리합니다.
+  - `migrateSessionPassFromEnrollment(enrollmentId)`: 기존 enrollment 내부에 플랫하게 포함되어 있던 수강권 정보를 마이그레이션합니다.
+* **핵심 정책**:
+  - 오직 `courseType: 'session_pass'` 속성을 가지는 enrollment에만 실질적인 sessionPass를 생성 및 연계할 수 있습니다.
+  - sessionPass는 enrollment와 물리적으로 완전히 분리된 별도의 구매/잔여 횟수 관리 단위입니다.
+  - 생성 시 할당되는 식별자는 `SP_숫자` 패턴을 채택합니다.
+  - 입력값 검증을 위해 `remainingSessions`, `totalSessions`, `purchaseAmount`, `purchaseDate`, `expiresAt`, `lowBalanceThreshold` 값의 적합성을 유효성 검사합니다.
+  - `archived: true`인 수강권은 일반적인 기본 조회에서 완전히 제외합니다.
+  - 소진 또는 만료된 수강권(`used_up`, `expired`)은 `includeInactive` 옵션이 명시적으로 `true`인 경우에만 함께 조회합니다.
+  - 아카이브된 수강권은 `includeArchived` 옵션이 별도로 `true`일 때만 엄격하게 조회할 수 있도록 다중 가드를 적용합니다.
+  - `updateSessionPass` 호출 시 상태(`status`) 재계산 우선순위는 `archived` 보존 -> `used_up` -> `expired` -> `active` 순서로 일관되게 적용합니다.
+
+### 21-2. Migration Helper 구현 반영
+기존 플랫한 enrollment 모델에서 새로운 분리형 sessionPasses 모델로의 안전한 연착륙을 돕는 마이그레이션 헬퍼(`migrateSessionPassFromEnrollment`)가 구현되었습니다.
+* **동작 방식**:
+  - `migrateSessionPassFromEnrollment(enrollmentId)`는 기존 `session_pass` 수강과목 내부에 임시 flat 필드로 존재하던 수강권 관련 데이터(`totalSessions`, `remainingSessions`, `expiresAt` 등)를 파싱하여, `db.sessionPasses` 컬렉션에 독립된 레코드 1개를 생성 및 적재합니다.
+  - 시스템 초기 로드 시 자동으로 실행되지 않으며, 필요 시 명시적인 트리거를 통해 수동 구동되도록 제어합니다.
+  - 데이터의 중복 생성 방지를 위해 동일한 `enrollmentId`에 이미 생성된 sessionPass 레코드가 1개 이상 존재할 경우 추가 생성을 즉시 차단합니다.
+  - 안전을 확보하기 위해 마이그레이션이 완료된 후에도 enrollment 원본 데이터 내 임시 필드들을 삭제하거나 초기화하지 않고 그대로 보존합니다.
+  - 이는 수동 개별 처리를 전제한 안전한 migration helper이며, 백그라운드 대량 자동 마이그레이션 스크립트와는 명확히 구분됩니다.
+
+### 21-3. 수강과목 추가 모달 sessionPass 저장 연동 반영
+수강과목 추가 모달 창에서의 횟수제 수강과목 신규 등록 시의 스토리지 트랜잭션 연계 및 오류 대응 방침입니다.
+* **저장 연동 정책**:
+  - 수강과목 추가 모달에서 횟수제(`session_pass`) 수강과목 정보를 저장하면, 우선 `createEnrollment` 함수가 호출된 후 이어서 `stateStore.createSessionPass(enrollment.id, passPayload)`가 순차 실행됩니다.
+  - **passPayload 매핑 스키마**:
+    - `passName` / `ticketName`
+    - `totalSessions`
+    - `remainingSessions`
+    - `purchaseAmount`
+    - `purchaseDate`
+    - `expiresAt`
+    - `lowBalanceThreshold`
+    - `deductionPolicy`: 'attendance'
+  - **수강권 저장 실패 시 롤백 정책**: 수강과목 추가는 성공하였으나 이어진 수강권 저장 단계에서 오류가 발생한 경우(부분 실패), 이미 생성이 완료된 enrollment는 롤백하지 않고 온전히 데이터베이스에 보존합니다.
+* **사용자 알림(Alert) 문구 정책**:
+  - **수강과목, 수강권, 시간표 스케줄 모두 추가 성공 시**: `“수강과목, 수강권과 기본 수업 시간이 추가되었습니다.”`
+  - **수강과목, 수강권 추가 성공 및 시간표 스케줄 생략 시**: `“수강과목과 수강권이 추가되었습니다.”`
+  - **수강과목 추가 성공 및 수강권 저장 실패 시 (부분 실패)**: `“수강과목은 추가되었지만 수강권 저장에 실패했습니다.”`
+
+### 21-4. 잔여 횟수 UI 표시 정책
+스토리지에 격리 저장된 수강권의 잔여 회차 정보가 실제 학원 관리 뷰 곳곳에 정합성 있게 표출되는 정책입니다.
+* **UI 요약 생성 정책**:
+  - `getSessionPassSummaryForEnrollment(enrollmentId)`를 매핑하여 수강과목별 실시간 잔여 횟수 및 만료일, 상태 플래그를 정교하게 획득합니다.
+* **적용 화면 및 레이아웃**:
+  - **원생 상세 모달**: '수강중인 과목' 카드 내에 `잔여 7 / 10회` 텍스트와 만료일(예: `만료 2026-09-20`), 상태별 시각 배지를 온전하게 노출합니다.
+  - **오늘 콘솔 원생 드로어**: 드로어 내부의 수강과목 요약 영역에 `횟수제 · 잔여 7/10회` 및 상태별 인라인 배지를 컴팩트하게 노출합니다.
+  - **출결관제 인스펙터 패널**: 드로어와 동일한 규격으로 `횟수제 · 잔여 7/10회` 및 상태별 인라인 배지를 렌더링합니다.
+* **제외 및 가드 정책**:
+  - 월정액(`monthly`) 수강과목에는 잔여 횟수 정보를 절대 표시하지 않습니다.
+  - `archived: true` 이거나 `deletedAt` 타임스탬프가 부여된 수강권 정보는 기본 UI summary 렌더링 집계에서 철저하게 배제합니다.
+  - 렌더링 파이프라인에서 데이터 누락 시 화면에 `undefined/NaN`이나 `null`이 포함된 텍스트가 노출되지 않도록 전천후 fallback 가드를 배치하였습니다.
+
+### 21-5. 잔여 상태 표시 정책
+수강권의 잔여 상태에 따라 사용자에 대한 피드백 품질을 제고하기 위한 상태 판정 및 시각적 피드백 정책입니다.
+* **정상 상태 (`active` / 정상 잔여)**: 잔여 횟수가 넉넉한 상태로, 화면에 별도의 경고 배지를 노출하지 않습니다.
+* **충전 필요 상태**: 잔여 횟수가 지정된 임계값 이하일 때 노출됩니다.
+  - *조건*: `0 < remainingSessions <= lowBalanceThreshold`
+  - *라벨 및 시각 톤*: **`충전 필요`** (주황색/주의 톤)
+* **소진 상태**: 잔여 횟수가 0회이거나 명시적 소진일 때 노출됩니다.
+  - *조건*: `remainingSessions === 0` 또는 `status === 'used_up'`
+  - *라벨 및 시각 톤*: **`소진`** (빨간색/위험 톤)
+* **만료 상태**: 수강 기간이 경과하거나 만료 처리되었을 때 노출됩니다.
+  - *조건*: `status === 'expired'`
+  - *라벨 및 시각 톤*: **`만료`** (회색/중립 톤)
+
+### 21-6. 구현 제외 및 후속 범위
+본 횟수제 수강권 UI 반영 단계(Phase 18B-27)까지 명시적으로 미구현으로 남겨두고 후속 범위로 배제한 도메인 영역은 다음과 같습니다.
+- 출석 및 지각 확정 시 실제 수강 횟수를 실시간 삭감하는 **차감 엔진** 로직
+- 차감 히스토리를 추적하기 위한 별도의 차감 로그 데이터베이스 구축
+- 출결 결과 수정 및 등원 취소 시 차감 횟수를 원래대로 복원하는 rollback 제어기
+- 잔여 수강 횟수가 부족할 때 원장에게 충전을 인지시키는 **수강권 충전 task** 자동 발행기
+- `payment.enrollmentId` 속성을 기반으로 수강권 전용 수납 청구를 독립 분리하고 수납 및 결제 현황 뷰와 매핑하는 결제 연계 기능
+- 수강과목 등록 시 초기 수납을 자동으로 발행해 주는 수납 자동 생성 기능
+- 기존에 흩어져 있던 레거시 학생 flat 횟수 필드를 완전 정리하는 normalization 마이그레이션(legacy Promotion) 작동
+- 다중 수강권 카드에 완벽히 최적화된 메인 대시보드 그래픽 리디자인
+- 운영 환경 전격 배포에 앞서 수행하는 전체 전수 회귀 분석(full regression) 프로세스
+
+### 21-7. 검증 기록
+횟수제 수강권 저장 모델 및 UI 렌더링 구현 과정 동안 수행된 로컬 E2E 테스트 스위트의 통과 결과입니다.
+* **Phase 18B-25**:
+  - `student-status-flow.spec.js` - **12 passed**
+  - `today-console-flow.spec.js` - **29 passed**
+  - `attendance-control-flow.spec.js` - **16 passed**
+* **Phase 18B-26**:
+  - `student-status-flow.spec.js` - **13 passed** (수강권 저장 실패 예외 상황 시 Monkey Patching 검증 추가)
+  - `today-console-flow.spec.js` - **29 passed**
+  - `attendance-control-flow.spec.js` - **16 passed**
+* **Phase 18B-27**:
+  - `student-status-flow.spec.js` - **13 passed**
+  - `today-console-flow.spec.js` - **29 passed** (Strict Mode 다중 매칭 우회용 Regex exact 단언 적용)
+  - `attendance-control-flow.spec.js` - **16 passed** (인스펙터 백드롭 이벤트 간섭 우회용 notify 이벤트 리팩토링 및 획득 검증 완료)
