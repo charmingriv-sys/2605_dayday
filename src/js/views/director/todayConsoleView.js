@@ -476,19 +476,61 @@ export function renderTodayConsole(container) {
                 const enrollmentsList = enrollments || [];
                 const enrollmentsSummaryHtml = enrollmentsList.map(e => {
                     const tName = stateStore.formatEnrollmentTeacherName(e);
-                    const billingTypeText = e.billingType === 'monthly' ? '월정액' : e.billingType;
+                    const courseType = e.courseType || e.billingType || 'monthly';
                     const badgeHtml = e.source === 'legacy' ? `<span style="background: #eef2f3; color: #7f8c8d; font-size: 0.7rem; padding: 1px 4px; border-radius: 4px; font-weight: 600; margin-left: 4px; display: inline-block;">기존 등록</span>` : '';
-                    return `
-                        <div style="padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px; background: rgba(0,0,0,0.01); margin-top: 6px; font-size: 13px; line-height: 1.4;">
-                            <div style="font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
-                                <span>${e.subject || e.instrument || '미지정 과목'} · ${tName} · ${billingTypeText} · 월 ${e.fee ? e.fee.toLocaleString() : 0}원</span>
-                                ${badgeHtml}
+                    
+                    if (courseType === 'monthly') {
+                        return `
+                            <div style="padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px; background: rgba(0,0,0,0.01); margin-top: 6px; font-size: 13px; line-height: 1.4;">
+                                <div style="font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+                                    <span>${e.subject || e.instrument || '미지정 과목'} · ${tName} · 월정액 · 월 ${e.fee ? e.fee.toLocaleString() : 0}원</span>
+                                    ${badgeHtml}
+                                </div>
+                                <div style="color: var(--text-muted); font-size: 12px; margin-top: 2px;">
+                                    기본 ${e.defaultClassDuration || 50}분 · 납부일 ${e.dueDay || 10}일
+                                </div>
                             </div>
-                            <div style="color: var(--text-muted); font-size: 12px; margin-top: 2px;">
-                                기본 ${e.defaultClassDuration || 50}분 · 납부일 ${e.dueDay || 10}일
+                        `;
+                    } else {
+                        const summary = stateStore.getSessionPassSummaryForEnrollment(e.id);
+                        let total = e.totalSessions !== undefined ? e.totalSessions : 10;
+                        let remaining = e.remainingSessions !== undefined ? e.remainingSessions : 10;
+                        let expiresAt = null;
+                        let statusBadgeHtml = '';
+                        let textSuffix = '';
+
+                        if (summary) {
+                            total = summary.totalSessions !== undefined ? summary.totalSessions : total;
+                            remaining = summary.remainingSessions !== undefined ? summary.remainingSessions : remaining;
+                            expiresAt = summary.expiresAt;
+                            if (summary.isEmpty) {
+                                statusBadgeHtml = `<span style="background: #e74c3c; color: white; font-size: 0.7rem; padding: 1px 4px; border-radius: 4px; font-weight: 600; margin-left: 4px; display: inline-block;">소진</span>`;
+                                textSuffix = ' · 소진';
+                            } else if (summary.isExpired) {
+                                statusBadgeHtml = `<span style="background: #7f8c8d; color: white; font-size: 0.7rem; padding: 1px 4px; border-radius: 4px; font-weight: 600; margin-left: 4px; display: inline-block;">만료</span>`;
+                                textSuffix = ' · 만료';
+                            } else if (summary.isLowBalance) {
+                                statusBadgeHtml = `<span style="background: #e67e22; color: white; font-size: 0.7rem; padding: 1px 4px; border-radius: 4px; font-weight: 600; margin-left: 4px; display: inline-block;">충전 필요</span>`;
+                                textSuffix = ' · 충전 필요';
+                            }
+                        }
+
+                        const subjectText = e.subject || e.subjectName || e.instrument || '미지정 과목';
+                        const expireText = expiresAt ? ` · 만료 ${expiresAt}` : '';
+
+                        return `
+                            <div style="padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px; background: rgba(0,0,0,0.01); margin-top: 6px; font-size: 13px; line-height: 1.4;">
+                                <div style="font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+                                    <span>${subjectText} · ${tName} · 횟수제 · 잔여 ${remaining}/${total}회${textSuffix}</span>
+                                    ${statusBadgeHtml}
+                                    ${badgeHtml}
+                                </div>
+                                <div style="color: var(--text-muted); font-size: 12px; margin-top: 2px;">
+                                    기본 ${e.defaultClassDuration || 50}분${expireText}
+                                </div>
                             </div>
-                        </div>
-                    `;
+                        `;
+                    }
                 }).join('');
 
                 const enrollmentsSectionHtml = `

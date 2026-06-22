@@ -811,12 +811,43 @@ const openStudentDetailModal = (studentId) => {
             `;
         } else if (courseType === 'session_pass' || courseType === 'session') {
             billingTypeText = '횟수제';
-            const ticketName = e.ticketName || '횟수제 수강권';
-            const total = e.totalSessions !== undefined ? e.totalSessions : 10;
-            const remaining = e.remainingSessions !== undefined ? e.remainingSessions : 10;
+            const summary = stateStore.getSessionPassSummaryForEnrollment(e.id);
+            let ticketName = e.ticketName || '횟수제 수강권';
+            let total = e.totalSessions !== undefined ? e.totalSessions : 10;
+            let remaining = e.remainingSessions !== undefined ? e.remainingSessions : 10;
+            let expiresAt = null;
+            let badgeHtml = '';
+            let statusSuffix = '';
+
+            if (summary) {
+                ticketName = summary.passName || ticketName;
+                total = summary.totalSessions !== undefined ? summary.totalSessions : total;
+                remaining = summary.remainingSessions !== undefined ? summary.remainingSessions : remaining;
+                expiresAt = summary.expiresAt;
+                if (summary.isEmpty) {
+                    badgeHtml = `<span style="background: #e74c3c; color: white; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 600; margin-left: 6px; display: inline-block; vertical-align: middle;">소진</span>`;
+                    statusSuffix = ' · 소진';
+                } else if (summary.isExpired) {
+                    badgeHtml = `<span style="background: #7f8c8d; color: white; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 600; margin-left: 6px; display: inline-block; vertical-align: middle;">만료</span>`;
+                    statusSuffix = ' · 만료';
+                } else if (summary.isLowBalance) {
+                    badgeHtml = `<span style="background: #e67e22; color: white; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 600; margin-left: 6px; display: inline-block; vertical-align: middle;">충전 필요</span>`;
+                    statusSuffix = ' · 충전 필요';
+                }
+            }
+
+            const expireText = expiresAt ? ` · 만료 ${expiresAt}` : '';
+
             detailFieldsHtml = `
-                <div style="grid-column: span 2;"><span style="color: var(--text-muted);">수강권:</span> <strong>${ticketName} (${total}회)</strong></div>
-                <div style="grid-column: span 2;"><span style="color: var(--text-muted);">잔여 횟수:</span> <strong>${remaining}회 / ${total}회</strong></div>
+                <div style="grid-column: span 2; display: flex; align-items: center; gap: 4px;">
+                    <span style="color: var(--text-muted);">수강권:</span>
+                    <strong>${ticketName}</strong>
+                    ${badgeHtml}
+                </div>
+                <div style="grid-column: span 2;">
+                    <span style="color: var(--text-muted);">잔여 횟수:</span>
+                    <strong>잔여 ${remaining} / ${total}회${expireText}${statusSuffix}</strong>
+                </div>
             `;
         }
         
@@ -868,7 +899,7 @@ const openStudentDetailModal = (studentId) => {
         }
 
         return `
-            <div style="background: #fff; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+            <div class="enrollment-card" style="background: #fff; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span style="font-weight: 700; color: var(--text-main); font-size: 0.9rem;">
                         ${e.subject || e.instrument || e.subjectName || '미지정 과목'} ${badgeHtml}

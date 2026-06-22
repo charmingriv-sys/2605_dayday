@@ -2033,5 +2033,131 @@ test.describe('Student Status Management Flow', () => {
     // Close details modal
     await detailModal.locator('[data-close-modal]').first().click();
     await expect(detailModal).not.toHaveClass(/show/);
+
+    // ----------------------------------------------------
+    // Scenario D: 수강중인 과목 카드 잔여 횟수 및 상태별 배지/텍스트 UI 검증 (소진, 만료, 충전 필요)
+    // ----------------------------------------------------
+    // 1. S1의 enrollments에 횟수제 및 월정액 데이터 세팅
+    await page.evaluate(() => {
+      const store = window.stateStore;
+      store.ensureEnrollmentsCollection();
+      store.ensureSessionPassesCollection();
+
+      // S1 초기화
+      store.db.enrollments = store.db.enrollments.filter(e => e.studentId !== 'S1');
+      store.db.sessionPasses = store.db.sessionPasses.filter(sp => sp.studentId !== 'S1');
+
+      // 월정액 enrollment 추가
+      store.createEnrollment('S1', {
+        subjectName: '피아노',
+        courseType: 'monthly',
+        fee: 150000,
+        dueDay: 10
+      });
+
+      // 횟수제 enrollment 추가
+      const enrRes = store.createEnrollment('S1', {
+        subjectName: '바이올린',
+        courseType: 'session_pass',
+        fee: 200000,
+        ticketName: '바이올린 10회권',
+        totalSessions: 10,
+        remainingSessions: 7,
+        lowBalanceThreshold: 2,
+        purchaseDate: '2026-06-20',
+        expiresAt: '2026-09-20'
+      });
+      
+      if (enrRes && enrRes.ok) {
+        store.migrateSessionPassFromEnrollment(enrRes.data.id);
+      }
+      
+      store.saveDB();
+    });
+
+    // 상세 모달 다시 열기 (S1 최다은 상세 modal)
+    await s1Link.click();
+    await expect(detailModal).toBeVisible();
+
+    // 2. 월정액 과목 카드 검증 (피아노)
+    const pianoCard = detailModal.locator('.enrollment-card', { hasText: '피아노' }).first();
+    await expect(pianoCard).toBeVisible();
+    await expect(pianoCard).not.toContainText('잔여');
+    await expect(pianoCard).not.toContainText('NaN');
+    await expect(pianoCard).not.toContainText('undefined');
+
+    // 3. 횟수제 일반 수강권 검증 (바이올린 7회 잔여 - 정상상태)
+    const violinCard = detailModal.locator('.enrollment-card', { hasText: '바이올린' }).first();
+    await expect(violinCard).toBeVisible();
+    await expect(violinCard).toContainText('바이올린 10회권');
+    await expect(violinCard).toContainText('잔여 7 / 10회');
+    await expect(violinCard).toContainText('만료 2026-09-20');
+    await expect(violinCard).not.toContainText('NaN');
+    await expect(violinCard).not.toContainText('undefined');
+    await expect(violinCard.locator('span', { hasText: /^충전 필요$/ })).toBeHidden();
+    await expect(violinCard.locator('span', { hasText: /^소진$/ })).toBeHidden();
+    await expect(violinCard.locator('span', { hasText: /^만료$/ })).toBeHidden();
+
+    // 4. 횟수제 충전 필요 검증 (잔여 1회 - low balance 상태)
+    await page.evaluate(() => {
+      const store = window.stateStore;
+      const pass = store.db.sessionPasses.find(sp => sp.studentId === 'S1');
+      if (pass) {
+        pass.remainingSessions = 1; // 2 이하이므로 low balance
+        pass.status = 'active';
+      }
+      store.saveDB();
+    });
+    // 모달 닫았다가 다시 열어 갱신
+    await detailModal.locator('[data-close-modal]').first().click();
+    await s1Link.click();
+    await expect(detailModal).toBeVisible();
+
+    const violinCardLow = detailModal.locator('.enrollment-card', { hasText: '바이올린' }).first();
+    await expect(violinCardLow).toContainText('잔여 1 / 10회');
+    await expect(violinCardLow).toContainText('충전 필요');
+    await expect(violinCardLow.locator('span', { hasText: /^충전 필요$/ })).toBeVisible();
+
+    // 5. 횟수제 소진 검증 (잔여 0회 - used_up 상태)
+    await page.evaluate(() => {
+      const store = window.stateStore;
+      const pass = store.db.sessionPasses.find(sp => sp.studentId === 'S1');
+      if (pass) {
+        pass.remainingSessions = 0;
+        pass.status = 'used_up';
+      }
+      store.saveDB();
+    });
+    await detailModal.locator('[data-close-modal]').first().click();
+    await s1Link.click();
+    await expect(detailModal).toBeVisible();
+
+    const violinCardEmpty = detailModal.locator('.enrollment-card', { hasText: '바이올린' }).first();
+    await expect(violinCardEmpty).toContainText('잔여 0 / 10회');
+    await expect(violinCardEmpty).toContainText('소진');
+    await expect(violinCardEmpty.locator('span', { hasText: /^소진$/ })).toBeVisible();
+
+    // 6. 횟수제 만료 검증 (expired 상태)
+    await page.evaluate(() => {
+      const store = window.stateStore;
+      const pass = store.db.sessionPasses.find(sp => sp.studentId === 'S1');
+      if (pass) {
+        pass.remainingSessions = 5;
+        pass.status = 'expired';
+      }
+      store.saveDB();
+    });
+    await detailModal.locator('[data-close-modal]').first().click();
+    await s1Link.click();
+    await expect(detailModal).toBeVisible();
+
+    const violinCardExpired = detailModal.locator('.enrollment-card', { hasText: '바이올린' }).first();
+    await expect(violinCardExpired).toContainText('잔여 5 / 10회');
+    await expect(violinCardExpired).toContainText('만료');
+    await expect(violinCardExpired.locator('span', { hasText: /^만료$/ })).toBeVisible();
+
+    // Close details modal
+    await detailModal.locator('[data-close-modal]').first().click();
+    await expect(detailModal).not.toHaveClass(/show/);
   });
 });

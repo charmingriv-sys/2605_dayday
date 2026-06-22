@@ -2749,6 +2749,114 @@ test.describe('Director Today Console Flow Checks', () => {
     await expect(drawer).toContainText('기본');
     await expect(drawer).toContainText('납부일');
 
+    // 월정액은 잔여 횟수가 노출되지 않아야 함
+    const pianoCard = drawer.locator('div', { hasText: '피아노' }).first();
+    await expect(pianoCard).not.toContainText('잔여');
+    await expect(pianoCard).not.toContainText('NaN');
+    await expect(pianoCard).not.toContainText('undefined');
+
+    // Close the drawer
+    await page.locator('#btn-close-task-drawer').click();
+    await expect(drawer).not.toHaveClass(/open/);
+
+    // 5. 횟수제 수강권(sessionPass) 상태별 드로어 UI 검증
+    await page.evaluate(() => {
+      const store = window.stateStore;
+      store.ensureEnrollmentsCollection();
+      store.ensureSessionPassesCollection();
+
+      // S1 횟수제 추가 (total 10, remaining 7)
+      store.db.enrollments = store.db.enrollments.filter(e => e.studentId !== 'S1');
+      store.db.sessionPasses = store.db.sessionPasses.filter(sp => sp.studentId !== 'S1');
+
+      const enrRes = store.createEnrollment('S1', {
+        subjectName: '첼로',
+        courseType: 'session_pass',
+        fee: 250000,
+        ticketName: '첼로 10회권',
+        totalSessions: 10,
+        remainingSessions: 7,
+        lowBalanceThreshold: 2,
+        purchaseDate: '2026-06-15',
+        expiresAt: '2026-09-15'
+      });
+      if (enrRes && enrRes.ok) {
+        store.migrateSessionPassFromEnrollment(enrRes.data.id);
+      }
+      store.saveDB();
+    });
+
+    // 드로어 다시 열기
+    await taskCard.click();
+    await expect(drawer).toBeVisible();
+
+    // 첼로 횟수제 (정상 7회) 검증
+    const celloCard = drawer.locator('div', { hasText: '첼로' }).first();
+    await expect(celloCard).toBeVisible();
+    await expect(celloCard).toContainText('첼로');
+    await expect(celloCard).toContainText('횟수제 · 잔여 7/10회');
+    await expect(celloCard).toContainText('만료 2026-09-15');
+    await expect(celloCard).not.toContainText('NaN');
+    await expect(celloCard).not.toContainText('undefined');
+    await expect(celloCard.locator('span', { hasText: /^충전 필요$/ })).toBeHidden();
+    await expect(celloCard.locator('span', { hasText: /^소진$/ })).toBeHidden();
+    await expect(celloCard.locator('span', { hasText: /^만료$/ })).toBeHidden();
+
+    // 6. 충전 필요 상태 (잔여 1회) 검증
+    await page.evaluate(() => {
+      const store = window.stateStore;
+      const pass = store.db.sessionPasses.find(sp => sp.studentId === 'S1');
+      if (pass) {
+        pass.remainingSessions = 1;
+        pass.status = 'active';
+      }
+      store.saveDB();
+    });
+    // 드로어 닫았다가 다시 열기
+    await page.locator('#btn-close-task-drawer').click();
+    await taskCard.click();
+    await expect(drawer).toBeVisible();
+
+    const celloCardLow = drawer.locator('div', { hasText: '첼로' }).first();
+    await expect(celloCardLow).toContainText('잔여 1/10회 · 충전 필요');
+    await expect(celloCardLow.locator('span', { hasText: /^충전 필요$/ })).toBeVisible();
+
+    // 7. 소진 상태 (잔여 0회) 검증
+    await page.evaluate(() => {
+      const store = window.stateStore;
+      const pass = store.db.sessionPasses.find(sp => sp.studentId === 'S1');
+      if (pass) {
+        pass.remainingSessions = 0;
+        pass.status = 'used_up';
+      }
+      store.saveDB();
+    });
+    await page.locator('#btn-close-task-drawer').click();
+    await taskCard.click();
+    await expect(drawer).toBeVisible();
+
+    const celloCardEmpty = drawer.locator('div', { hasText: '첼로' }).first();
+    await expect(celloCardEmpty).toContainText('잔여 0/10회 · 소진');
+    await expect(celloCardEmpty.locator('span', { hasText: /^소진$/ })).toBeVisible();
+
+    // 8. 만료 상태 (expired) 검증
+    await page.evaluate(() => {
+      const store = window.stateStore;
+      const pass = store.db.sessionPasses.find(sp => sp.studentId === 'S1');
+      if (pass) {
+        pass.remainingSessions = 5;
+        pass.status = 'expired';
+      }
+      store.saveDB();
+    });
+    await page.locator('#btn-close-task-drawer').click();
+    await taskCard.click();
+    await expect(drawer).toBeVisible();
+
+    const celloCardExpired = drawer.locator('div', { hasText: '첼로' }).first();
+    await expect(celloCardExpired).toContainText('잔여 5/10회 · 만료');
+    await expect(celloCardExpired.locator('span', { hasText: /^만료$/ })).toBeVisible();
+
     // Close the drawer
     await page.locator('#btn-close-task-drawer').click();
     await expect(drawer).not.toHaveClass(/open/);

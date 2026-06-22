@@ -866,5 +866,86 @@ export const membersMethods = {
 
         const res = this.createSessionPass(enrollmentId, payload);
         return res;
+    },
+
+    getSessionPassSummaryForEnrollment(enrollmentId) {
+        this.ensureSessionPassesCollection();
+
+        // 1. archived 및 deletedAt 패스는 제외
+        const validPasses = this.db.sessionPasses.filter(sp => 
+            sp.enrollmentId === enrollmentId && 
+            sp.status !== 'archived' && 
+            !sp.deletedAt
+        );
+
+        if (validPasses.length === 0) return null;
+
+        // 2. Active Pass 선택 (FIFO 기준)
+        const activePasses = validPasses.filter(sp => sp.status === 'active' && sp.remainingSessions > 0);
+        
+        let pass = null;
+        if (activePasses.length > 0) {
+            // FIFO 정렬: expiresAt 오름차순(null 뒤로) -> purchaseDate 오름차순 -> createdAt 오름차순
+            activePasses.sort((a, b) => {
+                const aExp = a.expiresAt || '';
+                const bExp = b.expiresAt || '';
+                if (aExp && bExp) {
+                    const comp = aExp.localeCompare(bExp);
+                    if (comp !== 0) return comp;
+                } else if (aExp) {
+                    return -1;
+                } else if (bExp) {
+                    return 1;
+                }
+
+                const aPur = a.purchaseDate || '';
+                const bPur = b.purchaseDate || '';
+                const compPur = aPur.localeCompare(bPur);
+                if (compPur !== 0) return compPur;
+
+                const aCre = a.createdAt || '';
+                const bCre = b.createdAt || '';
+                return aCre.localeCompare(bCre);
+            });
+            pass = activePasses[0];
+        }
+
+        // 3. Fallback Pass 선택 (최신 이력 기준)
+        if (!pass) {
+            const fallbackPasses = validPasses.filter(sp => sp.status === 'used_up' || sp.status === 'expired');
+            if (fallbackPasses.length > 0) {
+                // 최신 이력 기준: purchaseDate 내림차순 -> createdAt 내림차순
+                fallbackPasses.sort((a, b) => {
+                    const aPur = a.purchaseDate || '';
+                    const bPur = b.purchaseDate || '';
+                    const compPur = bPur.localeCompare(aPur); // 내림차순
+                    if (compPur !== 0) return compPur;
+
+                    const aCre = a.createdAt || '';
+                    const bCre = b.createdAt || '';
+                    return bCre.localeCompare(aCre); // 내림차순
+                });
+                pass = fallbackPasses[0];
+            }
+        }
+
+        if (!pass) return null;
+
+        // 4. 상태 정의
+        const isEmpty = pass.remainingSessions === 0 || pass.status === 'used_up';
+        const isExpired = pass.status === 'expired';
+        const isLowBalance = pass.status === 'active' && pass.remainingSessions > 0 && pass.remainingSessions <= pass.lowBalanceThreshold;
+
+        return {
+            totalSessions: pass.totalSessions !== undefined ? pass.totalSessions : 10,
+            remainingSessions: pass.remainingSessions !== undefined ? pass.remainingSessions : 10,
+            lowBalanceThreshold: pass.lowBalanceThreshold !== undefined ? pass.lowBalanceThreshold : 2,
+            status: pass.status,
+            passName: pass.passName || '수강권',
+            expiresAt: pass.expiresAt || null,
+            isEmpty,
+            isExpired,
+            isLowBalance
+        };
     }
 };
