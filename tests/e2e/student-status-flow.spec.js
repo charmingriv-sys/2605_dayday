@@ -2425,4 +2425,241 @@ test.describe('Student Status Management Flow', () => {
       }
     });
   });
+
+  test('should verify markAttendanceStatus integration with SessionPass deduction/reversal', async ({ page }) => {
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible();
+
+    // 2. 브라우저 컨텍스트 내에서 통합 테스트 수행
+    await page.evaluate(() => {
+      const store = window.stateStore;
+
+      // 2.1. 데이터 초기화 및 수강과목(session_pass) 생성
+      const student = store.db.students.find(m => m.id === 'S1') || store.db.students[0];
+      const studentId = student.id;
+
+      // 기존 enrollment와 sessionPass들 비활성화(archived) 처리하여 깨끗하게 세팅
+      if (store.db.enrollments) {
+        store.db.enrollments.forEach(enr => {
+          if (enr.studentId === studentId) enr.archived = true;
+        });
+      }
+      if (store.db.sessionPasses) {
+        store.db.sessionPasses.forEach(sp => {
+          if (sp.studentId === studentId) sp.status = 'archived';
+        });
+      }
+      if (store.db.sessionPassLogs) {
+        store.db.sessionPassLogs = store.db.sessionPassLogs.filter(log => log.studentId !== studentId);
+      }
+
+      // 신규 enrollment 생성 (session_pass)
+      const enrRes = store.createEnrollment(studentId, {
+        subjectName: '피아노 통합',
+        courseType: 'session_pass',
+        teacherId: 'T1',
+        startDate: '2026-06-01'
+      });
+      if (!enrRes.ok) throw new Error('Failed to create enrollment');
+      const enrollmentId = enrRes.data.id;
+
+      // 신규 수강권 생성 (remaining: 2, total: 2)
+      const spRes = store.createSessionPass(enrollmentId, {
+        passName: 'E2E 통합 2회권',
+        totalSessions: 2,
+        remainingSessions: 2,
+        purchaseAmount: 20000,
+        purchaseDate: '2026-06-01',
+        expiresAt: '2026-12-31',
+        lowBalanceThreshold: 1
+      });
+      if (!spRes.ok) throw new Error('Failed to create session pass');
+      const passId = spRes.data.id;
+
+      // 2.2. markAttendanceStatus로 none -> present 처리 시 차감 검증
+      store.markAttendanceStatus({
+        studentId,
+        date: '2026-06-22',
+        classTime: '14:00',
+        status: 'present',
+        enrollmentId
+      });
+
+      const pass = store.db.sessionPasses.find(sp => sp.id === passId);
+      if (pass.remainingSessions !== 1) {
+        throw new Error('Deduction: remainingSessions should be 1');
+      }
+
+      const attRecord = store.db.attendance.find(a => a.studentId === studentId && a.date === '2026-06-22' && a.classTime === '14:00');
+      if (!attRecord || attRecord.deductedPassId !== passId) {
+        throw new Error('Deduction: deductedPassId not saved in attendance record');
+      }
+
+      const logs = store.getSessionPassLogsByAttendanceId(attRecord.id);
+      const deductionLog = logs.find(l => l.reason === 'deduction');
+      if (!deductionLog || deductionLog.delta !== -1) {
+        throw new Error('Deduction: log not created or invalid');
+      }
+
+      // 2.3. present -> late 변경 시 추가 차감 차단 검증 (No-op)
+      store.markAttendanceStatus({
+        studentId,
+        date: '2026-06-22',
+        classTime: '14:00',
+        status: 'late',
+        enrollmentId
+      });
+
+      if (pass.remainingSessions !== 1) {
+        throw new Error('No-op: present->late changed remainingSessions');
+      }
+      if (attRecord.deductedPassId !== passId) {
+        throw new Error('No-op: present->late cleared deductedPassId');
+      }
+
+      // 2.4. late -> present 변경 시 추가 차감 차단 검증 (No-op)
+      store.markAttendanceStatus({
+        studentId,
+        date: '2026-06-22',
+        classTime: '14:00',
+        status: 'present',
+        enrollmentId
+      });
+
+      if (pass.remainingSessions !== 1) {
+        throw new Error('No-op: late->present changed remainingSessions');
+      }
+      if (attRecord.deductedPassId !== passId) {
+        throw new Error('No-op: late->present cleared deductedPassId');
+      }
+
+      // 2.5. present/late -> absent 변경 시 원래 pass에 복원되는지 확인
+      store.markAttendanceStatus({
+        studentId,
+        date: '2026-06-22',
+        classTime: '14:00',
+        status: 'absent',
+        enrollmentId
+      });
+
+      if (pass.remainingSessions !== 2) {
+        throw new Error('Reversal: remainingSessions should be restored to 2');
+      }
+      if (attRecord.deductedPassId !== null && attRecord.deductedPassId !== undefined) {
+        throw new Error('Reversal: deductedPassId should be cleared');
+      }
+
+      const revLogs = store.getSessionPassLogsByAttendanceId(attRecord.id);
+      const reversalLog = revLogs.find(l => l.reason === 'reversal');
+      if (!reversalLog || reversalLog.delta !== 1) {
+        throw new Error('Reversal: log not created or invalid');
+      }
+
+      // 2.6. absent -> present 재전환 시 다시 차감되는지 확인
+      store.markAttendanceStatus({
+        studentId,
+        date: '2026-06-22',
+        classTime: '14:00',
+        status: 'present',
+        enrollmentId
+      });
+
+      if (pass.remainingSessions !== 1) {
+        throw new Error('Re-deduction: remainingSessions should be 1');
+      }
+      if (attRecord.deductedPassId !== passId) {
+        throw new Error('Re-deduction: deductedPassId not saved');
+      }
+
+      // 2.7. monthly enrollment class는 차감되지 않는지 확인
+      const monthlyEnrRes = store.createEnrollment(studentId, {
+        subjectName: '피아노 월정액',
+        courseType: 'monthly',
+        teacherId: 'T1',
+        startDate: '2026-06-01'
+      });
+      if (!monthlyEnrRes.ok) throw new Error('Failed to create monthly enrollment');
+      const monthlyEnrollmentId = monthlyEnrRes.data.id;
+
+      store.markAttendanceStatus({
+        studentId,
+        date: '2026-06-22',
+        classTime: '15:00',
+        status: 'present',
+        enrollmentId: monthlyEnrollmentId
+      });
+
+      const monthlyAtt = store.db.attendance.find(a => a.studentId === studentId && a.date === '2026-06-22' && a.classTime === '15:00');
+      if (monthlyAtt.deductedPassId) {
+        throw new Error('Monthly enrollment should not trigger deduction');
+      }
+
+      // 2.8. legacy class는 차감되지 않는지 확인 (enrollmentId, classId 둘 다 없는 상태)
+      store.markAttendanceStatus({
+        studentId,
+        date: '2026-06-22',
+        classTime: '16:00',
+        status: 'present'
+      });
+
+      const legacyAtt = store.db.attendance.find(a => a.studentId === studentId && a.date === '2026-06-22' && a.classTime === '16:00');
+      if (legacyAtt.deductedPassId) {
+        throw new Error('Legacy class should not trigger deduction');
+      }
+
+      // 2.9. active pass가 없으면 출결 저장은 성공하지만 deductedPassId가 없고 remainingSessions가 음수가 되지 않는지 확인
+      store.markAttendanceStatus({
+        studentId,
+        date: '2026-06-22',
+        classTime: '17:00',
+        status: 'present',
+        enrollmentId
+      });
+      if (pass.remainingSessions !== 0) throw new Error('Remaining sessions should be 0');
+
+      store.markAttendanceStatus({
+        studentId,
+        date: '2026-06-22',
+        classTime: '18:00',
+        status: 'present',
+        enrollmentId
+      });
+
+      const overAtt = store.db.attendance.find(a => a.studentId === studentId && a.date === '2026-06-22' && a.classTime === '18:00');
+      if (overAtt.status !== 'present') {
+        throw new Error('Attendance save should succeed even if deduction fails');
+      }
+      if (overAtt.deductedPassId) {
+        throw new Error('Deduction failure should not save deductedPassId');
+      }
+      if (pass.remainingSessions < 0) {
+        throw new Error('remainingSessions should not be negative');
+      }
+
+      // 2.10. 복원 실패 시 기존 deductedPassId가 유지되는지 검증
+      const testDeductAtt = store.db.attendance.find(a => a.studentId === studentId && a.date === '2026-06-22' && a.classTime === '17:00');
+      const savedPassId = testDeductAtt.deductedPassId;
+      if (!savedPassId) throw new Error('Saved pass ID not found on attendance');
+
+      // 강제로 수강권을 db.sessionPasses에서 날려서 복원 실패를 유도
+      store.db.sessionPasses = store.db.sessionPasses.filter(sp => sp.id !== savedPassId);
+
+      store.markAttendanceStatus({
+        studentId,
+        date: '2026-06-22',
+        classTime: '17:00',
+        status: 'absent',
+        enrollmentId
+      });
+
+      if (testDeductAtt.status !== 'absent') {
+        throw new Error('Attendance status update to absent should succeed even if reversal fails');
+      }
+      if (testDeductAtt.deductedPassId !== savedPassId) {
+        throw new Error('Failed reversal must preserve original deductedPassId');
+      }
+    });
+  });
 });

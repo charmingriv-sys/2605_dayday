@@ -142,6 +142,7 @@ export const attendanceMethods = {
         // Capture previous and next status (Phase 9C-5E Audit Logging)
         const previousStatus = existing ? existing.status : null;
         const nextStatus = status;
+        const existingDeductedPassId = existing ? existing.deductedPassId : null;
 
         let time = '';
         if (status !== 'absent') {
@@ -198,17 +199,79 @@ export const attendanceMethods = {
             });
         }
 
+        // --- SESSION PASS DEDUCTION & REVERSAL INTEGRATION (Phase 18B-33) ---
+        const attRecord = existing || this.db.attendance.find(a => 
+            a.studentId === studentId && 
+            a.date === date && 
+            (a.classTime === classTime || !a.classTime)
+        );
+
+        if (attRecord) {
+            // enrollmentId 판정
+            let finalEnrollmentId = payload.enrollmentId || null;
+            if (!finalEnrollmentId && payload.classId && this.db.classes) {
+                const cls = this.db.classes.find(c => c.id === payload.classId);
+                if (cls) {
+                    finalEnrollmentId = cls.enrollmentId || null;
+                }
+            }
+
+            const isPrevPresentOrLate = (previousStatus === 'present' || previousStatus === 'late');
+            const isNextPresentOrLate = (nextStatus === 'present' || nextStatus === 'late');
+
+            if (!isPrevPresentOrLate && isNextPresentOrLate) {
+                // 차감 트리거
+                if (finalEnrollmentId && !attRecord.deductedPassId) {
+                    const deductRes = this.deductSessionPassForAttendance({
+                        enrollmentId: finalEnrollmentId,
+                        studentId,
+                        classId: payload.classId || null,
+                        attendanceId: attRecord.id,
+                        date,
+                        time: attRecord.time || time,
+                        attendanceStatus: nextStatus
+                    });
+                    if (deductRes.ok) {
+                        attRecord.deductedPassId = deductRes.deductedPassId;
+                    } else {
+                        // 차감 실패 시 deductedPassId를 새로 세팅하지 않음
+                        attRecord.deductionResult = { ok: false, reason: deductRes.reason };
+                    }
+                }
+            } else if (isPrevPresentOrLate && !isNextPresentOrLate) {
+                // 복원 트리거
+                const passIdToRestore = existingDeductedPassId || attRecord.deductedPassId;
+                if (passIdToRestore) {
+                    const reverseRes = this.reverseSessionPassDeduction({
+                        deductedPassId: passIdToRestore,
+                        enrollmentId: finalEnrollmentId,
+                        studentId,
+                        classId: payload.classId || null,
+                        attendanceId: attRecord.id,
+                        date,
+                        time: attRecord.time || time
+                    });
+                    if (reverseRes.ok) {
+                        attRecord.deductedPassId = null;
+                    } else {
+                        // 복원 실패 시 기존 deductedPassId 유지
+                        attRecord.reversalResult = { ok: false, reason: reverseRes.reason };
+                    }
+                }
+            }
+        }
+
         this.saveDB();
 
         if (status === 'present' || status === 'late') {
-            const attRecord = existing || this.db.attendance.find(a => 
+            const attRecordForMsg = existing || this.db.attendance.find(a => 
                 a.studentId === studentId && 
                 a.date === date && 
                 (a.classTime === classTime || !a.classTime)
             );
-            if (attRecord) {
-                const finalTime = time || attRecord.time || new Date().toTimeString().slice(0, 5);
-                this.triggerAttendanceParentMessage(studentId, date, 'check_in', finalTime, attRecord.id);
+            if (attRecordForMsg) {
+                const finalTime = time || attRecordForMsg.time || new Date().toTimeString().slice(0, 5);
+                this.triggerAttendanceParentMessage(studentId, date, 'check_in', finalTime, attRecordForMsg.id);
             }
         }
 
