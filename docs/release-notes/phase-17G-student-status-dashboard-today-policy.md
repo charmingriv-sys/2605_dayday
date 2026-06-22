@@ -1299,3 +1299,124 @@
   - `student-status-flow.spec.js` - **13 passed**
   - `today-console-flow.spec.js` - **29 passed** (Strict Mode 다중 매칭 우회용 Regex exact 단언 적용)
   - `attendance-control-flow.spec.js` - **16 passed** (인스펙터 백드롭 이벤트 간섭 우회용 notify 이벤트 리팩토링 및 획득 검증 완료)
+
+---
+
+## 22. 횟수제 수강권 차감 및 복원 정책 (Phase 18B-31)
+
+### 22-1. 차감 엔진 도입 배경
+- db.sessionPasses 저장과 잔여 횟수 UI 표시는 구현되었으나, 실제 출석/지각에 따른 잔여 횟수 차감은 아직 구현되지 않았다.
+- 횟수제 과목의 실사용성을 위해 출결 상태 변경과 sessionPass.remainingSessions를 연결해야 한다.
+- 단순 차감은 중복 차감, 잘못된 pass 복원, 만료/소진 상태 충돌을 유발할 수 있으므로 정책을 먼저 고정한다.
+
+### 22-2. 차감 트리거 정책
+- 기본 트리거는 출결 상태가 `present` 또는 `late`로 확정되는 순간이다.
+- `absent`, `none`, `scheduled` 상태는 차감하지 않는다.
+- 정책 기본값은 `present/late 저장 시 즉시 차감`이다.
+- 수업 종료 이후 일괄 차감이나 수동 차감 확정 버튼 방식은 MVP 범위에서 제외한다.
+
+### 22-3. 차감 대상 class/enrollment 정책
+- class.enrollmentId가 있는 수업만 차감 대상이다.
+- 해당 enrollment의 courseType이 `session_pass`인 경우에만 차감한다.
+- enrollmentId가 없는 legacy class는 차감하지 않는다.
+- courseType이 `monthly`인 수강과목은 차감하지 않는다.
+- enrollment를 찾을 수 없는 경우 차감하지 않고 안전하게 통과한다.
+
+### 22-4. 차감 대상 sessionPass 선택 정책
+- 해당 enrollment의 active sessionPass 중 remainingSessions > 0인 pass만 차감 대상이다.
+- expired pass는 차감 대상에서 제외한다.
+- used_up pass는 차감 대상에서 제외한다.
+- active pass가 여러 개일 경우 FIFO 기준으로 선택한다.
+  1. expiresAt 빠른 순
+  2. purchaseDate 빠른 순
+  3. createdAt 빠른 순
+- 차감 가능한 pass가 없으면 음수 차감하지 않고 차감 실패 상태로 처리한다. (음수 차감 금지)
+
+### 22-5. 중복 차감 방지 정책
+- 출결 레코드에 `deductedPassId`를 저장하여 이미 차감된 출결인지 판정한다.
+- 같은 studentId + enrollmentId + date + classTime 조합은 1회만 차감한다.
+- `present -> late`, `late -> present` 변경은 추가 차감하지 않는다.
+- `absent/none/scheduled -> present/late` 변경 시 deductedPassId가 없을 때만 차감한다.
+- 중복 차감 방지를 위해 필요 시 `deductionKey`를 사용할 수 있다.
+
+### 22-6. 복원 / 되돌림 정책
+- `present/late -> absent/none/scheduled`로 변경되는 경우, 기존 attendance.deductedPassId에 기록된 pass에 1회를 복원한다.
+- 단순히 active pass에 +1하지 않고, 반드시 원래 차감된 passId에 복원한다.
+- 복원 후 remainingSessions가 0에서 1 이상으로 회복되면 status를 재계산한다.
+- 만료일이 지난 pass는 remainingSessions가 복원되어도 status는 `expired`로 유지한다.
+- 만료되지 않은 used_up pass는 복원 후 status를 `active`로 되돌릴 수 있다.
+- deductedPassId는 복원 완료 후 null 또는 제거 처리한다. (reversal)
+
+### 22-7. 차감 로그 정책
+`db.sessionPassLogs` 컬렉션을 도입한다.
+
+로그 스키마 초안:
+```js
+{
+  id: 'SPL_...',
+  passId: 'SP_...',
+  enrollmentId: 'ENR_...',
+  studentId: 'S...',
+  classId: 'C...',
+  attendanceId: 'A...',
+  date: 'YYYY-MM-DD',
+  time: 'HH:mm',
+  delta: -1,
+  reason: 'deduction',
+  createdAt: ''
+}
+```
+복원 로그는 아래처럼 기록한다.
+```js
+{
+  id: 'SPL_...',
+  passId: 'SP_...',
+  enrollmentId: 'ENR_...',
+  studentId: 'S...',
+  classId: 'C...',
+  attendanceId: 'A...',
+  date: 'YYYY-MM-DD',
+  time: 'HH:mm',
+  delta: 1,
+  reason: 'reversal',
+  createdAt: ''
+}
+```
+정책:
+- 차감/복원은 모두 로그를 남긴다.
+- 로그는 감사 및 분쟁 대응을 위한 기록이며, 화면 노출은 후속 Phase로 분리한다.
+- 로그 hard delete는 하지 않는다.
+
+### 22-8. used_up / active / expired 전환 정책
+- 차감 후 remainingSessions가 0이 되면 status를 used_up으로 전환한다.
+- used_up pass는 이후 차감 대상에서 제외한다.
+- 복원으로 remainingSessions가 1 이상이 되면 status를 재계산한다.
+- 만료일이 지나지 않았다면 active로 복원 가능하다.
+- 만료일이 지났다면 expired를 유지한다.
+- 모든 pass가 used_up/expired인 상태에서 출석/지각 처리되어도 remainingSessions를 음수로 만들지 않는다.
+
+### 22-9. 잔여 0회 / 차감 실패 정책
+- 차감 가능한 active pass가 없으면 출결 저장은 막지 않는다.
+- 단, 차감 실패 상태를 반환하거나 로그로 남길 수 있어야 한다.
+- 잔여 0회 상태에서 출석/지각 처리가 발생하면 후속 Phase에서 오늘 콘솔 경고 또는 수강권 충전 task로 연결한다.
+- 이번 정책에서는 음수 차감 금지를 핵심 원칙으로 둔다.
+
+### 22-10. 구현 제외 및 후속 범위
+이번 문서화에서는 아래를 구현하지 않는다.
+- 실제 차감 API 구현
+- markAttendanceStatus 연동
+- 차감 로그 UI
+- 수동 +1/-1 조정 UI
+- 수강권 충전 task
+- 잔여 0회 출석 경고 팝업
+- payment.enrollmentId 기반 수납 분리
+- 대시보드 리디자인
+
+### 22-11. 후속 Phase 제안
+아래 순서로 후속 Phase를 제안한다.
+- Phase 18B-32: SessionPass Deduction Storage API
+- Phase 18B-33: Attendance Save Deduction Integration
+- Phase 18B-34: Deduction/Reversal E2E Hardening
+- Phase 18B-35: Recharge Task Policy/Implementation
+- Phase 18B-36: Manual SessionPass Adjustment UI
+
