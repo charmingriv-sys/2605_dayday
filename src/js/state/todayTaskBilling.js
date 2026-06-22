@@ -9,6 +9,8 @@ export function syncBillingRecommendations(ctx, options) {
     if (typeof ctx.getStudents === 'function' && typeof ctx.getPayments === 'function') {
         const students = ctx.getStudents();
         const payments = ctx.getPayments();
+        const enrollments = (ctx.db && ctx.db.enrollments) || [];
+        const sessionPasses = (ctx.db && ctx.db.sessionPasses) || [];
         const activeBillingKeys = [];
         // 0. Normalize existing withdrawn_unpaid task titles and descriptions to latest guidelines
         if (ctx.db && ctx.db.todayTasks) {
@@ -113,6 +115,12 @@ export function syncBillingRecommendations(ctx, options) {
                     }
                 }
             } else {
+                const upcomingTime = paymentDueAt.getTime() - 2 * 24 * 60 * 60 * 1000;
+                let isUpcoming = false;
+                if (upcomingTime === todayMidnight.getTime()) {
+                    isUpcoming = true;
+                }
+
                 if (isDueToday) {
                     const dedupeKey = `SYSTEM_RECOMMEND_BILLING_DUE_${payment.id}_${payment.month}`;
                     activeBillingKeys.push(dedupeKey);
@@ -197,11 +205,147 @@ export function syncBillingRecommendations(ctx, options) {
                             }, { domain: 'billing', silent });
                         }
                     }
+                } else if (isUpcoming) {
+                    const dedupeKey = `SYSTEM_RECOMMEND_BILLING_UPCOMING_${payment.id}_${payment.month}`;
+                    activeBillingKeys.push(dedupeKey);
+
+                    // 수동 완료/삭제 여부 검사
+                    const hasResolved = ctx.db.todayTasks.some(t =>
+                        t.source === 'system' &&
+                        (t.status === 'done' || t.status === 'dismissed') &&
+                        t.dedupeKey === dedupeKey
+                    );
+
+                    if (!hasResolved) {
+                        const isAlreadyOpen = ctx.db.todayTasks.some(t => t.dedupeKey === dedupeKey && t.status === 'open');
+                        if (!isAlreadyOpen) {
+                            const dueTime = new Date(y, m, d, 9, 0, 0, 0);
+                            const endTime = new Date(y, m, d, 10, 0, 0, 0);
+                            addValidatedSystemTodayTask(ctx, {
+                                organizationId: student.academyId || '',
+                                segment: 'academy_director_console',
+                                domain: 'academy',
+                                source: 'system',
+                                type: 'billing',
+                                category: 'billing',
+                                priority: 'today',
+                                status: 'open',
+                                dueAt: dueTime.toISOString(),
+                                startAt: dueTime.toISOString(),
+                                endAt: endTime.toISOString(),
+                                title: `[수납 예정 확인] ${student.name} 원생 ${py}년 ${pm}월 수강료`,
+                                description: `${student.name} 원생의 ${py}년 ${pm}월 수강료 ${payment.amount.toLocaleString()}원이 수납 예정입니다.`,
+                                relatedStudentIds: [student.id],
+                                dedupeKey: dedupeKey,
+                                visibilityRoles: ['director'],
+                                actionType: 'NAVIGATE',
+                                actionPayload: { route: '/billing', studentId: student.id }
+                            }, { domain: 'billing', silent });
+                        }
+                    }
                 }
             }
         });
 
-        // 1.2 Mute / remove obsolete billing recommendations (automatic invalidation on paid or transition)
+        // 1.3 SessionPass Remaining Session Warnings
+        sessionPasses.forEach(pass => {
+            if (pass.status === 'archived' || pass.status === 'deleted') return;
+
+            const enrollment = enrollments.find(e => e.id === pass.enrollmentId);
+            if (!enrollment || enrollment.courseType !== 'session_pass') return;
+            if (enrollment.status === 'archived' || enrollment.status === 'deleted') return;
+
+            const student = students.find(s => s.id === pass.studentId);
+            if (!student) return;
+            if (student.status === 'withdrawn') return;
+
+            const subjectName = enrollment.subjectName || enrollment.instrument || pass.passName || '수강권';
+            const totalSessions = pass.totalSessions;
+            const remaining = pass.remainingSessions;
+
+            let isPassDue = (remaining === 1);
+            let isPassUnpaid = (remaining === 0 || pass.status === 'used_up');
+
+            if (isPassDue) {
+                const dedupeKey = `SYSTEM_RECOMMEND_SESSION_PASS_DUE_${student.id}_${enrollment.id}_${pass.id}`;
+                activeBillingKeys.push(dedupeKey);
+
+                // 수동 완료/삭제 여부 검사
+                const hasResolved = ctx.db.todayTasks.some(t =>
+                    t.source === 'system' &&
+                    (t.status === 'done' || t.status === 'dismissed') &&
+                    t.dedupeKey === dedupeKey
+                );
+
+                if (!hasResolved) {
+                    const isAlreadyOpen = ctx.db.todayTasks.some(t => t.dedupeKey === dedupeKey && t.status === 'open');
+                    if (!isAlreadyOpen) {
+                        const dueTime = new Date(y, m, d, 9, 0, 0, 0);
+                        const endTime = new Date(y, m, d, 10, 0, 0, 0);
+                        addValidatedSystemTodayTask(ctx, {
+                            organizationId: student.academyId || '',
+                            segment: 'academy_director_console',
+                            domain: 'academy',
+                            source: 'system',
+                            type: 'billing',
+                            category: 'billing',
+                            priority: 'today',
+                            status: 'open',
+                            dueAt: dueTime.toISOString(),
+                            startAt: dueTime.toISOString(),
+                            endAt: endTime.toISOString(),
+                            title: `[수납 예정 확인] ${student.name} 원생 ${subjectName} ${totalSessions}회 수업`,
+                            description: `${student.name} 원생의 ${subjectName} ${totalSessions}회 수업 잔여 수업 횟수가 1회입니다.`,
+                            relatedStudentIds: [student.id],
+                            dedupeKey: dedupeKey,
+                            visibilityRoles: ['director'],
+                            actionType: 'NAVIGATE',
+                            actionPayload: { route: '/billing', studentId: student.id }
+                        }, { domain: 'billing', silent });
+                    }
+                }
+            } else if (isPassUnpaid) {
+                const dedupeKey = `SYSTEM_RECOMMEND_SESSION_PASS_UNPAID_${student.id}_${enrollment.id}_${pass.id}`;
+                activeBillingKeys.push(dedupeKey);
+
+                // 수동 완료/삭제 여부 검사
+                const hasResolved = ctx.db.todayTasks.some(t =>
+                    t.source === 'system' &&
+                    (t.status === 'done' || t.status === 'dismissed') &&
+                    t.dedupeKey === dedupeKey
+                );
+
+                if (!hasResolved) {
+                    const isAlreadyOpen = ctx.db.todayTasks.some(t => t.dedupeKey === dedupeKey && t.status === 'open');
+                    if (!isAlreadyOpen) {
+                        const dueTime = new Date(y, m, d, 9, 0, 0, 0);
+                        const endTime = new Date(y, m, d, 10, 0, 0, 0);
+                        addValidatedSystemTodayTask(ctx, {
+                            organizationId: student.academyId || '',
+                            segment: 'academy_director_console',
+                            domain: 'academy',
+                            source: 'system',
+                            type: 'billing',
+                            category: 'overdue',
+                            priority: 'today',
+                            status: 'open',
+                            dueAt: dueTime.toISOString(),
+                            startAt: dueTime.toISOString(),
+                            endAt: endTime.toISOString(),
+                            title: `[미수납 확인] ${student.name} 원생 ${subjectName} ${totalSessions}회 수업`,
+                            description: `${student.name} 원생의 ${subjectName} ${totalSessions}회 수업 잔여 수업 횟수가 0회입니다.`,
+                            relatedStudentIds: [student.id],
+                            dedupeKey: dedupeKey,
+                            visibilityRoles: ['director'],
+                            actionType: 'NAVIGATE',
+                            actionPayload: { route: '/billing', studentId: student.id }
+                        }, { domain: 'billing', silent });
+                    }
+                }
+            }
+        });
+
+        // 1.4 Mute / remove obsolete billing recommendations (automatic invalidation on paid or transition)
         const getPaymentIdFromDedupeKey = (key) => {
             if (!key) return null;
             if (key.startsWith('SYSTEM_RECOMMEND_BILLING_DUE_')) {
@@ -216,6 +360,11 @@ export function syncBillingRecommendations(ctx, options) {
             }
             if (key.startsWith('SYSTEM_RECOMMEND_WITHDRAWN_UNPAID_')) {
                 const rest = key.substring('SYSTEM_RECOMMEND_WITHDRAWN_UNPAID_'.length);
+                const idx = rest.lastIndexOf('_');
+                return idx !== -1 ? rest.substring(0, idx) : rest;
+            }
+            if (key.startsWith('SYSTEM_RECOMMEND_BILLING_UPCOMING_')) {
+                const rest = key.substring('SYSTEM_RECOMMEND_BILLING_UPCOMING_'.length);
                 const idx = rest.lastIndexOf('_');
                 return idx !== -1 ? rest.substring(0, idx) : rest;
             }
@@ -267,6 +416,15 @@ export function syncBillingRecommendations(ctx, options) {
                     }
                 } else if (task.dedupeKey && task.dedupeKey.startsWith('SYSTEM_RECOMMEND_WITHDRAWN_UNPAID_')) {
                     const prefix = 'SYSTEM_RECOMMEND_WITHDRAWN_UNPAID_';
+                    const rest = task.dedupeKey.substring(prefix.length);
+                    const lastUnderscore = rest.lastIndexOf('_');
+                    const paymentId = lastUnderscore !== -1 ? rest.substring(0, lastUnderscore) : rest;
+                    const payment = payments.find(p => p.id === paymentId);
+                    if (payment && payment.status === 'paid') {
+                        ctx.updateTodayTask(task.id, { status: 'done', completedAt: parsedNow.toISOString() });
+                    }
+                } else if (task.dedupeKey && task.dedupeKey.startsWith('SYSTEM_RECOMMEND_BILLING_UPCOMING_')) {
+                    const prefix = 'SYSTEM_RECOMMEND_BILLING_UPCOMING_';
                     const rest = task.dedupeKey.substring(prefix.length);
                     const lastUnderscore = rest.lastIndexOf('_');
                     const paymentId = lastUnderscore !== -1 ? rest.substring(0, lastUnderscore) : rest;

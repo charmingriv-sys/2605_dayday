@@ -2959,5 +2959,162 @@ test.describe('Director Today Console Flow Checks', () => {
     expect(s2Desc).not.toContain('undefined');
     expect(s2Desc).not.toContain('NaN');
   });
+
+  test('should generate and clean up billing tasks for monthly pre-due and session passes', async ({ page }) => {
+    // 1. Seed test data for S1 (최다은 - 월정액), S2 (이도윤 - 횟수제), S3 (윤하온 - 횟수제 복수과목)
+    await page.evaluate(() => {
+      const store = window.stateStore;
+
+      // Clean up previous tasks, payments, enrollments, sessionPasses to have a clean state
+      store.db.todayTasks = [];
+      store.db.payments = [];
+      store.db.enrollments = [];
+      store.db.sessionPasses = [];
+      store.db.parentMessages = [];
+
+      // S1: 최다은, 월정액.
+      // Mock date is 2026-06-03.
+      // We seed a payment due on 2026-06-05 (which is 2 days after mock date).
+      store.db.students = store.db.students.map(s => s.id === 'S1' ? { ...s, name: '최다은', dueDay: 5 } : s);
+      store.db.payments.push({
+        id: 'P-S1-UPCOMING',
+        studentId: 'S1',
+        type: 'education',
+        amount: 160000,
+        month: '2026-06',
+        status: 'unpaid',
+        createdAt: '2026-06-01T00:00:00.000Z',
+        updatedAt: '2026-06-01T00:00:00.000Z'
+      });
+
+      // S2: 이도윤, 횟수제 1회 남음.
+      store.db.students = store.db.students.map(s => s.id === 'S2' ? { ...s, name: '이도윤' } : s);
+      const enrS2 = store.createEnrollment('S2', {
+        subjectName: '바이올린',
+        courseType: 'session_pass',
+        fee: 200000,
+        ticketName: '바이올린 10회 수업',
+        totalSessions: 10,
+        remainingSessions: 1,
+        lowBalanceThreshold: 2
+      });
+      if (enrS2 && enrS2.ok) {
+        store.migrateSessionPassFromEnrollment(enrS2.data.id);
+      }
+
+      // S3: 윤하온, 횟수제 복수과목 (피아노 10회 잔여 1회, 첼로 10회 잔여 0회).
+      store.db.students = store.db.students.map(s => s.id === 'S3' ? { ...s, name: '윤하온' } : s);
+      const enrS3Piano = store.createEnrollment('S3', {
+        subjectName: '피아노',
+        courseType: 'session_pass',
+        fee: 150000,
+        ticketName: '피아노 10회 수업',
+        totalSessions: 10,
+        remainingSessions: 1,
+        lowBalanceThreshold: 2
+      });
+      if (enrS3Piano && enrS3Piano.ok) {
+        store.migrateSessionPassFromEnrollment(enrS3Piano.data.id);
+      }
+
+      const enrS3Cello = store.createEnrollment('S3', {
+        subjectName: '첼로',
+        courseType: 'session_pass',
+        fee: 250000,
+        ticketName: '첼로 10회 수업',
+        totalSessions: 10,
+        remainingSessions: 0,
+        lowBalanceThreshold: 2
+      });
+      if (enrS3Cello && enrS3Cello.ok) {
+        store.migrateSessionPassFromEnrollment(enrS3Cello.data.id);
+      }
+
+      store.saveDB();
+    });
+
+    // 2. Navigate away and back to Today Console to trigger recommendation sync
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+    await page.waitForTimeout(200);
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+    await page.waitForTimeout(500);
+
+    // 3. Verify KPI card counts and filters
+    // Billing KPI (수납확인):
+    // - S1 월정액 2일 전 수납예정 (1)
+    // - S2 바이올린 10회 잔여 1회 수납예정 (1)
+    // - S3 피아노 10회 잔여 1회 수납예정 (1)
+    // Total Billing = 3
+    const billingCountText = await page.locator('.kpi-chip-card[data-filter-id="billing"] .badge').textContent();
+    expect(billingCountText.trim()).toBe('3');
+
+    // Overdue KPI (미수납 확인):
+    // - S3 첼로 10회 잔여 0회 미수납 (1)
+    // Total Overdue = 1
+    const overdueCountText = await page.locator('.kpi-chip-card[data-filter-id="overdue"] .badge').textContent();
+    expect(overdueCountText.trim()).toBe('1');
+
+    // 4. Verify Task Content in UI
+    // S1 월정액 2일 전 task
+    const s1Card = page.locator('#tasks-list-container .glass-card', { hasText: '최다은 원생 2026년 6월 수강료' });
+    await expect(s1Card).toBeVisible();
+    await expect(s1Card).toContainText('[수납 예정 확인]');
+    await expect(s1Card).toContainText('수납 예정입니다.');
+
+    // S2 횟수제 잔여 1회 task
+    const s2Card = page.locator('#tasks-list-container .glass-card', { hasText: '이도윤 원생 바이올린 10회 수업' });
+    await expect(s2Card).toBeVisible();
+    await expect(s2Card).toContainText('[수납 예정 확인]');
+    await expect(s2Card).toContainText('잔여 수업 횟수가 1회입니다.');
+    await expect(s2Card).not.toContainText('충전');
+
+    // S3 피아노 횟수제 잔여 1회 task
+    const s3PianoCard = page.locator('#tasks-list-container .glass-card', { hasText: '윤하온 원생 피아노 10회 수업' });
+    await expect(s3PianoCard).toBeVisible();
+    await expect(s3PianoCard).toContainText('[수납 예정 확인]');
+
+    // S3 첼로 횟수제 잔여 0회 task (Filter to overdue to check)
+    await page.locator('.kpi-chip-card[data-filter-id="overdue"]').click();
+    await page.waitForTimeout(200);
+    const s3CelloCard = page.locator('#tasks-list-container .glass-card', { hasText: '윤하온 원생 첼로 10회 수업' });
+    await expect(s3CelloCard).toBeVisible();
+    await expect(s3CelloCard).toContainText('[미수납 확인]');
+    await expect(s3CelloCard).toContainText('잔여 수업 횟수가 0회입니다.');
+    await expect(s3CelloCard).not.toContainText('충전');
+
+    // 5. Verify no parent message or triggerPaymentParentMessage was invoked
+    const parentMsgCount = await page.evaluate(() => window.stateStore.db.parentMessages.length);
+    expect(parentMsgCount).toBe(0);
+
+    // 6. Test cleanup when status changes (refilled/paid)
+    await page.evaluate(() => {
+      const store = window.stateStore;
+
+      // S2: 이도윤 수강권 remainingSessions 1 -> 5 (refilled)
+      const passS2 = store.db.sessionPasses.find(sp => sp.studentId === 'S2');
+      if (passS2) {
+        store.updateSessionPass(passS2.id, { remainingSessions: 5 });
+      }
+
+      // S1: 최다은 수강료 status -> paid
+      const payS1 = store.db.payments.find(p => p.id === 'P-S1-UPCOMING');
+      if (payS1) {
+        payS1.status = 'paid';
+      }
+
+      store.saveDB();
+    });
+
+    // Trigger sync
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+    await page.waitForTimeout(200);
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+    await page.waitForTimeout(500);
+
+    // Verify S2 card and S1 card are gone/done, and billing KPI decreased
+    // (Billing should be 1: S3 piano remaining 1. S1 should be done so it shouldn't show up in active list)
+    const newBillingCountText = await page.locator('.kpi-chip-card[data-filter-id="billing"] .badge').textContent();
+    expect(newBillingCountText.trim()).toBe('1');
+  });
 });
 
