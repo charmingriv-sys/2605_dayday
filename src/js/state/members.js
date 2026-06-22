@@ -947,5 +947,196 @@ export const membersMethods = {
             isExpired,
             isLowBalance
         };
+    },
+
+    // --- SESSION PASS DEDUCTION & REVERSAL ENGINE API (Phase 18B-32) ---
+    ensureSessionPassLogsCollection() {
+        if (!this.db) return;
+        if (!this.db.sessionPassLogs) {
+            this.db.sessionPassLogs = [];
+        }
+    },
+
+    createSessionPassLog(payload) {
+        this.ensureSessionPassLogsCollection();
+
+        let maxNum = 0;
+        let hasParsingError = false;
+        this.db.sessionPassLogs.forEach(log => {
+            if (typeof log.id === 'string' && log.id.startsWith('SPL_')) {
+                const numStr = log.id.substring(4);
+                const num = parseInt(numStr, 10);
+                if (isNaN(num)) {
+                    hasParsingError = true;
+                } else if (num > maxNum) {
+                    maxNum = num;
+                }
+            } else {
+                hasParsingError = true;
+            }
+        });
+
+        let newId;
+        if (hasParsingError) {
+            newId = `SPL_${Date.now()}`;
+        } else {
+            newId = `SPL_${maxNum + 1}`;
+        }
+
+        const log = {
+            id: newId,
+            passId: payload.passId,
+            enrollmentId: payload.enrollmentId,
+            studentId: payload.studentId,
+            classId: payload.classId || null,
+            attendanceId: payload.attendanceId,
+            date: payload.date,
+            time: payload.time,
+            delta: Number(payload.delta),
+            reason: payload.reason || 'deduction',
+            createdAt: payload.createdAt || new Date().toISOString()
+        };
+
+        this.db.sessionPassLogs.push(log);
+        this.saveDB();
+        this.notify('SESSION_PASS_LOGS_CHANGED', this.db.sessionPassLogs);
+        return log;
+    },
+
+    deductSessionPassForAttendance(payload) {
+        const { enrollmentId, studentId, classId, attendanceId, date, time, attendanceStatus } = payload;
+
+        if (attendanceStatus !== 'present' && attendanceStatus !== 'late') {
+            return { ok: false, reason: 'not_target_attendance_status' };
+        }
+
+        if (!enrollmentId) {
+            return { ok: false, reason: 'no_enrollment_id' };
+        }
+
+        const enrollment = this.getEnrollmentById(enrollmentId);
+        if (!enrollment || enrollment.source === 'legacy' || enrollment.isLegacy || (typeof enrollmentId === 'string' && enrollmentId.startsWith('legacy-'))) {
+            return { ok: false, reason: 'invalid_enrollment' };
+        }
+
+        if (enrollment.courseType !== 'session_pass') {
+            return { ok: false, reason: 'not_session_pass_enrollment' };
+        }
+
+        // 중복 차감 방지: deduction 로그 개수가 reversal 로그 개수보다 많으면 차단
+        const logsForAttendance = this.getSessionPassLogsByAttendanceId(attendanceId);
+        const deductionCount = logsForAttendance.filter(l => l.reason === 'deduction' && l.delta === -1).length;
+        const reversalCount = logsForAttendance.filter(l => l.reason === 'reversal' && l.delta === 1).length;
+        if (deductionCount > reversalCount) {
+            return { ok: false, reason: 'already_deducted' };
+        }
+
+        // active sessionPass 중 remainingSessions > 0인 pass를 FIFO로 선택
+        const activePasses = this.getSessionPassesByEnrollmentId(enrollmentId, { includeInactive: false })
+            .filter(sp => sp.remainingSessions > 0);
+
+        if (activePasses.length === 0) {
+            return { ok: false, reason: 'no_active_pass' };
+        }
+
+        const pass = activePasses[0];
+
+        // remainingSessions 1 감소 및 status 업데이트
+        const updateRes = this.updateSessionPass(pass.id, { remainingSessions: pass.remainingSessions - 1 });
+        if (!updateRes.ok) return updateRes;
+        const updatedPass = updateRes.data;
+
+        // 로그 적재
+        const log = this.createSessionPassLog({
+            passId: pass.id,
+            enrollmentId,
+            studentId,
+            classId,
+            attendanceId,
+            date,
+            time,
+            delta: -1,
+            reason: 'deduction'
+        });
+
+        return {
+            ok: true,
+            pass: updatedPass,
+            log,
+            deductedPassId: pass.id
+        };
+    },
+
+    reverseSessionPassDeduction(payload) {
+        const { deductedPassId, enrollmentId, studentId, classId, attendanceId, date, time } = payload;
+
+        if (!deductedPassId) {
+            return { ok: false, reason: 'no_deducted_pass_id' };
+        }
+
+        this.ensureSessionPassesCollection();
+        const pass = this.db.sessionPasses.find(sp => sp.id === deductedPassId);
+        if (!pass) {
+            return { ok: false, reason: 'pass_not_found' };
+        }
+
+        // 중복 복원 방지: attendanceId가 존재하고, reversal 로그 개수가 deduction 로그 개수 이상이면 차단
+        if (attendanceId) {
+            const logsForAttendance = this.getSessionPassLogsByAttendanceId(attendanceId);
+            const deductionCount = logsForAttendance.filter(l => l.reason === 'deduction' && l.delta === -1).length;
+            const reversalCount = logsForAttendance.filter(l => l.reason === 'reversal' && l.delta === 1).length;
+            if (reversalCount >= deductionCount) {
+                return { ok: false, reason: 'already_reversed' };
+            }
+        }
+
+        // remainingSessions 1 증가 및 status 업데이트
+        const updateRes = this.updateSessionPass(pass.id, { remainingSessions: pass.remainingSessions + 1 });
+        if (!updateRes.ok) return updateRes;
+        const updatedPass = updateRes.data;
+
+        // 로그 적재
+        const log = this.createSessionPassLog({
+            passId: pass.id,
+            enrollmentId,
+            studentId,
+            classId,
+            attendanceId,
+            date,
+            time,
+            delta: 1,
+            reason: 'reversal'
+        });
+
+        return {
+            ok: true,
+            pass: updatedPass,
+            log,
+            restoredPassId: pass.id
+        };
+    },
+
+    getSessionPassLogsByAttendanceId(attendanceId) {
+        this.ensureSessionPassLogsCollection();
+        if (!attendanceId) return [];
+        return this.db.sessionPassLogs
+            .filter(log => log.attendanceId === attendanceId)
+            .sort((a, b) => {
+                const aCre = a.createdAt || '';
+                const bCre = b.createdAt || '';
+                return aCre.localeCompare(bCre);
+            });
+    },
+
+    getSessionPassLogsByPassId(passId) {
+        this.ensureSessionPassLogsCollection();
+        if (!passId) return [];
+        return this.db.sessionPassLogs
+            .filter(log => log.passId === passId)
+            .sort((a, b) => {
+                const aCre = a.createdAt || '';
+                const bCre = b.createdAt || '';
+                return aCre.localeCompare(bCre);
+            });
     }
 };

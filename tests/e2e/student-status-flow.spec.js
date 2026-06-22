@@ -2160,4 +2160,269 @@ test.describe('Student Status Management Flow', () => {
     await detailModal.locator('[data-close-modal]').first().click();
     await expect(detailModal).not.toHaveClass(/show/);
   });
+
+  test('should verify SessionPass Deduction and Reversal API policies', async ({ page }) => {
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible();
+
+    // 2. 브라우저 컨텍스트 내에서 API 검증 수행
+    await page.evaluate(() => {
+      const store = window.stateStore;
+
+      // 2.1. 데이터 초기화 및 수강과목(session_pass) 생성
+      const student = store.db.students.find(m => m.id === 'S1') || store.db.students[0];
+      const studentId = student.id;
+
+      // 기존 enrollment와 sessionPass들 비활성화(archived) 처리하여 깨끗하게 세팅
+      if (store.db.enrollments) {
+        store.db.enrollments.forEach(enr => {
+          if (enr.studentId === studentId) enr.archived = true;
+        });
+      }
+      if (store.db.sessionPasses) {
+        store.db.sessionPasses.forEach(sp => {
+          if (sp.studentId === studentId) sp.status = 'archived';
+        });
+      }
+      if (store.db.sessionPassLogs) {
+        store.db.sessionPassLogs = store.db.sessionPassLogs.filter(log => log.studentId !== studentId);
+      }
+
+      // 신규 enrollment 생성
+      const enrRes = store.createEnrollment(studentId, {
+        subjectName: '피아노 테스트',
+        courseType: 'session_pass',
+        teacherId: 'T1',
+        startDate: '2026-06-01'
+      });
+      if (!enrRes.ok) throw new Error('Failed to create test enrollment: ' + enrRes.reason);
+      const enrollmentId = enrRes.data.id;
+
+      // 신규 수강권 생성 (remaining: 2, total: 2, expiresAt: 2026-12-31)
+      const spRes = store.createSessionPass(enrollmentId, {
+        passName: 'E2E 2회권',
+        totalSessions: 2,
+        remainingSessions: 2,
+        purchaseAmount: 20000,
+        purchaseDate: '2026-06-01',
+        expiresAt: '2026-12-31',
+        lowBalanceThreshold: 1
+      });
+      if (!spRes.ok) throw new Error('Failed to create test session pass: ' + spRes.reason);
+      const passId = spRes.data.id;
+
+      // 2.2. 차감 동작 검증
+      const attendanceId = 'ATT_E2E_DEDUCT_001';
+      const deductRes = store.deductSessionPassForAttendance({
+        enrollmentId,
+        studentId,
+        classId: 'C1',
+        attendanceId,
+        date: '2026-06-22',
+        time: '14:00',
+        attendanceStatus: 'present'
+      });
+
+      if (!deductRes.ok) throw new Error('Failed first deduction: ' + deductRes.reason);
+      if (deductRes.pass.remainingSessions !== 1) throw new Error('remainingSessions should be 1');
+      if (deductRes.deductedPassId !== passId) throw new Error('deductedPassId mismatch');
+
+      // deduction log 생성 확인
+      const logs = store.getSessionPassLogsByAttendanceId(attendanceId);
+      if (logs.length !== 1 || logs[0].reason !== 'deduction' || logs[0].delta !== -1) {
+        throw new Error('Deduction log not created correctly');
+      }
+
+      // 2.3. 중복 차감 방지 검증
+      const duplicateRes = store.deductSessionPassForAttendance({
+        enrollmentId,
+        studentId,
+        classId: 'C1',
+        attendanceId,
+        date: '2026-06-22',
+        time: '14:00',
+        attendanceStatus: 'present'
+      });
+      if (duplicateRes.ok || duplicateRes.reason !== 'already_deducted') {
+        throw new Error('Should block duplicate deduction with already_deducted');
+      }
+
+      // 2.4. used_up 변환 검증 (두 번째 차감)
+      const secondDeductRes = store.deductSessionPassForAttendance({
+        enrollmentId,
+        studentId,
+        classId: 'C1',
+        attendanceId: 'ATT_E2E_DEDUCT_002',
+        date: '2026-06-22',
+        time: '15:00',
+        attendanceStatus: 'late'
+      });
+      if (!secondDeductRes.ok) throw new Error('Failed second deduction: ' + secondDeductRes.reason);
+      if (secondDeductRes.pass.remainingSessions !== 0) throw new Error('remainingSessions should be 0');
+      if (secondDeductRes.pass.status !== 'used_up') throw new Error('Status should be used_up');
+
+      // 2.5. active pass가 없어서 음수 차감 없이 실패 결과 반환하는지 확인
+      const emptyDeductRes = store.deductSessionPassForAttendance({
+        enrollmentId,
+        studentId,
+        classId: 'C1',
+        attendanceId: 'ATT_E2E_DEDUCT_003',
+        date: '2026-06-22',
+        time: '16:00',
+        attendanceStatus: 'present'
+      });
+      if (emptyDeductRes.ok || emptyDeductRes.reason !== 'no_active_pass') {
+        throw new Error('Should fail deduction when no active pass: ' + emptyDeductRes.reason);
+      }
+      // 음수 차감 안 됨을 재차 확인
+      const currentPass = store.db.sessionPasses.find(sp => sp.id === passId);
+      if (currentPass.remainingSessions !== 0) {
+        throw new Error('remainingSessions should remain 0');
+      }
+
+      // 2.6. FIFO 순서 차감 검증을 위해 active pass 2개 더 생성 (하나는 만료일이 더 빠름)
+      const p1Res = store.createSessionPass(enrollmentId, {
+        passName: '만료일 늦은 수강권',
+        totalSessions: 5,
+        remainingSessions: 5,
+        purchaseAmount: 50000,
+        purchaseDate: '2026-06-01',
+        expiresAt: '2026-12-31',
+        lowBalanceThreshold: 1
+      });
+      const p2Res = store.createSessionPass(enrollmentId, {
+        passName: '만료일 빠른 수강권',
+        totalSessions: 5,
+        remainingSessions: 5,
+        purchaseAmount: 50000,
+        purchaseDate: '2026-06-01',
+        expiresAt: '2026-08-31', // 만료일이 더 빠름
+        lowBalanceThreshold: 1
+      });
+      if (!p1Res.ok || !p2Res.ok) throw new Error('Failed to create passes for FIFO check');
+
+      const fifoDeductRes = store.deductSessionPassForAttendance({
+        enrollmentId,
+        studentId,
+        classId: 'C1',
+        attendanceId: 'ATT_E2E_FIFO',
+        date: '2026-06-22',
+        time: '17:00',
+        attendanceStatus: 'present'
+      });
+      // 만료일이 더 빠른 p2Res가 차감되어야 함
+      if (!fifoDeductRes.ok || fifoDeductRes.deductedPassId !== p2Res.data.id) {
+        throw new Error('FIFO: Should deduct from the pass with earlier expiresAt');
+      }
+
+      // expired pass는 차감 대상에서 제외되는지 확인하기 위해 p2Res를 만료 처리
+      const p2Pass = store.db.sessionPasses.find(sp => sp.id === p2Res.data.id);
+      p2Pass.status = 'expired';
+      p2Pass.expiresAt = '2026-06-10'; // 과거 날짜
+
+      const expiredExcludeDeductRes = store.deductSessionPassForAttendance({
+        enrollmentId,
+        studentId,
+        classId: 'C1',
+        attendanceId: 'ATT_E2E_EXPIRED_EXCLUDE',
+        date: '2026-06-22',
+        time: '18:00',
+        attendanceStatus: 'present'
+      });
+      // 만료된 p2를 건너뛰고 p1Res가 차감되어야 함
+      if (!expiredExcludeDeductRes.ok || expiredExcludeDeductRes.deductedPassId !== p1Res.data.id) {
+        throw new Error('FIFO: Should skip expired pass and deduct from active pass');
+      }
+
+      // 2.7. 복원(Reversal) 정책 검증
+      const testRevPassId = passId; // 'used_up' 상태가 된 첫 수강권
+      const reverseRes = store.reverseSessionPassDeduction({
+        deductedPassId: testRevPassId,
+        enrollmentId,
+        studentId,
+        classId: 'C1',
+        attendanceId: 'ATT_E2E_DEDUCT_002', // used_up을 만들었던 attendance
+        date: '2026-06-22',
+        time: '15:00'
+      });
+      if (!reverseRes.ok) throw new Error('Reversal failed: ' + reverseRes.reason);
+      if (reverseRes.pass.remainingSessions !== 1) throw new Error('Reversal: remainingSessions should be 1');
+      if (reverseRes.pass.status !== 'active') throw new Error('Reversal: used_up pass should return to active status');
+
+      // reversal log 생성 확인
+      const revLogs = store.getSessionPassLogsByAttendanceId('ATT_E2E_DEDUCT_002');
+      const deductionLog = revLogs.find(l => l.reason === 'deduction');
+      const reversalLog = revLogs.find(l => l.reason === 'reversal');
+      if (!deductionLog || !reversalLog) throw new Error('Missing deduction or reversal log');
+
+      // 2.8. 보강 조건 검증: 동일 attendanceId에 대해 deduction 후 reversal 완료된 상태에서 재차감 허용 여부
+      const reDeductRes = store.deductSessionPassForAttendance({
+        enrollmentId,
+        studentId,
+        classId: 'C1',
+        attendanceId: 'ATT_E2E_DEDUCT_002', // deduction 1, reversal 1 완료 상태
+        date: '2026-06-22',
+        time: '15:00',
+        attendanceStatus: 'present'
+      });
+      if (!reDeductRes.ok) throw new Error('Re-deduction should be allowed after reversal: ' + reDeductRes.reason);
+
+      // 2.9. 보강 조건 검증: 동일 attendanceId에 대해 복원 두 번은 차단되어야 함
+      // 현재 ATT_E2E_DEDUCT_002에 대해 deduction 2, reversal 1인 상태이므로, 복원 1회 더 가능
+      const secondRevRes = store.reverseSessionPassDeduction({
+        deductedPassId: testRevPassId,
+        enrollmentId,
+        studentId,
+        classId: 'C1',
+        attendanceId: 'ATT_E2E_DEDUCT_002', // reversal 2번째 시도
+        date: '2026-06-22',
+        time: '15:00'
+      });
+      if (!secondRevRes.ok) throw new Error('Should allow second reversal as there are two deductions');
+
+      // 이제 deduction 2, reversal 2 이므로 세 번째 복원은 차단되어야 함
+      const thirdRevRes = store.reverseSessionPassDeduction({
+        deductedPassId: testRevPassId,
+        enrollmentId,
+        studentId,
+        classId: 'C1',
+        attendanceId: 'ATT_E2E_DEDUCT_002', // reversal 3번째 시도
+        date: '2026-06-22',
+        time: '15:00'
+      });
+      if (thirdRevRes.ok || thirdRevRes.reason !== 'already_reversed') {
+        throw new Error('Third reversal should be blocked with already_reversed');
+      }
+
+      // 2.10. expired pass는 복원되어도 expired 상태를 유지하는지 확인
+      const p2PassItem = store.db.sessionPasses.find(sp => sp.id === p2Res.data.id);
+      p2PassItem.expiresAt = '2026-06-10'; // 확실히 만료날짜
+      p2PassItem.status = 'expired';
+
+      const expiredRevRes = store.reverseSessionPassDeduction({
+        deductedPassId: p2Res.data.id,
+        enrollmentId,
+        studentId,
+        classId: 'C1',
+        attendanceId: 'ATT_E2E_FIFO', // FIFO 검증 시 p2Res를 차감시켰었음
+        date: '2026-06-22',
+        time: '17:00'
+      });
+      if (!expiredRevRes.ok) throw new Error('Expired pass reversal failed: ' + expiredRevRes.reason);
+      if (expiredRevRes.pass.status !== 'expired') {
+        throw new Error('Reversed pass should remain expired when expiresAt < today');
+      }
+
+      // 2.11. getSessionPassLogsByPassId 조회 및 정렬 확인
+      const passLogs = store.getSessionPassLogsByPassId(passId);
+      if (passLogs.length < 2) throw new Error('Pass logs should contain at least 2 entries');
+      for (let i = 0; i < passLogs.length - 1; i++) {
+        if (passLogs[i].createdAt.localeCompare(passLogs[i+1].createdAt) > 0) {
+          throw new Error('Pass logs are not sorted by createdAt ascending');
+        }
+      }
+    });
+  });
 });
