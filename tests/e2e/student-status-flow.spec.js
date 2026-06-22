@@ -2662,4 +2662,182 @@ test.describe('Student Status Management Flow', () => {
       }
     });
   });
+
+  test('should verify SessionPass manual adjustment, recharge, and archive policies', async ({ page }) => {
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Evaluate in browser page to test stateStore methods
+    await page.evaluate(() => {
+      const store = window.stateStore;
+
+      // setup a test student
+      const studentRes = store.addStudent({
+        name: 'ManualTestStudent',
+        phoneStatus: 'none',
+        parentPhone: '010-1111-2222',
+        dueDay: 10,
+        fee: 0
+      });
+      const studentId = studentRes.id;
+
+      // create a session_pass enrollment
+      const enrollmentRes = store.createEnrollment(studentId, {
+        subjectName: '피아노 횟수제',
+        courseType: 'session_pass',
+        teacherId: 'T1',
+        startDate: '2026-06-01'
+      });
+      const enrollmentId = enrollmentRes.data.id;
+
+      // recharge/create initial pass
+      const rechargeRes = store.rechargeSessionPass(enrollmentId, {
+        passName: '피아노 10회',
+        totalSessions: 10,
+        remainingSessions: 0, // start with 0 (used_up)
+        purchaseAmount: 150000,
+        lowBalanceThreshold: 2,
+        memo: '초기 충전'
+      });
+
+      if (!rechargeRes.ok) throw new Error('rechargeSessionPass failed: ' + rechargeRes.reason);
+      const pass = rechargeRes.data;
+
+      if (pass.status !== 'used_up') {
+        throw new Error('Initial status should be used_up when remaining is 0');
+      }
+
+      // verify manual_recharge log
+      const logs = store.db.sessionPassLogs.filter(l => l.passId === pass.id);
+      const rechargeLog = logs.find(l => l.reason === 'manual_recharge');
+      if (!rechargeLog || rechargeLog.memo !== '초기 충전') {
+        throw new Error('manual_recharge log not found or invalid');
+      }
+
+      // 1. adjustSessionPassManually 0 -> 5
+      const adjustRes = store.adjustSessionPassManually(pass.id, {
+        remainingSessions: 5,
+        memo: '수동 증정'
+      });
+      if (!adjustRes.ok) throw new Error('adjustSessionPassManually failed: ' + adjustRes.reason);
+      const adjustedPass = adjustRes.data;
+
+      // 2. status active 복귀 확인
+      if (adjustedPass.remainingSessions !== 5 || adjustedPass.status !== 'active') {
+        throw new Error('Pass should be updated to active and remainingSessions to 5');
+      }
+
+      // 3. manual_adjustment log check (prev, post, delta, memo)
+      const adjLog = store.db.sessionPassLogs.find(l => l.reason === 'manual_adjustment' && l.passId === pass.id);
+      if (!adjLog) throw new Error('manual_adjustment log not found');
+      if (adjLog.prevRemainingSessions !== 0 || adjLog.postRemainingSessions !== 5 || adjLog.delta !== 5 || adjLog.memo !== '수동 증정') {
+        throw new Error('manual_adjustment log values incorrect');
+      }
+
+      // 4. remainingSessions < 0 check
+      const negativeRes = store.adjustSessionPassManually(pass.id, {
+        remainingSessions: -1,
+        memo: '음수 시도'
+      });
+      if (negativeRes.ok) throw new Error('Negative remainingSessions should fail');
+
+      // 5. remainingSessions > totalSessions check
+      const exceedRes = store.adjustSessionPassManually(pass.id, {
+        remainingSessions: 11,
+        memo: '초과 시도'
+      });
+      if (exceedRes.ok) throw new Error('remainingSessions > totalSessions should fail');
+
+      // 6. memo required check
+      const noMemoRes = store.adjustSessionPassManually(pass.id, {
+        remainingSessions: 3
+      });
+      if (noMemoRes.ok) throw new Error('Missing memo should fail');
+
+      // 7. expired pass active 복귀 확인
+      const expiredPassRes = store.rechargeSessionPass(enrollmentId, {
+        passName: '피아노 5회',
+        totalSessions: 5,
+        remainingSessions: 5,
+        purchaseAmount: 80000,
+        expiresAt: '2026-05-01', // past date
+        lowBalanceThreshold: 2,
+        memo: '만료 패스'
+      });
+      const expPass = expiredPassRes.data;
+      if (expPass.status !== 'expired') throw new Error('Status should be expired');
+
+      // extend expiration date
+      const extendRes = store.extendSessionPass(expPass.id, '2026-12-31', '만료일 연장');
+      if (!extendRes.ok) throw new Error('extendSessionPass failed');
+      if (extendRes.data.status !== 'active') throw new Error('Status should return to active after extension');
+
+      // 8. archiveSessionPass & manual_archive log
+      const archRes = store.archiveSessionPass(expPass.id, '환불 처리');
+      if (!archRes.ok) throw new Error('archiveSessionPass failed');
+      
+      const expPassAfterArch = store.db.sessionPasses.find(sp => sp.id === expPass.id);
+      if (expPassAfterArch.status !== 'archived') throw new Error('Should be archived');
+
+      const archLog = store.db.sessionPassLogs.find(l => l.reason === 'manual_archive' && l.passId === expPass.id);
+      if (!archLog || archLog.memo !== '환불 처리') {
+        throw new Error('manual_archive log not found or incorrect');
+      }
+
+      // try to modify archived pass
+      const modifyArchRes = store.adjustSessionPassManually(expPass.id, {
+        remainingSessions: 4,
+        memo: '아카이브 수정 시도'
+      });
+      if (modifyArchRes.ok) throw new Error('Modifying archived pass should fail');
+
+      // 9. rechargeSessionPass creates new pass and does not accumulate in existing pass
+      const secondRechargeRes = store.rechargeSessionPass(enrollmentId, {
+        passName: '피아노 10회 추가',
+        totalSessions: 10,
+        remainingSessions: 10,
+        purchaseAmount: 150000,
+        lowBalanceThreshold: 2,
+        memo: '두번째 충전'
+      });
+      if (!secondRechargeRes.ok) throw new Error('rechargeSessionPass failed');
+      const secondPass = secondRechargeRes.data;
+
+      if (secondPass.id === pass.id) {
+        throw new Error('Recharging should create a new pass record, not reuse existing ID');
+      }
+
+      // 10. Check if syncSystemRecommendations cleaned up tasks
+      // Add a dummy task of type SYSTEM_RECOMMEND_SESSION_PASS_UNPAID for testing cleanup
+      const dummyKey = `SYSTEM_RECOMMEND_SESSION_PASS_UNPAID_${studentId}_${enrollmentId}_${pass.id}`;
+      store.db.todayTasks.push({
+        id: 'T_DUMMY_CLEANUP_TEST',
+        organizationId: 'org1',
+        segment: 'academy_director_console',
+        domain: 'academy',
+        source: 'system',
+        type: 'billing',
+        category: 'overdue',
+        status: 'open',
+        dedupeKey: dummyKey,
+        title: 'Dummy Task',
+        description: 'Dummy Task Description'
+      });
+
+      // Now update pass to 5 remaining sessions again, which should trigger syncSystemRecommendations and clean up the dummy task
+      const finalAdjust = store.adjustSessionPassManually(pass.id, {
+        remainingSessions: 5,
+        memo: '최종 복귀'
+      });
+      if (!finalAdjust.ok) throw new Error('final adjust failed');
+
+      const cleanedTask = store.db.todayTasks.find(t => t.id === 'T_DUMMY_CLEANUP_TEST');
+      if (cleanedTask) {
+        throw new Error('Task should have been cleaned up because remaining sessions are now 5 (not 0 or used_up)');
+      }
+    });
+  });
 });

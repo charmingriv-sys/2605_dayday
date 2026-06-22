@@ -820,7 +820,7 @@ export const membersMethods = {
         return { ok: true, data: pass };
     },
 
-    archiveSessionPass(passId) {
+    archiveSessionPass(passId, memo = '') {
         this.ensureSessionPassesCollection();
 
         const pass = this.db.sessionPasses.find(sp => sp.id === passId);
@@ -828,14 +828,185 @@ export const membersMethods = {
             return { ok: false, reason: 'not_found' };
         }
 
+        if (pass.status === 'archived') {
+            return { ok: true, data: pass }; // no-op
+        }
+
         pass.status = 'archived';
         pass.deletedAt = new Date().toISOString();
         pass.updatedAt = new Date().toISOString();
 
-        this.saveDB();
+        // 수동 보관 로그 생성 (createSessionPassLog 내에서 saveDB() 호출하므로, pass.status 변경사항이 자동 저장됨)
+        const log = this.createSessionPassLog({
+            passId: pass.id,
+            enrollmentId: pass.enrollmentId,
+            studentId: pass.studentId,
+            delta: 0,
+            reason: 'manual_archive',
+            memo: memo || ''
+        });
+
         this.notify('SESSION_PASSES_CHANGED', this.db.sessionPasses);
 
-        return { ok: true };
+        if (typeof this.syncSystemRecommendations === 'function') {
+            this.syncSystemRecommendations(new Date(), true);
+        }
+
+        return { ok: true, data: pass, log };
+    },
+
+    adjustSessionPassManually(passId, patch) {
+        if (!passId) {
+            return { ok: false, reason: 'no_pass_id' };
+        }
+        if (!patch || !patch.memo || typeof patch.memo !== 'string' || !patch.memo.trim()) {
+            return { ok: false, reason: 'memo_required' };
+        }
+
+        this.ensureSessionPassesCollection();
+        const pass = this.db.sessionPasses.find(sp => sp.id === passId);
+        if (!pass) {
+            return { ok: false, reason: 'pass_not_found' };
+        }
+
+        if (pass.status === 'archived') {
+            return { ok: false, reason: 'archived_pass_cannot_be_modified' };
+        }
+
+        // remainingSessions validation
+        if (patch.remainingSessions !== undefined) {
+            const rem = Number(patch.remainingSessions);
+            if (isNaN(rem) || rem < 0) {
+                return { ok: false, reason: 'invalid_remaining_sessions' };
+            }
+            if (rem > pass.totalSessions) {
+                return { ok: false, reason: 'remaining_sessions_cannot_exceed_total_sessions' };
+            }
+        }
+
+        // expiresAt validation
+        if (patch.expiresAt !== undefined && patch.expiresAt !== null) {
+            if (typeof patch.expiresAt !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(patch.expiresAt)) {
+                return { ok: false, reason: 'invalid_expires_at_format' };
+            }
+            if (isNaN(Date.parse(patch.expiresAt))) {
+                return { ok: false, reason: 'invalid_expires_at' };
+            }
+        }
+
+        const prevRemaining = pass.remainingSessions;
+        const prevExpiresAt = pass.expiresAt;
+
+        if (patch.remainingSessions !== undefined) {
+            pass.remainingSessions = Number(patch.remainingSessions);
+        }
+        if (patch.expiresAt !== undefined) {
+            pass.expiresAt = patch.expiresAt;
+        }
+
+        // Recalculate status
+        const todayStr = new Date().toISOString().slice(0, 10);
+        if (pass.remainingSessions <= 0) {
+            pass.status = 'used_up';
+        } else if (pass.expiresAt && pass.expiresAt < todayStr) {
+            pass.status = 'expired';
+        } else {
+            pass.status = 'active';
+        }
+
+        const delta = (patch.remainingSessions !== undefined) ? (pass.remainingSessions - prevRemaining) : 0;
+        pass.updatedAt = new Date().toISOString();
+
+        // Log manual adjustment (createSessionPassLog 내에서 saveDB()가 호출되므로, pass의 상태 변경 내역도 자동 동시 저장됨)
+        const log = this.createSessionPassLog({
+            passId: pass.id,
+            enrollmentId: pass.enrollmentId,
+            studentId: pass.studentId,
+            delta: delta,
+            reason: 'manual_adjustment',
+            memo: patch.memo,
+            prevRemainingSessions: prevRemaining,
+            postRemainingSessions: pass.remainingSessions,
+            prevExpiresAt: prevExpiresAt,
+            postExpiresAt: pass.expiresAt
+        });
+
+        this.notify('SESSION_PASSES_CHANGED', this.db.sessionPasses);
+
+        if (typeof this.syncSystemRecommendations === 'function') {
+            this.syncSystemRecommendations(new Date(), true);
+        }
+
+        return { ok: true, data: pass, log };
+    },
+
+    extendSessionPass(passId, expiresAt, memo) {
+        return this.adjustSessionPassManually(passId, { expiresAt, memo });
+    },
+
+    rechargeSessionPass(enrollmentId, payload) {
+        if (!enrollmentId) {
+            return { ok: false, reason: 'no_enrollment_id' };
+        }
+        if (!payload || !payload.memo || typeof payload.memo !== 'string' || !payload.memo.trim()) {
+            return { ok: false, reason: 'memo_required' };
+        }
+
+        const enrollment = this.getEnrollmentById(enrollmentId);
+        if (!enrollment) {
+            return { ok: false, reason: 'enrollment_not_found' };
+        }
+        if (enrollment.courseType !== 'session_pass') {
+            return { ok: false, reason: 'not_session_pass_enrollment' };
+        }
+
+        // Validations for total/remaining sessions
+        const total = Number(payload.totalSessions);
+        const remaining = Number(payload.remainingSessions);
+        if (isNaN(total) || total < 1) {
+            return { ok: false, reason: 'invalid_total_sessions' };
+        }
+        if (isNaN(remaining) || remaining < 0) {
+            return { ok: false, reason: 'invalid_remaining_sessions' };
+        }
+        if (remaining > total) {
+            return { ok: false, reason: 'remaining_greater_than_total' };
+        }
+
+        // Validate expiresAt format/validity
+        if (payload.expiresAt !== undefined && payload.expiresAt !== null) {
+            if (typeof payload.expiresAt !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(payload.expiresAt)) {
+                return { ok: false, reason: 'invalid_expires_at_format' };
+            }
+            if (isNaN(Date.parse(payload.expiresAt))) {
+                return { ok: false, reason: 'invalid_expires_at' };
+            }
+        }
+
+        // Call existing createSessionPass
+        const res = this.createSessionPass(enrollmentId, payload);
+        if (!res.ok) return res;
+
+        const newPass = res.data;
+
+        // Log manual recharge
+        const log = this.createSessionPassLog({
+            passId: newPass.id,
+            enrollmentId: enrollmentId,
+            studentId: newPass.studentId,
+            delta: newPass.remainingSessions,
+            reason: 'manual_recharge',
+            memo: payload.memo,
+            totalSessions: newPass.totalSessions,
+            remainingSessions: newPass.remainingSessions,
+            postRemainingSessions: newPass.remainingSessions
+        });
+
+        if (typeof this.syncSystemRecommendations === 'function') {
+            this.syncSystemRecommendations(new Date(), true);
+        }
+
+        return { ok: true, data: newPass, log };
     },
 
     migrateSessionPassFromEnrollment(enrollmentId) {
@@ -989,12 +1160,20 @@ export const membersMethods = {
             enrollmentId: payload.enrollmentId,
             studentId: payload.studentId,
             classId: payload.classId || null,
-            attendanceId: payload.attendanceId,
-            date: payload.date,
-            time: payload.time,
-            delta: Number(payload.delta),
+            attendanceId: payload.attendanceId || null,
+            date: payload.date || null,
+            time: payload.time || null,
+            delta: Number(payload.delta !== undefined ? payload.delta : 0),
             reason: payload.reason || 'deduction',
-            createdAt: payload.createdAt || new Date().toISOString()
+            createdAt: payload.createdAt || new Date().toISOString(),
+            // 수동 조정/충전/보관 필드 추가
+            memo: payload.memo || null,
+            prevRemainingSessions: payload.prevRemainingSessions !== undefined ? payload.prevRemainingSessions : null,
+            postRemainingSessions: payload.postRemainingSessions !== undefined ? payload.postRemainingSessions : null,
+            prevExpiresAt: payload.prevExpiresAt || null,
+            postExpiresAt: payload.postExpiresAt || null,
+            totalSessions: payload.totalSessions !== undefined ? payload.totalSessions : null,
+            remainingSessions: payload.remainingSessions !== undefined ? payload.remainingSessions : null
         };
 
         this.db.sessionPassLogs.push(log);
