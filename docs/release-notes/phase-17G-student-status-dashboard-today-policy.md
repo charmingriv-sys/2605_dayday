@@ -1569,5 +1569,115 @@
 - attendance-control-flow.spec.js: 16 passed
 - billing-warning-flow.spec.js: 5 passed
 
+## 25. 복수 수강과목 및 횟수제 수강권 마일스톤 Closeout (Phase 18B-41)
+
+### 25-1. Phase 18B 마일스톤 개요
+- Phase 18B의 목표는 기존 단일 원생 및 단일 수강 모델을 원생(student)과 수강과목(enrollment), 횟수제 수강권(sessionPass)으로 분리함으로써 복수 과목, 복수 강사, 복수 결제 기반으로 확장하는 것입니다.
+- 기존의 flat student 필드(예: student.courseType, student.monthlyFee 등)는 compatibility cache(호환성 캐시)로 계속 유지하여 기존 대시보드 및 리포트 화면과의 완벽한 하위 호환성을 제공합니다.
+
+### 25-2. 복수 수강과목 구현 완료 범위
+- legacy enrollment adapter 도입: 기존 단일 과목 필드 기반 데이터를 복수 수강과목 스키마로 실시간 가상 변환하여 기존 UI와 연동.
+- db.enrollments Storage API 도입: 복수 과목 데이터를 저장, 갱신 및 관리하기 위한 스키마 및 저장소 API 구현.
+- getStudentEnrollments / getPrimaryEnrollment / getEnrollmentById 등 조회 API 도입: 원생의 모든 수강과목 목록, 대표 수강과목 및 ID 매핑 조회를 위한 API 완료.
+- createEnrollment 도입: 신규 복수 수강과목을 추가하고 저장할 수 있는 스토리지 API 구현.
+- source: 'legacy' / source: 'manual' 구분: 시스템에 의해 마이그레이션된 레거시 데이터와 원장이 수동으로 추가한 신규 수강과목을 명확히 식별 및 구분.
+- 원생 상세 / 오늘 콘솔 드로어 / 출결관제 인스펙터 수강중인 과목 UI 표시: 여러 개의 수강과목 정보가 각 화면의 과목 라벨 및 상세 영역에 명확히 표시되도록 UI 확장.
+- 수강과목 추가 모달 UI 및 저장 연동: 새로운 수강과목을 원생 정보에 수동으로 추가할 수 있는 디자인 모달 제공 및 데이터 저장소 연동.
+- 월정액 / 횟수제 수강과목 분기 저장: 선택한 수강 타입에 따라 월정액 수강료 정보 또는 수강권 횟수 정보를 개별 입력받아 스키마에 맞게 분기 저장.
+- 기존 flat field mirroring 유지: 신규 수강과목 생성 및 수정 시, 하위 호환성 유지를 위해 student 테이블 내의 기존 flat 필드에 값을 실시간으로 미러링하여 동기화.
+
+### 25-3. class.enrollmentId 시간표 분리 완료 범위
+- class.enrollmentId 도입: 수업 시간표(class) 모델에 enrollmentId 외래키를 추가하여 특정 과목에 수업을 명확히 바인딩.
+- createClassForEnrollment / replaceClassesForEnrollment / getClassesByEnrollmentId / getClassEnrollment 도입: 수강과목별 시간표 생성, 덮어쓰기 대체, 전체 조회 및 단일 수업 수강과목 매핑 API 구현 완료.
+- updateStudent Schedule Overwrite Guard 적용: 원생 전체 정보를 업데이트할 때 기존 과목별 시간표가 임의로 초기화되거나 덮어씌워지지 않도록 방어 로직 설계.
+- studentId 기준 전체 시간표 덮어쓰기 방지: 개별 과목의 시간표를 변경할 때 원생 ID 단위로 전체 시간표를 날리는 방식의 기존 오버라이트 차단.
+- manual enrollment class 보호: 수동 등록된 과목에 부여된 독자적인 수업 시간표가 레거시 연동 시 유실되지 않도록 격리 처리.
+- legacy class fallback 유지: enrollmentId가 누락된 과거 수업 데이터에 대해 studentId 기반으로 정상 작동하는 폴백 매커니즘 유지.
+- 오늘 콘솔 / 출결관제 enrollment-aware 과목/강사/시간 표시 보정: 시간표 데이터를 화면에 렌더링할 때 과목 ID와 강사 ID를 매핑하여 정확한 정보를 출력하도록 UI 보정.
+
+### 25-4. 횟수제 수강권 저장 및 UI 완료 범위
+- db.sessionPasses Storage API 도입: 횟수제 수강권 정보 저장을 위한 별도 테이블 및 스토리지 API 구현.
+- createSessionPass / updateSessionPass / archiveSessionPass / getActiveSessionPassForEnrollment 도입: 수강권 생성, 수정, 사용 완료 아카이브 및 과목별 활성 수강권 조회 API 완료.
+- migrateSessionPassFromEnrollment 수동 helper 도입: 수강권 이관을 원활하게 진행할 수 있도록 설계된 수동 데이터 프로모션 헬퍼 구현.
+- 수강과목 추가 모달에서 session_pass 저장 시 createSessionPass 연동: 모달 창에서 횟수제 과목 저장 시, 백그라운드에서 자동으로 수강권 정보가 생성되도록 연동 완료.
+- getSessionPassSummaryForEnrollment 도입: 과목별 잔여 수업 횟수, 총 횟수, 상태 요약을 반환하는 고수준 요약 API 제공.
+- 원생 상세 / 오늘 콘솔 드로어 / 출결관제 인스펙터 잔여 수업 횟수 UI 표시: 각 드로어 및 정보 영역에 '잔여 수업 횟수'를 실시간 수치로 제공.
+- 충전 필요 / 소진 / 만료 상태 배지 표시: 잔여 횟수가 1회 이하(충전 필요), 0회(소진), 유효기간이 초과된 수강권에 대해 상태별 컬러 배지 표시.
+- 월정액 과목에는 잔여 수업 횟수 미노출: 수강 타입이 월정액인 과목에서는 잔여 수업 횟수 텍스트와 레이아웃을 숨김 처리.
+- undefined / NaN / null 노출 방지: 수강권이 없거나 계산 중 예외가 발생할 경우 화면에 널(nullish) 값이 노출되지 않도록 철저한 예외 방어.
+
+### 25-5. 수강권 차감/복원 완료 범위
+- db.sessionPassLogs 도입: 출결 차감 및 복원에 따른 개별 수강권 차감 이력을 기록하기 위한 로그 데이터 저장소 도입.
+- deductSessionPassForAttendance 도입: 출결이 출석 또는 지각으로 체크될 때 활성 수강권의 잔여 횟수를 차감하는 API 구현.
+- reverseSessionPassDeduction 도입: 출결 상태를 취소하거나 변경하여 기존 차감 이력을 원복시키는 복원 API 구현.
+- getSessionPassLogsByAttendanceId / getSessionPassLogsByPassId 도입: 특정 출결 내역 ID 혹은 특정 수강권 ID를 바탕으로 세부 수강권 사용 로그를 추적하는 조회 API 제공.
+- markAttendanceStatus 연동: 출결 상태가 전환될 때 수강권 차감/복원이 비동기 트랜잭션 내에서 정합성을 유지하며 자동 수행되도록 연결.
+- present / late 진입 시 1회 차감: 출결 상태가 'present'(출석) 또는 'late'(지각)로 변경될 때 수강권 1회 차감 적용.
+- present <-> late no-op: 출석에서 지각으로, 혹은 지각에서 출석으로 변경되는 상태 스위칭 시에는 잔여 수업 횟수의 중복 차감이나 복원 없이 무효 처리(no-op).
+- absent / none / scheduled 변경 시 복원: 기존에 출석/지각 처리되어 차감되었던 내역을 결석(absent), 출결 없음(none), 수업 예정(scheduled) 상태로 돌릴 때 횟수를 안전하게 복원.
+- no_active_pass 시 출결 저장 유지 및 음수 차감 방지: 활성화된 수강권이 없는 상태에서 출결 처리를 수행하더라도 출결 데이터 자체는 안전하게 저장하되, 잔여 횟수가 음수로 떨어지지 않도록 가드 처리.
+- monthly / legacy 미차감: 월정액 수강과목과 레거시 과목에 대해서는 출결 시 수강권 차감 로직이 전혀 개입하지 않도록 격리.
+- 중복 차감 / 중복 복원 방지: 단일 출결 처리 트랜잭션 내에서 동일한 차감 로그 및 복원 로그가 여러 차례 중복 기록되는 오동작을 완벽하게 방지.
+- deductedPassId 기반 원래 수강권 복원: 복원 시, 차감 당시에 실제로 사용되었던 수강권 ID(deductedPassId)를 기준으로 역추적하여 다른 수강권이 갱신되는 정합성 불일치 예방.
+
+### 25-6. 수납 Task 흡수 구현 완료 범위
+- 신규 상단 KPI 없이 기존 billing / overdue 영역에 흡수: 오늘 원장 콘솔 상단에 별도의 수강권용 KPI 카드를 신설하지 않고, 기존 수납 확인 및 미수납 확인 영역에 자연스럽게 녹아들도록 구현.
+- 월정액 납부 2일 전 [수납 예정 확인] task 구현: 월정액 원생(student.status !== 'withdrawn') 중 미납인 교육 결제 건에 대해 납부 예정일 2일 전이 되었을 때, 카테고리 'billing', 타입 'billing'으로 [수납 예정 확인] 태스크 생성.
+- 월정액 오늘 [수납 확인] 기존 유지: 당일 결제 대상 수납 확인 태스크를 기존 로직대로 생성 및 유지.
+- 월정액 경과 [미수납 확인] 기존 유지: 납부일이 경과한 미수납 확인 태스크를 기존 카테고리 'overdue' 상태로 노출 유지.
+- 퇴원생 [퇴원생 미수납 확인] 기존 유지: 퇴원한 원생의 납부 지연 건에 대한 미수납 태스크 예외 흐름 유지.
+- sessionPass 잔여 수업 횟수 1회 [수납 예정 확인] task 구현: 활성화된 수강권의 잔여 수업 횟수가 정확히 1회인 시점에 [수납 예정 확인] 태스크를 자동 생성하여 수납을 선제적으로 준비하도록 권장.
+- sessionPass 잔여 수업 횟수 0회 [미수납 확인] task 구현: 잔여 수업 횟수가 0회가 되거나 수강권이 소진(used_up)되었을 때 [미수납 확인] 태스크를 자동 생성하여 미수납 상태를 시각화.
+- "충전" 표현 사용 금지 및 "잔여 수업 횟수" 표현 사용: 모든 UI 텍스트와 알림 템플릿 영역에서 오해의 소지가 있는 '충전'이라는 단어 대신 '잔여 수업 횟수'를 일관되게 적용.
+- studentId + enrollmentId + passId 기반 dedupeKey: 동일한 원생이 다른 과목이나 여러 개의 수강권을 가질 때 태스크가 서로 중복 덮어씌워지지 않도록, 학생 ID, 과목 ID, 수강권 ID를 조합한 정밀 중복 방지 키 적용.
+- parentMessages / triggerPaymentParentMessage 미연동 유지: 수강권 태스크 생성 시 학부모용 자동 알림 발송 로직과의 연동을 의도적으로 보류하여 오발송 사고 차단.
+- 기존 월정액 overdue parentMessages 자동 생성 유지: 월정액 미수납 시 학부모에게 자동 유도되는 parentMessages 발송 로직은 안전하게 보존.
+
+### 25-7. Phase 18B Release Gate 검증 기록
+전체 마일스톤에 대한 Release Gate E2E 통합 검증 결과, 총 89개의 사양이 완벽하게 통과되었습니다.
+- student-status-flow.spec.js: 15 passed
+- today-console-flow.spec.js: 30 passed
+- attendance-control-flow.spec.js: 16 passed
+- billing-warning-flow.spec.js: 5 passed
+- message-send-flow.spec.js: 19 passed
+- student-detail-handoff-flow.spec.js: 2 passed
+- student-warning-flow.spec.js: 1 passed
+- warning-seed-flow.spec.js: 1 passed
+- 총 89 passed
+- Phase 18B-40 Release Gate Passed
+
+### 25-8. 의도적으로 보류한 범위
+- payment.enrollmentId 기반 수납 분리: 결제 이력과 개별 수강과목의 매핑 정교화 및 별도 필드 분리 보류.
+- 수강과목별 청구서/영수증/납입증명서 완전 분리: 수강과목 단위로 독립된 수납 증명 문서 생성 기능 보류.
+- 수강권 충전/재수강 메시지 자동 발송: 횟수 소진에 따른 메시지 템플릿 구성 및 백그라운드 자동 전송 보류.
+- 수강권 안내 알림톡 자동 발송: 카카오 알림톡 인프라와의 연동 및 자동화 트리거링 보류.
+- 자동 발송 실패 / 보호자 연락처 없음 task 정책: 연락처 누락이나 발송 장애 시 관리 태스크로 인입하는 예외 제어 보류.
+- 수강권 만료 / 만료 임박 task: 횟수 소진 외에 기간 만료일 도래에 따른 수납 예정 및 만료 관리 태스크 생성 보류.
+- 수강권 수동 충전/연장/완료 전용 UI: 원생 상세 뷰 등에서 원장이 수강권을 수동으로 횟수를 변경하거나 연장하는 수동 UI 컨트롤러 보류.
+- legacy enrollment promotion / migration 실행: 기존의 구버전 단일 수강 원생 전체 데이터를 백그라운드 배치를 통해 신규 수강과목 데이터베이스로 일괄 마이그레이션하는 작업 보류.
+- 기존 flat student 필드 제거: 구버전 코드 및 연동 호환성을 해치지 않기 위해 student.courseType 등 기존 컬럼 유지.
+- 외부 SMS/알림톡 실제 API 연동: 모의 API 테스트 단계를 넘어선 타사 통신사 망/알림톡 API 실 발송 연동 보류.
+- 서버 영구 이력 저장: 로컬 모의 스토리지 데이터 저장 방식에서 클라우드/물리 서버 DB로의 데이터 영구 영속화 보류.
+
+### 25-9. 다음 마일스톤 후보
+향후 진행될 Phase 18C의 주요 마일스톤 후보 및 운영 리스크 관점에서의 우선순위 제안입니다.
+- Phase 18C 후보 A: payment.enrollmentId 기반 수납/영수증 분리
+- Phase 18C 후보 B: 수강권 메시지/알림톡 정책 및 발송 실패 task
+- Phase 18C 후보 C: 수강권 만료/만료 임박 task
+- Phase 18C 후보 D: 수강권 수동 충전/연장 관리 UI
+- Phase 18C 후보 E: legacy promotion/migration
+
+**운영 리스크 기반 추천 우선순위 및 제안**:
+1. **1순위 - 후보 D: 수강권 수동 충전/연장 관리 UI**: 
+   - *이유*: 실 운영 환경에서는 원장의 실수나 특별 조건 등으로 인해 잔여 횟수를 직접 조정하거나 수강권을 조기 연장/종료해야 하는 관리자 기능이 즉각 요구됩니다. 이 UI가 없으면 DB에 직접 개입해야 하므로 가장 운영 리스크가 큽니다.
+2. **2순위 - 후보 A: payment.enrollmentId 기반 수납/영수증 분리**: 
+   - *이유*: 여러 수강과목을 분리하여 각각 수납 상태를 관리하고 영수증을 따로 끊어주는 흐름이 완성되어야 복수 과목 체제에서 수납 정산 상의 세무/회계 혼선 리스크를 원천 차단할 수 있습니다.
+3. **3순위 - 후보 B: 수강권 메시지/알림톡 정책 및 발송 실패 task**: 
+   - *이유*: 잔여 횟수 소진 예보가 완료되었으므로, 다음 단계로 실제 학부모에게 고지하는 자동 알림 메시지 기능이 탑재되어야 원장의 수동 고지 피로도가 감소합니다.
+4. **4순위 - 후보 C: 수강권 만료/만료 임박 task**: 
+   - *이유*: 기간제 속성을 지닌 수강권의 기한 만료도 주요 수납 예정 기준이므로, 소진 기준 태스크와 결합하여 관리 효율을 향상시킵니다.
+5. **5순위 - 후보 E: legacy promotion/migration**: 
+   - *이유*: 신규 복수 수강권의 수납 UI와 정산 기능이 완벽하게 필드에서 검증된 후에 레거시 데이터를 무중단 마이그레이션하는 것이 대규모 데이터 유실 및 기존 대시보드 오동작 위험을 가장 안전하게 최소화하는 길입니다.
+
 
 
