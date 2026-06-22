@@ -1492,4 +1492,82 @@
 - payment.enrollmentId 기반 수납 분리도 하지 않는다.
 - 후속 Phase에서 todayTaskBilling.js 구현 및 E2E 검증을 진행한다.
 
+## 24. 수강권 잔여 수업 횟수 수납 Task 구현 반영 정책 (Phase 18B-39)
+
+### 24-1. 월정액 납부 2일 전 수납 예정 Task 구현 반영
+- payment.type === 'education'
+- payment.status !== 'paid'
+- student.status !== 'withdrawn'
+- 납부 예정일 기준 2일 전이면 [수납 예정 확인] task 생성
+- type: 'billing', category: 'billing'
+- dedupeKey: SYSTEM_RECOMMEND_BILLING_UPCOMING_${payment.id}_${payment.month}
+- 제목 예시: [수납 예정 확인] 최다은 원생 2026년 6월 수강료
+- 내용 예시: 최다은 원생의 2026년 6월 수강료 160,000원이 수납 예정입니다.
+
+### 24-2. 기존 월정액 수납 확인 / 미수납 확인 유지
+- 오늘 납부일 [수납 확인] 기존 로직 유지
+- 납부일 경과 [미수납 확인] 기존 로직 유지
+- 퇴원생 [퇴원생 미수납 확인] 기존 로직 유지
+- upcoming -> due -> overdue 전환 시 중복 task가 남지 않도록 cleanup과 active key 갱신이 적용됨을 명시
+
+### 24-3. 횟수제 잔여 수업 횟수 1회 Task 구현 반영
+- enrollment.courseType === 'session_pass'
+- sessionPass가 archived/deleted 상태가 아님
+- enrollment가 archived/deleted 상태가 아님
+- student가 재원 상태
+- remainingSessions === 1이면 [수납 예정 확인] task 생성
+- type: 'billing', category: 'billing'
+- dedupeKey: SYSTEM_RECOMMEND_SESSION_PASS_DUE_${studentId}_${enrollmentId}_${passId}
+- 제목 예시: [수납 예정 확인] 윤하온 원생 바이올린 10회 수업
+- 내용 예시: 윤하온 원생의 바이올린 10회 수업 잔여 수업 횟수가 1회입니다.
+- “충전”이라는 표현을 사용하지 않음
+
+### 24-4. 횟수제 잔여 수업 횟수 0회 Task 구현 반영
+- remainingSessions === 0 또는 status === 'used_up'이면 [미수납 확인] task 생성
+- type: 'billing', category: 'overdue'
+- dedupeKey: SYSTEM_RECOMMEND_SESSION_PASS_UNPAID_${studentId}_${enrollmentId}_${passId}
+- 제목 예시: [미수납 확인] 윤하온 원생 바이올린 10회 수업
+- 내용 예시: 윤하온 원생의 바이올린 10회 수업 잔여 수업 횟수가 0회입니다.
+- “충전”이라는 표현을 사용하지 않음
+- 기존 미수납 확인 흐름에 흡수됨을 명시
+
+### 24-5. KPI / Filter 반영
+- 신규 KPI id를 추가하지 않음
+- [수납 예정 확인]은 기존 수납 확인(billing) KPI에 집계
+- [수납 확인]도 기존 수납 확인(billing) KPI에 집계
+- [미수납 확인]은 기존 미수납 확인(overdue) KPI에 집계
+- todayConsoleKpi.js의 getTaskKpiCategory 기준 유지
+
+### 24-6. 복수과목 / DedupeKey 반영
+- 수강권 task dedupeKey에 studentId, enrollmentId, passId를 포함
+- 동일 원생의 복수 과목 및 복수 수강권 task가 덮어써지지 않도록 구현
+- studentId 단독 dedupeKey 사용 금지 원칙 반영
+
+### 24-7. 자동 메시지 / 알림톡 미연동 유지
+- sessionPass task 생성 시 triggerPaymentParentMessage를 호출하지 않음
+- parentMessages를 새로 생성하지 않음
+- 기존 월정액 overdue parentMessages 자동 생성 흐름은 유지
+- 수강권 관련 자동 메시지/알림톡 정책은 후속 메시지 정책 Phase로 분리
+
+### 24-8. Cleanup / Obsolete 처리 반영
+- 월정액 upcoming task는 due/overdue 상태로 전환되면 active key에서 제외되어 정리됨
+- sessionPass remainingSessions가 2회 이상으로 회복되면 기존 1회/0회 task가 정리됨
+- archived/deleted pass 또는 enrollment는 task 대상에서 제외됨
+- 기존 billing/overdue/withdrawn_unpaid task를 잘못 삭제하지 않도록 기존 cleanup 구조와 통합됨
+
+### 24-9. 구현 제외 및 후속 범위
+- payment.enrollmentId 기반 수납 분리는 아직 미구현
+- 수강권 자동 메시지/알림톡 발송은 아직 미구현
+- 수강권 수납 완료/재결제 처리 UI는 아직 미구현
+- 만료/만료 임박 task는 아직 미구현
+- 수강권 task 수동 처리 UX는 후속 Phase로 분리
+
+### 24-10. 검증 기록
+아래 E2E 결과를 기록한다.
+- today-console-flow.spec.js: 30 passed
+- student-status-flow.spec.js: 15 passed
+- attendance-control-flow.spec.js: 16 passed
+- billing-warning-flow.spec.js: 5 passed
+
+
 
