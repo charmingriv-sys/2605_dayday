@@ -1420,3 +1420,76 @@
 - Phase 18B-35: Recharge Task Policy/Implementation
 - Phase 18B-36: Manual SessionPass Adjustment UI
 
+## 23. 수강권 잔여 수업 횟수 수납 Task 흡수 정책 (Phase 18B-36)
+
+### 23-1. 기존 수납 Task 체계 유지 원칙
+- 신규 상단 KPI/task 영역을 만들지 않는다.
+- 기존 상단 영역인 수납 확인 / 미수납 확인을 그대로 사용한다.
+- 수강권 관련 task는 기존 billing 계열 task로 흡수한다.
+- task 제목 prefix로 [수납 예정 확인], [수납 확인], [미수납 확인]을 구분한다.
+
+### 23-2. 월정액 수강료 수납 예정 정책
+- 기존 월정액에는 납부 2일 전 수납 예정 task가 없음을 명시한다.
+- 후속 구현에서 월정액 납부 2일 전 [수납 예정 확인] task를 도입한다.
+- 상단 영역은 수납 확인으로 집계한다.
+- type: 'billing', category: 'billing' 사용.
+- 제목 예시: [수납 예정 확인] 최다은 원생 2026년 6월 수강료
+- 내용 예시: 최다은 원생의 2026년 6월 수강료 160,000원이 수납 예정입니다.
+
+### 23-3. 월정액 오늘 수납 / 미수납 기존 정책
+- 오늘 납부일은 기존 [수납 확인] 정책을 유지한다.
+- 납부일 경과 미수납은 기존 [미수납 확인] 정책을 유지한다.
+- 오늘 납부일: type: 'billing', category: 'billing'
+- 미수납: type: 'billing', category: 'overdue'
+- 퇴원생 미수납은 type: 'withdrawn_unpaid'로 기존 overdue 영역에 유지한다.
+
+### 23-4. 횟수제 잔여 수업 횟수 1회 정책
+- 잔여 수업 횟수가 1회인 경우 기존 수납 확인 영역에 흡수한다.
+- 새 KPI 영역을 만들지 않는다.
+- title prefix는 [수납 예정 확인]으로 한다.
+- type: 'billing', category: 'billing'을 사용한다.
+- 제목 예시: [수납 예정 확인] 윤하온 원생 바이올린 10회 수업
+- 내용 예시: 윤하온 원생의 바이올린 10회 수업 잔여 수업 횟수가 1회입니다.
+- "충전"이라는 표현은 사용하지 않는다.
+- "잔여 수업 횟수" 표현을 사용한다.
+
+### 23-5. 횟수제 잔여 수업 횟수 0회 정책
+- 잔여 수업 횟수가 0회인 경우 기존 미수납 확인 영역에 흡수한다.
+- title prefix는 [미수납 확인]으로 한다.
+- type: 'billing', category: 'overdue'를 사용한다.
+- 제목 예시: [미수납 확인] 윤하온 원생 바이올린 10회 수업
+- 내용 예시: 윤하온 원생의 바이올린 10회 수업 잔여 수업 횟수가 0회입니다.
+- "충전"이라는 표현은 사용하지 않는다.
+- 기존 미수납 확인 문구 톤과 최대한 유사하게 유지한다.
+
+### 23-6. KPI / Filter 흡수 정책
+- todayConsoleKpi.js의 기존 getTaskKpiCategory 기준을 유지한다.
+- type: 'billing', category: 'billing'은 수납 확인 카드에 집계된다.
+- type: 'billing', category: 'overdue'는 미수납 확인 카드에 집계된다.
+- type: 'withdrawn_unpaid'는 기존처럼 미수납 확인 카드에 집계된다.
+- 신규 KPI id는 추가하지 않는다.
+
+### 23-7. DedupeKey 정책
+- 1인 다과목 환경을 고려하여 studentId 단독 dedupeKey를 사용하지 않는다.
+- 잔여 1회: SYSTEM_RECOMMEND_SESSION_PASS_DUE_${studentId}_${enrollmentId}_${passId}
+- 잔여 0회: SYSTEM_RECOMMEND_SESSION_PASS_UNPAID_${studentId}_${enrollmentId}_${passId}
+- enrollmentId/passId가 불명확한 경우 과목별 task를 무리하게 생성하지 않는다.
+
+### 23-8. 자동 메시지 / 알림톡 연동 보류 정책
+- 수강권 task 문구에는 자동 발송 성공/실패/미설정 여부를 포함하지 않는다.
+- 기존 triggerPaymentParentMessage는 payment.id 기반이므로 sessionPass task와 직접 연결하지 않는다.
+- 자동 메시지 발송, 실패 task, 보호자 연락처 없음 표현은 기존 메시지 정책 Audit 이후 별도 Phase로 분리한다.
+
+### 23-9. Task 수명주기 및 정리 정책
+- 수강권 잔여 상태가 회복되거나 더 이상 조건에 맞지 않으면 해당 task는 active task에서 제외/정리한다.
+- 단, 이 동작을 자동 완료(done)로 볼지, open task 제거로 볼지는 구현 전 별도 확인한다.
+- 기존 billing cleanup과 충돌하지 않도록 activeBillingKeys 또는 별도 activeSessionPassBillingKeys 사용 여부를 후속 구현에서 결정한다.
+
+### 23-10. 구현 제외 및 후속 범위
+- 이번 Phase에서는 실제 todayTaskBilling.js 구현을 하지 않는다.
+- E2E 테스트 수정도 하지 않는다.
+- 자동 메시지 발송 연동도 하지 않는다.
+- payment.enrollmentId 기반 수납 분리도 하지 않는다.
+- 후속 Phase에서 todayTaskBilling.js 구현 및 E2E 검증을 진행한다.
+
+
