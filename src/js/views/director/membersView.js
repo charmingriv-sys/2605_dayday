@@ -850,6 +850,11 @@ const openStudentDetailModal = (studentId) => {
                 </div>
             `;
         }
+
+        let managePassBtnHtml = '';
+        if (courseType === 'session_pass' && e.source !== 'legacy' && !e.isLegacy) {
+            managePassBtnHtml = `<button type="button" class="btn btn-outline btn-xs btn-manage-session-pass" data-enrollment-id="${e.id}" style="margin-left: 8px; font-size: 0.72rem; padding: 2px 6px; height: auto;">수강권 관리</button>`;
+        }
         
         const badgeHtml = e.source === 'legacy' ? `<span style="background: #eef2f3; color: #7f8c8d; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 600; margin-left: 6px;">기존 등록</span>` : '';
 
@@ -901,10 +906,13 @@ const openStudentDetailModal = (studentId) => {
         return `
             <div class="enrollment-card" style="background: #fff; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-weight: 700; color: var(--text-main); font-size: 0.9rem;">
-                        ${e.subject || e.instrument || e.subjectName || '미지정 과목'} ${badgeHtml}
-                    </span>
-                    <span style="background: ${statusColor}15; color: ${statusColor}; font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; font-weight: 700;">
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                        <span style="font-weight: 700; color: var(--text-main); font-size: 0.9rem;">
+                            ${e.subject || e.instrument || e.subjectName || '미지정 과목'} ${badgeHtml}
+                        </span>
+                        ${managePassBtnHtml}
+                    </div>
+                    <span class="status-badge" style="background: ${statusColor}15; color: ${statusColor}; font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; font-weight: 700;">
                         ${statusText}
                     </span>
                 </div>
@@ -1213,9 +1221,489 @@ const openStudentDetailModal = (studentId) => {
                 openNtsCertificatePrintModal(studentId);
             });
         }
+
+        // 수강권 관리 버튼 이벤트 바인딩
+        contentArea.querySelectorAll('.btn-manage-session-pass').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const enrollmentId = btn.getAttribute('data-enrollment-id');
+                openSessionPassManagementModal(enrollmentId, studentId);
+            });
+        });
     };
     
     openModal(html, onInitDetailModal);
+};
+
+const openSessionPassManagementModal = (enrollmentId, studentId) => {
+    const student = stateStore.getStudent(studentId);
+    const enrollment = stateStore.getEnrollmentById(enrollmentId);
+    if (!student || !enrollment) return;
+
+    const teacherName = stateStore.formatEnrollmentTeacherName(enrollment) || '미지정 강사';
+    const cleanStudentName = student.name || '';
+    const cleanSubject = enrollment.subject || enrollment.subjectName || '';
+    const cleanTeacherName = teacherName.endsWith('T') ? teacherName : `${teacherName}T`;
+
+    const translationMap = {
+        'no_pass_id': '수강권 식별자가 누락되었습니다.',
+        'memo_required': '조정 사유를 입력해 주세요.',
+        'pass_not_found': '해당 수강권을 찾을 수 없습니다.',
+        'archived_pass_cannot_be_modified': '보관된 수강권은 수정할 수 없습니다.',
+        'invalid_remaining_sessions': '잔여 수업 횟수는 0회 이상이어야 합니다.',
+        'remaining_sessions_cannot_exceed_total_sessions': '잔여 수업 횟수는 총 수업 횟수를 초과할 수 없습니다.',
+        'invalid_expires_at_format': '만료일 형식이 올바르지 않습니다.',
+        'invalid_expires_at': '유효한 만료일 날짜를 선택해 주세요.',
+        'invalid_total_sessions': '총 수업 횟수는 1회 이상이어야 합니다.',
+        'remaining_greater_than_total': '잔여 수업 횟수는 총 수업 횟수를 초과할 수 없습니다.'
+    };
+
+    const getFriendlyError = (reason) => translationMap[reason] || reason || '오류가 발생했습니다.';
+
+    const html = `
+        <div class="modal-form" id="session-pass-management-modal" style="width: 550px; max-width: 95vw;">
+            <div class="modal-header" style="padding: 1.2rem 2rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+                <h3 class="modal-title" style="display: flex; align-items: center; gap: 8px; margin: 0;">
+                    <i class="fa-solid fa-ticket" style="color: var(--primary);"></i>
+                    <strong>수강권 관리</strong>
+                </h3>
+                <button type="button" class="modal-close" id="btn-back-to-detail" style="background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--text-muted);"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div id="session-pass-modal-content-container">
+                <!-- 동적으로 렌더링될 내용 -->
+            </div>
+        </div>
+    `;
+
+    const renderContent = (container, refreshUI) => {
+        const allPasses = stateStore.getSessionPassesByEnrollmentId(enrollmentId, { includeArchived: true, includeInactive: true });
+        const activePasses = allPasses.filter(sp => sp.status !== 'archived');
+        const archivedPasses = allPasses.filter(sp => sp.status === 'archived');
+        
+        const summary = stateStore.getSessionPassSummaryForEnrollment(enrollmentId);
+        let summaryText = '등록된 활성 수강권이 없습니다.';
+        if (summary) {
+            const ticketName = summary.passName || '횟수제 수강권';
+            const total = summary.totalSessions !== undefined ? summary.totalSessions : 10;
+            const remaining = summary.remainingSessions !== undefined ? summary.remainingSessions : 10;
+            const expiresText = summary.expiresAt ? ` (만료일: ${summary.expiresAt})` : ' (만료일 없음)';
+            const statusKo = {
+                'active': '활성',
+                'used_up': '소진',
+                'expired': '만료',
+                'archived': '보관됨'
+            }[summary.status] || summary.status || '활성';
+            summaryText = `${ticketName} · 잔여 ${remaining}/${total}회${expiresText} [상태: ${statusKo}]`;
+        }
+
+        let passListHtml = '';
+        if (activePasses.length > 0) {
+            passListHtml = activePasses.map(sp => {
+                const expiresText = sp.expiresAt ? ` 만료: ${sp.expiresAt}` : ' 만료일 없음';
+                const statusColor = sp.status === 'active' ? 'var(--success)' : (sp.status === 'used_up' ? '#e74c3c' : '#7f8c8d');
+                const statusKo = sp.status === 'active' ? '활성' : (sp.status === 'used_up' ? '소진' : '만료');
+                return `
+                    <div style="padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; background: #fff; display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; margin-bottom: 6px;">
+                        <div>
+                            <strong>${sp.passName}</strong>
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">
+                                잔여 ${sp.remainingSessions} / ${sp.totalSessions}회 | ${expiresText}
+                            </div>
+                        </div>
+                        <span style="background: ${statusColor}15; color: ${statusColor}; font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; font-weight: 700;">
+                            ${statusKo}
+                        </span>
+                    </div>
+                `;
+            }).join('');
+        } else {
+            passListHtml = `<div style="font-size: 0.85rem; color: var(--text-muted); text-align: center; padding: 12px; border: 1px dashed var(--border-color); border-radius: 6px;">관리할 활성 수강권이 없습니다.</div>`;
+        }
+
+        let archivedListHtml = '';
+        if (archivedPasses.length > 0) {
+            archivedListHtml = archivedPasses.map(sp => {
+                return `
+                    <div style="padding: 8px; border: 1px solid var(--border-color); border-radius: 6px; background: rgba(0,0,0,0.01); display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">
+                        <div>
+                            <span>${sp.passName}</span>
+                            <span style="font-size: 0.72rem; margin-left: 6px;">(총 ${sp.totalSessions}회 / 보관일: ${sp.deletedAt ? sp.deletedAt.substring(0, 10) : ''})</span>
+                        </div>
+                        <span style="font-size: 0.72rem; font-weight: 600; color: var(--text-muted);">보관됨</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        const adjustSelectOptions = activePasses.map(sp => {
+            return `<option value="${sp.id}">${sp.passName} (잔여: ${sp.remainingSessions}/${sp.totalSessions}회)</option>`;
+        }).join('');
+
+        const archiveSelectOptions = activePasses.map(sp => {
+            return `<option value="${sp.id}">${sp.passName} (잔여: ${sp.remainingSessions}/${sp.totalSessions}회)</option>`;
+        }).join('');
+
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const defaultPassName = `${cleanSubject} 횟수제 수강권`;
+        const defaultFee = enrollment.fee !== undefined ? enrollment.fee : '';
+
+        const passLogs = (stateStore.db.sessionPassLogs || [])
+            .filter(l => l.enrollmentId === enrollmentId)
+            .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+            .slice(0, 5);
+
+        let logsHtml = '';
+        if (passLogs.length > 0) {
+            logsHtml = passLogs.map(log => {
+                const dateDisplay = log.createdAt ? log.createdAt.substring(5, 16).replace('T', ' ') : '';
+                const reasonKo = {
+                    'deduction': '수업 차감',
+                    'reversal': '차감 취소',
+                    'manual_recharge': '수동 충전',
+                    'manual_adjustment': '수동 조정',
+                    'manual_archive': '수강권 보관'
+                }[log.reason] || log.reason;
+
+                let deltaText = '';
+                if (log.delta > 0) deltaText = `+${log.delta}회`;
+                else if (log.delta < 0) deltaText = `${log.delta}회`;
+                else deltaText = '변동 없음';
+
+                const memoText = log.memo ? `<div style="font-size: 0.75rem; color: #475569; margin-top: 2px;">사유: ${log.memo}</div>` : '';
+
+                return `
+                    <div style="padding: 6px 8px; border-bottom: 1px solid rgba(0,0,0,0.03); font-size: 0.78rem;">
+                        <div style="display: flex; justify-content: space-between; font-weight: 600; color: var(--text-main);">
+                            <span>${reasonKo} (${deltaText})</span>
+                            <span style="font-weight: 400; color: var(--text-muted); font-size: 0.72rem;">${dateDisplay}</span>
+                        </div>
+                        ${memoText}
+                    </div>
+                `;
+            }).join('');
+        } else {
+            logsHtml = `<div style="text-align: center; padding: 8px; color: var(--text-muted); font-size: 0.75rem;">변경 이력이 없습니다.</div>`;
+        }
+
+        container.innerHTML = `
+            <div class="modal-body" style="padding: 1.5rem 2rem; display: flex; flex-direction: column; gap: 1.2rem; max-height: 60vh; overflow-y: auto;">
+                <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 4px; font-size: 0.88rem;">
+                    <div><span style="color: var(--text-muted);">원생명:</span> <strong>${cleanStudentName}</strong></div>
+                    <div><span style="color: var(--text-muted);">수강 과목:</span> <strong>${cleanSubject}</strong> (담당: ${cleanTeacherName})</div>
+                    <div style="border-top: 1px dashed var(--border-color); margin-top: 6px; padding-top: 6px;">
+                        <span style="color: var(--text-muted);">현재 수강권 요약:</span> <strong id="current-pass-summary">${summaryText}</strong>
+                    </div>
+                </div>
+
+                <div>
+                    <div style="font-weight: 700; font-size: 0.85rem; color: var(--text-main); margin-bottom: 6px;">활성 수강권 목록</div>
+                    ${passListHtml}
+                </div>
+
+                <div class="tabs" style="display: flex; border-bottom: 1px solid var(--border-color); margin-bottom: 4px;">
+                    <button type="button" class="tab-btn active" id="tab-btn-recharge" data-action="tab-recharge" style="flex: 1; padding: 10px; border: none; background: none; border-bottom: 2px solid var(--primary); font-weight: 700; color: var(--primary); cursor: pointer;">새 수강권 등록</button>
+                    <button type="button" class="tab-btn" id="tab-btn-adjust" data-action="tab-adjust" style="flex: 1; padding: 10px; border: none; background: none; border-bottom: 2px solid transparent; font-weight: 500; color: var(--text-muted); cursor: pointer;">잔여 횟수 / 만료일 조정</button>
+                    <button type="button" class="tab-btn" id="tab-btn-archive" data-action="tab-archive" style="flex: 1; padding: 10px; border: none; background: none; border-bottom: 2px solid transparent; font-weight: 500; color: var(--text-muted); cursor: pointer;">수강권 보관</button>
+                </div>
+
+                <form id="tab-content-recharge" class="tab-content" style="display: flex; flex-direction: column; gap: 10px;">
+                    <div style="display: flex; gap: 8px;">
+                        <div style="flex: 1;">
+                            <label style="font-size: 0.8rem; font-weight: 700; display: block; margin-bottom: 4px;">수강권명 <span style="color: var(--danger);">*</span></label>
+                            <input type="text" id="recharge-pass-name" class="form-control" value="${defaultPassName}" required style="width: 100%; height: 34px; border: 1px solid var(--border-color); border-radius: 6px; padding: 0 8px; font-size: 0.85rem; box-sizing: border-box;">
+                        </div>
+                        <div style="width: 120px;">
+                            <label style="font-size: 0.8rem; font-weight: 700; display: block; margin-bottom: 4px;">총 횟수 <span style="color: var(--danger);">*</span></label>
+                            <input type="number" id="recharge-total-sessions" class="form-control" value="10" min="1" required style="width: 100%; height: 34px; border: 1px solid var(--border-color); border-radius: 6px; padding: 0 8px; font-size: 0.85rem; box-sizing: border-box;">
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <div style="flex: 1;">
+                            <label style="font-size: 0.8rem; font-weight: 700; display: block; margin-bottom: 4px;">초기 잔여 횟수 <span style="color: var(--danger);">*</span></label>
+                            <input type="number" id="recharge-remaining-sessions" class="form-control" value="10" min="0" required style="width: 100%; height: 34px; border: 1px solid var(--border-color); border-radius: 6px; padding: 0 8px; font-size: 0.85rem; box-sizing: border-box;">
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="font-size: 0.8rem; font-weight: 700; display: block; margin-bottom: 4px;">구매 금액</label>
+                            <input type="number" id="recharge-purchase-amount" class="form-control" value="${defaultFee}" style="width: 100%; height: 34px; border: 1px solid var(--border-color); border-radius: 6px; padding: 0 8px; font-size: 0.85rem; box-sizing: border-box;">
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <div style="flex: 1;">
+                            <label style="font-size: 0.8rem; font-weight: 700; display: block; margin-bottom: 4px;">구매일 <span style="color: var(--danger);">*</span></label>
+                            <input type="date" id="recharge-purchase-date" class="form-control" value="${todayStr}" required style="width: 100%; height: 34px; border: 1px solid var(--border-color); border-radius: 6px; padding: 0 8px; font-size: 0.85rem; box-sizing: border-box;">
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="font-size: 0.8rem; font-weight: 700; display: block; margin-bottom: 4px;">만료일</label>
+                            <input type="date" id="recharge-expires-at" class="form-control" style="width: 100%; height: 34px; border: 1px solid var(--border-color); border-radius: 6px; padding: 0 8px; font-size: 0.85rem; box-sizing: border-box;">
+                        </div>
+                    </div>
+                    <div>
+                        <label style="font-size: 0.8rem; font-weight: 700; display: block; margin-bottom: 4px;">충전 메모 (사유) <span style="color: var(--danger);">*</span></label>
+                        <input type="text" id="recharge-memo" class="form-control" placeholder="예: 신규 등록" required style="width: 100%; height: 34px; border: 1px solid var(--border-color); border-radius: 6px; padding: 0 8px; font-size: 0.85rem; box-sizing: border-box;">
+                    </div>
+                    <div style="display: flex; justify-content: flex-end; margin-top: 6px;">
+                        <button type="submit" id="btn-submit-recharge" class="btn btn-primary btn-sm" style="height: 34px; font-size: 0.85rem;">등록 완료</button>
+                    </div>
+                </form>
+
+                <form id="tab-content-adjust" class="tab-content" style="display: none; flex-direction: column; gap: 10px;">
+                    ${activePasses.length > 0 ? `
+                        <div>
+                            <label style="font-size: 0.8rem; font-weight: 700; display: block; margin-bottom: 4px;">조정할 수강권 <span style="color: var(--danger);">*</span></label>
+                            <select id="adjust-pass-select" class="form-control" required style="width: 100%; height: 34px; border: 1px solid var(--border-color); border-radius: 6px; padding: 0 8px; font-size: 0.85rem; box-sizing: border-box;">
+                                ${adjustSelectOptions}
+                            </select>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <div style="flex: 1;">
+                                <label style="font-size: 0.8rem; font-weight: 700; display: block; margin-bottom: 4px;">변경 후 잔여 횟수 <span style="color: var(--danger);">*</span></label>
+                                <input type="number" id="adjust-remaining-sessions" class="form-control" min="0" required style="width: 100%; height: 34px; border: 1px solid var(--border-color); border-radius: 6px; padding: 0 8px; font-size: 0.85rem; box-sizing: border-box;">
+                            </div>
+                            <div style="flex: 1;">
+                                <label style="font-size: 0.8rem; font-weight: 700; display: block; margin-bottom: 4px;">변경 후 만료일</label>
+                                <input type="date" id="adjust-expires-at" class="form-control" style="width: 100%; height: 34px; border: 1px solid var(--border-color); border-radius: 6px; padding: 0 8px; font-size: 0.85rem; box-sizing: border-box;">
+                            </div>
+                        </div>
+                        <div>
+                            <label style="font-size: 0.8rem; font-weight: 700; display: block; margin-bottom: 4px;">조정 사유 메모 <span style="color: var(--danger);">*</span></label>
+                            <input type="text" id="adjust-memo" class="form-control" placeholder="예: 수업 불참에 따른 보충 증정" required style="width: 100%; height: 34px; border: 1px solid var(--border-color); border-radius: 6px; padding: 0 8px; font-size: 0.85rem; box-sizing: border-box;">
+                        </div>
+                        <div style="display: flex; justify-content: flex-end; margin-top: 6px;">
+                            <button type="submit" id="btn-submit-adjust" class="btn btn-primary btn-sm" style="height: 34px; font-size: 0.85rem;">조정 저장</button>
+                        </div>
+                    ` : `
+                        <div style="font-size: 0.85rem; color: var(--text-muted); text-align: center; padding: 20px; width: 100%;">조정할 수강권이 없습니다.</div>
+                    `}
+                </form>
+
+                <form id="tab-content-archive" class="tab-content" style="display: none; flex-direction: column; gap: 10px;">
+                    ${activePasses.length > 0 ? `
+                        <div style="background: #fffcf4; border: 1px solid #f39c12; border-radius: 6px; padding: 10px; font-size: 0.8rem; color: #d35400;">
+                            <strong><i class="fa-solid fa-triangle-exclamation"></i> 주의:</strong> 보관(Archive) 처리 시 해당 수강권은 즉시 만료 처리되며 더 이상 출결 차감에 사용하거나 수정을 할 수 없습니다.
+                        </div>
+                        <div>
+                            <label style="font-size: 0.8rem; font-weight: 700; display: block; margin-bottom: 4px;">보관할 수강권 <span style="color: var(--danger);">*</span></label>
+                            <select id="archive-pass-select" class="form-control" required style="width: 100%; height: 34px; border: 1px solid var(--border-color); border-radius: 6px; padding: 0 8px; font-size: 0.85rem; box-sizing: border-box;">
+                                ${archiveSelectOptions}
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size: 0.8rem; font-weight: 700; display: block; margin-bottom: 4px;">보관 사유 메모 (선택)</label>
+                            <input type="text" id="archive-memo" class="form-control" placeholder="예: 환불 완료로 보관" style="width: 100%; height: 34px; border: 1px solid var(--border-color); border-radius: 6px; padding: 0 8px; font-size: 0.85rem; box-sizing: border-box;">
+                        </div>
+                        <div style="display: flex; justify-content: flex-end; margin-top: 6px;">
+                            <button type="submit" id="btn-submit-archive" class="btn btn-danger btn-sm" style="height: 34px; font-size: 0.85rem;">보관 처리</button>
+                        </div>
+                    ` : `
+                        <div style="font-size: 0.85rem; color: var(--text-muted); text-align: center; padding: 20px; width: 100%;">보관할 수강권이 없습니다.</div>
+                    `}
+                </form>
+
+                ${archivedPasses.length > 0 ? `
+                    <div style="margin-top: 10px;">
+                        <div style="font-weight: 700; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px;">보관된 수강권 이력</div>
+                        ${archivedListHtml}
+                    </div>
+                ` : ''}
+
+                <div style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 12px;">
+                    <div style="font-weight: 700; font-size: 0.85rem; color: var(--text-main); margin-bottom: 6px;">최근 수강권 변경 이력</div>
+                    <div style="border: 1px solid var(--border-color); border-radius: 6px; background: #fff; max-height: 120px; overflow-y: auto;">
+                        ${logsHtml}
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="padding: 1rem 2rem; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; background: rgba(0,0,0,0.01);">
+                <button type="button" class="btn btn-secondary" data-close-modal id="btn-mgt-modal-close" style="margin-bottom: 0;">닫기</button>
+            </div>
+        `;
+
+        const tabButtons = container.querySelectorAll('.tab-btn');
+        const tabContents = container.querySelectorAll('.tab-content');
+
+        tabButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const action = btn.getAttribute('data-action');
+                tabButtons.forEach(b => {
+                    b.classList.remove('active');
+                    b.style.borderBottomColor = 'transparent';
+                    b.style.color = 'var(--text-muted)';
+                    b.style.fontWeight = '500';
+                });
+                btn.classList.add('active');
+                btn.style.borderBottomColor = 'var(--primary)';
+                btn.style.color = 'var(--primary)';
+                btn.style.fontWeight = '700';
+
+                tabContents.forEach(content => {
+                    if (content.id === `tab-content-${action.substring(4)}`) {
+                        content.style.display = 'flex';
+                    } else {
+                        content.style.display = 'none';
+                    }
+                });
+            });
+        });
+
+        const adjustPassSelect = container.querySelector('#adjust-pass-select');
+        if (adjustPassSelect) {
+            const setAdjustFields = () => {
+                const selectedPassId = adjustPassSelect.value;
+                const targetPass = activePasses.find(p => p.id === selectedPassId);
+                if (targetPass) {
+                    container.querySelector('#adjust-remaining-sessions').value = targetPass.remainingSessions;
+                    container.querySelector('#adjust-expires-at').value = targetPass.expiresAt || '';
+                }
+            };
+            adjustPassSelect.addEventListener('change', setAdjustFields);
+            setAdjustFields();
+        }
+
+        const formRecharge = container.querySelector('#tab-content-recharge');
+        if (formRecharge) {
+            formRecharge.addEventListener('submit', (ev) => {
+                ev.preventDefault();
+                const passName = container.querySelector('#recharge-pass-name').value.trim();
+                const totalSessions = parseInt(container.querySelector('#recharge-total-sessions').value, 10);
+                const remainingSessions = parseInt(container.querySelector('#recharge-remaining-sessions').value, 10);
+                const purchaseAmount = container.querySelector('#recharge-purchase-amount').value ? parseInt(container.querySelector('#recharge-purchase-amount').value, 10) : 0;
+                const purchaseDate = container.querySelector('#recharge-purchase-date').value;
+                const expiresAt = container.querySelector('#recharge-expires-at').value || null;
+                const memo = container.querySelector('#recharge-memo').value.trim();
+
+                if (!memo) {
+                    alert('조정 사유를 입력해 주세요.');
+                    return;
+                }
+                if (remainingSessions < 0) {
+                    alert('잔여 수업 횟수는 0회 이상이어야 합니다.');
+                    return;
+                }
+                if (remainingSessions > totalSessions) {
+                    alert('잔여 수업 횟수는 총 수업 횟수를 초과할 수 없습니다.');
+                    return;
+                }
+
+                const result = stateStore.rechargeSessionPass(enrollmentId, {
+                    passName,
+                    totalSessions,
+                    remainingSessions,
+                    purchaseAmount,
+                    purchaseDate,
+                    expiresAt,
+                    memo,
+                    lowBalanceThreshold: 2
+                });
+
+                if (result.ok) {
+                    alert('수강권이 등록되었습니다.');
+                    refreshUI();
+                } else {
+                    alert(getFriendlyError(result.reason));
+                }
+            });
+        }
+
+        const formAdjust = container.querySelector('#tab-content-adjust');
+        if (formAdjust) {
+            formAdjust.addEventListener('submit', (ev) => {
+                ev.preventDefault();
+                const passId = container.querySelector('#adjust-pass-select').value;
+                const remainingSessions = parseInt(container.querySelector('#adjust-remaining-sessions').value, 10);
+                const expiresAt = container.querySelector('#adjust-expires-at').value || null;
+                const memo = container.querySelector('#adjust-memo').value.trim();
+
+                if (!memo) {
+                    alert('조정 사유를 입력해 주세요.');
+                    return;
+                }
+
+                console.log('ADJUST SUBMIT - passId:', passId, 'activePasses:', JSON.stringify(activePasses));
+                const targetPass = activePasses.find(p => p.id === passId);
+                if (!targetPass) {
+                    console.log('ADJUST SUBMIT - targetPass not found!');
+                    return;
+                }
+
+                if (remainingSessions < 0) {
+                    alert('잔여 수업 횟수는 0회 이상이어야 합니다.');
+                    return;
+                }
+                if (remainingSessions > targetPass.totalSessions) {
+                    alert('잔여 수업 횟수는 총 수업 횟수를 초과할 수 없습니다.');
+                    return;
+                }
+
+                const prevRemaining = targetPass.remainingSessions;
+                const displayExpires = expiresAt || '없음';
+
+                const confirmMsg = `수강권 잔여 수업 횟수를 ${prevRemaining}회에서 ${remainingSessions}회로 변경하고, 만료일을 ${displayExpires}로 변경하시겠습니까?\n이 변경 사유는 로그에 기록됩니다.`;
+                
+                if (confirm(confirmMsg)) {
+                    const result = stateStore.adjustSessionPassManually(passId, {
+                        remainingSessions,
+                        expiresAt,
+                        memo
+                    });
+
+                    if (result.ok) {
+                        alert('수강권 정보가 수정되었습니다.');
+                        refreshUI();
+                    } else {
+                        alert(getFriendlyError(result.reason));
+                    }
+                }
+            });
+        }
+
+        const formArchive = container.querySelector('#tab-content-archive');
+        if (formArchive) {
+            formArchive.addEventListener('submit', (ev) => {
+                ev.preventDefault();
+                const passId = container.querySelector('#archive-pass-select').value;
+                const memo = container.querySelector('#archive-memo').value.trim();
+
+                const confirmMsg = '이 수강권을 보관 처리하시겠습니까?';
+                
+                if (confirm(confirmMsg)) {
+                    const result = stateStore.archiveSessionPass(passId, memo);
+
+                    if (result.ok) {
+                        alert('수강권이 보관 처리되었습니다.');
+                        refreshUI();
+                    } else {
+                        alert(getFriendlyError(result.reason));
+                    }
+                }
+            });
+        }
+
+        const closeFooterBtn = container.querySelector('#btn-mgt-modal-close');
+        if (closeFooterBtn) {
+            closeFooterBtn.addEventListener('click', () => {
+                closeModal();
+                openStudentDetailModal(studentId);
+            });
+        }
+    };
+
+    const onInit = (contentArea) => {
+        const container = contentArea.querySelector('#session-pass-modal-content-container');
+        
+        const backBtn = contentArea.querySelector('#btn-back-to-detail');
+        if (backBtn) {
+            backBtn.addEventListener('click', () => {
+                closeModal();
+                openStudentDetailModal(studentId);
+            });
+        }
+
+        const refreshUI = () => {
+            renderContent(container, refreshUI);
+        };
+        refreshUI();
+    };
+
+    openModal(html, onInit);
 };
 
 const openAddEnrollmentModal = (studentId) => {

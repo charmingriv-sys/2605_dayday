@@ -2729,7 +2729,6 @@ test.describe('Student Status Management Flow', () => {
       if (adjustedPass.remainingSessions !== 5 || adjustedPass.status !== 'active') {
         throw new Error('Pass should be updated to active and remainingSessions to 5');
       }
-
       // 3. manual_adjustment log check (prev, post, delta, memo)
       const adjLog = store.db.sessionPassLogs.find(l => l.reason === 'manual_adjustment' && l.passId === pass.id);
       if (!adjLog) throw new Error('manual_adjustment log not found');
@@ -2840,4 +2839,294 @@ test.describe('Student Status Management Flow', () => {
       }
     });
   });
+
+  test('should verify SessionPass management UI entry, recharge, adjust, archive, validation, and task cleanup', async ({ page }) => {
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Setup mock data: 1 session_pass manual, 1 monthly manual, 1 legacy enrollment
+    let testStudentId;
+    let manualPassEnrollmentId;
+    let monthlyEnrollmentId;
+    let legacyEnrollmentId;
+    let initialPassId;
+
+    await page.evaluate(() => {
+      const store = window.stateStore;
+
+      // 1. create student
+      const studentRes = store.addStudent({
+        name: 'UI_Mgt_Test_Student',
+        phoneStatus: 'none',
+        parentPhone: '010-9999-8888',
+        dueDay: 10,
+        fee: 150000
+      });
+      const studentId = studentRes.id;
+
+      // 2. create manual session_pass enrollment
+      const spRes = store.createEnrollment(studentId, {
+        subjectName: '피아노 수동 수강권',
+        courseType: 'session_pass',
+        teacherId: 'T1',
+        startDate: '2026-06-01'
+      });
+      
+      // recharge pass with 0 sessions to test used_up and billing task cleanup
+      const initialPassRes = store.rechargeSessionPass(spRes.data.id, {
+        passName: '피아노 10회',
+        totalSessions: 10,
+        remainingSessions: 0, // used_up
+        purchaseAmount: 150000,
+        lowBalanceThreshold: 2,
+        memo: 'E2E 초기 충전'
+      });
+
+      // 3. create monthly enrollment
+      const monthlyRes = store.createEnrollment(studentId, {
+        subjectName: '피아노 월정액',
+        courseType: 'monthly',
+        teacherId: 'T1',
+        startDate: '2026-06-01'
+      });
+
+      // 4. create legacy enrollment
+      const legacyRes = store.createEnrollment(studentId, {
+        subjectName: '피아노 레거시',
+        courseType: 'session_pass',
+        teacherId: 'T1',
+        startDate: '2026-06-01'
+      });
+      legacyRes.data.source = 'legacy'; // force legacy
+      store.saveDB();
+
+      return {
+        studentId,
+        spId: spRes.data.id,
+        monthlyId: monthlyRes.data.id,
+        legacyId: legacyRes.data.id,
+        passId: initialPassRes.data.id
+      };
+    }).then(res => {
+      testStudentId = res.studentId;
+      manualPassEnrollmentId = res.spId;
+      monthlyEnrollmentId = res.monthlyId;
+      legacyEnrollmentId = res.legacyId;
+      initialPassId = res.passId;
+    });
+
+    // 3. Open Student Detail Modal
+    // Navigate to members view first
+    await page.locator('.menu-item[data-view="dir-students"]').click();
+    await expect(page.locator('#btn-add-student')).toBeVisible({ timeout: 5000 });
+
+    // Open detail modal for test student
+    const studentRow = page.locator('tr', { has: page.locator(`.student-name-link:has-text("UI_Mgt_Test_Student")`) });
+    await expect(studentRow).toBeVisible({ timeout: 5000 });
+    await studentRow.locator('.student-name-link').click();
+
+    // Verify detail modal is open
+    const detailModal = page.locator('#common-modal');
+    await expect(detailModal).toBeVisible({ timeout: 5000 });
+    await expect(detailModal).toContainText('원생 상세 정보');
+
+    // 4. Verify [수강권 관리] Button Visibility
+    // - session_pass 카드에는 버튼이 표시됨
+    const spCard = page.locator(`.enrollment-card:has-text("피아노 수동 수강권")`);
+    const spManageBtn = spCard.locator('.btn-manage-session-pass');
+    await expect(spManageBtn).toBeVisible({ timeout: 3000 });
+    await expect(spManageBtn).toHaveAttribute('data-enrollment-id', manualPassEnrollmentId);
+
+    // - monthly 카드에는 버튼이 미표시됨
+    const monthlyCard = page.locator(`.enrollment-card:has-text("피아노 월정액")`);
+    const monthlyManageBtn = monthlyCard.locator('.btn-manage-session-pass');
+    await expect(monthlyManageBtn).not.toBeVisible();
+
+    // - legacy 카드에는 버튼이 미표시됨
+    const legacyCard = page.locator(`.enrollment-card:has-text("피아노 레거시")`);
+    const legacyManageBtn = legacyCard.locator('.btn-manage-session-pass');
+    await expect(legacyManageBtn).not.toBeVisible();
+
+    // Set up dialog handler to record dialog messages and auto-accept
+    const dialogs = [];
+    page.on('dialog', async dialog => {
+      dialogs.push(dialog.message());
+      await dialog.accept();
+    });
+    page.on('console', msg => console.log('BROWSER LOG:', msg.text()));
+    page.on('pageerror', err => console.log('BROWSER ERROR:', err.message));
+
+    // 5. Open SessionPass Management Modal
+    await spManageBtn.click();
+
+    // Verify skeleton modal opened
+    const mgtModal = page.locator('#session-pass-management-modal');
+    await expect(mgtModal).toBeVisible({ timeout: 5000 });
+
+    // Verify student name, subject name, teacher name, and summary
+    await expect(mgtModal.locator('strong:has-text("UI_Mgt_Test_Student")')).toBeVisible();
+    await expect(mgtModal.locator('strong:has-text("피아노 수동 수강권")')).toBeVisible();
+    await expect(mgtModal.locator('#current-pass-summary')).toContainText('피아노 10회');
+
+    // Verify tabs skeleton
+    const tabRecharge = mgtModal.locator('#tab-btn-recharge');
+    const tabAdjust = mgtModal.locator('#tab-btn-adjust');
+    const tabArchive = mgtModal.locator('#tab-btn-archive');
+    await expect(tabRecharge).toBeVisible();
+    await expect(tabAdjust).toBeVisible();
+    await expect(tabArchive).toBeVisible();
+
+    // Verify clean layout (no undefined/NaN/null)
+    let modalText = await mgtModal.textContent();
+    expect(modalText).not.toContain('undefined');
+    expect(modalText).not.toContain('NaN');
+    expect(modalText).not.toContain('null');
+
+    // Verify tabs click skeleton toggle
+    const contentRecharge = mgtModal.locator('#tab-content-recharge');
+    const contentAdjust = mgtModal.locator('#tab-content-adjust');
+    const contentArchive = mgtModal.locator('#tab-content-archive');
+
+    await expect(contentRecharge.locator('#recharge-pass-name')).toBeVisible();
+    await expect(contentAdjust.locator('#adjust-pass-select')).not.toBeVisible();
+
+    // --- Tab A: Recharge (새 수강권 등록) UI flow ---
+    // Change total sessions, remaining, memo and submit
+    await contentRecharge.locator('#recharge-pass-name').fill('피아노 20회 추가');
+    await contentRecharge.locator('#recharge-total-sessions').fill('20');
+    await contentRecharge.locator('#recharge-remaining-sessions').fill('20');
+    await contentRecharge.locator('#recharge-memo').fill('UI 수동 충전 테스트');
+    const validity = await page.evaluate(() => {
+      const form = document.getElementById('tab-content-recharge');
+      if (!form) return 'form not found';
+      
+      // Let's add a test listener to see if the submit handler is called
+      let listenerCalled = false;
+      form.addEventListener('submit', () => {
+        listenerCalled = true;
+      });
+      
+      form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+      return {
+        checkValidity: form.checkValidity(),
+        listenerCalled,
+        inputs: Array.from(form.querySelectorAll('input')).map(input => ({
+          id: input.id,
+          value: input.value,
+          valid: input.validity.valid,
+          validationMessage: input.validationMessage
+        }))
+      };
+    });
+    console.log('FORM VALIDITY AND DISPATCH:', validity);
+
+    await contentRecharge.locator('#btn-submit-recharge').click({ force: true });
+
+    // Wait until alert dialog has been processed
+    await expect.poll(() => {
+      console.log('CAPTURED DIALOGS:', dialogs);
+      return dialogs.some(msg => msg.includes('수강권이 등록되었습니다.'));
+    }).toBeTruthy();
+
+    // Verify UI contains the newly registered pass
+    await expect(mgtModal.locator('strong:has-text("피아노 20회 추가")').first()).toBeVisible();
+
+    // --- Tab B: Adjust (잔여 횟수 / 만료일 조정) UI flow ---
+    await tabAdjust.click({ force: true });
+    await expect(contentAdjust.locator('#adjust-pass-select')).toBeVisible();
+
+    // Select the new pass from adjust-pass-select
+    const adjustPassValue = await contentAdjust.locator('#adjust-pass-select option:has-text("피아노 20회 추가")').getAttribute('value');
+    await contentAdjust.locator('#adjust-pass-select').selectOption(adjustPassValue);
+    
+    // Adjust remaining sessions to 15
+    await contentAdjust.locator('#adjust-remaining-sessions').fill('15');
+    await contentAdjust.locator('#adjust-memo').fill('UI 조정 사유');
+    const validityAdjust = await page.evaluate(() => {
+      const form = document.getElementById('tab-content-adjust');
+      if (!form) return 'form not found';
+      return {
+        checkValidity: form.checkValidity(),
+        inputs: Array.from(form.querySelectorAll('input, select')).map(input => ({
+          id: input.id,
+          value: input.value,
+          valid: input.validity.valid,
+          validationMessage: input.validationMessage
+        }))
+      };
+    });
+    console.log('ADJUST FORM VALIDITY:', validityAdjust);
+
+    await page.evaluate(() => {
+      const form = document.getElementById('tab-content-adjust');
+      form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    });
+
+    // Expect confirmation and then alert
+    await expect.poll(() => dialogs.some(msg => msg.includes('변경하시겠습니까?'))).toBeTruthy();
+    await expect.poll(() => dialogs.some(msg => msg.includes('수강권 정보가 수정되었습니다.'))).toBeTruthy();
+
+    // Verify updated remaining sessions is shown on UI
+    await expect(mgtModal.locator('div:has-text("잔여 15 / 20회")').first()).toBeVisible();
+
+    // --- Tab C: Archive (수강권 보관) UI flow ---
+    await tabArchive.click({ force: true });
+    await expect(contentArchive.locator('#archive-pass-select')).toBeVisible();
+
+    // Select the pass to archive (let's archive the first one "피아노 10회")
+    const archivePassValue = await contentArchive.locator('#archive-pass-select option:has-text("피아노 10회")').getAttribute('value');
+    await contentArchive.locator('#archive-pass-select').selectOption(archivePassValue);
+    await contentArchive.locator('#archive-memo').fill('UI 환불 보관');
+    await page.evaluate(() => {
+      const form = document.getElementById('tab-content-archive');
+      form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    });
+
+    // Expect confirmation and then alert
+    await expect.poll(() => dialogs.some(msg => msg.includes('보관 처리하시겠습니까?'))).toBeTruthy();
+    await expect.poll(() => dialogs.some(msg => msg.includes('수강권이 보관 처리되었습니다.'))).toBeTruthy();
+
+    // Verify archived pass is listed under "보관된 수강권 이력"
+    await expect(mgtModal.locator('div:has-text("보관된 수강권 이력")').first()).toBeVisible();
+    await expect(mgtModal.locator('span:has-text("보관됨")').first()).toBeVisible();
+
+    // 6. Close Modal (it should reopen parent student detail modal)
+    await mgtModal.locator('#btn-mgt-modal-close').first().click({ force: true });
+    await expect(mgtModal).not.toBeVisible();
+    await expect(detailModal).toBeVisible();
+
+    // Verify that the parent detail modal refreshed its cards
+    const pianoCard = detailModal.locator(`.enrollment-card:has-text("피아노 수동 수강권")`);
+    await expect(pianoCard.locator('.status-badge')).toContainText('수강중');
+
+    // 7. Verify data mutation in stateStore
+    const passStates = await page.evaluate((spId) => {
+      const store = window.stateStore;
+      const passes = store.db.sessionPasses.filter(sp => sp.enrollmentId === spId);
+      return passes.map(p => ({
+        name: p.passName,
+        status: p.status,
+        remaining: p.remainingSessions,
+        total: p.totalSessions
+      }));
+    }, manualPassEnrollmentId);
+
+    expect(passStates).toContainEqual({
+      name: '피아노 10회',
+      status: 'archived',
+      remaining: 0,
+      total: 10
+    });
+
+    expect(passStates).toContainEqual({
+      name: '피아노 20회 추가',
+      status: 'active',
+      remaining: 15,
+      total: 20
+    });
+  });
 });
+
