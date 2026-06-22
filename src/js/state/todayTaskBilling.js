@@ -263,8 +263,10 @@ export function syncBillingRecommendations(ctx, options) {
             const totalSessions = pass.totalSessions;
             const remaining = pass.remainingSessions;
 
-            let isPassDue = (remaining === 1);
+            const todayStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
             let isPassUnpaid = (remaining === 0 || pass.status === 'used_up');
+            let isPassExpired = !isPassUnpaid && (pass.expiresAt && (pass.expiresAt < todayStr || pass.status === 'expired') && remaining > 0);
+            let isPassDue = !isPassUnpaid && !isPassExpired && (remaining === 1);
 
             if (isPassDue) {
                 const dedupeKey = `SYSTEM_RECOMMEND_SESSION_PASS_DUE_${student.id}_${enrollment.id}_${pass.id}`;
@@ -334,6 +336,44 @@ export function syncBillingRecommendations(ctx, options) {
                             endAt: endTime.toISOString(),
                             title: `[미수납 확인] ${student.name} 원생 ${subjectName} ${totalSessions}회 수업`,
                             description: `${student.name} 원생의 ${subjectName} ${totalSessions}회 수업 잔여 수업 횟수가 0회입니다.`,
+                            relatedStudentIds: [student.id],
+                            dedupeKey: dedupeKey,
+                            visibilityRoles: ['director'],
+                            actionType: 'NAVIGATE',
+                            actionPayload: { route: '/billing', studentId: student.id }
+                        }, { domain: 'billing', silent });
+                    }
+                }
+            } else if (isPassExpired) {
+                const dedupeKey = `SYSTEM_RECOMMEND_SESSION_PASS_EXPIRED_${student.id}_${enrollment.id}_${pass.id}`;
+                activeBillingKeys.push(dedupeKey);
+
+                // 수동 완료/삭제 여부 검사
+                const hasResolved = ctx.db.todayTasks.some(t =>
+                    t.source === 'system' &&
+                    (t.status === 'done' || t.status === 'dismissed') &&
+                    t.dedupeKey === dedupeKey
+                );
+
+                if (!hasResolved) {
+                    const isAlreadyOpen = ctx.db.todayTasks.some(t => t.dedupeKey === dedupeKey && t.status === 'open');
+                    if (!isAlreadyOpen) {
+                        const dueTime = new Date(y, m, d, 9, 0, 0, 0);
+                        const endTime = new Date(y, m, d, 10, 0, 0, 0);
+                        addValidatedSystemTodayTask(ctx, {
+                            organizationId: student.academyId || '',
+                            segment: 'academy_director_console',
+                            domain: 'academy',
+                            source: 'system',
+                            type: 'billing',
+                            category: 'overdue',
+                            priority: 'today',
+                            status: 'open',
+                            dueAt: dueTime.toISOString(),
+                            startAt: dueTime.toISOString(),
+                            endAt: endTime.toISOString(),
+                            title: `[미수납 확인] ${student.name} 원생 ${subjectName} 수강권 만료`,
+                            description: `${student.name} 원생의 ${subjectName} 수강권 만료일(${pass.expiresAt})이 지났습니다. 잔여 수업 횟수 확인 또는 새 수강권 등록이 필요합니다.`,
                             relatedStudentIds: [student.id],
                             dedupeKey: dedupeKey,
                             visibilityRoles: ['director'],

@@ -3116,5 +3116,147 @@ test.describe('Director Today Console Flow Checks', () => {
     const newBillingCountText = await page.locator('.kpi-chip-card[data-filter-id="billing"] .badge').textContent();
     expect(newBillingCountText.trim()).toBe('1');
   });
+
+  test('should generate and clean up billing tasks for expired session passes', async ({ page }) => {
+    // 1. Seed test data for expired session pass
+    // S4 (하재은 - 횟수제 만료, 잔여 5회)
+    // S5 (신민아 - 횟수제 만료 + used_up(0회))
+    // S6 (임서윤 - 횟수제 만료 + archived)
+    await page.evaluate(() => {
+      const store = window.stateStore;
+
+      // Clean up previous tasks, payments, enrollments, sessionPasses to have a clean state
+      store.db.todayTasks = [];
+      store.db.payments = [];
+      store.db.enrollments = [];
+      store.db.sessionPasses = [];
+      store.db.parentMessages = [];
+
+      // S4: 하재은, 횟수제, 잔여 5회, 만료일은 어제 (2026-06-02)
+      store.db.students = store.db.students.map(s => s.id === 'S4' ? { ...s, name: '하재은' } : s);
+      const enrS4 = store.createEnrollment('S4', {
+        subjectName: '피아노',
+        courseType: 'session_pass',
+        fee: 150000,
+        ticketName: '피아노 10회 수업',
+        totalSessions: 10,
+        remainingSessions: 5,
+        lowBalanceThreshold: 2
+      });
+      if (enrS4 && enrS4.ok) {
+        store.migrateSessionPassFromEnrollment(enrS4.data.id);
+        const passS4 = store.db.sessionPasses.find(sp => sp.studentId === 'S4');
+        if (passS4) {
+          store.updateSessionPass(passS4.id, { expiresAt: '2026-06-02' }); // expired
+        }
+      }
+
+      // S5: 신민아, 횟수제, 잔여 0회, 만료일은 어제 (2026-06-02)
+      store.db.students = store.db.students.map(s => s.id === 'S5' ? { ...s, name: '신민아' } : s);
+      const enrS5 = store.createEnrollment('S5', {
+        subjectName: '첼로',
+        courseType: 'session_pass',
+        fee: 250000,
+        ticketName: '첼로 10회 수업',
+        totalSessions: 10,
+        remainingSessions: 0,
+        lowBalanceThreshold: 2
+      });
+      if (enrS5 && enrS5.ok) {
+        store.migrateSessionPassFromEnrollment(enrS5.data.id);
+        const passS5 = store.db.sessionPasses.find(sp => sp.studentId === 'S5');
+        if (passS5) {
+          store.updateSessionPass(passS5.id, { expiresAt: '2026-06-02' }); // expired and used_up
+        }
+      }
+
+      // S6: 임서윤, 횟수제, 잔여 5회, 만료일 어제 (2026-06-02), archived
+      store.db.students = store.db.students.map(s => s.id === 'S6' ? { ...s, name: '임서윤' } : s);
+      const enrS6 = store.createEnrollment('S6', {
+        subjectName: '플루트',
+        courseType: 'session_pass',
+        fee: 180000,
+        ticketName: '플루트 10회 수업',
+        totalSessions: 10,
+        remainingSessions: 5,
+        lowBalanceThreshold: 2
+      });
+      if (enrS6 && enrS6.ok) {
+        store.migrateSessionPassFromEnrollment(enrS6.data.id);
+        const passS6 = store.db.sessionPasses.find(sp => sp.studentId === 'S6');
+        if (passS6) {
+          store.updateSessionPass(passS6.id, { expiresAt: '2026-06-02' });
+          store.archiveSessionPass(passS6.id, '보관 테스트');
+        }
+      }
+
+      store.saveDB();
+    });
+
+    // 2. Navigate away and back to Today Console to trigger recommendation sync
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+    await page.waitForTimeout(200);
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+    await page.waitForTimeout(500);
+
+    // 3. Verify KPI card counts and filters
+    // Overdue KPI (미수납 확인):
+    // - S4 하재은 피아노 만료 (1)
+    // - S5 신민아 첼로 잔여 0회 (1 - used_up이 expired보다 우선)
+    // - S6 임서윤 플루트 보관 (0 - archived 제외)
+    // Total Overdue = 2
+    const overdueCountText = await page.locator('.kpi-chip-card[data-filter-id="overdue"] .badge').textContent();
+    expect(overdueCountText.trim()).toBe('2');
+
+    // 4. Verify Task Content in UI
+    await page.locator('.kpi-chip-card[data-filter-id="overdue"]').click();
+    await page.waitForTimeout(200);
+
+    // S4 하재은 만료 task
+    const s4Card = page.locator('#tasks-list-container .glass-card', { hasText: '하재은 원생 피아노 수강권 만료' });
+    await expect(s4Card).toBeVisible();
+    await expect(s4Card).toContainText('[미수납 확인]');
+    await expect(s4Card).toContainText('만료일(2026-06-02)이 지났습니다. 잔여 수업 횟수 확인 또는 새 수강권 등록이 필요합니다.');
+    await expect(s4Card).not.toContainText('충전');
+
+    // S5 신민아 0회 task (우선순위에 의해 만료가 아닌 잔여 0회 수납 task여야 함)
+    const s5Card = page.locator('#tasks-list-container .glass-card', { hasText: '신민아 원생 첼로 10회 수업' });
+    await expect(s5Card).toBeVisible();
+    await expect(s5Card).toContainText('[미수납 확인]');
+    await expect(s5Card).toContainText('잔여 수업 횟수가 0회입니다.');
+    await expect(s5Card).not.toContainText('만료일'); // 만료 문구가 없어야 함
+    await expect(s5Card).not.toContainText('충전');
+
+    // S6 임서윤 보관 task는 생성되지 않아야 함
+    const s6Card = page.locator('#tasks-list-container .glass-card', { hasText: '임서윤' });
+    await expect(s6Card).not.toBeVisible();
+
+    // 5. Verify no parent message or triggerPaymentParentMessage was invoked
+    const parentMsgCount = await page.evaluate(() => window.stateStore.db.parentMessages.length);
+    expect(parentMsgCount).toBe(0);
+
+    // 6. Test cleanup when expiresAt is adjusted to future (e.g. 2026-06-10)
+    await page.evaluate(() => {
+      const store = window.stateStore;
+      const passS4 = store.db.sessionPasses.find(sp => sp.studentId === 'S4');
+      if (passS4) {
+        store.updateSessionPass(passS4.id, { expiresAt: '2026-06-10' }); // future date
+      }
+      store.saveDB();
+    });
+
+    // Trigger sync
+    await page.locator('.menu-item[data-view="dir-message-send"]').click();
+    await page.waitForTimeout(200);
+    await page.locator('.menu-item[data-view="dir-today-console"]').click();
+    await page.waitForTimeout(500);
+
+    // Verify S4 task is gone and overdue KPI is now 1 (only S5 remains)
+    const newOverdueCountText = await page.locator('.kpi-chip-card[data-filter-id="overdue"] .badge').textContent();
+    expect(newOverdueCountText.trim()).toBe('1');
+
+    const s4CardAfter = page.locator('#tasks-list-container .glass-card', { hasText: '하재은' });
+    await expect(s4CardAfter).not.toBeVisible();
+  });
 });
 
