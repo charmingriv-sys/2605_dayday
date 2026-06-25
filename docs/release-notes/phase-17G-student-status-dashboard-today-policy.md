@@ -1759,5 +1759,51 @@
 - Phase 18C-5: task sync 연동 및 E2E 검증
 - Phase 18C-6: 정책 문서 동기화 및 Release Gate
 
+---
+
+## 27. 수강권 만료 수납 Task 흡수 정책 및 구현 반영 (Phase 18D-3)
+
+### 27-1. 정책 도입 배경
+수강권(sessionPass)의 유효기간 만료 상태는 수업 가능 여부와 재수납 여부를 결정하는 중요한 비즈니스 지표입니다. 그러나 기존 오늘 콘솔 시스템에는 만료된 수강권에 대한 별도 경고 시스템이 부재하여, 잔여 횟수가 남아있더라도 기간이 만료되어 수업이 차단되거나 추가 수납 안내가 누락되는 운영상의 취약점이 발견되었습니다. 이를 예방하고 체계적인 수납 유도를 수행하기 위해, 수강권 만료 시의 태스크 경고 생성 및 자동 해소 정책을 정립하였습니다.
+
+### 27-2. 만료 임박 Task 보류 정책
+사용자(원장)에게 불필요한 노이즈와 업무 피로도를 가중시키는 것을 방지하기 위해, 만료 예정일 이전(예: 만료 7일 전 등)에 사전에 알림을 주는 "만료 임박" 관련 태스크 생성은 현재 구현 범위에서 제외하고 보류합니다.
+
+### 27-3. 만료 완료 수강권 Task 흡수 정책
+새로운 태스크 종류나 메인 KPI 카드를 남발하지 않는다는 기존 오늘 콘솔의 원칙에 따라, 유효기간이 완전히 만료 완료(expired)된 수강권에 대한 업무 경고는 기존 오늘 콘솔의 **"미수납 확인"** (overdue 카테고리) 영역에 완전히 흡수하여 통합 노출합니다.
+만료 완료 태스크의 내부 세부 필드 구조는 다음과 같습니다:
+* **type**: `'billing'`
+* **category**: `'overdue'`
+* **priority**: `'today'`
+* **dedupeKey**: `SYSTEM_RECOMMEND_SESSION_PASS_EXPIRED_${student.id}_${enrollment.id}_${pass.id}`
+* **title**: `[미수납 확인] ${student.name} 원생 ${subjectName} 수강권 만료`
+* **description**: `${student.name} 원생의 ${subjectName} 수강권 만료일(${expiresAt})이 지났습니다. 잔여 수업 횟수 확인 또는 새 수강권 등록이 필요합니다.`
+이때, 관리자 및 학부모 오해 방지를 위해 태스크 설명 문구 내에 "충전"이라는 단어는 일절 사용하지 않고, "잔여 수업 횟수", "새 수강권 등록", "수강권 확인" 등의 표현으로만 구성합니다.
+
+### 27-4. used_up / 잔여 0회 우선순위 정책
+수강권의 잔여 수업 횟수가 0회(`remainingSessions === 0` 또는 `used_up`)이면서 만료일도 경과한 다중 조건 상황에서는 수강권 소진에 따른 기존 잔여 0회 `[미수납 확인]` 태스크(`SYSTEM_RECOMMEND_SESSION_PASS_UNPAID_...`)가 높은 우선순위를 가지도록 강력하게 가드합니다. 소진과 만료가 동시에 해당되면 소진 태스크만 단일 생성하며, 중복해서 만료(`expired`) 태스크를 생성하지 않습니다.
+
+### 27-5. archived / deleted 수강권 제외 정책
+수동 보관(`archived`) 처리되었거나 `deletedAt` 날짜가 기입되어 삭제 처리된 수강권에 대해서는 만료 여부 검사 대상에서 원천 배제하여 만료(`expired`) 태스크를 절대 생성하지 않도록 예외 처리합니다.
+
+### 27-6. DedupeKey 및 복수과목 처리 정책
+원생이 한 학원에서 복수의 과목을 동시에 수강(복수 수강과목)하거나 과목 내에 여러 개의 수강권(복수 수강권)을 보유하더라도 태스크 식별자의 충돌이 없도록, `dedupeKey` 구성 시 `studentId + enrollmentId + passId`를 완전 결합한 고유 식별키 정책을 준수합니다.
+
+### 27-7. Cleanup / Obsolete 처리 정책
+만료 완료된 수강권의 만료일이 수동 조정(`adjustSessionPassManually`) 또는 기간 연장(`extendSessionPass`)을 통해 미래 날짜로 갱신되어 `expired` 조건에서 안전하게 탈출하면, 해당 키가 `activeBillingKeys`에서 자동으로 배제됩니다. 이에 따라 기존에 open 상태로 노출되던 만료 태스크는 오늘 콘솔의 `activeBillingKeys` 자동 정화(cleanup) 필터링에 의해 즉각적이고 자연스럽게 제거됩니다.
+
+### 27-8. 메시지 / 알림톡 / 결제 연동 보류 정책
+수강권 만료 시 학부모에게 문자/알림톡을 자동으로 전송하는 발송 및 `parentMessages` 등록, 그리고 `triggerPaymentParentMessage` 호출 등은 오발송 예방 세이프가드 준수를 위해 완벽한 미연동(보류) 상태로 유지합니다.
+
+### 27-9. 구현 제외 및 후속 범위
+수강권 만료 태스크 생성 시 수납 대장(`payments`) 상에 payment 레코드를 백그라운드에서 자동으로 빌링 생성하거나 `payment.enrollmentId`를 결합하여 연결하는 일련의 작업은 이번 구현 범위에서 제외하며, 수강권 결제/영수증 분리 등과 함께 후속 범위 백로그로 보류합니다.
+
+### 27-10. 검증 기록
+본 Phase 18D-2 설계에 따른 수강권 만료 태스크 생성, used_up 우선순위 분기 가드, 연장 시 자동 cleanup 흐름에 대해 Playwright E2E 통합 테스트 검증을 완료하였으며, 테스트 결과 총 69개 시나리오가 성공적으로 통과되었습니다.
+* **today-console-flow.spec.js**: `31 passed` (신규 만료 검증 스펙 포함)
+* **student-status-flow.spec.js**: `17 passed`
+* **attendance-control-flow.spec.js**: `16 passed`
+* **billing-warning-flow.spec.js**: `5 passed`
+
 
 
