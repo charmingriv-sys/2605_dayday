@@ -1943,5 +1943,71 @@ E2E 환경에서 window.stateStore API를 활용한 Course Master CRUD 연산, m
 * **billing-warning-flow.spec.js**: `5 passed`
 * **총합**: `71 passed` (모든 스펙 100% 통과)
 
+---
+
+## 30. Payment / POS Integration Architecture 정책 (Phase 18F-2)
+
+### 30-1. 정책 도입 배경
+원내 오프라인 카드 결제(POS) 및 학부모 모바일 온라인 결제(PG) 연동 시, 원본 수납 대장 정보의 훼손을 예방하고 거래 데이터의 무결성 및 금융 추적성을 완벽히 확보하기 위해 대장(Ledger) 영역과 거래 트랜잭션(Transaction) 영역을 분리하는 아키텍처를 도입합니다.
+
+### 30-2. payment의 역할 정의
+현재의 `db.payments`는 금융사 승인 내역이 아니며, 학원이 원생별로 청구하고 정산하기 위한 "수납 항목" 및 "장부 레코드"의 역할을 담당합니다.
+
+### 30-3. payment.status 의미 정리
+* `payment.status`는 원장 또는 관리자가 해당 장부 레코드의 정산 상태를 기록한 논리적 수납 상태(`unpaid`/`paid`/`partial` 등)를 뜻합니다.
+* 이는 실제 신용카드사나 PG의 결제 승인/취소 상태와 항상 동일하지 않으며, 승인이 확정된 후 장부에 기입되는 종속 관계를 갖습니다.
+
+### 30-4. POS/PG transaction 분리 정책
+실제 전자적 카드 단말기(POS) 또는 모바일 결제(PG) 승인, 실패, 취소 등의 원거래 이력은 payment에 직접 덮어쓰거나 섞지 않고, 별도의 독립적인 **`db.paymentTransactions`** 컬렉션을 통해 개별 거래 건별로 보존합니다.
+
+### 30-5. paymentTransactions 컬렉션 정책
+승인 및 취소 거래를 추적하기 위해 `db.paymentTransactions` 컬렉션을 신설하며 다음의 권장 규격 필드를 정의합니다:
+* **id**: 거래 고유 식별자 (`TX_N` 형식)
+* **paymentId**: 연동된 장부 레코드의 키 (`paymentId`)
+* **batchId**: 합산/묶음 결제 시 연동되는 배치 키 (`batchId`)
+* **provider**: 결제 연동 모듈 주체 (예: `'toss_pos'`, `'toss_pg'`)
+* **transactionType**: 거래 유형 (`'approval'` 승인 | `'cancel'` 취소)
+* **paymentKey**: 연동 플랫폼 거래 고유 키 (`paymentKey`)
+* **approvalNo**: 금융기관 승인번호 (`approvalNo`)
+* **amount**: 실제 처리 금액
+* **method**: 결제 상세 수단 (`'card'`, `'cash'`, `'easy_pay'`, `'bank'`)
+* **status**: 처리 상태 (`'success'`, `'fail'`, `'canceled'`, `'pending'`)
+* **approvedAt** / **canceledAt**: 승인/취소 타임스탬프
+* **rawResponse**: 연동 플랫폼 응답 raw JSON (`rawResponse`)
+
+### 30-6. paymentBatches 묶음 결제 정책
+형제 원생의 수강료를 합쳐서 결제하거나, 당월 수강료와 교재비를 한 장의 카드로 통합 긁기(묶음 결제)하는 요구사항을 지원하기 위해 **`db.paymentBatches`** 컬렉션을 도입합니다. 권장 필드는 다음과 같습니다:
+* **id**: 배치 고유 식별자 (`PB_N` 형식)
+* **paymentIds**: 묶음 처리되는 payment의 ID 목록 배열
+* **studentId** 또는 **payerId**: 결제 주체 식별자
+* **totalAmount**: 묶음 총 합산 금액
+* **status**: 배치 처리 상태
+* **createdAt** / **updatedAt**: 생성 및 수정 타임스탬프
+
+### 30-7. payment와 transaction 관계 정책
+* 하나의 장부(`payment`)는 다수의 승인/취소 이력을 가질 수 있어야 하므로, 장부와 트랜잭션 간에는 **1:N 관계**를 기본 원칙으로 수립합니다.
+
+### 30-8. 부분 결제 / 합산 결제 / 묶음 결제 정책
+* **부분 결제**: payment에 `paidAmount` 누적 필드를 두어, 다수의 부분 transaction 금액 합산이 전체 청구액 이상이 되는 시점에 `payment.status`를 `paid`로 업데이트합니다.
+* **합산/묶음 결제**: 생성된 `batchId`를 통하여 단일 거래 내역(transaction)과 복수의 장부 항목들(payments)을 논리적으로 연결 및 대사(Settlement)합니다.
+
+### 30-9. 결제 취소 / 환불 / 부분취소 정책
+* **POS 취소**: Toss Front POS 연동 등 현장 단말기 결제건의 취소(`cancel` / `refund`) 시에는 전액 취소만을 우선 정책으로 지원하며 부분 취소는 지원하지 않습니다. 
+* **PG 부분취소**: 온라인 모바일 결제 등 부분취소가 필요한 결제 수단에 대해서는 후속 분기 정책(금액 부분 차감 및 partial 상태 지원)으로 세분화합니다.
+* **상태 롤백**: 거래 취소 성공 확인 트랜잭션이 추가 기입되면, 연관된 `payment.status`를 `unpaid` 또는 `partial` 상태로 안전하게 롤백합니다.
+
+### 30-10. 메시지 / 알림톡 / PG 결제 링크 선후관계
+* 청구 알림톡 발송 시 생성된 **PG 결제 링크**를 본문에 실어 전송하며, 보호자가 모바일 결제를 완료해 승인 transaction 성공이 최종 확정되는 시점에 `payment.status`를 `paid`로 전환하고 납부 완료 통보 알림톡을 자동 발송하는 흐름을 따릅니다. 이 정밀한 연동 흐름은 결제 모델링이 완전히 안정화된 후 별도의 후속 Phase에서 구체적으로 다룹니다.
+
+### 30-11. Toss Front POS 연동 시 고려사항
+* 토스 단말기 결제 요청을 위해 SDK의 `sdk.payment.requestPayment` API 규격을 활용합니다.
+* 결제 도중 단말기 이탈이나 비정상 강제 종료에 대응하기 위해, 기동 라이프사이클 내에서 `sdk.payment.getBackupPaymentKey()`를 조회하여 유실 거래를 자동 구제 및 복구하는 로직을 반드시 포함하도록 정책화합니다.
+
+### 30-12. 기존 todayTaskBilling / E2E 호환 정책
+* 기존 `todayTaskBilling` 및 E2E 테스트 스펙은 `db.payments`의 `status`만을 감시하고 기동하도록 차단되어 있습니다. 따라서 실제 금융 승인 이력을 별도 컬렉션으로 분리하고 콜백 시점에 `payment.status`만 정합성 있게 동기화해주면 기존 수납 태스크 및 E2E 테스트 흐름은 전혀 깨지지 않고 온전히 호환 동작합니다.
+
+### 30-13. 구현 제외 및 후속 범위
+* 본 Phase 18F-2는 정책 수립 및 아키텍처 정립을 전용으로 하며, 실제 POS/PG API 코드 구현, SDK 셋업, Webhook 수신, 온라인 결제 링크 자동 생성, 알림톡/문자 자동 발송 등 물리적인 시스템 연동은 구현 범위에서 제외하고 후속 마일스톤으로 이관합니다.
+
 
 
