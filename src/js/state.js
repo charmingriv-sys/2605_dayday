@@ -297,6 +297,12 @@ class StateStore {
         this.listeners = {};
         this.loadDB();
         this.seedInitialBookPayments(); // Seed payments for default student books
+        if (typeof this.ensurePaymentTransactionsCollection === 'function') {
+            this.ensurePaymentTransactionsCollection();
+        }
+        if (typeof this.ensurePaymentBatchesCollection === 'function') {
+            this.ensurePaymentBatchesCollection();
+        }
         if (typeof this.migrateStudentBooksToIssueRequests === 'function') {
             this.migrateStudentBooksToIssueRequests();
         }
@@ -419,6 +425,14 @@ class StateStore {
             }
             if (!this.db.outboundMessageDeliveries) {
                 this.db.outboundMessageDeliveries = [];
+                migrated = true;
+            }
+            if (!this.db.paymentTransactions) {
+                this.db.paymentTransactions = [];
+                migrated = true;
+            }
+            if (!this.db.paymentBatches) {
+                this.db.paymentBatches = [];
                 migrated = true;
             }
             if (migrated) {

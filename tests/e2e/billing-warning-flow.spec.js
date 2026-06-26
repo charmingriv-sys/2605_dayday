@@ -987,5 +987,248 @@ test.describe('Billing & Overdue Warnings E2E Flow', () => {
     // 닫기
     await page.locator('#common-modal [data-close-modal]').first().click();
   });
+
+  test('should verify Payment Transaction and Batch Storage APIs (Phase 18F-3)', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForLoadState('domcontentloaded');
+    await page.locator('.role-grid').waitFor({ state: 'attached', timeout: 5000 });
+
+    // 1. Login as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. State Storage API Verification in Browser context
+    const testResult = await page.evaluate(() => {
+      const store = window.stateStore;
+
+      // (A) Check collection initialization APIs
+      store.ensurePaymentTransactionsCollection();
+      store.ensurePaymentBatchesCollection();
+
+      const hasTxCol = Array.isArray(store.db.paymentTransactions);
+      const hasBatchCol = Array.isArray(store.db.paymentBatches);
+
+      // Clean existing test targets to isolate execution
+      store.db.payments = store.db.payments.filter(p => !p.id.startsWith('P_TX_TEST_'));
+      store.db.paymentTransactions = [];
+      store.db.paymentBatches = [];
+
+      // Seed 2 payments (Education billing)
+      store.db.payments.push({
+        id: 'P_TX_TEST_1',
+        studentId: 'S1',
+        amount: 150000,
+        month: '2026-06',
+        type: 'education',
+        status: 'unpaid',
+        invoiceDate: '2026-06-10',
+        paidDate: null,
+        method: null
+      });
+
+      store.db.payments.push({
+        id: 'P_TX_TEST_2',
+        studentId: 'S1',
+        amount: 200000,
+        month: '2026-06',
+        type: 'education',
+        status: 'unpaid',
+        invoiceDate: '2026-06-10',
+        paidDate: null,
+        method: null
+      });
+      store.saveDB();
+
+      // (B) Single Payment Approval Success
+      const tx1 = store.createPaymentTransaction({
+        paymentId: 'P_TX_TEST_1',
+        provider: 'toss_pos',
+        transactionType: 'approval',
+        amount: 150000,
+        status: 'success',
+        approvalNo: '12345678',
+        method: 'card'
+      });
+
+      const p1_after_approval = store.db.payments.find(p => p.id === 'P_TX_TEST_1');
+      const p1_paid = p1_after_approval.status === 'paid' && p1_after_approval.paidAmount === 150000 && p1_after_approval.paidDate !== null;
+
+      // (C) Partial Payment Approval
+      const tx2 = store.createPaymentTransaction({
+        paymentId: 'P_TX_TEST_2',
+        provider: 'toss_pg',
+        transactionType: 'approval',
+        amount: 80000, // less than 200000
+        status: 'success',
+        approvalNo: '87654321',
+        method: 'easy_pay'
+      });
+
+      const p2_after_partial = store.db.payments.find(p => p.id === 'P_TX_TEST_2');
+      const p2_partial = p2_after_partial.status === 'partial' && p2_after_partial.paidAmount === 80000 && p2_after_partial.paidDate === null;
+
+      // (D) Fail / Pending Transaction Append-only check (should not recalculate status)
+      const tx3 = store.createPaymentTransaction({
+        paymentId: 'P_TX_TEST_2',
+        provider: 'toss_pg',
+        transactionType: 'approval',
+        amount: 120000,
+        status: 'fail',
+        approvalNo: null,
+        method: 'easy_pay'
+      });
+
+      const p2_after_fail = store.db.payments.find(p => p.id === 'P_TX_TEST_2');
+      const p2_unaltered = p2_after_fail.status === 'partial' && p2_after_fail.paidAmount === 80000;
+
+      // (E) Cancel Transaction
+      const tx4 = store.createPaymentTransaction({
+        paymentId: 'P_TX_TEST_1',
+        provider: 'toss_pos',
+        transactionType: 'cancel',
+        amount: 150000,
+        status: 'success',
+        approvalNo: '12345678',
+        method: 'card'
+      });
+
+      const p1_after_cancel = store.db.payments.find(p => p.id === 'P_TX_TEST_1');
+      const p1_rolledback = p1_after_cancel.status === 'unpaid' && p1_after_cancel.paidAmount === 0 && p1_after_cancel.paidDate === null;
+
+      // Append-only check (TX count should be 4)
+      const txCount = store.db.paymentTransactions.length;
+
+      // (F) Batch Creation
+      const batch = store.createPaymentBatch(['P_TX_TEST_1', 'P_TX_TEST_2'], { provider: 'toss_pos' });
+      const batchTotalAmount = batch.totalAmount; // should be 150000 + 200000 = 350000
+
+      // (G) Batch Approval Success (Over total amount)
+      const batchTx1 = store.createPaymentTransaction({
+        batchId: batch.id,
+        provider: 'toss_pos',
+        transactionType: 'approval',
+        amount: 350000,
+        status: 'success',
+        approvalNo: '99999999',
+        method: 'card'
+      });
+
+      const batch_after_approval = store.getPaymentBatchById(batch.id);
+      const batchPaid = batch_after_approval.status === 'paid' && batch_after_approval.paidAmount === 350000;
+      
+      const p1_batch_paid = store.db.payments.find(p => p.id === 'P_TX_TEST_1').status === 'paid';
+      const p2_batch_paid = store.db.payments.find(p => p.id === 'P_TX_TEST_2').status === 'paid';
+
+      // (H) Batch Cancel Success
+      const batchTx2 = store.createPaymentTransaction({
+        batchId: batch.id,
+        provider: 'toss_pos',
+        transactionType: 'cancel',
+        amount: 350000,
+        status: 'success',
+        approvalNo: '99999999',
+        method: 'card'
+      });
+
+      const batch_after_cancel = store.getPaymentBatchById(batch.id);
+      const batchCanceled = batch_after_cancel.status === 'canceled' && batch_after_cancel.paidAmount === 0;
+
+      const p1_batch_canceled = store.db.payments.find(p => p.id === 'P_TX_TEST_1').status === 'unpaid';
+      const p2_batch_canceled = store.db.payments.find(p => p.id === 'P_TX_TEST_2').status === 'unpaid';
+
+      // (I) Sorting Query Check
+      const sortedTxs = store.getPaymentTransactionsByPaymentId('P_TX_TEST_2');
+      const sortOrderCorrect = sortedTxs.length >= 2 && 
+        new Date(sortedTxs[0].createdAt).getTime() <= new Date(sortedTxs[1].createdAt).getTime();
+
+      return {
+        hasTxCol,
+        hasBatchCol,
+        p1_paid,
+        p2_partial,
+        p2_unaltered,
+        p1_rolledback,
+        txCount,
+        batchTotalAmount,
+        batchPaid,
+        p1_batch_paid,
+        p2_batch_paid,
+        batchCanceled,
+        p1_batch_canceled,
+        p2_batch_canceled,
+        sortOrderCorrect
+      };
+    });
+
+    // Asset Browser-side API execution results
+    expect(testResult.hasTxCol).toBe(true);
+    expect(testResult.hasBatchCol).toBe(true);
+    expect(testResult.p1_paid).toBe(true);
+    expect(testResult.p2_partial).toBe(true);
+    expect(testResult.p2_unaltered).toBe(true);
+    expect(testResult.p1_rolledback).toBe(true);
+    expect(testResult.txCount).toBe(4);
+    expect(testResult.batchTotalAmount).toBe(350000);
+    expect(testResult.batchPaid).toBe(true);
+    expect(testResult.p1_batch_paid).toBe(true);
+    expect(testResult.p2_batch_paid).toBe(true);
+    expect(testResult.batchCanceled).toBe(true);
+    expect(testResult.p1_batch_canceled).toBe(true);
+    expect(testResult.p2_batch_canceled).toBe(true);
+    expect(testResult.sortOrderCorrect).toBe(true);
+
+    // 3. todayTaskBilling partial status integration check
+    // We will verify that partial status payments are evaluated as unpaid and generate billing tasks
+    const hasTask = await page.evaluate(() => {
+      const store = window.stateStore;
+
+      // Seed student with partial payment
+      store.db.students = store.db.students.filter(s => s.id !== 'S_PARTIAL_TEST');
+      store.db.students.push({
+        id: 'S_PARTIAL_TEST',
+        name: '박부분',
+        phone: '010-1234-5678',
+        parentPhone: '010-8765-4321',
+        teacherId: 'T8',
+        instrument: '바이올린',
+        fee: 200000,
+        dueDay: 13,
+        enrollDate: '2026-05-01',
+        paymentStatus: 'unpaid'
+      });
+
+      store.db.payments = store.db.payments.filter(p => p.id !== 'P_PARTIAL_TEST');
+      store.db.payments.push({
+        id: 'P_PARTIAL_TEST',
+        studentId: 'S_PARTIAL_TEST',
+        amount: 200000,
+        month: '2026-06',
+        type: 'education',
+        status: 'partial', // partial status
+        paidAmount: 80000,
+        invoiceDate: '2026-06-13',
+        paidDate: null,
+        method: null
+      });
+
+      // Clear existing tasks to check generation cleanly
+      store.db.settings = store.db.settings || {};
+      store.db.settings.DAYDAY_DEBUG_EVAL_TIME = '2026-06-13T12:00:00.000Z';
+      store.db.todayTasks = store.db.todayTasks.filter(t => !t.dedupeKey.includes('P_PARTIAL_TEST'));
+      store.saveDB();
+
+      // Trigger recommendation sync with mocked eval time 2026-06-13
+      store.syncSystemRecommendations(new Date('2026-06-13T12:00:00.000Z'), true);
+
+      // Check task generation for 'partial' payment (partial is not paid, so task should be generated)
+      return store.db.todayTasks.some(t => 
+        t.dedupeKey === 'SYSTEM_RECOMMEND_BILLING_DUE_P_PARTIAL_TEST_2026-06' && t.status === 'open'
+      );
+    });
+
+    expect(hasTask).toBe(true);
+  });
 });
 

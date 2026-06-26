@@ -319,5 +319,307 @@ export const billingMethods = {
                 dedupeKey
             });
         }
+    },
+
+    // --- PAYMENT TRANSACTIONS & BATCHES COLLECTION INITIALIZATION ---
+    ensurePaymentTransactionsCollection() {
+        if (!this.db.paymentTransactions) {
+            this.db.paymentTransactions = [];
+        }
+    },
+
+    ensurePaymentBatchesCollection() {
+        if (!this.db.paymentBatches) {
+            this.db.paymentBatches = [];
+        }
+    },
+
+    // --- PAYMENT TRANSACTION STORAGE API ---
+    createPaymentTransaction(payload) {
+        this.ensurePaymentTransactionsCollection();
+        this.ensurePaymentBatchesCollection();
+
+        const {
+            paymentId,
+            batchId,
+            provider,
+            transactionType,
+            paymentKey,
+            approvalNo,
+            amount,
+            method,
+            status,
+            approvedAt,
+            canceledAt,
+            rawResponse
+        } = payload;
+
+        // Validation
+        if (amount === undefined || amount === null || typeof amount !== 'number' || amount < 0) {
+            throw new Error('Transaction amount must be a non-negative number');
+        }
+        if (!provider) {
+            throw new Error('Transaction provider is required');
+        }
+        if (!transactionType || (transactionType !== 'approval' && transactionType !== 'cancel')) {
+            throw new Error("Transaction type must be 'approval' or 'cancel'");
+        }
+        if (!status) {
+            throw new Error('Transaction status is required');
+        }
+        if (!paymentId && !batchId) {
+            throw new Error('Either paymentId or batchId must be provided');
+        }
+
+        if (paymentId) {
+            const paymentExists = this.db.payments.some(p => p.id === paymentId);
+            if (!paymentExists) {
+                throw new Error(`Payment with ID ${paymentId} does not exist`);
+            }
+        }
+
+        if (batchId) {
+            const batchExists = this.db.paymentBatches.some(b => b.id === batchId);
+            if (!batchExists) {
+                throw new Error(`Payment batch with ID ${batchId} does not exist`);
+            }
+        }
+
+        // Generate high-collision-safe unique ID (TX_N)
+        const id = 'TX_' + (this.db.paymentTransactions.length 
+            ? Math.max(...this.db.paymentTransactions.map(tx => {
+                const num = parseInt(tx.id.replace('TX_', ''), 10);
+                return isNaN(num) ? 0 : num;
+              })) + 1 
+            : 1);
+
+        const newTx = {
+            id,
+            paymentId: paymentId || null,
+            batchId: batchId || null,
+            provider,
+            transactionType,
+            paymentKey: paymentKey || null,
+            approvalNo: approvalNo || null,
+            amount,
+            method: method || null,
+            status,
+            approvedAt: approvedAt || null,
+            canceledAt: canceledAt || null,
+            rawResponse: rawResponse || null,
+            createdAt: new Date().toISOString()
+        };
+
+        // Append-only write
+        this.db.paymentTransactions.push(newTx);
+        this.saveDB();
+
+        // Trigger Status Recalculation if Transaction was Successful
+        if (status === 'success') {
+            if (paymentId) {
+                this.recalculatePaymentStatus(paymentId);
+            }
+            if (batchId) {
+                this.recalculatePaymentBatchStatus(batchId);
+            }
+        }
+
+        this.notify('PAYMENTS_CHANGED', this.db.payments);
+        return newTx;
+    },
+
+    // --- PAYMENT STATUS RECALCULATION API ---
+    recalculatePaymentStatus(paymentId) {
+        this.ensurePaymentTransactionsCollection();
+        const payment = this.db.payments.find(p => p.id === paymentId);
+        if (!payment) return null;
+
+        // filter successful transactions linked to this payment
+        const successfulTxs = this.db.paymentTransactions.filter(tx => 
+            tx.paymentId === paymentId && tx.status === 'success'
+        );
+
+        let approvalsSum = 0;
+        let cancelsSum = 0;
+
+        successfulTxs.forEach(tx => {
+            if (tx.transactionType === 'approval') {
+                approvalsSum += tx.amount;
+            } else if (tx.transactionType === 'cancel') {
+                cancelsSum += tx.amount;
+            }
+        });
+
+        const paidAmount = Math.max(0, approvalsSum - cancelsSum);
+        payment.paidAmount = paidAmount;
+
+        const wasPaid = payment.status === 'paid';
+
+        if (paidAmount <= 0) {
+            payment.status = 'unpaid';
+            payment.paidDate = null;
+        } else if (paidAmount < payment.amount) {
+            payment.status = 'partial';
+            payment.paidDate = null;
+        } else {
+            payment.status = 'paid';
+            if (!payment.paidDate) {
+                payment.paidDate = new Date().toISOString().slice(0, 10);
+            }
+        }
+
+        this.saveDB();
+        this.notify('PAYMENTS_CHANGED', this.db.payments);
+
+        // Sync to student's paymentStatus if current month's education invoice and transitions to paid
+        if (payment.status === 'paid' && !wasPaid) {
+            const currentMonth = new Date().toISOString().slice(0, 7);
+            if (payment.type === 'education' && payment.month === currentMonth) {
+                const student = this.db.students.find(s => s.id === payment.studentId);
+                if (student) {
+                    student.paymentStatus = 'paid';
+                    this.notify('STUDENTS_CHANGED', this.db.students);
+                }
+            }
+        }
+
+        return payment;
+    },
+
+    // --- PAYMENT BATCH STORAGE API ---
+    createPaymentBatch(paymentIds, options = {}) {
+        this.ensurePaymentBatchesCollection();
+
+        if (!Array.isArray(paymentIds) || paymentIds.length === 0) {
+            throw new Error('paymentIds must be a non-empty array');
+        }
+
+        const linkedPayments = [];
+        paymentIds.forEach(id => {
+            const p = this.db.payments.find(pm => pm.id === id);
+            if (!p) {
+                throw new Error(`Linked payment with ID ${id} does not exist`);
+            }
+            linkedPayments.push(p);
+        });
+
+        const totalAmount = linkedPayments.reduce((sum, p) => sum + p.amount, 0);
+
+        // Generate unique batch ID (PB_N)
+        const id = 'PB_' + (this.db.paymentBatches.length 
+            ? Math.max(...this.db.paymentBatches.map(b => {
+                const num = parseInt(b.id.replace('PB_', ''), 10);
+                return isNaN(num) ? 0 : num;
+              })) + 1 
+            : 1);
+
+        const firstStudentId = linkedPayments[0].studentId;
+
+        const newBatch = {
+            id,
+            paymentIds: [...paymentIds],
+            studentId: options.studentId || firstStudentId,
+            payerId: options.payerId || options.studentId || firstStudentId,
+            totalAmount,
+            paidAmount: 0,
+            status: 'unpaid',
+            provider: options.provider || 'manual',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+
+        this.db.paymentBatches.push(newBatch);
+        this.saveDB();
+        this.notify('PAYMENTS_CHANGED', this.db.payments);
+
+        return newBatch;
+    },
+
+    recalculatePaymentBatchStatus(batchId) {
+        this.ensurePaymentBatchesCollection();
+        this.ensurePaymentTransactionsCollection();
+
+        const batch = this.db.paymentBatches.find(b => b.id === batchId);
+        if (!batch) return null;
+
+        const successfulTxs = this.db.paymentTransactions.filter(tx => 
+            tx.batchId === batchId && tx.status === 'success'
+        );
+
+        let approvalsSum = 0;
+        let cancelsSum = 0;
+
+        successfulTxs.forEach(tx => {
+            if (tx.transactionType === 'approval') {
+                approvalsSum += tx.amount;
+            } else if (tx.transactionType === 'cancel') {
+                cancelsSum += tx.amount;
+            }
+        });
+
+        const paidAmount = Math.max(0, approvalsSum - cancelsSum);
+        batch.paidAmount = paidAmount;
+
+        const hasCancels = successfulTxs.some(tx => tx.transactionType === 'cancel');
+
+        if (paidAmount <= 0) {
+            batch.status = hasCancels ? 'canceled' : 'unpaid';
+        } else if (paidAmount < batch.totalAmount) {
+            batch.status = 'partial';
+        } else {
+            batch.status = 'paid';
+        }
+
+        batch.updatedAt = new Date().toISOString();
+
+        // Sync and propagate status to linked payments
+        batch.paymentIds.forEach(pId => {
+            const payment = this.db.payments.find(p => p.id === pId);
+            if (!payment) return;
+
+            if (batch.status === 'paid') {
+                payment.status = 'paid';
+                payment.paidAmount = payment.amount;
+                if (!payment.paidDate) {
+                    payment.paidDate = new Date().toISOString().slice(0, 10);
+                }
+            } else if (batch.status === 'canceled' || batch.status === 'unpaid') {
+                payment.status = 'unpaid';
+                payment.paidAmount = 0;
+                payment.paidDate = null;
+            }
+            // If batch is partial, do not propagate to linked payments automatically (leave them as-is)
+        });
+
+        this.saveDB();
+        this.notify('PAYMENTS_CHANGED', this.db.payments);
+        return batch;
+    },
+
+    // --- TRANSACTIONS & BATCHES GETTER APIS ---
+    getPaymentTransactionsByPaymentId(paymentId) {
+        this.ensurePaymentTransactionsCollection();
+        return this.db.paymentTransactions
+            .filter(tx => tx.paymentId === paymentId)
+            .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    },
+
+    getPaymentTransactionsByBatchId(batchId) {
+        this.ensurePaymentTransactionsCollection();
+        return this.db.paymentTransactions
+            .filter(tx => tx.batchId === batchId)
+            .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    },
+
+    getPaymentBatchById(batchId) {
+        this.ensurePaymentBatchesCollection();
+        return this.db.paymentBatches.find(b => b.id === batchId) || null;
+    },
+
+    getPaymentBatchesByPaymentId(paymentId) {
+        this.ensurePaymentBatchesCollection();
+        return this.db.paymentBatches
+            .filter(b => b.paymentIds.includes(paymentId))
+            .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
     }
 };
