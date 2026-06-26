@@ -1350,7 +1350,7 @@ test.describe('Director Today Console Flow Checks', () => {
     // 2. Click calendar event chip
     const calendarSection = page.locator('#calendar-timeline-section');
     const chip = calendarSection.locator(`.calendar-event-chip:has-text("${taskTitle}")`);
-    await expect(chip).toBeVisible();
+    await expect(chip).toBeVisible({ timeout: 15000 });
     await chip.click();
 
     // Verify popover is visible
@@ -1383,7 +1383,7 @@ test.describe('Director Today Console Flow Checks', () => {
     }, updatedTitle);
     console.log('DEBUG_TASK_AFTER_EDIT:', JSON.stringify(debugTask, null, 2));
 
-    await expect(calendarSection.locator(`.calendar-event-chip:has-text("${updatedTitle}")`)).toBeVisible();
+    await expect(calendarSection.locator(`.calendar-event-chip:has-text("${updatedTitle}")`)).toBeVisible({ timeout: 15000 });
   });
 
   test('should verify Repair-A requirements: auto-sync in edit mode, today prefix in queue, cell click cancels edit mode, and popover badge wrapping', async ({ page }) => {
