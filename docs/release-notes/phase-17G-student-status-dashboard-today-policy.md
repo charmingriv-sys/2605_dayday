@@ -1884,5 +1884,64 @@ E2E 환경에서 window.stateStore API를 활용한 Course Master CRUD 연산, m
 * **billing-warning-flow.spec.js**: 5 passed
 * **attendance-control-flow.spec.js**: 16 passed
 
+---
+
+## 29. 수강과목 마스터 선택 UI 및 원생 적용 연동 정책 (Phase 18E-7)
+
+### 29-1. 정책 도입 배경
+원생 등록이나 수강과목 추가 시, 수작업 기입으로 인한 오차를 줄이고 운영의 정형화를 보장하기 위해 Course Master 데이터를 직접 화면 단에서 선택하고 연동하여 일련의 데이터를 원자적으로 생성할 수 있는 통합 UI 환경을 수립했습니다.
+
+### 29-2. 수강과목 추가 모달 Course Master 선택 정책
+* 원생 상세 정보 모달 내의 "수강과목 추가" 모달 상단에 `enrollment-course-master` ID를 가진 '수강과목 마스터 선택' 드롭다운(`select` 박스)이 신설되었습니다.
+* 해당 드롭다운은 `db.courses` 컬렉션의 활성 데이터를 필터링하는 `getActiveCourseMasters` API 호출 결과를 기반으로 선택지를 동적으로 구성합니다.
+* 드롭다운의 첫 번째 옵션은 `"수강과목 마스터 선택 안 함 - 직접 입력"`으로 설정하여 기존의 수동 수강과목 직접 입력 방식을 지원합니다.
+* 개별 과목 마스터 선택지의 렌더링 라벨은 `"피아노 정규반 · 월정액 · 150,000원"` 혹은 `"바이올린 쿠폰 10회 · 횟수제 · 180,000원"`과 같은 정규화된 형식으로 제공합니다.
+
+### 29-3. 마스터 선택 시 자동 채움 정책
+* `enrollment-course-master` select의 change 이벤트 발생 시, 해당 마스터 정보에 정의된 청구 속성(`courseType`, `subjectName`, `fee`, `dueDay`, `durationMinutes`, `totalSessions`, `remainingSessions`, `lowBalanceThreshold` 등)을 화면 입력 폼 내의 관련 입력란에 즉각 자동 채움(Auto-fill) 처리합니다.
+* 월정액/횟수제 등 수강 방식 구분에 따른 입력 영역의 원활한 UI 전환(토글)을 제공하기 위해, 내부 `enrollment-billing-type` 라디오 change 이벤트를 브라우저 표준 명세로 정상 dispatch하여 기존 입력부 인터랙션과의 정합성을 완벽히 유지합니다.
+
+### 29-4. 원생별 Override UI 정책
+* Course Master 선택에 의한 자동 채움이 완료된 이후에도 원장(사용자)의 재량적 가격 책정이나 일정 조정이 가능하도록 개별 입력 필드 수정(Override)을 전면 허용합니다.
+* 수정된 입력 필드의 최종 값들은 저장 시 `feeOverride`, `dueDayOverride`, `durationMinutesOverride`, `totalSessionsOverride`, `remainingSessionsOverride`, `expiresAtOverride` 등의 options 인자로 취합되어 저장 처리부로 안전하게 전송됩니다.
+
+### 29-5. 최초 수납 상태 none / unpaid / paid UI 정책
+* 수강과목 추가와 동시에 첫 수납에 대한 채권 관리가 이어질 수 있도록 모달 하단에 `enrollment-initial-payment-status` (최초 수납 상태) 필드를 도입했습니다.
+  - **none**: 수납 항목(payment)을 전혀 생성하지 않습니다.
+  - **unpaid**: 미수납 상태의 청구 장부 레코드를 등록합니다.
+  - **paid**: 완납 상태의 청구 및 수납 완료 장부 레코드를 등록합니다.
+* 최초 수납 상태가 `paid`인 경우에만 수납 수단(paymentMethod)을 선택할 수 있는 select 필드(`enrollment-initial-payment-method`)를 노출하며, `none` 또는 `unpaid`인 경우 화면에서 감추도록 가이드합니다.
+
+### 29-6. applyCourseToStudent 저장 연동 정책
+* 마스터 과목이 드롭다운에서 선택된 상태로 저장을 요청하면, 기존 개별 헬퍼 호출 방식을 대체하여 단일 통합 트랜잭션 진입점인 `applyCourseToStudent` API를 우선 호출하여 저장을 완료합니다.
+* 저장 시에는 요일(`dayOfWeek`), 수업 시간(`time`), 담당 강사(`teacherId`), 적용 시작일(`startDate`), 메모(`memo`), 최초 수납 상태(`paymentStatus`), 수납 수단(`paymentMethod`)을 override 정보와 함께 누락 없이 넘겨주어야 합니다.
+
+### 29-7. 직접 입력 Fallback 유지 정책
+* 드롭다운에서 마스터 데이터를 선택하지 않고 `"직접 입력"`으로 폼을 작성하는 경우에 대비하여, 기존의 직접 입력 유효성 검사 및 `createEnrollment` / `createSessionPass` / `createClassForEnrollment` 호출 연동 로직을 fallback 흐름으로 빈틈없이 유지합니다.
+
+### 29-8. Partial Success 및 Alert 정책
+* `applyCourseToStudent`는 수강 등록(enrollment)을 핵심 축으로 하되 하위 데이터(클래스 일정, 수납 항목 등)의 부분 실패(partial success) 발생 시 에러 코드를 포함하는 warnings 배열을 반환합니다.
+* 화면 저장 처리 성패 시 다음과 같은 지정된 한글 문구로 Alert 창을 통제하여 원장에게 상세히 안내합니다:
+  - **성공 (수납 미생성)**: `"수강과목이 추가되었습니다."`
+  - **성공 (수납 동시 생성)**: `"수강과목과 수납 항목이 추가되었습니다."`
+  - **부분 성공 (warnings 존재)**: `"수강과목은 추가되었지만 일부 정보 저장에 실패했습니다."`
+  - **전체 실패**: `"수강과목 추가에 실패했습니다."`
+
+### 29-9. 기존 수강권 / 수납 / 출결 흐름 호환 정책
+* 연동 과정에서 생성된 수납 항목(payment)에 `enrollmentId`, `courseId`, `sessionPassId` 등의 추적용 외래키 필드가 추가되어도, 기존 `todayTaskBilling` 이나 `billing-warning-flow`는 영향 없이 견고하게 작동합니다.
+* 대표 수강과목 변경 및 추가 시 Legacy flat-field 호환성 가드가 트리거되므로 기존 출결 현황판이나 수납 리스트 집계에서도 데이터 불일치가 일어나지 않습니다.
+
+### 29-10. 구현 제외 및 후속 범위
+* 생성된 payment 레코드는 내부 장부 레코드이자 결제 내역 기입을 의미할 뿐이며, 외부 PG 결제 연동이나 카드 승인, 가상계좌 발급 등 "실제 결제" 행위는 포함하지 않습니다.
+* 알림톡, SMS, 푸시 발송을 통한 자동 노출 처리는 본 범위에서 배제되며, Course Master 데이터 자체를 직접 수정/삭제하는 별도의 CRUD 기획 관리 화면은 후속 Phase로 이관합니다.
+
+### 29-11. 검증 기록
+본 Phase 18E-5 설계 및 구현에 따른 UI 결합 E2E 테스트 스펙을 추가하였고, 기존 출결/콘솔/수납 영역에 대한 영향도 점검 결과 71개 전체 시나리오가 모두 성공적으로 완료되었음을 검증했습니다.
+* **student-status-flow.spec.js**: `19 passed` (신규 UI 모달 연동 스펙 추가)
+* **today-console-flow.spec.js**: `31 passed`
+* **attendance-control-flow.spec.js**: `16 passed`
+* **billing-warning-flow.spec.js**: `5 passed`
+* **총합**: `71 passed` (모든 스펙 100% 통과)
+
 
 
