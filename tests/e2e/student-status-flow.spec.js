@@ -3366,5 +3366,153 @@ test.describe('Student Status Management Flow', () => {
     expect(results.applyPartialWarnings.length).toBeGreaterThan(0);
     expect(results.applyPartialWarnings[0]).toBe('invalid_total_sessions');
   });
+
+  test('should verify Course Master Data integration in Add Course Modal UI', async ({ page }) => {
+    // 1. Log in as Director
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    // 2. Navigate to Student Tab
+    await page.locator('.menu-item[data-view="dir-students"]').click();
+    await expect(page.locator('#page-title')).toContainText('원생 명부 관리');
+
+    // 3. Open first student detail modal
+    const firstStudentLink = page.locator('.student-name-link').first();
+    await expect(firstStudentLink).toBeVisible({ timeout: 5000 });
+    const targetStudentId = await firstStudentLink.evaluate(el => {
+      return el.getAttribute('data-id') || 'S1';
+    });
+    await firstStudentLink.click();
+
+    const detailModal = page.locator('#common-modal');
+    await expect(detailModal).toBeVisible({ timeout: 5000 });
+
+    // 4. Open course add modal
+    const addBtn = detailModal.locator('#btn-add-enrollment');
+    await expect(addBtn).toBeVisible({ timeout: 5000 });
+    await addBtn.click();
+    await page.waitForTimeout(200);
+
+    // 4. Verify new select elements are rendered
+    const masterSelect = detailModal.locator('#enrollment-course-master');
+    await expect(masterSelect).toBeVisible();
+
+    const initialPaymentStatusSelect = detailModal.locator('#enrollment-initial-payment-status');
+    await expect(initialPaymentStatusSelect).toBeVisible();
+
+    const paymentMethodGroup = detailModal.locator('#group-initial-payment-method');
+    await expect(paymentMethodGroup).toBeHidden(); // Default status is 'none', so method select should be hidden
+
+    // Change status to paid and check that method select becomes visible
+    await initialPaymentStatusSelect.selectOption('paid');
+    await expect(paymentMethodGroup).toBeVisible();
+
+    // 5. Select monthly master: CRS_1
+    await masterSelect.selectOption('CRS_1');
+    await page.waitForTimeout(200);
+
+    // Verify auto-filled monthly values
+    const subjectSelect = detailModal.locator('#enrollment-subject');
+    await expect(subjectSelect).toHaveValue('피아노');
+
+    const monthlyRadio = detailModal.locator('input[name="enrollment-billing-type"][value="monthly"]');
+    await expect(monthlyRadio).toBeChecked();
+
+    const feeInput = detailModal.locator('#enrollment-fee');
+    await expect(feeInput).toHaveValue('150000');
+
+    const dueDayInput = detailModal.locator('#enrollment-due-day');
+    await expect(dueDayInput).toHaveValue('10');
+
+    const durationSelect = detailModal.locator('#enrollment-duration');
+    await expect(durationSelect).toHaveValue('50');
+
+    // 6. Select session master: CRS_2
+    await masterSelect.selectOption('CRS_2');
+    await page.waitForTimeout(200);
+
+    // Verify auto-filled session values
+    await expect(subjectSelect).toHaveValue('바이올린');
+
+    const sessionRadio = detailModal.locator('input[name="enrollment-billing-type"][value="session"]');
+    await expect(sessionRadio).toBeChecked();
+
+    const ticketFeeInput = detailModal.locator('#enrollment-ticket-fee');
+    await expect(ticketFeeInput).toHaveValue('180000');
+
+    const ticketNameInput = detailModal.locator('#enrollment-ticket-name');
+    await expect(ticketNameInput).toHaveValue('바이올린 쿠폰 10회');
+
+    const totalCountInput = detailModal.locator('#enrollment-total-count');
+    await expect(totalCountInput).toHaveValue('10');
+
+    const remainingCountInput = detailModal.locator('#enrollment-remaining-count');
+    await expect(remainingCountInput).toHaveValue('10');
+
+    const alertCountInput = detailModal.locator('#enrollment-alert-count');
+    await expect(alertCountInput).toHaveValue('2');
+
+    // 7. Test overrides: edit values manually
+    await ticketFeeInput.fill('170000'); // feeOverride
+    await totalCountInput.fill('12'); // totalSessionsOverride
+    await remainingCountInput.fill('12'); // remainingSessionsOverride
+    await durationSelect.selectOption('60'); // durationMinutesOverride
+
+    // Fill in required fields
+    const teacherSelect = detailModal.locator('#enrollment-teacher');
+    await teacherSelect.selectOption('T1');
+
+    // Choose payment status as unpaid
+    await initialPaymentStatusSelect.selectOption('unpaid');
+
+    // Handle alert dialog upon submit
+    let alertText = '';
+    page.once('dialog', async dialog => {
+      alertText = dialog.message();
+      await dialog.accept();
+    });
+
+    // 8. Submit
+    await detailModal.locator('#btn-submit-enrollment-modal').click();
+    await page.waitForTimeout(300);
+
+    // Verify success alert message and UI card updating
+    expect(alertText).toBe('수강과목과 수납 항목이 추가되었습니다.');
+
+    // Detail modal should remain open and display the new card
+    await expect(detailModal).toBeVisible();
+    const newCard = detailModal.locator('.enrollment-card:has-text("바이올린 쿠폰 10회")');
+    await expect(newCard).toBeVisible();
+    await expect(newCard.locator('.status-badge')).toContainText('수강중');
+
+    // Ensure state mutated with override values
+    const stateVerification = await page.evaluate((studentId) => {
+      const store = window.stateStore;
+      const db = store.db;
+      // Get the latest enrollment for student
+      const studentEnrollments = db.enrollments.filter(e => e.studentId === studentId);
+      const latestEnr = studentEnrollments[studentEnrollments.length - 1];
+      const matchingPass = db.sessionPasses.find(p => p.enrollmentId === latestEnr.id);
+      const matchingPayment = db.payments.find(p => p.enrollmentId === latestEnr.id);
+      return {
+        enrollmentFee: latestEnr ? latestEnr.fee : null,
+        enrollmentDuration: latestEnr ? latestEnr.defaultDurationMinutes : null,
+        passTotal: matchingPass ? matchingPass.totalSessions : null,
+        passRemaining: matchingPass ? matchingPass.remainingSessions : null,
+        paymentAmount: matchingPayment ? matchingPayment.amount : null,
+        paymentStatus: matchingPayment ? matchingPayment.status : null,
+        paymentMethod: matchingPayment ? matchingPayment.method : null
+      };
+    }, targetStudentId);
+
+    expect(stateVerification.enrollmentFee).toBe(170000);
+    expect(stateVerification.enrollmentDuration).toBe(60);
+    expect(stateVerification.passTotal).toBe(12);
+    expect(stateVerification.passRemaining).toBe(12);
+    expect(stateVerification.paymentAmount).toBe(170000);
+    expect(stateVerification.paymentStatus).toBe('unpaid');
+  });
 });
 

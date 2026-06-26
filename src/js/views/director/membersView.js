@@ -1713,6 +1713,12 @@ const openAddEnrollmentModal = (studentId) => {
     const teachers = stateStore.getTeachers() || [];
     const subjects = stateStore.getSubjects() || [];
 
+    const activeMasters = typeof stateStore.getActiveCourseMasters === 'function' ? stateStore.getActiveCourseMasters({ onlyActive: true }) : [];
+    const courseMasterOptions = activeMasters.map(c => {
+        const typeLabel = c.courseType === 'monthly' ? '월정액' : '횟수제';
+        return `<option value="${c.id}">${c.name} · ${typeLabel} · ${c.defaultFee.toLocaleString()}원</option>`;
+    }).join('');
+
     const teacherOptions = teachers
         .filter(t => t.employmentStatus !== 'resigned')
         .map(t => {
@@ -1744,6 +1750,15 @@ const openAddEnrollmentModal = (studentId) => {
             </div>
 
             <div class="modal-body" style="padding: 1.5rem 2rem; max-height: 70vh; overflow-y: auto; display: flex; flex-direction: column; gap: 1.2rem;">
+                
+                <!-- 수강과목 마스터 선택 -->
+                <div class="form-group">
+                    <label for="enrollment-course-master" style="font-weight: 700; margin-bottom: 8px; display: block; color: var(--text-main);">수강과목 마스터 선택</label>
+                    <select id="enrollment-course-master" class="form-control" style="width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
+                        <option value="" selected>수강과목 마스터 선택 안 함 - 직접 입력</option>
+                        ${courseMasterOptions}
+                    </select>
+                </div>
                 
                 <!-- 수강 방식 선택 -->
                 <div class="form-group">
@@ -1931,6 +1946,31 @@ const openAddEnrollmentModal = (studentId) => {
                     </div>
                 </div>
 
+                <!-- 최초 수납 설정 -->
+                <hr style="border: 0; border-top: 1px dashed var(--border-color); margin: 0;">
+                <div style="font-weight: 700; font-size: 0.9rem; color: var(--primary); border-left: 3px solid var(--primary); padding-left: 8px; margin-bottom: -4px;">최초 수납 설정</div>
+                
+                <div class="form-row" style="display: flex; gap: 12px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="enrollment-initial-payment-status">최초 수납 상태</label>
+                        <select id="enrollment-initial-payment-status" class="form-control" style="width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
+                            <option value="none" selected>수납 항목 생성 안 함</option>
+                            <option value="unpaid">미수납 항목 생성</option>
+                            <option value="paid">완납 처리</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1; display: none;" id="group-initial-payment-method">
+                        <label for="enrollment-initial-payment-method">수납 수단</label>
+                        <select id="enrollment-initial-payment-method" class="form-control" style="width: 100%; height: 38px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
+                            <option value="cash" selected>현금</option>
+                            <option value="card">카드</option>
+                            <option value="bank">계좌이체</option>
+                            <option value="toss">토스</option>
+                            <option value="kakao">카카오페이</option>
+                        </select>
+                    </div>
+                </div>
+
             </div>
 
             <div class="modal-footer" style="padding: 1rem 2rem; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 8px; background: rgba(0, 0, 0, 0.01);">
@@ -1942,6 +1982,96 @@ const openAddEnrollmentModal = (studentId) => {
 
     const onInitAddEnrollmentModal = (contentArea) => {
         contentArea.classList.add('layout-fixed');
+
+        // 최초 수납 상태 변경 시 결제 수단 필드 토글
+        const paymentStatusSelect = contentArea.querySelector('#enrollment-initial-payment-status');
+        const paymentMethodGroup = contentArea.querySelector('#group-initial-payment-method');
+        if (paymentStatusSelect && paymentMethodGroup) {
+            paymentStatusSelect.addEventListener('change', (e) => {
+                if (e.target.value === 'paid') {
+                    paymentMethodGroup.style.display = 'block';
+                } else {
+                    paymentMethodGroup.style.display = 'none';
+                }
+            });
+        }
+
+        // 수강과목 마스터 변경 시 필드 자동 채움
+        const courseMasterSelect = contentArea.querySelector('#enrollment-course-master');
+        if (courseMasterSelect) {
+            courseMasterSelect.addEventListener('change', (e) => {
+                const courseId = e.target.value;
+                if (!courseId) return;
+
+                const course = typeof stateStore.getCourseMasterById === 'function' ? stateStore.getCourseMasterById(courseId) : null;
+                if (!course) return;
+
+                // 1. 과목명 / 악기명 필드 채우기
+                const subjectSelect = contentArea.querySelector('#enrollment-subject');
+                if (subjectSelect) {
+                    let hasOption = false;
+                    for (let i = 0; i < subjectSelect.options.length; i++) {
+                        if (subjectSelect.options[i].value === course.subjectName) {
+                            subjectSelect.selectedIndex = i;
+                            hasOption = true;
+                            break;
+                        }
+                    }
+                    if (!hasOption) {
+                        const newOpt = document.createElement('option');
+                        newOpt.value = course.subjectName;
+                        newOpt.text = course.subjectName;
+                        subjectSelect.appendChild(newOpt);
+                        subjectSelect.value = course.subjectName;
+                    }
+                }
+
+                // 2. 월정액/횟수제 선택 라디오 토글 & 이벤트 디스패치
+                const targetVal = course.courseType === 'monthly' ? 'monthly' : 'session';
+                const radio = contentArea.querySelector(`input[name="enrollment-billing-type"][value="${targetVal}"]`);
+                if (radio) {
+                    radio.checked = true;
+                    radio.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+
+                // 3. 월정액 수강료 및 청구일
+                const feeInput = contentArea.querySelector('#enrollment-fee');
+                if (feeInput) feeInput.value = course.defaultFee;
+
+                const dueDayInput = contentArea.querySelector('#enrollment-due-day');
+                if (dueDayInput && course.defaultDueDay !== undefined) {
+                    dueDayInput.value = course.defaultDueDay;
+                }
+
+                // 4. 수업 길이
+                const durationSelect = contentArea.querySelector('#enrollment-duration');
+                if (durationSelect && course.defaultDurationMinutes !== undefined) {
+                    durationSelect.value = course.defaultDurationMinutes;
+                }
+
+                // 5. 횟수제 전용 필드들
+                const ticketNameInput = contentArea.querySelector('#enrollment-ticket-name');
+                if (ticketNameInput) ticketNameInput.value = course.name;
+
+                const totalSessionsInput = contentArea.querySelector('#enrollment-total-count');
+                if (totalSessionsInput && course.defaultTotalSessions !== undefined) {
+                    totalSessionsInput.value = course.defaultTotalSessions;
+                }
+
+                const remainingSessionsInput = contentArea.querySelector('#enrollment-remaining-count');
+                if (remainingSessionsInput && course.defaultTotalSessions !== undefined) {
+                    remainingSessionsInput.value = course.defaultTotalSessions;
+                }
+
+                const ticketFeeInput = contentArea.querySelector('#enrollment-ticket-fee');
+                if (ticketFeeInput) ticketFeeInput.value = course.defaultFee;
+
+                const alertCountInput = contentArea.querySelector('#enrollment-alert-count');
+                if (alertCountInput && course.defaultLowBalanceThreshold !== undefined) {
+                    alertCountInput.value = course.defaultLowBalanceThreshold;
+                }
+            });
+        }
 
         const billingRadioButtons = contentArea.querySelectorAll('input[name="enrollment-billing-type"]');
         const sectionMonthly = contentArea.querySelector('#section-monthly-fields');
@@ -1972,6 +2102,95 @@ const openAddEnrollmentModal = (studentId) => {
         if (form) {
             form.addEventListener('submit', (e) => {
                 e.preventDefault();
+
+                const courseMasterVal = contentArea.querySelector('#enrollment-course-master').value;
+
+                if (courseMasterVal) {
+                    const subject = contentArea.querySelector('#enrollment-subject').value;
+                    const teacher = contentArea.querySelector('#enrollment-teacher').value;
+                    if (!subject) {
+                        alert('과목을 선택해 주세요.');
+                        return;
+                    }
+                    if (!teacher) {
+                        alert('담당 강사를 선택해 주세요.');
+                        return;
+                    }
+
+                    const billingType = contentArea.querySelector('input[name="enrollment-billing-type"]:checked').value;
+                    const level = contentArea.querySelector('#enrollment-level').value;
+                    const status = contentArea.querySelector('#enrollment-status').value;
+                    const startDate = contentArea.querySelector('#enrollment-start-date').value;
+                    const dayOfWeek = contentArea.querySelector('#enrollment-day-of-week').value;
+                    const time = contentArea.querySelector('#enrollment-time').value;
+                    const defaultDurationMinutes = parseInt(contentArea.querySelector('#enrollment-duration').value, 10);
+                    const memo = contentArea.querySelector('#enrollment-notes').value;
+
+                    const paymentStatus = contentArea.querySelector('#enrollment-initial-payment-status').value;
+                    const paymentMethod = contentArea.querySelector('#enrollment-initial-payment-method').value;
+
+                    let paymentMonth = null;
+                    if (billingType === 'monthly') {
+                        paymentMonth = contentArea.querySelector('#enrollment-start-billing-month').value;
+                    } else {
+                        const purDate = contentArea.querySelector('#enrollment-purchase-date').value;
+                        paymentMonth = purDate ? purDate.slice(0, 7) : new Date().toISOString().slice(0, 7);
+                    }
+
+                    // Build Overrides
+                    let feeOverride = null;
+                    let dueDayOverride = null;
+                    let totalSessionsOverride = null;
+                    let remainingSessionsOverride = null;
+                    let expiresAtOverride = null;
+
+                    if (billingType === 'monthly') {
+                        feeOverride = parseInt(contentArea.querySelector('#enrollment-fee').value, 10);
+                        dueDayOverride = parseInt(contentArea.querySelector('#enrollment-due-day').value, 10);
+                    } else {
+                        feeOverride = parseInt(contentArea.querySelector('#enrollment-ticket-fee').value, 10);
+                        totalSessionsOverride = parseInt(contentArea.querySelector('#enrollment-total-count').value, 10);
+                        remainingSessionsOverride = parseInt(contentArea.querySelector('#enrollment-remaining-count').value, 10);
+                        expiresAtOverride = contentArea.querySelector('#enrollment-expire-date').value || null;
+                    }
+
+                    const options = {
+                        status,
+                        className: level,
+                        level,
+                        teacherId: teacher,
+                        startDate,
+                        dayOfWeek,
+                        time,
+                        memo,
+                        paymentStatus,
+                        paymentMethod,
+                        paymentMonth,
+                        feeOverride,
+                        durationMinutesOverride: defaultDurationMinutes,
+                        dueDayOverride,
+                        totalSessionsOverride,
+                        remainingSessionsOverride,
+                        expiresAtOverride
+                    };
+
+                    const result = stateStore.applyCourseToStudent(studentId, courseMasterVal, options);
+                    if (result && result.ok) {
+                        const hasWarnings = result.data.warnings && result.data.warnings.length > 0;
+                        if (hasWarnings) {
+                            alert('수강과목은 추가되었지만 일부 정보 저장에 실패했습니다.');
+                        } else if (paymentStatus === 'unpaid' || paymentStatus === 'paid') {
+                            alert('수강과목과 수납 항목이 추가되었습니다.');
+                        } else {
+                            alert('수강과목이 추가되었습니다.');
+                        }
+                        closeModal();
+                        openStudentDetailModal(studentId);
+                    } else {
+                        alert('수강과목 추가에 실패했습니다.');
+                    }
+                    return;
+                }
                 
                 const billingType = contentArea.querySelector('input[name="enrollment-billing-type"]:checked').value;
                 const subject = contentArea.querySelector('#enrollment-subject').value;
