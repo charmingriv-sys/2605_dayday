@@ -1805,5 +1805,84 @@
 * **attendance-control-flow.spec.js**: `16 passed`
 * **billing-warning-flow.spec.js**: `5 passed`
 
+---
+
+## 28. 수강과목 마스터데이터 및 원생 적용 정책 (Phase 18E-3)
+
+### 28-1. 정책 도입 배경
+학원 운영 시 과목(Subject)과 수강료(Fee), 수강 구분(CourseType) 등이 여러 원생에 걸쳐 반복적으로 사용되지만, 기존에는 원생 등록 시점마다 수강 정보를 매번 직접 입력해야 하는 불편함이 있었습니다. 이로 인한 입력 오류를 예방하고 관리의 표준화를 이루기 위해 "수강과목 마스터데이터(Course Master)"를 도입하고, 이를 원생에게 유기적으로 선택 적용하는 정책을 정립하였습니다.
+
+### 28-2. db.courses 마스터데이터 도입 정책
+새로운 마스터데이터 모델을 정의하여 db.courses 컬렉션으로 독자 관리합니다.
+db.courses 컬렉션의 개별 마스터 과목은 다음의 핵심 메타 정보를 포함해야 합니다:
+* **id**: CRS_N 형식의 고유 키
+* **name**: 마스터 과목명 (예: "피아노 정규반")
+* **subjectName**: 소속 과목명 (예: "피아노")
+* **courseType**: 수강 구분 (monthly / session_pass)
+* **defaultFee**: 기본 수강료
+* **defaultDurationMinutes**: 기본 수업 시간
+* **defaultDueDay**: 월정액(monthly) 전용 기본 수납 정기일 (1~31 범위)
+* **defaultTotalSessions**: 횟수제(session_pass) 전용 기본 횟수 (1 이상)
+* **defaultLowBalanceThreshold**: 횟수제(session_pass) 전용 미수납 경고 기준 횟수
+* **isActive** 및 **status**: 활성화 여부 및 상태 (active / archived)
+
+### 28-3. db.subjects 호환 유지 정책
+기존에 생성되어 동작 중인 db.subjects는 단순 과목명 풀(List)로서 그대로 호환 유지하며, 이번 마스터데이터 도입 과정에서 강제로 삭제하거나 수정/대체하지 않고 완벽하게 공존하도록 설계합니다.
+
+### 28-4. 기본 Seed 정책
+학원 최초 구동 시 또는 데이터베이스 로드 시에 db.courses 컬렉션의 안전한 초기화(ensureCoursesCollection)를 수행합니다. 컬렉션이 완전히 비어 있을 때에만 자동 시드 헬퍼(seedDefaultCoursesIfEmpty)가 기동하여 최소 monthly 1개와 session_pass 1개를 기본 마스터 데이터로 세팅합니다. 기존 데이터나 Subjects 목록은 절대 손상시키지 않습니다.
+
+### 28-5. Course Master CRUD API 정책
+마스터 데이터의 관리 편의성을 위해 다음의 핵심 CRUD Storage API를 정의하고 유효성 검증을 엄격히 규정합니다:
+* **ensureCoursesCollection**: courses 컬렉션 안전 초기화
+* **seedDefaultCoursesIfEmpty**: 기본 시드 연동
+* **createCourseMaster**: 이름, 과목명, 금액 및 수업시간 필수값과 조건(dueDay 1~31, threshold <= total 등)을 검증하여 등록
+* **updateCourseMaster**: 보관되지 않은 활성 마스터 데이터를 패치 수정
+* **archiveCourseMaster**: 마스터 데이터를 보관 처리(status = 'archived')하고 비활성하여 목록 필터링에서 원천 배제
+* **getActiveCourseMasters**: 보관 처리된 과목을 제외한 유효 과목 조회
+* **getCourseMasterById**: 특정 ID의 과목 조회
+
+### 28-6. 원생별 Override 정책
+마스터데이터에서 기본 제공하는 템플릿 값을 원생 등록 및 과목 추가 시 그대로 적용하되, 원장 판단에 따라 특정 원생에게 할인이나 맞춤 혜택을 부여할 수 있도록 개별 재정의(Override)를 전면 허용합니다:
+* **feeOverride**: 기본 금액 재정의
+* **totalSessionsOverride** 및 **remainingSessionsOverride**: 기본 수강 횟수 재정의
+* **expiresAtOverride**: 만료일 재정의
+* **dueDayOverride**: 정기 수납일 재정의
+* **durationMinutesOverride**: 수업 시간 재정의
+
+### 28-7. applyCourseToStudent 적용 정책
+특정 원생에게 마스터 과목을 선택적으로 적용하는 단일 진입점 API인 applyCourseToStudent(studentId, courseId, options)를 설계하였습니다. 이 API는 studentId와 courseId를 받아 기본값과 override를 안전하게 병합하고, enrollment 레코드 생성 및 후속 연동 데이터(sessionPass, class schedule, payment)를 원스톱으로 관리합니다.
+
+### 28-8. 최초 수납 상태 none / unpaid / paid 정책
+과목을 원생에게 적용하는 시점에 최초 수납 상태(paymentStatus)를 설정하며, 이는 결제/수납 장부와 밀접하게 연계됩니다:
+* **none**: 수납 항목(payment)을 전혀 생성하지 않습니다.
+* **unpaid**: 미납 상태(unpaid), paidDate: null인 청구서 장부 레코드를 등록합니다.
+* **paid**: 완납 상태(paid), 오늘 날짜가 적용된 paidDate 및 결제 수단(paymentMethod)이 기록된 장부 레코드를 등록합니다.
+여기서 장부 생성은 외부 PG사 실제 결제나 현금 이체가 이루어지는 "즉시 결제" 처리가 아니며, 학원의 수납/미수납 관리를 위한 내부 장부(payment 레코드)의 생성을 뜻합니다.
+
+### 28-9. SessionPass / Class Schedule / Payment 연동 정책
+과목 적용 시 유형 및 옵션에 따라 유기적인 연동 데이터 생성을 진행합니다:
+* **수강권 연동**: courseType === 'session_pass'인 경우, createSessionPass를 안전하게 대행 호출하여 쿠폰 수강권을 신규 발급합니다.
+* **일정 연동**: dayOfWeek 및 time 정보가 존재하면, 기존의 E2E 신뢰성이 검증된 createClassForEnrollment API를 우선적으로 재사용하여 요일, 강사, 시간 정보가 포함된 등원 일정을 안전하게 발행합니다.
+* **연결 필드 기록**: 연동되는 payment 장부 레코드에는 enrollmentId, courseId, sessionPassId 필드를 충실히 보존하여, 어떤 수강과목과 수강권으로부터 파생된 수납 채권인지를 명확하게 추적합니다.
+
+### 28-10. Partial Failure 및 Rollback 정책
+데이터 생성 단계에서 유연함을 기하기 위해 하위 연동 실패 시의 부분 성공(Partial Failure) 정책을 취합니다:
+* 핵심 데이터인 수강 등록(enrollment) 생성 실패 시에는 트랜잭션이 전체 실패합니다.
+* enrollment는 생성되었으나 수강권, 클래스 일정, 수납 장부 중 일부 생성 실패(예: 잘못된 수강권 횟수 0 입력 시도 등)가 발생하더라도 enrollment는 롤백하지 않고 보존합니다. 대신, 구체적인 오류 원인들을 **warnings** 배열에 상세히 취합하여 함께 반환하는 부분 성공(Partial Success) 정책을 수립하였습니다.
+
+### 28-11. Legacy Flat Field Compatibility 정책
+신규 다중 수강과목 구조에서도 기존 단일 플랫 필드 기반의 출결 및 통계 모듈들이 오동작하지 않도록 compatibility를 철저히 보장합니다. 과목 적용의 최종 성패 시점에 syncStudentFlatFieldsFromPrimaryEnrollment(studentId)를 즉각 수행하여, 학생 상세의 legacy flat fields(instrument, fee, dueDay, defaultClassDuration 등)를 메인 수강과목의 값으로 즉시 동기화(Mirroring)합니다.
+
+### 28-12. 구현 제외 및 후속 범위
+사용자 편의성을 위해 UI 상에서 마스터 과목 목록을 선택하거나 override 폼을 보여주는 화면 뷰 연계는 이번 범위에서 제외합니다. 또한 외부 알림톡/SMS/푸시 자동 발송과 실제 신용카드 PG 결제 처리, 그리고 대장(payment.enrollmentId) 기반의 수납 화면 전체 개편 등은 후속 고도화 정책 범위로 이관하여 보류합니다.
+
+### 28-13. 검증 기록
+E2E 환경에서 window.stateStore API를 활용한 Course Master CRUD 연산, monthly/session_pass 개별 과목 적용, overrides 및 수납 상태 변경 시의 장부 레코드 결합도 검증, legacy subjects 보존 상태 및 partial failure warnings 수집 동작 검증을 완료하였으며, 총 70개의 전체 E2E 테스트가 성공적으로 통과되었습니다.
+* **student-status-flow.spec.js**: 18 passed (신규 E2E API 검증 스펙 포함)
+* **today-console-flow.spec.js**: 31 passed
+* **billing-warning-flow.spec.js**: 5 passed
+* **attendance-control-flow.spec.js**: 16 passed
+
 
 
