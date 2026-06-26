@@ -483,6 +483,160 @@ export const membersMethods = {
         }
     },
 
+    applyCourseToStudent(studentId, courseId, options = {}) {
+        const student = this.getStudent(studentId);
+        if (!student) {
+            return { ok: false, reason: 'student_not_found' };
+        }
+        
+        const course = typeof this.getCourseMasterById === 'function' ? this.getCourseMasterById(courseId) : null;
+        if (!course || course.status !== 'active') {
+            return { ok: false, reason: 'course_not_found' };
+        }
+
+        const warnings = [];
+        let enrollment = null;
+        let sessionPass = null;
+        let classRecord = null;
+        let payment = null;
+
+        const enrollmentPayload = {
+            status: options.status || 'attending',
+            courseType: course.courseType,
+            subjectName: course.subjectName,
+            instrument: course.subjectName,
+            className: options.className || '',
+            level: options.level || '',
+            teacherId: options.teacherId || '',
+            startDate: options.startDate || new Date().toISOString().slice(0, 10),
+            endDate: options.endDate || null,
+            defaultWeekday: options.dayOfWeek || '',
+            defaultStartTime: options.time || '',
+            defaultDurationMinutes: options.durationMinutesOverride !== undefined ? Number(options.durationMinutesOverride) : course.defaultDurationMinutes,
+            fee: options.feeOverride !== undefined ? Number(options.feeOverride) : course.defaultFee,
+            dueDay: course.courseType === 'monthly' ? (options.dueDayOverride !== undefined ? Number(options.dueDayOverride) : (course.defaultDueDay || 10)) : null,
+            courseId: courseId,
+            autoBilling: options.autoBilling !== undefined ? options.autoBilling : true,
+            pauseBillingOnLeave: options.pauseBillingOnLeave !== undefined ? options.pauseBillingOnLeave : true,
+            memo: options.memo || ''
+        };
+
+        const enrollmentResult = this.createEnrollment(studentId, enrollmentPayload);
+        if (!enrollmentResult || !enrollmentResult.ok) {
+            return { ok: false, reason: 'enrollment_creation_failed' };
+        }
+        enrollment = enrollmentResult.data;
+
+        if (course.courseType === 'session_pass') {
+            try {
+                const total = options.totalSessionsOverride !== undefined ? Number(options.totalSessionsOverride) : (course.defaultTotalSessions || 10);
+                const remaining = options.remainingSessionsOverride !== undefined ? Number(options.remainingSessionsOverride) : total;
+                const amount = options.feeOverride !== undefined ? Number(options.feeOverride) : course.defaultFee;
+                const threshold = course.defaultLowBalanceThreshold !== undefined ? course.defaultLowBalanceThreshold : 2;
+                const purchaseDate = options.startDate || new Date().toISOString().slice(0, 10);
+                const expiresAt = options.expiresAtOverride || null;
+
+                const passPayload = {
+                    passName: course.name,
+                    totalSessions: total,
+                    remainingSessions: remaining,
+                    purchaseAmount: amount,
+                    purchaseDate: purchaseDate,
+                    expiresAt: expiresAt,
+                    lowBalanceThreshold: threshold
+                };
+
+                const passResult = this.createSessionPass(enrollment.id, passPayload);
+                if (passResult && passResult.ok) {
+                    sessionPass = passResult.data;
+                } else {
+                    warnings.push(passResult ? passResult.reason : 'session_pass_creation_failed');
+                }
+            } catch (err) {
+                warnings.push('session_pass_creation_failed');
+            }
+        }
+
+        if (options.dayOfWeek && options.time) {
+            try {
+                if (typeof this.createClassForEnrollment === 'function') {
+                    const classPayload = {
+                        dayOfWeek: options.dayOfWeek,
+                        time: options.time,
+                        teacherId: options.teacherId || enrollment.teacherId || '',
+                        durationMinutes: enrollment.defaultDurationMinutes
+                    };
+                    const classResult = this.createClassForEnrollment(enrollment.id, classPayload);
+                    if (classResult && classResult.ok) {
+                        classRecord = classResult.data;
+                    } else {
+                        warnings.push(classResult ? classResult.reason : 'class_creation_failed');
+                    }
+                } else {
+                    warnings.push('createClassForEnrollment_helper_not_found');
+                }
+            } catch (err) {
+                warnings.push('class_creation_failed');
+            }
+        }
+
+        const paymentStatus = options.paymentStatus || 'none';
+        if (paymentStatus === 'unpaid' || paymentStatus === 'paid') {
+            try {
+                const amount = options.feeOverride !== undefined ? Number(options.feeOverride) : course.defaultFee;
+                const month = options.paymentMonth || (options.startDate || new Date().toISOString().slice(0, 10)).slice(0, 7);
+                const invoiceDate = options.startDate || new Date().toISOString().slice(0, 10);
+
+                if (!this.db.payments) {
+                    this.db.payments = [];
+                }
+                const payId = 'P' + (this.db.payments.length ? Math.max(...this.db.payments.map(p => parseInt(p.id.slice(1)) || 0)) + 1 : 1);
+                
+                const newPayment = {
+                    id: payId,
+                    studentId: studentId,
+                    amount: amount,
+                    month: month,
+                    type: 'education',
+                    status: paymentStatus,
+                    invoiceDate: invoiceDate,
+                    paidDate: paymentStatus === 'paid' ? invoiceDate : null,
+                    method: paymentStatus === 'paid' ? (options.paymentMethod || 'cash') : null,
+                    enrollmentId: enrollment.id,
+                    courseId: courseId,
+                    sessionPassId: sessionPass ? sessionPass.id : null
+                };
+
+                this.db.payments.push(newPayment);
+                payment = newPayment;
+                
+                this.saveDB();
+                this.notify('PAYMENTS_CHANGED', this.db.payments);
+            } catch (err) {
+                warnings.push('payment_creation_failed');
+            }
+        }
+
+        try {
+            this.syncStudentFlatFieldsFromPrimaryEnrollment(studentId);
+            this.saveDB();
+            this.notify('STUDENTS_CHANGED', this.db.students);
+        } catch (err) {
+            warnings.push('student_flat_fields_sync_failed');
+        }
+
+        return {
+            ok: true,
+            data: {
+                enrollment,
+                sessionPass,
+                classRecord,
+                payment,
+                warnings
+            }
+        };
+    },
+
     createEnrollment(studentId, payload) {
         this.ensureEnrollmentsCollection();
 

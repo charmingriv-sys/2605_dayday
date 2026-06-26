@@ -303,6 +303,12 @@ class StateStore {
         if (typeof this.migrateParentContacts === 'function') {
             this.migrateParentContacts();
         }
+        if (typeof this.ensureCoursesCollection === 'function') {
+            this.ensureCoursesCollection();
+        }
+        if (typeof this.seedDefaultCoursesIfEmpty === 'function') {
+            this.seedDefaultCoursesIfEmpty();
+        }
     }
 
     seedDemoRecommendationsData() {
@@ -395,6 +401,10 @@ class StateStore {
         
         if (this.db) {
             let migrated = false;
+            if (!this.db.courses) {
+                this.db.courses = [];
+                migrated = true;
+            }
             if (!this.db.bookIssueRequests) {
                 this.db.bookIssueRequests = [];
                 migrated = true;

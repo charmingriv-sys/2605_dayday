@@ -3128,5 +3128,243 @@ test.describe('Student Status Management Flow', () => {
       total: 20
     });
   });
+
+  test('should verify Course Master Data CRUD & Student Application state APIs', async ({ page }) => {
+    // 1. Log in as Director to load the stateStore
+    const directorBtn = page.locator('.role-btn.director');
+    await expect(directorBtn).toBeVisible({ timeout: 5000 });
+    await directorBtn.click();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 5000 });
+
+    const results = await page.evaluate(() => {
+      const store = window.stateStore;
+      const db = store.db;
+      const summary = {};
+
+      // A. Verify database collection initialized & seeded
+      summary.coursesCollectionExists = Array.isArray(db.courses);
+      summary.seededCoursesCount = db.courses.length;
+      summary.defaultPianoCourse = db.courses.find(c => c.id === 'CRS_1');
+      summary.defaultViolinCourse = db.courses.find(c => c.id === 'CRS_2');
+      summary.subjectsIntact = Array.isArray(db.subjects) && db.subjects.length > 0;
+
+      // B. Create Course Master monthly validation & creation
+      let catchMonthlyErr = null;
+      try {
+        // missing subjectName
+        store.createCourseMaster({ name: '임시과목', courseType: 'monthly', defaultFee: 100000, defaultDurationMinutes: 50, defaultDueDay: 10 });
+      } catch (e) {
+        catchMonthlyErr = e.message;
+      }
+      summary.catchMonthlyErr = catchMonthlyErr;
+
+      const newMonthly = store.createCourseMaster({
+        name: '첼로 고급반',
+        subjectName: '첼로',
+        courseType: 'monthly',
+        defaultFee: 220000,
+        defaultDurationMinutes: 60,
+        defaultDueDay: 15
+      });
+      summary.newMonthlyId = newMonthly.id;
+      summary.newMonthlyType = newMonthly.courseType;
+      summary.newMonthlyDueDay = newMonthly.defaultDueDay;
+
+      // C. Create Course Master session_pass validation & creation
+      let catchSessionErr = null;
+      try {
+        // lowBalanceThreshold > defaultTotalSessions
+        store.createCourseMaster({
+          name: '플루트 10회권',
+          subjectName: '플루트',
+          courseType: 'session_pass',
+          defaultFee: 200000,
+          defaultDurationMinutes: 50,
+          defaultTotalSessions: 10,
+          defaultLowBalanceThreshold: 12
+        });
+      } catch (e) {
+        catchSessionErr = e.message;
+      }
+      summary.catchSessionErr = catchSessionErr;
+
+      const newSession = store.createCourseMaster({
+        name: '플루트 10회권',
+        subjectName: '플루트',
+        courseType: 'session_pass',
+        defaultFee: 200000,
+        defaultDurationMinutes: 50,
+        defaultTotalSessions: 10,
+        defaultLowBalanceThreshold: 3
+      });
+      summary.newSessionId = newSession.id;
+      summary.newSessionThreshold = newSession.defaultLowBalanceThreshold;
+
+      // D. Update and Archive
+      store.updateCourseMaster(newMonthly.id, { defaultFee: 240000, name: '첼로 마스터 클래스' });
+      const updatedMonthly = store.getCourseMasterById(newMonthly.id);
+      summary.updatedFee = updatedMonthly.defaultFee;
+      summary.updatedName = updatedMonthly.name;
+
+      store.archiveCourseMaster(newSession.id);
+      const archivedSession = store.getCourseMasterById(newSession.id);
+      summary.archivedStatus = archivedSession.status;
+      summary.archivedIsActive = archivedSession.isActive;
+
+      const activeMasters = store.getActiveCourseMasters({ onlyActive: true });
+      summary.activeMastersCount = activeMasters.length;
+      summary.isArchivedExcluded = !activeMasters.some(c => c.id === newSession.id);
+
+      // E. applyCourseToStudent monthly: unpaid payment, flat fields sync
+      // Seed a dummy student S999 to test application
+      db.students.push({
+        id: 'S999',
+        name: '감사학생',
+        status: 'attending',
+        fee: 0,
+        dueDay: null,
+        defaultClassDuration: 50
+      });
+      store.saveDB();
+
+      const applyMonthlyRes = store.applyCourseToStudent('S999', newMonthly.id, {
+        feeOverride: 200000,
+        dueDayOverride: 20,
+        durationMinutesOverride: 55,
+        paymentStatus: 'unpaid',
+        paymentMonth: '2026-07',
+        startDate: '2026-07-01'
+      });
+      summary.applyMonthlyOk = applyMonthlyRes.ok;
+      summary.applyMonthlyEnrollmentId = applyMonthlyRes.data.enrollment.id;
+      summary.applyMonthlyFee = applyMonthlyRes.data.enrollment.fee;
+      summary.applyMonthlyDueDay = applyMonthlyRes.data.enrollment.dueDay;
+      summary.applyMonthlyDuration = applyMonthlyRes.data.enrollment.defaultDurationMinutes;
+
+      // Check payment created
+      summary.applyMonthlyPayment = applyMonthlyRes.data.payment;
+      // Check legacy flat fields sync
+      const s999After = store.getStudent('S999');
+      summary.s999Fee = s999After.fee;
+      summary.s999DueDay = s999After.dueDay;
+      summary.s999Duration = s999After.defaultClassDuration;
+
+      // F. applyCourseToStudent session_pass: paid payment, class schedule creation
+      // Re-create a session course master because we archived newSession
+      const activeSessionCourse = store.createCourseMaster({
+        name: '가야금 10회',
+        subjectName: '가야금',
+        courseType: 'session_pass',
+        defaultFee: 250000,
+        defaultDurationMinutes: 50,
+        defaultTotalSessions: 10,
+        defaultLowBalanceThreshold: 1
+      });
+
+      const applySessionRes = store.applyCourseToStudent('S999', activeSessionCourse.id, {
+        totalSessionsOverride: 12,
+        paymentStatus: 'paid',
+        paymentMethod: 'card',
+        dayOfWeek: '목',
+        time: '17:30',
+        startDate: '2026-06-26'
+      });
+      summary.applySessionOk = applySessionRes.ok;
+      summary.applySessionEnrollmentId = applySessionRes.data.enrollment.id;
+      summary.applySessionPassId = applySessionRes.data.sessionPass.id;
+      summary.applySessionPassTotal = applySessionRes.data.sessionPass.totalSessions;
+      summary.applySessionPassRemaining = applySessionRes.data.sessionPass.remainingSessions;
+      
+      summary.applySessionClassRecord = applySessionRes.data.classRecord;
+      summary.applySessionPayment = applySessionRes.data.payment;
+
+      // G. applyCourseToStudent paymentStatus: none
+      const applyNoneRes = store.applyCourseToStudent('S999', activeSessionCourse.id, {
+        paymentStatus: 'none',
+        startDate: '2026-06-26'
+      });
+      summary.applyNonePayment = applyNoneRes.data.payment;
+
+      // H. applyCourseToStudent partial failure validation
+      // pass totalSessionsOverride = 0 (invalid) should cause session pass creation failure
+      const applyPartialRes = store.applyCourseToStudent('S999', activeSessionCourse.id, {
+        totalSessionsOverride: 0,
+        startDate: '2026-06-26'
+      });
+      summary.applyPartialOk = applyPartialRes.ok;
+      summary.applyPartialEnrollmentId = applyPartialRes.data.enrollment.id;
+      summary.applyPartialWarnings = applyPartialRes.data.warnings;
+
+      return summary;
+    });
+
+    // B. Assertions for Courses Master CRUD and validation
+    expect(results.coursesCollectionExists).toBe(true);
+    expect(results.seededCoursesCount).toBeGreaterThanOrEqual(2);
+    expect(results.defaultPianoCourse.name).toBe('피아노 정규반');
+    expect(results.defaultViolinCourse.name).toBe('바이올린 쿠폰 10회');
+    expect(results.subjectsIntact).toBe(true);
+    expect(results.catchMonthlyErr).toContain('과목명은 필수 입력 항목입니다');
+
+    expect(results.newMonthlyId).toMatch(/^CRS_\d+$/);
+    expect(results.newMonthlyType).toBe('monthly');
+    expect(results.newMonthlyDueDay).toBe(15);
+    expect(results.catchSessionErr).toContain('알림 기준 횟수는 기본 횟수 이하이어야 합니다');
+    expect(results.newSessionId).toMatch(/^CRS_\d+$/);
+    expect(results.newSessionThreshold).toBe(3);
+
+    // D. Assertions for Update/Archive
+    expect(results.updatedFee).toBe(240000);
+    expect(results.updatedName).toBe('첼로 마스터 클래스');
+    expect(results.archivedStatus).toBe('archived');
+    expect(results.archivedIsActive).toBe(false);
+    expect(results.isArchivedExcluded).toBe(true);
+
+    // E. Assertions for Monthly application
+    expect(results.applyMonthlyOk).toBe(true);
+    expect(results.applyMonthlyEnrollmentId).toMatch(/^ENR_\d+$/);
+    expect(results.applyMonthlyFee).toBe(200000);
+    expect(results.applyMonthlyDueDay).toBe(20);
+    expect(results.applyMonthlyDuration).toBe(55);
+
+    expect(results.applyMonthlyPayment).toBeDefined();
+    expect(results.applyMonthlyPayment.amount).toBe(200000);
+    expect(results.applyMonthlyPayment.status).toBe('unpaid');
+    expect(results.applyMonthlyPayment.month).toBe('2026-07');
+    expect(results.applyMonthlyPayment.enrollmentId).toBe(results.applyMonthlyEnrollmentId);
+
+    // Legacy sync assertion
+    expect(results.s999Fee).toBe(200000);
+    expect(results.s999DueDay).toBe(20);
+    expect(results.s999Duration).toBe(55);
+
+    // F. Assertions for Session Pass application
+    expect(results.applySessionOk).toBe(true);
+    expect(results.applySessionEnrollmentId).toMatch(/^ENR_\d+$/);
+    expect(results.applySessionPassId).toMatch(/^SP_\d+$/);
+    expect(results.applySessionPassTotal).toBe(12);
+    expect(results.applySessionPassRemaining).toBe(12);
+
+    expect(results.applySessionClassRecord).toBeDefined();
+    expect(results.applySessionClassRecord.dayOfWeek).toBe('목');
+    expect(results.applySessionClassRecord.time).toBe('17:30');
+    expect(results.applySessionClassRecord.enrollmentId).toBe(results.applySessionEnrollmentId);
+
+    expect(results.applySessionPayment).toBeDefined();
+    expect(results.applySessionPayment.amount).toBe(250000);
+    expect(results.applySessionPayment.status).toBe('paid');
+    expect(results.applySessionPayment.method).toBe('card');
+    expect(results.applySessionPayment.enrollmentId).toBe(results.applySessionEnrollmentId);
+    expect(results.applySessionPayment.sessionPassId).toBe(results.applySessionPassId);
+
+    // G. Assertion for paymentStatus: none
+    expect(results.applyNonePayment).toBeNull();
+
+    // H. Assertion for partial failure
+    expect(results.applyPartialOk).toBe(true);
+    expect(results.applyPartialEnrollmentId).toMatch(/^ENR_\d+$/);
+    expect(results.applyPartialWarnings.length).toBeGreaterThan(0);
+    expect(results.applyPartialWarnings[0]).toBe('invalid_total_sessions');
+  });
 });
 
