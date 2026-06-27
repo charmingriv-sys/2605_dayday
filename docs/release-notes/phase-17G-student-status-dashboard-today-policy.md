@@ -2009,5 +2009,72 @@ E2E 환경에서 window.stateStore API를 활용한 Course Master CRUD 연산, m
 ### 30-13. 구현 제외 및 후속 범위
 * 본 Phase 18F-2는 정책 수립 및 아키텍처 정립을 전용으로 하며, 실제 POS/PG API 코드 구현, SDK 셋업, Webhook 수신, 온라인 결제 링크 자동 생성, 알림톡/문자 자동 발송 등 물리적인 시스템 연동은 구현 범위에서 제외하고 후속 마일스톤으로 이관합니다.
 
+---
+
+## 31. Payment Transaction / Batch Storage API 구현 반영 정책 (Phase 18F-4)
+
+### 31-1. 구현 도입 배경
+Phase 18F-2의 설계 정책에 따라, 로컬 State Layer 내에 실제 승인/취소 결제 이력을 적재하는 `db.paymentTransactions`와 복수 수납 항목 묶음 결제 관리를 위한 `db.paymentBatches` 컬렉션을 신설하고 관련 Storage API 및 실시간 상태 재계산 모듈을 구현하여 데이터 연동 정합성을 보장합니다.
+
+### 31-2. db.paymentTransactions 컬렉션 구현 반영
+* `db.paymentTransactions`는 실제 카드 및 PG 승인/취소/실패/대기 거래의 raw 이력을 덮어쓰지 않고 시간 순으로 누적하여 보존하는 append-only 컬렉션입니다.
+* 제공되는 관리 API:
+  - `ensurePaymentTransactionsCollection()`: 컬렉션 빈 배열 초기화 보장
+  - `createPaymentTransaction(payload)`: 트랜잭션 검증 및 기록, ID(`TX_N`) 발급
+  - `getPaymentTransactionsByPaymentId(paymentId)`: `createdAt` 기준 오름차순 정렬 반환
+  - `getPaymentTransactionsByBatchId(batchId)`: `createdAt` 기준 오름차순 정렬 반환
+
+### 31-3. db.paymentBatches 컬렉션 구현 반영
+* `db.paymentBatches`는 여러 수납 항목을 단일 거래(transaction)로 묶어서 동시 수납 처리하기 위한 묶음 결제 전용 컬렉션입니다.
+* 제공되는 관리 API:
+  - `ensurePaymentBatchesCollection()`: 컬렉션 빈 배열 초기화 보장
+  - `createPaymentBatch(paymentIds, options)`: 배치 등록, ID(`PB_N`) 발급, 총액(`totalAmount`) 계산
+  - `getPaymentBatchById(batchId)`: ID 기준 배치 조회
+  - `getPaymentBatchesByPaymentId(paymentId)`: 수납 항목이 속한 배치 목록 반환
+  - `recalculatePaymentBatchStatus(batchId)`: 배치 상태 재계산 및 하위 payment로 상태 전파
+
+### 31-4. StateStore 초기화 / 마이그레이션 정책
+* `StateStore` 생성자(constructor) 및 로컬 DB 복원 로직(`loadDB`) 내에 `ensurePaymentTransactionsCollection()`과 `ensurePaymentBatchesCollection()` 호출을 체이닝하여, 애플리케이션 진입 시 해당 컬렉션들의 초기 탑재 유무를 확인 및 빈 배열(`[]`)로 자동 보장합니다.
+
+### 31-5. payment.status / paidAmount 재계산 정책
+* 수납건과 연동된 성공 거래(`status === 'success'`) 이력을 토대로 실시간 재계산(`recalculatePaymentStatus`)을 구동합니다.
+* **계산 공식**: 성공한 승인 거래 총액 - 성공한 취소 거래 총액 = `paidAmount`
+* **상태 매핑**:
+  - `paidAmount <= 0`: `status = 'unpaid'`, `paidDate = null`
+  - `0 < paidAmount < amount`: `status = 'partial'`, `paidDate = null`
+  - `paidAmount >= amount`: `status = 'paid'`, `paidDate = 오늘날짜` 기록 또는 보존
+
+### 31-6. partial 상태 처리 정책
+* 수납 항목 상태가 `'partial'`(부분 수납)일 경우 완납(`'paid'`) 상태가 아니므로, 기존 수납 경고 통계 엔진(`todayTaskBilling`)에서 미수납/수납확인 권고 대상으로 안전하게 분류되어 유지됩니다.
+
+### 31-7. cancel 처리 정책
+* 취소 거래는 환불(refund) 등의 복잡한 개별 유형을 신설하지 않고 `transactionType: 'cancel'`로 통합 정의하여 append-only로 적재합니다.
+* 취소 성공 시 `paidAmount`를 차감 연산하고, `recalculatePaymentStatus`에 의해 `payment.status`를 `unpaid` 또는 `partial` 상태로 자동 복원합니다.
+
+### 31-8. batch approval / cancel 처리 정책
+* **batch approval success**: 누적 승인액이 `totalAmount` 이상이 되면 `batch.status = 'paid'`로 갱신되고, 매핑된 하위 payments도 일괄 `'paid'` 및 `paidDate` 자동 갱신이 전파됩니다.
+* **batch cancel success**: 취소 거래 이력에 의해 누적 잔액이 0 이하가 될 경우, 이력을 명확히 남기기 위해 `batch.status = 'canceled'` 상태로 마킹하며 연결된 하위 payments는 전부 `'unpaid'` 상태 및 `paidDate = null`, `paidAmount = 0`으로 롤백 전파됩니다.
+* **partial batch**: 누적 승인액이 `totalAmount`에 미치지 못하면 `batch.status = 'partial'`이 되며, 하위 payments의 상태는 임의로 강제 변경하지 않고 기존 상태를 그대로 보존합니다.
+
+### 31-9. append-only transaction 보존 정책
+* 모든 결제 승인, 취소, 실패, 대기 이력은 기존 데이터를 덮어쓰거나 훼손하지 않으며, `db.paymentTransactions` 배열에 append-only 방식으로 한 줄씩 추가되어 영구 감사 이력 로그로 활용할 수 있도록 보존합니다.
+
+### 31-10. todayTaskBilling 호환 정책
+* `todayTaskBilling`은 `payment.status` 필드의 값에 기반하여 작동하므로, 실시간 재계산에 의해 `payment.status`가 동기화되면 별도의 엔진 수정 없이도 기존 수납 기한 알림 태스크가 정상 가동되며, 트랜잭션/배치 격리 구조와도 완벽히 상호 호환됩니다.
+
+### 31-11. 외부 POS/PG/API 미연동 유지 정책
+* 본 마일스톤 구현 단계에서는 외부 Toss SDK 연동, POS 리더기 통신, PG사 웹훅(Webhook) 수신, 실시간 카카오 알림톡/SMS/푸시 통보, 외부 결제창 링크 생성 등 외부 시스템 연동은 완벽히 배제하며, 로컬의 State 저장소 및 가상 트랜잭션 시뮬레이션을 중심으로 기동합니다.
+
+### 31-12. 구현 제외 및 후속 범위
+* 트랜잭션 및 배치를 실제로 생성하고 취소하며 관리자가 장부와 대조할 수 있는 프론트엔드 UI 화면(수납 상세 정보 팝업, 분할 결제 기능, 합산 결제 모달 등)은 본 정책 구현 범위에서 제외하고 차기 UX/UI 연동 Phase로 이관합니다.
+
+### 31-13. 검증 기록
+Phase 18F-3 설계 및 구현 결과 로컬 저장소 API 및 E2E 테스트 스펙을 완비하였으며, 기존 통계/통보/일정 가드와의 충돌 없이 72개 전체 시나리오가 100% 완전 성공하였습니다.
+* **billing-warning-flow.spec.js**: `6 passed` (트랜잭션/배치 CRUD 검증 추가)
+* **today-console-flow.spec.js**: `31 passed`
+* **student-status-flow.spec.js**: `19 passed`
+* **attendance-control-flow.spec.js**: `16 passed`
+* **총합**: `72 passed` (모든 스펙 100% 통과)
+
 
 
