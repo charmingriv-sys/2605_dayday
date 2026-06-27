@@ -2076,5 +2076,63 @@ Phase 18F-3 설계 및 구현 결과 로컬 저장소 API 및 E2E 테스트 스�
 * **attendance-control-flow.spec.js**: `16 passed`
 * **총합**: `72 passed` (모든 스펙 100% 통과)
 
+---
+
+## 32. Payment Ledger / Transaction Storage Closeout (Phase 18F-6)
+
+### 32-1. Phase 18F 마일스톤 개요
+본 마일스톤은 토스플레이스 단말기(POS) 및 학부모 모바일 결제(PG) 연동에 선행하여, 결제 데이터의 장부 무결성과 금융 추적성을 확보하기 위해 내부 수납 장부 레코드(`payments`), 개별 승인/취소 트랜잭션(`paymentTransactions`), 다중 수납 항목 그룹인 배치(`paymentBatches`)로 물리 저장 레이어를 분리 격리하고 데이터 일관성 정합성을 안전하게 설계/구현한 closeout 단계입니다.
+
+### 32-2. payment 장부 레코드 역할 확정
+* `db.payments`는 금융 승인 내역을 덮어쓰거나 직접 결제 매체에 결합하지 않으며, 기존처럼 원생의 교육비/교재비 미수 상태를 모니터링하기 위한 "수납 대장" 및 "장부 레코드" 본연의 용도로만 역할을 제한합니다.
+
+### 32-3. paymentTransactions 구현 완료 범위
+* `db.paymentTransactions` 컬렉션을 신설하여 실제 카드 승인, 카드 취소, 한도 초과 등 실패건, 진행 중인 대기(pending) 상태까지 모든 거래 원이력을 보존합니다.
+* 제공되는 CRUD API:
+  - `ensurePaymentTransactionsCollection()`
+  - `createPaymentTransaction(payload)`
+  - `getPaymentTransactionsByPaymentId(paymentId)`
+  - `getPaymentTransactionsByBatchId(batchId)`
+
+### 32-4. paymentBatches 구현 완료 범위
+* `db.paymentBatches` 컬렉션을 신설하여 형제 원생 합산 수납 또는 수강료+교재비 묶음 카드 결제를 완벽하게 결합 및 추적할 수 있도록 지원합니다.
+* 제공되는 CRUD API:
+  - `ensurePaymentBatchesCollection()`
+  - `createPaymentBatch(paymentIds, options)`
+  - `getPaymentBatchById(batchId)`
+  - `getPaymentBatchesByPaymentId(paymentId)`
+  - `recalculatePaymentBatchStatus(batchId)`
+
+### 32-5. paidAmount / partial / cancel 상태 정책 확정
+* 성공 승인 금액 합산 - 성공 취소 금액 합산 = `paidAmount` 공식을 엄격하게 적용하여 장부를 갱신합니다.
+* `paidAmount <= 0`: `unpaid` 상태 복귀 및 `paidDate = null` 처리
+* `0 < paidAmount < amount`: `partial` 상태 매핑 및 `paidDate = null` 처리
+* `paidAmount >= amount`: `paid` 상태 갱신 및 `paidDate = 오늘날짜` 기록
+* 거래 취소(cancel) 시에는 별도의 복잡한 refund 타입을 두지 않고 `transactionType: 'cancel'`로 일관 통합하여 처리합니다.
+
+### 32-6. todayTaskBilling 호환 검증 결과
+* 부분 납부(`partial`) 상태는 `paid`가 아니므로, 기존의 미납 통보 경고 엔진인 `todayTaskBilling`이 이를 안전하게 미수납/수납확인 권고 대상으로 검출하여 open 상태의 recommendations 태스크를 누적 기동해 줌으로써 완벽한 역호환성을 실증하였습니다.
+
+### 32-7. append-only 감사 이력 보존 정책
+* 결제 단말기 또는 PG 거래의 어떠한 응답(성공, 실패, 대기, 승인, 취소)도 기존 transaction 개체를 덮어쓰지 않고 시간 순으로 append-only 적재하여, 추후 감사 추적(Audit Trail)에 누락 없는 무결성을 확보하였습니다.
+
+### 32-8. 외부 POS/PG/API 미연동 유지 범위
+* Toss SDK 런타임 연결, 단말기 API 통신, 결제창 웹훅(Webhook) 가동, 알림톡/SMS/푸시 자동 통보, PG 결제용 동적 링크 생성 등의 물리 결제 연동은 이번 마일스톤 구현에서 제외되며, 순수 내부 스토리지 인터페이스와 로컬 데이터 정합성 검증으로 범위를 한정하였습니다.
+
+### 32-9. Phase 18F Release Gate 검증 기록
+E2E 테스트 실행 결과, 저장 아키텍처 개편 및 partial 상태 도입에 따른 회귀 오류가 일절 없음을 검증 완료하고 Release Gate를 성공적으로 통과하였습니다.
+* **billing-warning-flow.spec.js**: `6 passed`
+* **today-console-flow.spec.js**: `31 passed`
+* **student-status-flow.spec.js**: `19 passed`
+* **attendance-control-flow.spec.js**: `16 passed`
+* **총합**: `72 passed` (모든 스펙 100% 통과, Phase 18F-5 Release Gate Passed)
+
+### 32-10. 의도적으로 보류한 범위
+* 결제 수단 선택, 분할/합산 결제 처리 모달, Toss Front POS 단말기 통신 로딩 바, 결제 취소 버튼 등 실제 사용자와 관리자가 사용하게 되는 프론트엔드 UI/UX 결합 및 조작 흐름은 의도적으로 후속 마일스톤으로 보류하였습니다.
+
+### 32-11. 다음 마일스톤 후보
+* **후보 A**: 메시지/알림톡/푸시 전체 발송 이력 및 전송 수단 템플릿 제어 정책 Audit
+* **후보 B**: 수납 및 현장 POS 단말기 연동 결제 화면 통합 UX/UI Audit
+
 
 
